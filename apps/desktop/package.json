@@ -9,12 +9,13 @@
   },
   "dependencies": {
     "@electron-toolkit/utils": "^3.0.0",
-    "@opencode-ai/sdk": "^1.0.0"
+    "@opencode-ai/sdk": "^1.0.0",
+    "@pierre/diffs": "^1.1.7"
   },
   "devDependencies": {
+    "@types/node": "^22.16.5",
     "electron": "^40.0.0",
     "electron-vite": "^3.0.0",
-    "typescript": "^5.8.3",
-    "@types/node": "^22.16.5"
+    "typescript": "^5.8.3"
   }
 }

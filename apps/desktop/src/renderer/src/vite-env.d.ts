@@ -12,13 +12,13 @@ interface Window {
       pickProjectFolder: () => Promise<string | null>;
     };
     agent: {
-      ensure: (input: { agentId: string; teamId?: string; role: string; systemPrompt?: string; systemPromptPath?: string }) => Promise<{ agentId: string; status: string }>;
+      ensure: (input: { agentId: string; teamId?: string; role: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<{ agentId: string; status: string }>;
       send: (input: { agentId: string; message: string }) => Promise<void>;
       stop: (agentId: string) => Promise<void>;
       subscribe: (agentId: string) => Promise<void>;
     };
     ceo: {
-      ensure: (input: { agentId: string; systemPrompt?: string; systemPromptPath?: string }) => Promise<{ agentId: string; status: string }>;
+      ensure: (input: { agentId: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<{ agentId: string; status: string }>;
       send: (input: { agentId: string; message: string }) => Promise<void>;
       subscribe: () => Promise<void>;
     };

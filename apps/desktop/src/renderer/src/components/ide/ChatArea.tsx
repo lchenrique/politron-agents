@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Plus, Globe } from "lucide-react";
 import { useWorkspace } from "@/hooks/useWorkspace";
+import ThinkingIndicator from "./ThinkingIndicator";
+import DiffViewer from "./DiffViewer";
+import { MessagePartsRenderer } from "./MessageParts";
 
 const ChatArea = () => {
   const { workspace, activeTeam, setActiveAgentTab, sendMessage } = useWorkspace();
@@ -10,6 +13,11 @@ const ChatArea = () => {
   const isCeoActive = workspace.activeAgentTabId === workspace.globalCeoAgent.id;
   const messageKey = isCeoActive ? workspace.globalCeoAgent.id : activeTeam?.id;
   const teamMessages = messageKey ? (workspace.messages[messageKey] ?? []) : [];
+
+  // Get agent activity for current tab
+  const currentAgentId = workspace.activeAgentTabId;
+  const agentActivity = currentAgentId ? workspace.agentActivities[currentAgentId] : undefined;
+  const showActivity = agentActivity && agentActivity.activity !== "idle";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -82,7 +90,7 @@ const ChatArea = () => {
             <div
               className="w-[26px] h-[26px] rounded-md flex items-center justify-center text-[10px] font-medium shrink-0 mt-0.5 border"
               style={{
-                background: msg.agentColor.replace(")", " / 0.1)").replace("hsl(", "hsl("),
+                background: msg.agentColor.replace(")", " / 0.1").replace("hsl(", "hsl("),
                 color: msg.agentColor,
                 borderColor: msg.agentColor.replace(")", " / 0.2)").replace("hsl(", "hsl("),
               }}
@@ -98,39 +106,35 @@ const ChatArea = () => {
                   ? "bg-[hsl(240,30%,12%)] border border-ide-indigo/15 text-ide-text/90"
                   : "bg-ide-surface-2 border border-ide-border text-ide-text/80"
               }`}>
-                {msg.text}
+                {msg.isUser ? (
+                  msg.text
+                ) : (
+                  <MessagePartsRenderer parts={msg.parts} isUser={msg.isUser} />
+                )}
               </div>
               {msg.diff && (
-                <div className="mt-2 border border-ide-border rounded-md overflow-hidden">
-                  <div className="bg-ide-surface-2 px-2.5 py-1.5 flex items-center gap-2 border-b border-ide-border">
-                    <span className="text-[11px] font-mono text-ide-text-muted">{msg.diff.filename}</span>
-                    <span className="ml-auto text-[10px] font-mono">
-                      <span className="text-ide-green-bright">+{msg.diff.additions}</span>{" "}
-                      <span className="text-ide-red-bright">-{msg.diff.deletions}</span>
-                    </span>
-                  </div>
-                  <div className="text-[11px] font-mono">
-                    {msg.diff.lines.map((line, i) => (
-                      <div
-                        key={i}
-                        className={`flex gap-2 px-2.5 py-px ${
-                          line.type === "add" ? "bg-[hsl(145,60%,8%)] text-ide-green-bright" :
-                          line.type === "rem" ? "bg-[hsl(0,60%,10%)] text-ide-red-bright" :
-                          "text-ide-text-dim"
-                        }`}
-                      >
-                        <span className="opacity-50 select-none w-2.5 shrink-0">
-                          {line.type === "add" ? "+" : line.type === "rem" ? "-" : " "}
-                        </span>
-                        {line.text}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <DiffViewer diff={msg.diff} className="mt-2" />
               )}
             </div>
           </div>
         ))}
+        
+        {showActivity && (
+          <div className="flex gap-2.5">
+            <div
+              className="w-[26px] h-[26px] rounded-md flex items-center justify-center text-[10px] font-medium shrink-0 mt-0.5 border bg-ide-surface-2 border-ide-border opacity-50"
+            >
+              {workspace.activeAgentTabId === workspace.globalCeoAgent.id ? "AO" : "AI"}
+            </div>
+            <div className="mt-1">
+              <ThinkingIndicator
+                status={agentActivity.activity}
+                filename={agentActivity.filename}
+              />
+            </div>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 

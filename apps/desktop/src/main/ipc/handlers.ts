@@ -73,6 +73,16 @@ export function registerHandlers(): void {
     win?.close()
   })
 
+  ipcMain.handle('vibe:window:setZoom', (_, level: number) => {
+    const win = getAppWindow()
+    win?.webContents.setZoomLevel(level)
+  })
+
+  ipcMain.handle('vibe:window:getZoom', () => {
+    const win = getAppWindow()
+    return win?.webContents.getZoomLevel() ?? 0
+  })
+
   ipcMain.handle('vibe:platform:info', () => {
     return { platform: process.platform }
   })
@@ -94,6 +104,7 @@ export function registerHandlers(): void {
   ipcMain.handle('vibe:agent:ensure', async (_, input) => {
     return await openCodeSdkService.ensureSession({
       ...input,
+      workspaceDirectory: input.workspaceDirectory,
       systemPromptPath: input.systemPromptPath || resolveAgentSystemPromptPath(input.agentId, input.teamId),
     })
   })
@@ -114,6 +125,7 @@ export function registerHandlers(): void {
     return await openCodeSdkService.ensureSession({
       ...input,
       role: 'global-ceo',
+      workspaceDirectory: input.workspaceDirectory,
       systemPromptPath: input.systemPromptPath || GLOBAL_CEO_PROMPT.targetPath,
     })
   })
@@ -308,6 +320,14 @@ export function registerHandlers(): void {
 
   openCodeSdkService.on('vibe:agent:chunk', (...args) => {
     forwardEventToRenderer('vibe:agent:chunk', ...args)
+  })
+
+  openCodeSdkService.on('vibe:agent:reasoning', (...args) => {
+    forwardEventToRenderer('vibe:agent:reasoning', ...args)
+  })
+
+  openCodeSdkService.on('vibe:agent:activity', (...args) => {
+    forwardEventToRenderer('vibe:agent:activity', ...args)
   })
 
   openCodeSdkService.on('vibe:agent:status', (...args) => {

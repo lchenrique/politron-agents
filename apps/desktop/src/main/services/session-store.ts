@@ -10,6 +10,7 @@ export interface ManagedSession {
   role: AgentRole
   session: any
   status: AgentStatus
+  agentSlug?: string
   lastEventAt?: string
 }
 

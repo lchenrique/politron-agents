@@ -1,4 +1,4 @@
-﻿import { createContext, useContext, ReactNode, useCallback, useEffect, useState } from "react";
+import { createContext, useContext, ReactNode, useCallback, useEffect, useState } from "react";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { AGENT_CATALOG, type Workspace, type Team, type Project, type Agent, type ChatMessage, type PipelineTask } from "@/types/workspace";
 import { workspaceAtom, activeTeamIdAtom, activeProjectIdAtom, activeAgentTabIdAtom, activeTeamAtom } from "./atoms";
@@ -115,6 +115,7 @@ function mapBackendTeamsToProjects(teams: BackendTeam[]): Project[] {
 const defaultCeo: Agent = {
   id: "ceo-global",
   name: "Agents Orchestrator",
+  catalogSlug: "agents-orchestrator",
   role: "ceo",
   initials: "AO",
   status: "running",
@@ -133,6 +134,7 @@ function createEmptyWorkspace(): Workspace {
     activeTeamId: null,
     activeAgentTabId: null,
     messages: {},
+    agentActivities: {},
   };
 }
 
@@ -293,11 +295,15 @@ const sendMessageAtom = atom(
     const isCeoMessage = teamId === workspace.globalCeoAgent.id;
     const msg: ChatMessage = {
       id: uid(), agentId: "user", agentInitials: "VC", agentName: "você",
-      agentColor: "hsl(239 84% 67%)", isUser: true, text, timestamp: Date.now(),
+      agentColor: "hsl(239 84% 67%)", isUser: true, text, parts: [], timestamp: Date.now(),
     };
     set(workspaceAtom, {
       ...workspace,
       messages: { ...workspace.messages, [teamId]: [...(workspace.messages[teamId] ?? []), msg] },
+      agentActivities: {
+        ...workspace.agentActivities,
+        [isCeoMessage ? workspace.globalCeoAgent.id : teamId]: { activity: "thinking" }
+      }
     });
 
     if (isCeoMessage) {
@@ -305,6 +311,9 @@ const sendMessageAtom = atom(
         try {
           await window.vibeAPI.ceo.ensure({
             agentId: workspace.globalCeoAgent.id,
+            agentSlug: workspace.globalCeoAgent.catalogSlug,
+            // CEO uses the app's root (handled by backend if null)
+            workspaceDirectory: "" 
           });
           await window.vibeAPI.ceo.subscribe();
           await window.vibeAPI.ceo.send({
@@ -337,6 +346,28 @@ const sendMessageAtom = atom(
           }) as any);
         }
       })();
+    } else {
+      const team = workspace.teams.find(t => t.id === teamId);
+      const activeAgent = team?.agents.find(a => a.id === workspace.activeAgentTabId);
+      if (team && activeAgent) {
+        void (async () => {
+          try {
+            await window.vibeAPI.agent.ensure({
+              agentId: activeAgent.id,
+              teamId: team.id,
+              role: activeAgent.role,
+              agentSlug: activeAgent.catalogSlug,
+              workspaceDirectory: team.projectPath
+            });
+            await window.vibeAPI.agent.send({
+              agentId: activeAgent.id,
+              message: text,
+            });
+          } catch (err) {
+            console.error("Failed to send message to agent:", err);
+          }
+        })();
+      }
     }
   }
 );
@@ -458,13 +489,26 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
           lastMessage.agentId === data.agentId &&
           lastMessage.streamId === data.sessionId
         ) {
+          // Update the text part inside parts array
+          const parts = lastMessage.parts ?? [];
+          const lastPartIdx = parts.findLastIndex(p => p.type === "text");
+          let newParts;
+          if (lastPartIdx >= 0) {
+            newParts = parts.map((p, i) => i === lastPartIdx ? { ...p, text } : p);
+          } else {
+            newParts = [...parts, { type: "text" as const, text }];
+          }
+          
+          // CRITICAL: If we are receiving text, ensure any reasoning parts are marked as finished
+          newParts = newParts.map(p => p.type === "reasoning" ? { ...p, isOngoing: false } : p);
+          
           return {
             ...prev,
             messages: {
               ...prev.messages,
               [targetKey]: [
                 ...existingMessages.slice(0, -1),
-                { ...lastMessage, text, timestamp: Date.now() },
+                { ...lastMessage, text, parts: newParts, timestamp: Date.now() },
               ],
             },
           };
@@ -488,6 +532,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
                 agentColor: agentMeta?.color ?? "hsl(239 84% 67%)",
                 isUser: false,
                 text,
+                parts: [{ type: "text" as const, text }],
                 timestamp: Date.now(),
               },
             ],
@@ -500,10 +545,21 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
       setWorkspace(prev => {
         if (!prev) return prev;
 
+        let nextActivities = prev.agentActivities;
+        if (data.status === "idle") {
+          nextActivities = {
+            ...prev.agentActivities,
+            [data.agentId]: {
+              activity: "idle",
+            },
+          };
+        }
+
         if (data.agentId === prev.globalCeoAgent.id) {
           return {
             ...prev,
             globalCeoAgent: { ...prev.globalCeoAgent, status: data.status },
+            agentActivities: nextActivities,
           };
         }
 
@@ -515,6 +571,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
               agent.id === data.agentId ? { ...agent, status: data.status } : agent
             ),
           })),
+          agentActivities: nextActivities,
         };
       });
     }
@@ -537,9 +594,84 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
                 agentColor: prev.globalCeoAgent.color,
                 isUser: false,
                 text: data.question,
+                parts: [],
                 timestamp: Date.now(),
               },
             ],
+          },
+        };
+      });
+    }
+
+    function handleAgentReasoning(data: { agentId: string; sessionId?: string; text?: string; isOngoing?: boolean }) {
+      setWorkspace(prev => {
+        if (!prev) return prev;
+
+        const targetKey = data.agentId === prev.globalCeoAgent.id
+          ? prev.globalCeoAgent.id
+          : prev.activeTeamId ?? prev.globalCeoAgent.id;
+
+        const existingMessages = prev.messages[targetKey] ?? [];
+        const lastMsg = existingMessages[existingMessages.length - 1];
+
+        // If there's an active AI message for this session, upsert the reasoning part
+        if (lastMsg && !lastMsg.isUser && lastMsg.agentId === data.agentId) {
+          const parts = lastMsg.parts ?? [];
+          const rIdx = parts.findLastIndex(p => p.type === "reasoning");
+          let newParts;
+          if (rIdx >= 0) {
+            newParts = parts.map((p, i) => i === rIdx ? { ...p, text: data.text ?? "", isOngoing: !!data.isOngoing } : p);
+          } else {
+            // Insert reasoning before the last text part
+            const textIdx = parts.findLastIndex(p => p.type === "text");
+            newParts = textIdx >= 0
+              ? [...parts.slice(0, textIdx), { type: "reasoning" as const, text: data.text ?? "", isOngoing: !!data.isOngoing }, ...parts.slice(textIdx)]
+              : [...parts, { type: "reasoning" as const, text: data.text ?? "", isOngoing: !!data.isOngoing }];
+          }
+
+          // If this reasoning is NOT ongoing, ensure all other parts in this message are also checked
+          if (data.isOngoing === false) {
+             newParts = newParts.map(p => p.type === "reasoning" && p !== newParts[rIdx >= 0 ? rIdx : newParts.length-1] ? { ...p, isOngoing: false } : p);
+          }
+          return {
+            ...prev,
+            messages: {
+              ...prev.messages,
+              [targetKey]: [...existingMessages.slice(0, -1), { ...lastMsg, parts: newParts }],
+            },
+            agentActivities: {
+              ...prev.agentActivities,
+              [data.agentId]: { activity: data.isOngoing ? "thinking" as const : prev.agentActivities[data.agentId]?.activity ?? "idle" as const },
+            },
+          };
+        }
+
+        // No active message yet — just update activity
+        if (data.isOngoing) {
+          return {
+            ...prev,
+            agentActivities: {
+              ...prev.agentActivities,
+              [data.agentId]: { activity: "thinking" },
+            },
+          };
+        }
+        return prev;
+      });
+    }
+
+    function handleAgentActivity(data: { agentId: string; activity: "idle" | "reading" | "editing" | "creating" | "thinking"; toolName?: string; title?: string }) {
+      setWorkspace(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          agentActivities: {
+            ...prev.agentActivities,
+            [data.agentId]: {
+              activity: data.activity,
+              toolName: data.toolName,
+              filename: data.title,
+            },
           },
         };
       });
@@ -557,6 +689,8 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
       window.vibeAPI.onAgentChunk(handleAgentChunk),
       window.vibeAPI.onAgentStatus(handleAgentStatus),
       window.vibeAPI.onCeoAskHuman(handleCeoAskHuman),
+      (window.vibeAPI as any).onAgentReasoning?.(handleAgentReasoning),
+      (window.vibeAPI as any).onAgentActivity?.(handleAgentActivity),
     ];
 
     loadTeams();

@@ -69,6 +69,180 @@
     --sidebar-border: 0 0% 10%;
     --sidebar-ring: 239 84% 67%;
   }
+
+  [data-theme="opencode"] {
+    /* OpenCode Inspire Theme (Deep Zinc/Slate, Teal & Calm Blues) */
+    --background: 240 10% 8%;
+    --foreground: 210 20% 85%;
+    
+    --ide-bg: 240 10% 8%;
+    --ide-surface: 240 10% 12%;
+    --ide-surface-2: 240 10% 15%;
+    --ide-surface-3: 240 10% 18%;
+    --ide-border: 240 10% 18%;
+    --ide-border-subtle: 240 10% 14%;
+    --ide-text: 210 20% 88%;
+    --ide-text-dim: 210 10% 50%;
+    --ide-text-muted: 210 10% 65%;
+
+    --ide-indigo: 200 80% 60%; /* OpenCode specific primary */
+    --ide-indigo-dim: 200 80% 60% / 0.1;
+    --ide-indigo-border: 200 80% 60% / 0.2;
+    --ring: 200 80% 60%;
+    
+    --primary: 200 80% 60%;
+    --primary-foreground: 0 0% 100%;
+    
+    --sidebar-background: 240 10% 6%;
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-primary: 200 80% 60%;
+    --sidebar-accent: 240 10% 12%;
+  }
+
+  [data-theme="cursor"] {
+    /* Cursor-like Theme (Extremely clean, High Contrast Borders, Darker base) */
+    --background: 260 5% 5%;
+    --foreground: 0 0% 90%;
+    
+    --ide-bg: 260 5% 5%;
+    --ide-surface: 260 5% 7%;
+    --ide-surface-2: 260 5% 10%;
+    --ide-surface-3: 260 5% 13%;
+    --ide-border: 0 0% 15%;
+    --ide-border-subtle: 0 0% 10%;
+    --ide-text: 0 0% 90%;
+    --ide-text-dim: 0 0% 45%;
+    --ide-text-muted: 0 0% 60%;
+
+    --ide-indigo: 250 84% 67%; /* Purple-ish primary */
+    --ide-indigo-dim: 250 84% 67% / 0.1;
+    --ide-indigo-border: 250 84% 67% / 0.2;
+    --ring: 250 84% 67%;
+    
+    --primary: 250 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    
+    --sidebar-background: 260 5% 4%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 250 84% 67%;
+    --sidebar-accent: 260 5% 9%;
+  }
+
+  [data-theme="tokyonight"] {
+    /* Tokyo Night Theme */
+    --background: 235 19% 13%;
+    --foreground: 226 70% 88%;
+    
+    --ide-bg: 235 19% 13%;
+    --ide-surface: 234 19% 16%;
+    --ide-surface-2: 234 19% 19%;
+    --ide-surface-3: 234 19% 22%;
+    --ide-border: 234 19% 22%;
+    --ide-border-subtle: 234 19% 18%;
+    --ide-text: 226 70% 88%;
+    --ide-text-dim: 226 20% 50%;
+    --ide-text-muted: 226 40% 65%;
+
+    --ide-indigo: 250 85% 75%;
+    --ide-indigo-dim: 250 85% 75% / 0.1;
+    --ide-indigo-border: 250 85% 75% / 0.2;
+    --ring: 250 85% 75%;
+    
+    --primary: 250 85% 75%;
+    --primary-foreground: 235 19% 13%;
+    
+    --sidebar-background: 235 19% 11%;
+    --sidebar-foreground: 226 70% 88%;
+    --sidebar-primary: 250 85% 75%;
+    --sidebar-accent: 234 19% 16%;
+  }
+
+  [data-theme="nord"] {
+    /* Nord Theme */
+    --background: 220 16% 22%;
+    --foreground: 218 27% 92%;
+    
+    --ide-bg: 220 16% 22%;
+    --ide-surface: 220 16% 26%;
+    --ide-surface-2: 220 16% 30%;
+    --ide-surface-3: 220 16% 34%;
+    --ide-border: 220 16% 34%;
+    --ide-border-subtle: 220 16% 26%;
+    --ide-text: 218 27% 92%;
+    --ide-text-dim: 218 15% 65%;
+    --ide-text-muted: 218 20% 80%;
+
+    --ide-indigo: 193 43% 67%; /* nord8 */
+    --ide-indigo-dim: 193 43% 67% / 0.1;
+    --ide-indigo-border: 193 43% 67% / 0.2;
+    --ring: 193 43% 67%;
+    
+    --primary: 193 43% 67%;
+    --primary-foreground: 220 16% 22%;
+    
+    --sidebar-background: 220 16% 20%;
+    --sidebar-foreground: 218 27% 92%;
+    --sidebar-primary: 193 43% 67%;
+    --sidebar-accent: 220 16% 26%;
+  }
+
+  [data-theme="catppuccin"] {
+    /* Catppuccin Mocha */
+    --background: 240 21% 15%;
+    --foreground: 226 64% 88%;
+    
+    --ide-bg: 240 21% 15%;
+    --ide-surface: 240 21% 18%;
+    --ide-surface-2: 240 21% 21%;
+    --ide-surface-3: 240 21% 24%;
+    --ide-border: 240 21% 24%;
+    --ide-border-subtle: 240 21% 18%;
+    --ide-text: 226 64% 88%;
+    --ide-text-dim: 228 15% 55%;
+    --ide-text-muted: 227 25% 70%;
+
+    --ide-indigo: 266 85% 80%; /* Mauve */
+    --ide-indigo-dim: 266 85% 80% / 0.1;
+    --ide-indigo-border: 266 85% 80% / 0.2;
+    --ring: 266 85% 80%;
+    
+    --primary: 266 85% 80%;
+    --primary-foreground: 240 21% 15%;
+    
+    --sidebar-background: 240 21% 12%;
+    --sidebar-foreground: 226 64% 88%;
+    --sidebar-primary: 266 85% 80%;
+    --sidebar-accent: 240 21% 18%;
+  }
+
+  [data-theme="aura"] {
+    /* Aura Dark Theme */
+    --background: 250 15% 9%;
+    --foreground: 250 10% 93%;
+    
+    --ide-bg: 250 15% 9%;
+    --ide-surface: 250 12% 12%;
+    --ide-surface-2: 250 12% 15%;
+    --ide-surface-3: 240 10% 18%;
+    --ide-border: 250 12% 18%;
+    --ide-border-subtle: 250 12% 14%;
+    --ide-text: 250 10% 93%;
+    --ide-text-dim: 250 10% 60%;
+    --ide-text-muted: 250 10% 75%;
+
+    --ide-indigo: 259 100% 73%; /* Aura Purple */
+    --ide-indigo-dim: 259 100% 73% / 0.1;
+    --ide-indigo-border: 259 100% 73% / 0.2;
+    --ring: 259 100% 73%;
+    
+    --primary: 259 100% 73%;
+    --primary-foreground: 250 15% 9%;
+    
+    --sidebar-background: 250 15% 8%;
+    --sidebar-foreground: 250 10% 93%;
+    --sidebar-primary: 259 100% 73%;
+    --sidebar-accent: 250 12% 12%;
+  }
 }
 
 @layer base {
@@ -105,4 +279,27 @@
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 4px hsl(var(--ide-green)); }
   50% { box-shadow: 0 0 8px hsl(var(--ide-green)); }
+}
+
+@keyframes bounce-dot {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.animate-bounce-dot-1 {
+  animation: bounce-dot 1.2s ease-in-out infinite;
+}
+
+.animate-bounce-dot-2 {
+  animation: bounce-dot 1.2s ease-in-out 0.15s infinite;
+}
+
+.animate-bounce-dot-3 {
+  animation: bounce-dot 1.2s ease-in-out 0.3s infinite;
 }

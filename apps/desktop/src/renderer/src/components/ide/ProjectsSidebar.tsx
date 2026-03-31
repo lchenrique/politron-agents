@@ -8,7 +8,7 @@ const ProjectsSidebar = ({ onAddProject }: ProjectsSidebarProps) => {
   const { workspace, setActiveProject } = useWorkspace();
 
   return (
-    <div className="w-[60px] bg-[hsl(0,0%,3%)] border-r border-ide-border flex flex-col shrink-0 overflow-hidden">
+    <div className="w-[60px] bg-ide-bg border-r border-ide-border flex flex-col shrink-0 overflow-hidden">
       <div className="h-[38px] flex items-center justify-center border-b border-ide-border shrink-0">
         <button
           onClick={onAddProject}

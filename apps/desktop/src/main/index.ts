@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerHandlers } from './ipc/handlers'
 import { createAppWindow, destroyAppWindow } from './windows/manager'
 import { openCodeSdkService } from './services/opencode-sdk'
+import { GLOBAL_CEO_PROMPT } from './services/agent-catalog'
 import { appStateDb } from './services/app-state-db'
 import { teamStore } from './services/team-store'
 import { pipelineExecutor } from './services/pipeline-executor'
@@ -19,9 +20,18 @@ process.on('unhandledRejection', (reason) => {
 })
 
 // Fix PATH for Windows - ensure npm global bin is available for opencode CLI
-const npmGlobalPath = 'C:\\Users\\lchen\\AppData\\Roaming\\npm'
+const userProfilePath = process.env.USERPROFILE || process.env.HOME || ''
+const npmGlobalPath = join(userProfilePath, 'AppData', 'Roaming', 'npm')
 if (existsSync(npmGlobalPath)) {
+  // Add npm global bin to PATH
   process.env.PATH = `${npmGlobalPath};${process.env.PATH}`
+  
+  // Find and add the actual opencode binary to PATH
+  const opencodeBinPath = join(npmGlobalPath, 'node_modules', 'opencode-ai', 'node_modules', 'opencode-windows-x64', 'bin')
+  if (existsSync(opencodeBinPath)) {
+    process.env.PATH = `${opencodeBinPath};${process.env.PATH}`
+    console.log('[Main] Added opencode binary to PATH:', opencodeBinPath)
+  }
 }
 
 if (process.platform === 'win32') {
@@ -180,9 +190,29 @@ app.whenReady().then(async () => {
     console.log('[Main] Agency agent sync finished')
   })
 
-  openCodeSdkService.initialize().catch((error) => {
-    console.error('[Main] Failed to initialize OpenCode SDK:', error)
-  })
+  console.log('[Main] PATH check:', process.env.PATH?.split(';').filter(p => p.includes('npm') || p.includes('Roaming')))
+  console.log('[Main] USERPROFILE:', process.env.USERPROFILE)
+  
+  openCodeSdkService.initialize()
+    .then(async () => {
+      // Pre-warm the CEO session immediately after SDK is ready so the first
+      // message does not incur the cold-start penalty.
+      console.log('[Main] SDK ready — pre-warming CEO session in background')
+      openCodeSdkService.ensureSession({
+        agentId: 'ceo-global',
+        teamId: 'global',
+        role: 'global-ceo',
+        workspaceDirectory: process.cwd(),
+        systemPromptPath: GLOBAL_CEO_PROMPT.targetPath,
+      }).then(() => {
+        console.log('[Main] CEO session pre-warmed successfully')
+      }).catch((err) => {
+        console.warn('[Main] CEO session pre-warm failed (non-fatal):', err)
+      })
+    })
+    .catch((error) => {
+      console.error('[Main] Failed to initialize OpenCode SDK:', error)
+    })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

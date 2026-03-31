@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
-import { Minus, Square, Terminal, X } from "lucide-react";
+import { Minus, Square, Terminal, X, Palette } from "lucide-react";
+import { ThemeSelector } from "./ThemeSelector";
 
 interface TitleBarProps {
   terminalOpen: boolean;
@@ -21,6 +22,10 @@ const TitleBar = ({ terminalOpen, onToggleTerminal }: TitleBarProps) => {
             <div className="text-[12px] text-ide-text truncate">VibeCoding IDE</div>
             <div className="text-[10px] text-ide-text-dim uppercase tracking-[0.18em]">MVP Startup</div>
           </div>
+        </div>
+
+        <div className="flex items-center justify-center mr-2">
+          <ThemeSelector />
         </div>
 
         <button
@@ -89,8 +94,11 @@ const TitleBar = ({ terminalOpen, onToggleTerminal }: TitleBarProps) => {
         />
       </div>
       <div className="flex-1 text-center text-xs text-ide-text-dim tracking-wider">vibecoding ide</div>
-      <div className="text-[11px] text-ide-indigo bg-ide-indigo-dim border border-ide-indigo-border px-2 py-0.5 rounded">
-        MVP Startup
+      <div className="flex items-center gap-3">
+        <ThemeSelector />
+        <div className="text-[11px] text-ide-indigo bg-ide-indigo-dim border border-ide-indigo-border px-2 py-0.5 rounded">
+          MVP Startup
+        </div>
       </div>
       <button
         onClick={onToggleTerminal}

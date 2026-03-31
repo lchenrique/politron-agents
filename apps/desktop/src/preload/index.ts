@@ -4,8 +4,10 @@ interface AgentEnsureInput {
   agentId: string
   teamId?: string
   role: string
+  agentSlug?: string
   systemPrompt?: string
   systemPromptPath?: string
+  workspaceDirectory?: string
 }
 
 interface AgentSendInput {
@@ -15,8 +17,10 @@ interface AgentSendInput {
 
 interface CeoEnsureInput {
   agentId: string
+  agentSlug?: string
   systemPrompt?: string
   systemPromptPath?: string
+  workspaceDirectory?: string
 }
 
 interface CeoSendInput {
@@ -59,7 +63,9 @@ const api = {
   windowControls: {
     minimize: () => ipcRenderer.invoke('vibe:window:minimize'),
     maximize: () => ipcRenderer.invoke('vibe:window:maximize'),
-    close: () => ipcRenderer.invoke('vibe:window:close')
+    close: () => ipcRenderer.invoke('vibe:window:close'),
+    setZoom: (level: number) => ipcRenderer.invoke('vibe:window:setZoom', level),
+    getZoom: () => ipcRenderer.invoke('vibe:window:getZoom'),
   },
   platform: process.platform,
   dialog: {
@@ -151,6 +157,8 @@ const api = {
   },
 
   onAgentChunk: (callback: EventCallback) => onChannel('vibe:agent:chunk', callback),
+  onAgentReasoning: (callback: EventCallback) => onChannel('vibe:agent:reasoning', callback),
+  onAgentActivity: (callback: EventCallback) => onChannel('vibe:agent:activity', callback),
   onAgentStatus: (callback: EventCallback) => onChannel('vibe:agent:status', callback),
   onAgentDone: (callback: EventCallback) => onChannel('vibe:agent:done', callback),
   onAgentError: (callback: EventCallback) => onChannel('vibe:agent:error', callback),

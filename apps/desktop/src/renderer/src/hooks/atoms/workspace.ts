@@ -1,5 +1,8 @@
 import { atom } from 'jotai'
+import { atomWithStorage } from 'jotai/utils'
 import type { Workspace } from '@/types/workspace'
+
+export const themeAtom = atomWithStorage<string>('vibe-ide-theme', 'default')
 
 export const workspaceAtom = atom<Workspace | null>(null)
 export const activeTeamIdAtom = atom<string | null>(null)

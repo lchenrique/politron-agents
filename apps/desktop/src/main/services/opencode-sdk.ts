@@ -15,6 +15,8 @@ interface EnsureSessionInput {
   agentId: string
   teamId?: string
   role: AgentRole
+  agentSlug?: string
+  workspaceDirectory?: string
   systemPrompt?: string
   systemPromptPath?: string
 }
@@ -39,7 +41,7 @@ interface FilePartInput {
 
 interface AgentPartInput {
   type: "agent"
-  value: string
+  name: string
 }
 
 interface SubtaskPartInput {
@@ -61,6 +63,8 @@ class OpenCodeSdkService extends EventEmitter {
   private activeSubscriptions = false
   private ceoOutputBuffers: Map<string, string> = new Map()
   private sessionTextBuffers: Map<string, string> = new Map()
+  private assistantMessageIds: Set<string> = new Set()
+  private sessionCreationPromises: Map<string, Promise<ManagedSession>> = new Map()
 
   constructor() {
     super()
@@ -72,20 +76,31 @@ class OpenCodeSdkService extends EventEmitter {
   }
 
   private resolveWorkspaceDirectory(): string {
-    const searchMarkers = [".git", "AGENTS.md", "AGENTS.MD", "AGENT.md", "AGENT.MD"]
-    let current = process.cwd()
+    const searchMarkers = [".git", "AGENTS.md", ".opencode"]
+    let current = __dirname
+    
+    console.log(`[OpenCodeSdkService] Resolving workspace root starting from: ${current}`)
 
-    while (true) {
-      if (searchMarkers.some((marker) => existsSync(join(current, marker)))) {
-        return current
+    // Max 10 levels up to find the project root
+    for (let i = 0; i < 10; i++) {
+      // Check if ANY of the markers exist in the current directory
+      for (const marker of searchMarkers) {
+        if (existsSync(join(current, marker))) {
+          // Extra check: if we found .opencode, but we are inside apps/desktop, 
+          // we might want to keep going up if there's a higher one.
+          // But usually, finding .git or .opencode is enough.
+          console.log(`[OpenCodeSdkService] Found marker "${marker}" at: ${current}`)
+          return current
+        }
       }
 
       const parent = dirname(current)
-      if (parent === current) {
-        return process.cwd()
-      }
+      if (parent === current) break
       current = parent
     }
+
+    console.log(`[OpenCodeSdkService] Fallback to process.cwd(): ${process.cwd()}`)
+    return process.cwd()
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -129,20 +144,39 @@ class OpenCodeSdkService extends EventEmitter {
   }
 
   private async doInitialize(): Promise<void> {
-    try {
-      // Use port 4101 to avoid conflict with OpenCode Desktop (which uses 4096)
-      const result = await createOpencode({
-        port: 4101,
-        hostname: "127.0.0.1"
-      })
-      this.client = result.client
-      this.serverUrl = result.server.url
-      this.isInitialized = true
-      console.log("[OpenCodeSdkService] SDK initialized, server running at:", this.serverUrl)
-    } catch (error) {
-      this.isInitialized = false
-      this.initPromise = null
-      throw new Error(`Failed to initialize OpenCode SDK: ${error}`)
+    const maxRetries = 3;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      try {
+        attempt++;
+        console.log(`[OpenCodeSdkService] SDK initialization attempt ${attempt}/${maxRetries}...`)
+        
+        // Increased timeout (30s) and using port 0 for dynamic allocation
+        const result = await createOpencode({
+          port: 0,
+          hostname: "127.0.0.1",
+          timeout: 30000
+        })
+
+        this.client = result.client
+        this.serverUrl = result.server.url
+        this.isInitialized = true
+        this.initPromise = null // Clear promise on success
+        console.log("[OpenCodeSdkService] SDK initialized successfully, server running at:", this.serverUrl)
+        return;
+      } catch (error) {
+        console.error(`[OpenCodeSdkService] SDK initialization attempt ${attempt} failed:`, error)
+        
+        if (attempt >= maxRetries) {
+          this.isInitialized = false
+          this.initPromise = null
+          throw new Error(`Failed to initialize OpenCode SDK after ${maxRetries} attempts: ${error}`)
+        }
+        
+        // Wait 1s before next attempt
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
     }
   }
 
@@ -167,7 +201,7 @@ class OpenCodeSdkService extends EventEmitter {
       throw new Error("SDK client not initialized")
     }
 
-    const { agentId, teamId, role, systemPrompt, systemPromptPath } = input
+    const { agentId, teamId, role, agentSlug, systemPrompt, systemPromptPath } = input
 
     const existingSession = sessionStore.getSession(agentId)
     if (existingSession) {
@@ -175,52 +209,74 @@ class OpenCodeSdkService extends EventEmitter {
       return existingSession
     }
 
-    console.log(`[OpenCodeSdkService] Creating new session for agent: ${agentId}, role: ${role}`)
-
-    const workspaceDirectory = this.resolveWorkspaceDirectory()
-
-    const createResult = await this.client.session.create({
-      query: {
-        directory: workspaceDirectory
-      }
-    })
-
-    if (createResult.data) {
-      const session: Session = createResult.data
-
-      const managedSession: ManagedSession = {
-        agentId,
-        teamId,
-        role,
-        session,
-        status: "idle",
-        lastEventAt: new Date().toISOString()
-      }
-
-      sessionStore.setSession(managedSession)
-
-      const resolvedSystemPrompt = this.resolveSystemPrompt(
-        workspaceDirectory,
-        systemPrompt,
-        systemPromptPath
-      )
-
-      if (resolvedSystemPrompt) {
-        await this.sendMessageToSession(session.id, resolvedSystemPrompt, resolvedSystemPrompt)
-      }
-
-      console.log(`[OpenCodeSdkService] Session created: ${session.id} for agent: ${agentId}`)
-      return managedSession
+    // Check if session is already being created
+    const existingPromise = this.sessionCreationPromises.get(agentId)
+    if (existingPromise) {
+      console.log(`[OpenCodeSdkService] A session is already being created for agent: ${agentId}, waiting for it...`)
+      return existingPromise
     }
 
-    console.error("[OpenCodeSdkService] Session creation failed", {
-      agentId,
-      role,
-      workspaceDirectory,
-      result: createResult
-    })
+    // Create a new creation promise
+    const creationPromise = (async () => {
+      try {
+        console.log(`[OpenCodeSdkService] Creating new session for agent: ${agentId}, role: ${role}`)
 
-    throw new Error(`Failed to create session for agent: ${agentId}`)
+        const workspaceDirectory = input.workspaceDirectory || this.resolveWorkspaceDirectory()
+
+        const createResult = await this.client!.session.create({
+          query: {
+            directory: workspaceDirectory
+          }
+        })
+
+        if (!createResult.data) {
+          console.error("[OpenCodeSdkService] Session creation failed", {
+            agentId,
+            role,
+            workspaceDirectory,
+            result: createResult
+          })
+          throw new Error(`Failed to create session for agent: ${agentId}`)
+        }
+
+        const session: Session = createResult.data
+
+        const managedSession: ManagedSession = {
+          agentId,
+          teamId,
+          role,
+          session,
+          agentSlug,
+          status: "idle",
+          lastEventAt: new Date().toISOString()
+        }
+
+        sessionStore.setSession(managedSession)
+
+        const resolvedSystemPrompt = this.resolveSystemPrompt(
+          workspaceDirectory,
+          systemPrompt,
+          systemPromptPath
+        )
+
+        console.log(`[OpenCodeSdkService] Resolved system prompt path: ${systemPromptPath}, Found: ${!!resolvedSystemPrompt}`)
+
+        if (agentSlug || resolvedSystemPrompt) {
+          console.log(`[OpenCodeSdkService] Warming up session for ${agentId} with slug: ${agentSlug}`)
+          // This must complete before we consider the session "ready"
+          await this.sendMessageToSession(session.id, "Quem é você? Identifique-se.", resolvedSystemPrompt, agentSlug)
+        }
+
+        console.log(`[OpenCodeSdkService] Session created: ${session.id} for agent: ${agentId}`)
+        return managedSession
+      } finally {
+        // Clean up the promise from the map once finished (success or error)
+        this.sessionCreationPromises.delete(agentId)
+      }
+    })()
+
+    this.sessionCreationPromises.set(agentId, creationPromise)
+    return creationPromise
   }
 
   async sendMessage(input: SendMessageInput): Promise<void> {
@@ -237,24 +293,45 @@ class OpenCodeSdkService extends EventEmitter {
       throw new Error(`No session found for agent: ${agentId}`)
     }
 
-    await this.sendMessageToSession(managedSession.session.id, message, message)
+    await this.sendMessageToSession(managedSession.session.id, message, undefined, managedSession.agentSlug)
   }
 
-  private async sendMessageToSession(sessionId: string, message: string, content: string): Promise<void> {
+  private async sendMessageToSession(sessionId: string, content: string, systemPrompt?: string, agentSlug?: string): Promise<void> {
     if (!this.client) {
       throw new Error("SDK client not initialized")
     }
 
-    const parts: PartInput[] = [
-      {
-        type: "text",
-        text: content
-      }
-    ]
+    const parts: PartInput[] = []
+
+    // If we have an agent slug, use a structured AgentPart for routing.
+    // This is the native SDK way to signal a sub-agent context.
+    if (agentSlug) {
+      parts.push({
+        type: "agent",
+        name: agentSlug
+      })
+    }
+
+    parts.push({
+      type: "text",
+      text: content
+    })
+
+    // If we are using a specific agent, we should NOT pass a separate system prompt
+    // to avoid overriding the instructions defined in the agent's .md file.
+    const finalSystemPrompt = agentSlug ? undefined : systemPrompt
+
+    console.log(`[OpenCodeSdkService] Prompting session ${sessionId}:`, {
+      agent: agentSlug,
+      hasSystem: !!finalSystemPrompt,
+      partsCount: parts.length
+    })
 
     const result = await this.client.session.promptAsync({
       body: {
-        parts
+        parts,
+        system: finalSystemPrompt,
+        agent: agentSlug
       },
       path: {
         id: sessionId
@@ -419,6 +496,9 @@ class OpenCodeSdkService extends EventEmitter {
 
       case "message.updated": {
         const { info } = event.properties
+        if (info.role === "assistant") {
+          this.assistantMessageIds.add(info.id)
+        }
         console.log("[OpenCodeSdkService] Message updated", {
           sessionId: info.sessionID,
           role: info.role,
@@ -428,7 +508,11 @@ class OpenCodeSdkService extends EventEmitter {
       }
 
       case "message.part.delta": {
-        const { sessionID, field, delta } = event.properties
+        const { sessionID, messageID, field, delta } = (event.properties as any)
+        
+        if (messageID && !this.assistantMessageIds.has(messageID)) {
+          break
+        }
 
         if (field === "text" && delta) {
           this.publishSessionText(sessionID, delta, false)
@@ -439,8 +523,55 @@ class OpenCodeSdkService extends EventEmitter {
       case "message.part.updated": {
         const { sessionID, part } = event.properties
 
+        if (part.messageID && !this.assistantMessageIds.has(part.messageID)) {
+          break
+        }
+
         if (part.type === "text") {
           this.publishSessionText(sessionID, part.text, true)
+        } else if (part.type === "reasoning") {
+          // Emit reasoning/thinking event
+          const managedSession = this.findManagedSessionBySessionId(sessionID)
+          if (managedSession) {
+            this.emit("vibe:agent:reasoning", {
+              agentId: managedSession.agentId,
+              sessionId: sessionID,
+              text: part.text,
+              isOngoing: !part.metadata?.end, // ongoing while no end time
+            })
+          }
+        } else if (part.type === "tool") {
+          // Emit tool state event
+          const managedSession = this.findManagedSessionBySessionId(sessionID)
+          if (managedSession) {
+            const toolState = part.state
+            let activity: "idle" | "reading" | "editing" | "creating" | "thinking" = "thinking"
+            
+            // Determine activity based on tool name and state
+            if (toolState.status === "running" || toolState.status === "pending") {
+              const toolName = part.tool?.toLowerCase() || ""
+              if (toolName.includes("read") || toolName.includes("glob") || toolName.includes("grep")) {
+                activity = "reading"
+              } else if (toolName.includes("edit") || toolName.includes("write") || toolName.includes("create")) {
+                activity = "editing"
+              } else if (toolName.includes("bash") || toolName.includes("shell")) {
+                activity = "thinking"
+              } else {
+                activity = "thinking"
+              }
+            } else if (toolState.status === "completed") {
+              activity = "thinking"
+            }
+
+            this.emit("vibe:agent:activity", {
+              agentId: managedSession.agentId,
+              sessionId: sessionID,
+              activity,
+              toolName: part.tool,
+              toolState: toolState.status,
+              title: (toolState as any).title || part.tool,
+            })
+          }
         }
         break
       }
