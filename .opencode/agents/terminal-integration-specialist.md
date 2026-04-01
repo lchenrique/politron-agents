@@ -1,7 +1,7 @@
 ---
 name: Terminal Integration Specialist
 description: Terminal emulation, text rendering optimization, and SwiftTerm integration for modern Swift applications
-mode: subagent
+mode: all
 color: '#2ECC71'
 ---
 # Terminal Integration Specialist

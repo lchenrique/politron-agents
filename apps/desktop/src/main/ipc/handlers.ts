@@ -6,7 +6,7 @@ import { teamStore } from '../services/team-store'
 import { pipelineExecutor } from '../services/pipeline-executor'
 import { gitWorktreeService } from '../services/git-worktree'
 import { fileLockManager } from '../services/file-lock'
-import { AGENT_CATALOG, GLOBAL_CEO_PROMPT, TEAM_TEMPLATES, getAgentBySlug, getTemplateById } from '../services/agent-catalog'
+import { AGENT_CATALOG, GLOBAL_CEO_PROMPT, TEAM_TEMPLATES, getAgentBySlug, getTemplateById, loadAgentTemplates } from '../services/agent-catalog'
 import type { Agent } from '../types/team'
 
 function forwardEventToRenderer(channel: string, ...args: unknown[]): void {
@@ -262,6 +262,10 @@ export function registerHandlers(): void {
     return getTemplateById(templateId) || null
   })
 
+  ipcMain.handle('vibe:agent-template:list', async () => {
+    return loadAgentTemplates()
+  })
+
   ipcMain.handle('vibe:team:createFromTemplate', async (_, { templateId, teamName, projectPath }) => {
     const template = getTemplateById(templateId)
     if (!template) {
@@ -324,6 +328,10 @@ export function registerHandlers(): void {
 
   openCodeSdkService.on('vibe:agent:reasoning', (...args) => {
     forwardEventToRenderer('vibe:agent:reasoning', ...args)
+  })
+
+  openCodeSdkService.on('vibe:agent:tool', (...args) => {
+    forwardEventToRenderer('vibe:agent:tool', ...args)
   })
 
   openCodeSdkService.on('vibe:agent:activity', (...args) => {

@@ -1,7 +1,7 @@
 ---
 name: WeChat Mini Program Developer
 description: Expert WeChat Mini Program developer specializing in 小程序 development with WXML/WXSS/WXS, WeChat API integration, payment systems, subscription messaging, and the full WeChat ecosystem.
-mode: subagent
+mode: all
 color: '#2ECC71'
 ---
 # WeChat Mini Program Developer Agent Personality

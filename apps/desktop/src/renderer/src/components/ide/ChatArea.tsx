@@ -1,206 +1,117 @@
-import { useState, useRef, useEffect } from "react";
-import { Send, Plus, Globe } from "lucide-react";
+import AssistantChatThread from "./AssistantChatThread";
+import PipelineKanban from "./PipelineKanban";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import ThinkingIndicator from "./ThinkingIndicator";
-import DiffViewer from "./DiffViewer";
-import { MessagePartsRenderer } from "./MessageParts";
 
-const ChatArea = () => {
-  const { workspace, activeTeam, setActiveAgentTab, sendMessage } = useWorkspace();
-  const [message, setMessage] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+interface ChatAreaProps {
+ activeView: "chat" | "board";
+}
 
-  const isCeoActive = workspace.activeAgentTabId === workspace.globalCeoAgent.id;
-  const messageKey = isCeoActive ? workspace.globalCeoAgent.id : activeTeam?.id;
-  const teamMessages = messageKey ? (workspace.messages[messageKey] ?? []) : [];
+const ChatArea = ({ activeView }: ChatAreaProps) => {
+ const { workspace, activeTeam, setActiveAgentTab, sendMessage } = useWorkspace();
 
-  // Get agent activity for current tab
-  const currentAgentId = workspace.activeAgentTabId;
-  const agentActivity = currentAgentId ? workspace.agentActivities[currentAgentId] : undefined;
-  const showActivity = agentActivity && agentActivity.activity !== "idle";
+ const isCeoActive = workspace.activeAgentTabId === workspace.globalCeoAgent.id;
+ const currentAgentId = workspace.activeAgentTabId;
+ const chatMessages = currentAgentId ? (workspace.messages[currentAgentId] ?? []) : [];
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [teamMessages.length]);
+ // Get agent activity for current tab
+ const agentActivity = currentAgentId ? workspace.agentActivities[currentAgentId] : undefined;
 
-  const handleSend = () => {
-    if (!message.trim() || !messageKey) return;
-    sendMessage(messageKey, message.trim());
-    setMessage("");
-  };
+ if (!activeTeam && !isCeoActive) {
+ return (
+ <div className="flex-1 flex items-center justify-center text-ide-text-dim text-sm">
+ Selecione um projeto para começar
+ </div>
+ );
+ }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+ const agentTabs = isCeoActive
+ ? [workspace.globalCeoAgent, ...(activeTeam?.agents ?? [])]
+ : activeTeam?.agents ?? [];
 
-  if (!activeTeam && !isCeoActive) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-ide-text-dim text-sm">
-        Selecione um projeto para começar
-      </div>
-    );
-  }
+ return (
+ <div className="flex-1 flex flex-col overflow-hidden min-w-[300px] h-full">
+ {/* 
+ Only show agent tabs in Chat mode. 
+ Board mode is a global pipeline view for the team.
+ */}
+ {activeView === "chat" && (
+ <div className="flex items-center border-b border-ide-border/50 px-3 gap-0.5 bg-background h-[38px] shrink-0 sticky top-0 z-10">
+ {agentTabs.map((agent) => (
+ <button
+ key={agent.id}
+ onClick={() => setActiveAgentTab(agent.id)}
+ className={`relative px-3 h-[38px] flex items-center gap-1.5 text-xs cursor-pointer border-b-2 whitespace-nowrap ${
+ workspace.activeAgentTabId === agent.id
+ ? "text-ide-text"
+ : "text-ide-text-dim border-b-transparent hover:text-ide-text-muted"
+ }`}
+ style={workspace.activeAgentTabId === agent.id ? { borderBottomColor: agent.color } : { borderBottomColor: "transparent" }}
+ >
+ {agent.status === "waiting" && (
+ <div className="absolute top-2 right-1 w-1.5 h-1.5 rounded-full bg-ide-amber" />
+ )}
+ <div
+ className="w-4 h-4 rounded-[3px] flex items-center justify-center text-[9px] font-medium"
+ style={{
+ background: agent.color.replace(")", " / 0.12)").replace("hsl(", "hsl("),
+ color: agent.color,
+ }}
+ >
+ {agent.initials}
+ </div>
+ {agent.id === workspace.globalCeoAgent.id
+ ? "CEO"
+ : agent.isTeamLead
+ ? "Líder"
+ : agent.name.split(" ")[0]}
+ </button>
+ ))}
+ <span className="text-ide-text-dim/40 cursor-pointer px-2 ml-1 text-base hover:text-ide-text-dim">+</span>
+ </div>
+ )}
 
-  const agentTabs = isCeoActive
-    ? [workspace.globalCeoAgent, ...(activeTeam?.agents ?? [])]
-    : activeTeam?.agents ?? [];
+ <div className="flex-1 relative overflow-hidden flex flex-col">
+ {activeView === "chat" ? (
+ currentAgentId && (
+ <AssistantChatThread
+ messageKey={currentAgentId}
+ messages={chatMessages}
+ activeAgentId={currentAgentId}
+ activeAgentInitials={workspace.activeAgentTabId === workspace.globalCeoAgent.id ? "AO" : "AI"}
+ isRunning={!!agentActivity && agentActivity.activity !== "idle"}
+ activity={agentActivity}
+ placeholder={isCeoActive ? "Converse com o CEO global..." : "O que você quer construir hoje?"}
+ onSendMessage={sendMessage}
+ />
+ )
+ ) : (
+ <div className="flex-1 overflow-auto bg-background animate-in fade-in zoom-in-95 ">
+ <PipelineKanban fullView />
+ </div>
+ )}
+ </div>
 
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-[300px]">
-      <div className="flex items-center border-b border-ide-border px-3 gap-0.5 bg-ide-surface h-[38px] shrink-0">
-        {agentTabs.map((agent) => (
-          <button
-            key={agent.id}
-            onClick={() => setActiveAgentTab(agent.id)}
-            className={`relative px-3 h-[38px] flex items-center gap-1.5 text-xs cursor-pointer border-b-2 transition-colors whitespace-nowrap ${
-              workspace.activeAgentTabId === agent.id
-                ? "text-ide-text"
-                : "text-ide-text-dim border-b-transparent hover:text-ide-text-muted"
-            }`}
-            style={workspace.activeAgentTabId === agent.id ? { borderBottomColor: agent.color } : { borderBottomColor: "transparent" }}
-          >
-            {agent.status === "waiting" && (
-              <div className="absolute top-2 right-1 w-1.5 h-1.5 rounded-full bg-ide-amber" />
-            )}
-            <div
-              className="w-4 h-4 rounded-[3px] flex items-center justify-center text-[9px] font-medium"
-              style={{
-                background: agent.color.replace(")", " / 0.12)").replace("hsl(", "hsl("),
-                color: agent.color,
-              }}
-            >
-              {agent.initials}
-            </div>
-            {agent.id === workspace.globalCeoAgent.id
-              ? "CEO"
-              : agent.isTeamLead
-                ? "Líder"
-                : agent.name.split(" ")[0]}
-          </button>
-        ))}
-        <span className="text-ide-text-dim/40 cursor-pointer px-2 ml-1 text-base hover:text-ide-text-dim">+</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 scrollbar-thin">
-        {teamMessages.map((msg) => (
-          <div key={msg.id} className={`flex gap-2.5 ${msg.isUser ? "flex-row-reverse" : ""}`}>
-            <div
-              className="w-[26px] h-[26px] rounded-md flex items-center justify-center text-[10px] font-medium shrink-0 mt-0.5 border"
-              style={{
-                background: msg.agentColor.replace(")", " / 0.1").replace("hsl(", "hsl("),
-                color: msg.agentColor,
-                borderColor: msg.agentColor.replace(")", " / 0.2)").replace("hsl(", "hsl("),
-              }}
-            >
-              {msg.agentInitials}
-            </div>
-            <div className="max-w-[75%]">
-              <div className={`text-[10px] text-ide-text-dim mb-0.5 ${msg.isUser ? "text-right" : ""}`}>
-                {msg.agentName}
-              </div>
-              <div className={`text-[13px] leading-relaxed rounded-lg px-3 py-2 ${
-                msg.isUser
-                  ? "bg-[hsl(240,30%,12%)] border border-ide-indigo/15 text-ide-text/90"
-                  : "bg-ide-surface-2 border border-ide-border text-ide-text/80"
-              }`}>
-                {msg.isUser ? (
-                  msg.text
-                ) : (
-                  <MessagePartsRenderer parts={msg.parts} isUser={msg.isUser} />
-                )}
-              </div>
-              {msg.diff && (
-                <DiffViewer diff={msg.diff} className="mt-2" />
-              )}
-            </div>
-          </div>
-        ))}
-        
-        {showActivity && (
-          <div className="flex gap-2.5">
-            <div
-              className="w-[26px] h-[26px] rounded-md flex items-center justify-center text-[10px] font-medium shrink-0 mt-0.5 border bg-ide-surface-2 border-ide-border opacity-50"
-            >
-              {workspace.activeAgentTabId === workspace.globalCeoAgent.id ? "AO" : "AI"}
-            </div>
-            <div className="mt-1">
-              <ThinkingIndicator
-                status={agentActivity.activity}
-                filename={agentActivity.filename}
-              />
-            </div>
-          </div>
-        )}
-        
-        <div ref={messagesEndRef} />
-      </div>
-
-      {!isCeoActive && activeTeam && activeTeam.pipeline.length > 0 && (
-        <div className="border-t border-ide-border px-4 py-2 flex items-center gap-2 bg-ide-surface shrink-0">
-          <div className="text-[10px] text-ide-text-dim tracking-wider uppercase whitespace-nowrap">pipeline</div>
-          <div className="flex gap-1 flex-1 overflow-hidden">
-            {activeTeam.pipeline.map((task) => {
-              const statusMap: Record<string, string> = {
-                running: "border-ide-green/20 bg-ide-green/5 text-ide-green-bright",
-                done: "border-ide-indigo/20 bg-ide-indigo/5 text-ide-indigo",
-                waiting: "border-ide-amber/20 bg-ide-amber/5 text-ide-amber-bright",
-                pending: "border-ide-text-dim/20 bg-ide-text-dim/5 text-ide-text-dim",
-                failed: "border-ide-red/20 bg-ide-red/5 text-ide-red-bright",
-                blocked: "border-ide-indigo/20 bg-ide-indigo/5 text-ide-indigo",
-              };
-              const dotMap: Record<string, string> = {
-                running: "bg-ide-green",
-                done: "bg-ide-indigo",
-                waiting: "bg-ide-amber",
-                pending: "bg-ide-text-dim",
-                failed: "bg-ide-red",
-                blocked: "bg-ide-indigo",
-              };
-
-              return (
-                <div key={task.id} className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] whitespace-nowrap border ${statusMap[task.status]}`}>
-                  <div className={`w-[5px] h-[5px] rounded-full ${dotMap[task.status]}`} />
-                  {task.agentInitials} · {task.description}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="px-5 pb-5 pt-4 bg-ide-bg shrink-0">
-        <div className="bg-ide-surface-2 border border-ide-text-dim/20 rounded-2xl flex flex-col p-4 gap-3 transition-all focus-within:border-ide-text-dim/30 focus-within:shadow-[0_0_0_4px_hsl(239_84%_67%/0.06)]">
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isCeoActive ? "Converse com o CEO global..." : "O que você quer construir hoje?"}
-            rows={1}
-            className="w-full text-[15px] text-ide-text bg-transparent border-none outline-none resize-none leading-relaxed min-h-[24px] max-h-[200px] placeholder:text-ide-text-dim/50 font-sans"
-          />
-          <div className="flex items-center justify-between">
-            <div className="flex gap-2 items-center">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-ide-surface-3 border border-ide-text-dim/15 text-xs text-ide-text-muted cursor-pointer hover:bg-ide-surface-2 hover:border-ide-text-dim/25 hover:text-ide-text/70 transition-all">
-                <Plus className="w-3.5 h-3.5 opacity-60" /> Arquivo
-              </button>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-ide-surface-3 border border-ide-text-dim/15 text-xs text-ide-text-muted cursor-pointer hover:bg-ide-surface-2 hover:border-ide-text-dim/25 hover:text-ide-text/70 transition-all">
-                <Globe className="w-3.5 h-3.5 opacity-60" /> URL
-              </button>
-            </div>
-            <button
-              onClick={handleSend}
-              className="w-8 h-8 rounded-lg bg-ide-indigo flex items-center justify-center cursor-pointer shrink-0 hover:opacity-90 hover:scale-105 active:scale-95 transition-all"
-            >
-              <Send className="w-4 h-4 text-white" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+ {/* Mini-Pipeline strip only in Chat mode and if not CEO view */}
+ {activeView === "chat" && !isCeoActive && activeTeam && activeTeam.pipeline.length > 0 && (
+ <div className="h-12 shrink-0 border-t border-ide-border/50 bg-transparent px-4 flex items-center gap-2">
+ <span className="text-[9px] text-ide-text-dim uppercase tracking-widest font-bold">Pipeline</span>
+ <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar">
+ {activeTeam.pipeline.slice(0, 5).map(task => (
+ <div key={task.id} className="px-2 py-1 rounded bg-ide-surface-2 border border-ide-border text-[10px] text-ide-text-dim whitespace-nowrap">
+ {task.description.slice(0, 20)}...
+ </div>
+ ))}
+ </div>
+ <button 
+ onClick={() => { /* Handled via parent tab change if we had state here, but for now just visual */ }}
+ className="text-[10px] text-ide-indigo hover:underline px-2"
+ >
+ Ver Board
+ </button>
+ </div>
+ )}
+ </div>
+ );
 };
 
 export default ChatArea;

@@ -1,7 +1,7 @@
 ---
 name: Roblox Avatar Creator
 description: Roblox UGC and avatar pipeline specialist - Masters Roblox's avatar system, UGC item creation, accessory rigging, texture standards, and the Creator Marketplace submission pipeline
-mode: subagent
+mode: all
 color: '#D946EF'
 ---
 # Roblox Avatar Creator Agent Personality

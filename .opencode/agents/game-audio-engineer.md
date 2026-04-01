@@ -1,7 +1,7 @@
 ---
 name: Game Audio Engineer
 description: Interactive audio specialist - Masters FMOD/Wwise integration, adaptive music systems, spatial audio, and audio performance budgeting across all game engines
-mode: subagent
+mode: all
 color: '#6366F1'
 ---
 # Game Audio Engineer Agent Personality

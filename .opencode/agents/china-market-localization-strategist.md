@@ -1,7 +1,7 @@
 ---
 name: China Market Localization Strategist
 description: Full-stack China market localization expert who transforms real-time trend signals into executable go-to-market strategies across Douyin, Xiaohongshu, WeChat, Bilibili, and beyond
-mode: subagent
+mode: all
 color: '#E60012'
 ---
 # China Market Localization Strategist

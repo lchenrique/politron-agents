@@ -1,4 +1,6 @@
 import type { TeamTemplate } from '../types/team'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export interface AgentCatalogEntry {
   slug: string
@@ -9,6 +11,128 @@ export interface AgentCatalogEntry {
   bgColor: string
   borderColor: string
   systemPromptPath?: string
+}
+
+export interface AgentTemplateEntry {
+  slug: string
+  name: string
+  description: string
+  mode: string
+  color: string
+  initials: string
+  role: string
+  systemPromptPath: string
+}
+
+/**
+ * Parse YAML frontmatter from markdown content
+ */
+function parseFrontmatter(content: string): Record<string, string> {
+  const match = content.match(/^---\n([\s\S]*?)\n---/)
+  if (!match) return {}
+  
+  const frontmatter: Record<string, string> = {}
+  const lines = match[1].split('\n')
+  
+  for (const line of lines) {
+    const colonIndex = line.indexOf(':')
+    if (colonIndex === -1) continue
+    const key = line.slice(0, colonIndex).trim()
+    const value = line.slice(colonIndex + 1).trim().replace(/^['"]|['"]$/g, '')
+    if (key) frontmatter[key] = value
+  }
+  
+  return frontmatter
+}
+
+/**
+ * Generate initials from agent name
+ */
+function generateInitials(name: string): string {
+  const words = name.split(' ')
+  if (words.length === 1) {
+    return name.slice(0, 2).toUpperCase()
+  }
+  return words.slice(0, 2).map(w => w[0]).join('').toUpperCase()
+}
+
+/**
+ * Convert color format from hex (from template) to hsl (for catalog)
+ */
+function convertColor(hexColor: string): string {
+  // If already hsl, return as is
+  if (hexColor.startsWith('hsl')) return hexColor
+  
+  // Convert hex to hsl
+  const hex = hexColor.replace('#', '')
+  const r = parseInt(hex.slice(0, 2), 16) / 255
+  const g = parseInt(hex.slice(2, 4), 16) / 255
+  const b = parseInt(hex.slice(4, 6), 16) / 255
+
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  let h = 0, s = 0
+  const l = (max + min) / 2
+
+  if (max !== min) {
+    const d = max - min
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break
+      case g: h = ((b - r) / d + 2) / 6; break
+      case b: h = ((r - g) / d + 4) / 6; break
+    }
+  }
+
+  return `hsl(${Math.round(h * 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`
+}
+
+/**
+ * Load all agent templates from the .opencode/agents directory
+ */
+export function loadAgentTemplates(agentsDir: string = OPENCODE_PROJECT_AGENTS_DIR): AgentTemplateEntry[] {
+  const templates: AgentTemplateEntry[] = []
+  
+  // Check if directory exists
+  if (!fs.existsSync(agentsDir)) {
+    console.warn(`[agent-catalog] Agents directory not found: ${agentsDir}`)
+    return templates
+  }
+  
+  try {
+    const files = fs.readdirSync(agentsDir)
+    
+    for (const file of files) {
+      if (!file.endsWith('.md')) continue
+      
+      const filePath = path.join(agentsDir, file)
+      const content = fs.readFileSync(filePath, 'utf-8')
+      const frontmatter = parseFrontmatter(content)
+      
+      if (!frontmatter.name) continue
+      
+      const slug = file.replace('.md', '')
+      const color = convertColor(frontmatter.color || '#6366f1')
+      
+      templates.push({
+        slug,
+        name: frontmatter.name,
+        description: frontmatter.description || '',
+        mode: frontmatter.mode || 'all',
+        color,
+        initials: generateInitials(frontmatter.name),
+        role: slug, // Use slug as role since templates don't have a role field
+        systemPromptPath: filePath,
+      })
+    }
+  } catch (error) {
+    console.error(`[agent-catalog] Error loading agent templates:`, error)
+  }
+  
+  // Sort by name
+  templates.sort((a, b) => a.name.localeCompare(b.name))
+  
+  return templates
 }
 
 export const AGENCY_AGENTS_VENDOR_ROOT = '.vendor/agency-agents'

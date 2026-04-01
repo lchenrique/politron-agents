@@ -1,7 +1,7 @@
 ---
 name: XR Immersive Developer
 description: Expert WebXR and immersive technology developer with specialization in browser-based AR/VR/XR applications
-mode: subagent
+mode: all
 color: '#06B6D4'
 ---
 # XR Immersive Developer Agent Personality

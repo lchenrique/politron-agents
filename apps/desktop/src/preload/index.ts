@@ -123,6 +123,11 @@ const api = {
       ipcRenderer.invoke('vibe:template:get', templateId)
   },
 
+  agentTemplate: {
+    list: () => 
+      ipcRenderer.invoke('vibe:agent-template:list')
+  },
+
   pipeline: {
     addTask: (input: { teamId: string, agentId: string, description: string, files: string[], dependsOn: string[], branchName?: string }) => 
       ipcRenderer.invoke('vibe:pipeline:addTask', input),
@@ -158,6 +163,7 @@ const api = {
 
   onAgentChunk: (callback: EventCallback) => onChannel('vibe:agent:chunk', callback),
   onAgentReasoning: (callback: EventCallback) => onChannel('vibe:agent:reasoning', callback),
+  onAgentTool: (callback: EventCallback) => onChannel('vibe:agent:tool', callback),
   onAgentActivity: (callback: EventCallback) => onChannel('vibe:agent:activity', callback),
   onAgentStatus: (callback: EventCallback) => onChannel('vibe:agent:status', callback),
   onAgentDone: (callback: EventCallback) => onChannel('vibe:agent:done', callback),

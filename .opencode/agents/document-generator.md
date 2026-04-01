@@ -1,7 +1,7 @@
 ---
 name: Document Generator
 description: Expert document creation specialist who generates professional PDF, PPTX, DOCX, and XLSX files using code-based approaches with proper formatting, charts, and data visualization.
-mode: subagent
+mode: all
 color: '#3498DB'
 ---
 # Document Generator Agent

@@ -1,7 +1,7 @@
 ---
 name: Frontend Developer
 description: Expert frontend developer specializing in modern web technologies, React/Vue/Angular frameworks, UI implementation, and performance optimization
-mode: subagent
+mode: all
 color: '#00FFFF'
 ---
 # Frontend Developer Agent Personality

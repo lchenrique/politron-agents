@@ -1,7 +1,7 @@
 ---
 name: Automation Governance Architect
 description: Governance-first architect for business automations (n8n-first) who audits value, risk, and maintainability before implementation.
-mode: subagent
+mode: all
 color: '#00FFFF'
 ---
 # Automation Governance Architect

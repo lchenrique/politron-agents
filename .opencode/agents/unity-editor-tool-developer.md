@@ -1,7 +1,7 @@
 ---
 name: Unity Editor Tool Developer
 description: Unity editor automation specialist - Masters custom EditorWindows, PropertyDrawers, AssetPostprocessors, ScriptedImporters, and pipeline automation that saves teams hours per week
-mode: subagent
+mode: all
 color: '#6B7280'
 ---
 # Unity Editor Tool Developer Agent Personality

@@ -8,6 +8,8 @@
     "build": "set ELECTRON_RUN_AS_NODE=&& electron-vite build"
   },
   "dependencies": {
+    "@assistant-ui/core": "^0.1.9",
+    "@assistant-ui/react": "^0.12.21",
     "@electron-toolkit/utils": "^3.0.0",
     "@opencode-ai/sdk": "^1.0.0",
     "@pierre/diffs": "^1.1.7"

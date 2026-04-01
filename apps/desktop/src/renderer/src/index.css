@@ -5,301 +5,532 @@
 @tailwind utilities;
 
 @layer base {
+ :root {
+ --background: 0 0% 4%;
+ --foreground: 0 0% 83%;
+
+ --card: 0 0% 6%;
+ --card-foreground: 0 0% 83%;
+
+ --popover: 0 0% 8%;
+ --popover-foreground: 0 0% 83%;
+
+ --primary: 239 84% 67%;
+ --primary-foreground: 0 0% 100%;
+
   :root {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 83%;
-
-    --card: 0 0% 6%;
-    --card-foreground: 0 0% 83%;
-
-    --popover: 0 0% 8%;
-    --popover-foreground: 0 0% 83%;
-
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 0 0% 10%;
-    --secondary-foreground: 0 0% 83%;
-
-    --muted: 0 0% 10%;
-    --muted-foreground: 0 0% 33%;
-
-    --accent: 239 84% 67%;
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 0 0% 10%;
-    --input: 0 0% 16%;
-    --ring: 239 84% 67%;
-
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 4%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --chart-1: 221.2 83.2% 53.3%;
+    --chart-2: 212 95% 68%;
+    --chart-3: 216 92% 60%;
+    --chart-4: 210 98% 78%;
+    --chart-5: 212 97% 87%;
     --radius: 0.5rem;
-
-    /* Custom IDE tokens */
-    --ide-bg: 0 0% 4%;
-    --ide-surface: 0 0% 5%;
-    --ide-surface-2: 0 0% 8%;
-    --ide-surface-3: 0 0% 9%;
-    --ide-border: 0 0% 10%;
-    --ide-border-subtle: 0 0% 7%;
-    --ide-text: 0 0% 83%;
-    --ide-text-dim: 0 0% 33%;
-    --ide-text-muted: 0 0% 53%;
-
-    --ide-indigo: 239 84% 67%;
-    --ide-indigo-dim: 239 84% 67% / 0.1;
-    --ide-indigo-border: 239 84% 67% / 0.2;
-    --ide-green: 142 71% 45%;
-    --ide-green-bright: 142 69% 58%;
-    --ide-amber: 38 92% 50%;
-    --ide-amber-bright: 43 96% 56%;
-    --ide-pink: 330 81% 60%;
-    --ide-pink-bright: 330 86% 70%;
-    --ide-teal: 174 62% 47%;
-    --ide-red: 0 72% 51%;
-    --ide-red-bright: 0 91% 71%;
-
-    --sidebar-background: 0 0% 3%;
-    --sidebar-foreground: 0 0% 83%;
-    --sidebar-primary: 239 84% 67%;
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 8%;
-    --sidebar-accent-foreground: 0 0% 83%;
-    --sidebar-border: 0 0% 10%;
-    --sidebar-ring: 239 84% 67%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
-  [data-theme="opencode"] {
-    /* OpenCode Inspire Theme (Deep Zinc/Slate, Teal & Calm Blues) */
-    --background: 240 10% 8%;
-    --foreground: 210 20% 85%;
-    
-    --ide-bg: 240 10% 8%;
-    --ide-surface: 240 10% 12%;
-    --ide-surface-2: 240 10% 15%;
-    --ide-surface-3: 240 10% 18%;
-    --ide-border: 240 10% 18%;
-    --ide-border-subtle: 240 10% 14%;
-    --ide-text: 210 20% 88%;
-    --ide-text-dim: 210 10% 50%;
-    --ide-text-muted: 210 10% 65%;
-
-    --ide-indigo: 200 80% 60%; /* OpenCode specific primary */
-    --ide-indigo-dim: 200 80% 60% / 0.1;
-    --ide-indigo-border: 200 80% 60% / 0.2;
-    --ring: 200 80% 60%;
-    
-    --primary: 200 80% 60%;
-    --primary-foreground: 0 0% 100%;
-    
-    --sidebar-background: 240 10% 6%;
-    --sidebar-foreground: 210 20% 85%;
-    --sidebar-primary: 200 80% 60%;
-    --sidebar-accent: 240 10% 12%;
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
-  [data-theme="cursor"] {
-    /* Cursor-like Theme (Extremely clean, High Contrast Borders, Darker base) */
-    --background: 260 5% 5%;
-    --foreground: 0 0% 90%;
-    
-    --ide-bg: 260 5% 5%;
-    --ide-surface: 260 5% 7%;
-    --ide-surface-2: 260 5% 10%;
-    --ide-surface-3: 260 5% 13%;
-    --ide-border: 0 0% 15%;
-    --ide-border-subtle: 0 0% 10%;
-    --ide-text: 0 0% 90%;
-    --ide-text-dim: 0 0% 45%;
-    --ide-text-muted: 0 0% 60%;
+ /* Custom IDE tokens - Codex Inspired */
+ --ide-bg: 0 0% 3%;
+ --ide-surface: 0 0% 4%;
+ --ide-surface-2: 0 0% 6%;
+ --ide-surface-3: 0 0% 8%;
+ --ide-border: 0 0% 100% / 0.05;
+ --ide-border-subtle: 0 0% 100% / 0.03;
+ --ide-text: 0 0% 83%;
+ --ide-text-dim: 0 0% 45%;
+ --ide-text-muted: 0 0% 60%;
 
-    --ide-indigo: 250 84% 67%; /* Purple-ish primary */
-    --ide-indigo-dim: 250 84% 67% / 0.1;
-    --ide-indigo-border: 250 84% 67% / 0.2;
-    --ring: 250 84% 67%;
-    
-    --primary: 250 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    
-    --sidebar-background: 260 5% 4%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 250 84% 67%;
-    --sidebar-accent: 260 5% 9%;
-  }
+ --ide-indigo: 239 84% 67%;
+ --ide-indigo-dim: 239 84% 67% / 0.1;
+ --ide-indigo-border: 239 84% 67% / 0.2;
+ --ide-green: 142 71% 45%;
+ --ide-green-bright: 142 69% 58%;
+ --ide-amber: 38 92% 50%;
+ --ide-amber-bright: 43 96% 56%;
+ --ide-pink: 330 81% 60%;
+ --ide-pink-bright: 330 86% 70%;
+ --ide-teal: 174 62% 47%;
+ --ide-red: 0 72% 51%;
+ --ide-red-bright: 0 91% 71%;
 
-  [data-theme="tokyonight"] {
-    /* Tokyo Night Theme */
-    --background: 235 19% 13%;
-    --foreground: 226 70% 88%;
-    
-    --ide-bg: 235 19% 13%;
-    --ide-surface: 234 19% 16%;
-    --ide-surface-2: 234 19% 19%;
-    --ide-surface-3: 234 19% 22%;
-    --ide-border: 234 19% 22%;
-    --ide-border-subtle: 234 19% 18%;
-    --ide-text: 226 70% 88%;
-    --ide-text-dim: 226 20% 50%;
-    --ide-text-muted: 226 40% 65%;
+ --sidebar-background: 0 0% 3%;
+ --sidebar-foreground: 0 0% 83%;
+ --sidebar-primary: 239 84% 67%;
+ --sidebar-primary-foreground: 0 0% 100%;
+ --sidebar-accent: 0 0% 8%;
+ --sidebar-accent-foreground: 0 0% 83%;
+ --sidebar-border: 0 0% 10%;
+ --sidebar-ring: 239 84% 67%;
+ }
 
-    --ide-indigo: 250 85% 75%;
-    --ide-indigo-dim: 250 85% 75% / 0.1;
-    --ide-indigo-border: 250 85% 75% / 0.2;
-    --ring: 250 85% 75%;
-    
-    --primary: 250 85% 75%;
-    --primary-foreground: 235 19% 13%;
-    
-    --sidebar-background: 235 19% 11%;
-    --sidebar-foreground: 226 70% 88%;
-    --sidebar-primary: 250 85% 75%;
-    --sidebar-accent: 234 19% 16%;
-  }
+ [data-theme="opencode"] {
+ /* OpenCode Inspire Theme (Deep Zinc/Slate, Teal & Calm Blues) */
+ --background: 240 10% 8%;
+ --foreground: 210 20% 85%;
+ 
+ --ide-bg: 240 10% 8%;
+ --ide-surface: 240 10% 12%;
+ --ide-surface-2: 240 10% 15%;
+ --ide-surface-3: 240 10% 18%;
+ --ide-border: 240 10% 18%;
+ --ide-border-subtle: 240 10% 14%;
+ --ide-text: 210 20% 88%;
+ --ide-text-dim: 210 10% 50%;
+ --ide-text-muted: 210 10% 65%;
 
-  [data-theme="nord"] {
-    /* Nord Theme */
-    --background: 220 16% 22%;
-    --foreground: 218 27% 92%;
-    
-    --ide-bg: 220 16% 22%;
-    --ide-surface: 220 16% 26%;
-    --ide-surface-2: 220 16% 30%;
-    --ide-surface-3: 220 16% 34%;
-    --ide-border: 220 16% 34%;
-    --ide-border-subtle: 220 16% 26%;
-    --ide-text: 218 27% 92%;
-    --ide-text-dim: 218 15% 65%;
-    --ide-text-muted: 218 20% 80%;
+ --ide-indigo: 200 80% 60%; /* OpenCode specific primary */
+ --ide-indigo-dim: 200 80% 60% / 0.1;
+ --ide-indigo-border: 200 80% 60% / 0.2;
+ --ring: 200 80% 60%;
+ 
+ --primary: 200 80% 60%;
+ --primary-foreground: 0 0% 100%;
+ 
+ --sidebar-background: 240 10% 6%;
+ --sidebar-foreground: 210 20% 85%;
+ --sidebar-primary: 200 80% 60%;
+ --sidebar-accent: 240 10% 12%;
+ }
 
-    --ide-indigo: 193 43% 67%; /* nord8 */
-    --ide-indigo-dim: 193 43% 67% / 0.1;
-    --ide-indigo-border: 193 43% 67% / 0.2;
-    --ring: 193 43% 67%;
-    
-    --primary: 193 43% 67%;
-    --primary-foreground: 220 16% 22%;
-    
-    --sidebar-background: 220 16% 20%;
-    --sidebar-foreground: 218 27% 92%;
-    --sidebar-primary: 193 43% 67%;
-    --sidebar-accent: 220 16% 26%;
-  }
+ [data-theme="cursor"] {
+ /* Cursor-like Theme (Extremely clean, High Contrast Borders, Darker base) */
+ --background: 260 5% 5%;
+ --foreground: 0 0% 90%;
+ 
+ --ide-bg: 260 5% 5%;
+ --ide-surface: 260 5% 7%;
+ --ide-surface-2: 260 5% 10%;
+ --ide-surface-3: 260 5% 13%;
+ --ide-border: 0 0% 15%;
+ --ide-border-subtle: 0 0% 10%;
+ --ide-text: 0 0% 90%;
+ --ide-text-dim: 0 0% 45%;
+ --ide-text-muted: 0 0% 60%;
 
-  [data-theme="catppuccin"] {
-    /* Catppuccin Mocha */
-    --background: 240 21% 15%;
-    --foreground: 226 64% 88%;
-    
-    --ide-bg: 240 21% 15%;
-    --ide-surface: 240 21% 18%;
-    --ide-surface-2: 240 21% 21%;
-    --ide-surface-3: 240 21% 24%;
-    --ide-border: 240 21% 24%;
-    --ide-border-subtle: 240 21% 18%;
-    --ide-text: 226 64% 88%;
-    --ide-text-dim: 228 15% 55%;
-    --ide-text-muted: 227 25% 70%;
+ --ide-indigo: 250 84% 67%; /* Purple-ish primary */
+ --ide-indigo-dim: 250 84% 67% / 0.1;
+ --ide-indigo-border: 250 84% 67% / 0.2;
+ --ring: 250 84% 67%;
+ 
+ --primary: 250 84% 67%;
+ --primary-foreground: 0 0% 100%;
+ 
+ --sidebar-background: 260 5% 4%;
+ --sidebar-foreground: 0 0% 90%;
+ --sidebar-primary: 250 84% 67%;
+ --sidebar-accent: 260 5% 9%;
+ }
 
-    --ide-indigo: 266 85% 80%; /* Mauve */
-    --ide-indigo-dim: 266 85% 80% / 0.1;
-    --ide-indigo-border: 266 85% 80% / 0.2;
-    --ring: 266 85% 80%;
-    
-    --primary: 266 85% 80%;
-    --primary-foreground: 240 21% 15%;
-    
-    --sidebar-background: 240 21% 12%;
-    --sidebar-foreground: 226 64% 88%;
-    --sidebar-primary: 266 85% 80%;
-    --sidebar-accent: 240 21% 18%;
-  }
+ [data-theme="tokyonight"] {
+ /* Tokyo Night Theme */
+ --background: 235 19% 13%;
+ --foreground: 226 70% 88%;
+ 
+ --ide-bg: 235 19% 13%;
+ --ide-surface: 234 19% 16%;
+ --ide-surface-2: 234 19% 19%;
+ --ide-surface-3: 234 19% 22%;
+ --ide-border: 234 19% 22%;
+ --ide-border-subtle: 234 19% 18%;
+ --ide-text: 226 70% 88%;
+ --ide-text-dim: 226 20% 50%;
+ --ide-text-muted: 226 40% 65%;
 
-  [data-theme="aura"] {
-    /* Aura Dark Theme */
-    --background: 250 15% 9%;
-    --foreground: 250 10% 93%;
-    
-    --ide-bg: 250 15% 9%;
-    --ide-surface: 250 12% 12%;
-    --ide-surface-2: 250 12% 15%;
-    --ide-surface-3: 240 10% 18%;
-    --ide-border: 250 12% 18%;
-    --ide-border-subtle: 250 12% 14%;
-    --ide-text: 250 10% 93%;
-    --ide-text-dim: 250 10% 60%;
-    --ide-text-muted: 250 10% 75%;
+ --ide-indigo: 250 85% 75%;
+ --ide-indigo-dim: 250 85% 75% / 0.1;
+ --ide-indigo-border: 250 85% 75% / 0.2;
+ --ring: 250 85% 75%;
+ 
+ --primary: 250 85% 75%;
+ --primary-foreground: 235 19% 13%;
+ 
+ --sidebar-background: 235 19% 11%;
+ --sidebar-foreground: 226 70% 88%;
+ --sidebar-primary: 250 85% 75%;
+ --sidebar-accent: 234 19% 16%;
+ }
 
-    --ide-indigo: 259 100% 73%; /* Aura Purple */
-    --ide-indigo-dim: 259 100% 73% / 0.1;
-    --ide-indigo-border: 259 100% 73% / 0.2;
-    --ring: 259 100% 73%;
-    
-    --primary: 259 100% 73%;
-    --primary-foreground: 250 15% 9%;
-    
-    --sidebar-background: 250 15% 8%;
-    --sidebar-foreground: 250 10% 93%;
-    --sidebar-primary: 259 100% 73%;
-    --sidebar-accent: 250 12% 12%;
-  }
+ [data-theme="nord"] {
+ /* Nord Theme */
+ --background: 220 16% 22%;
+ --foreground: 218 27% 92%;
+ 
+ --ide-bg: 220 16% 22%;
+ --ide-surface: 220 16% 26%;
+ --ide-surface-2: 220 16% 30%;
+ --ide-surface-3: 220 16% 34%;
+ --ide-border: 220 16% 34%;
+ --ide-border-subtle: 220 16% 26%;
+ --ide-text: 218 27% 92%;
+ --ide-text-dim: 218 15% 65%;
+ --ide-text-muted: 218 20% 80%;
+
+ --ide-indigo: 193 43% 67%; /* nord8 */
+ --ide-indigo-dim: 193 43% 67% / 0.1;
+ --ide-indigo-border: 193 43% 67% / 0.2;
+ --ring: 193 43% 67%;
+ 
+ --primary: 193 43% 67%;
+ --primary-foreground: 220 16% 22%;
+ 
+ --sidebar-background: 220 16% 20%;
+ --sidebar-foreground: 218 27% 92%;
+ --sidebar-primary: 193 43% 67%;
+ --sidebar-accent: 220 16% 26%;
+ }
+
+ [data-theme="catppuccin"] {
+ /* Catppuccin Mocha */
+ --background: 240 21% 15%;
+ --foreground: 226 64% 88%;
+ 
+ --ide-bg: 240 21% 15%;
+ --ide-surface: 240 21% 18%;
+ --ide-surface-2: 240 21% 21%;
+ --ide-surface-3: 240 21% 24%;
+ --ide-border: 240 21% 24%;
+ --ide-border-subtle: 240 21% 18%;
+ --ide-text: 226 64% 88%;
+ --ide-text-dim: 228 15% 55%;
+ --ide-text-muted: 227 25% 70%;
+
+ --ide-indigo: 266 85% 80%; /* Mauve */
+ --ide-indigo-dim: 266 85% 80% / 0.1;
+ --ide-indigo-border: 266 85% 80% / 0.2;
+ --ring: 266 85% 80%;
+ 
+ --primary: 266 85% 80%;
+ --primary-foreground: 240 21% 15%;
+ 
+ --sidebar-background: 240 21% 12%;
+ --sidebar-foreground: 226 64% 88%;
+ --sidebar-primary: 266 85% 80%;
+ --sidebar-accent: 240 21% 18%;
+ }
+
+ [data-theme="aura"] {
+ /* Aura Dark Theme */
+ --background: 250 15% 9%;
+ --foreground: 250 10% 93%;
+ 
+ --ide-bg: 250 15% 9%;
+ --ide-surface: 250 12% 12%;
+ --ide-surface-2: 250 12% 15%;
+ --ide-surface-3: 240 10% 18%;
+ --ide-border: 250 12% 18%;
+ --ide-border-subtle: 250 12% 14%;
+ --ide-text: 250 10% 93%;
+ --ide-text-dim: 250 10% 60%;
+ --ide-text-muted: 250 10% 75%;
+
+ --ide-indigo: 259 100% 73%; /* Aura Purple */
+ --ide-indigo-dim: 259 100% 73% / 0.1;
+ --ide-indigo-border: 259 100% 73% / 0.2;
+ --ring: 259 100% 73%;
+ 
+ --primary: 259 100% 73%;
+ --primary-foreground: 250 15% 9%;
+ 
+ --sidebar-background: 250 15% 8%;
+ --sidebar-foreground: 250 10% 93%;
+ --sidebar-primary: 259 100% 73%;
+ --sidebar-accent: 250 12% 12%;
+ }
+
+ [data-theme="dracula"] {
+ /* Dracula Theme */
+ --background: 231 15% 18%;
+ --foreground: 60 30% 96%;
+ --ide-bg: 231 15% 18%;
+ --ide-surface: 231 15% 22%;
+ --ide-surface-2: 231 15% 26%;
+ --ide-surface-3: 231 15% 30%;
+ --ide-border: 231 15% 30%;
+ --ide-border-subtle: 231 15% 22%;
+ --ide-text: 60 30% 96%;
+ --ide-text-dim: 231 15% 60%;
+ --ide-text-muted: 60 30% 80%;
+ --ide-indigo: 265 89% 78%; /* Purple */
+ --ide-indigo-dim: 265 89% 78% / 0.1;
+ --ide-indigo-border: 265 89% 78% / 0.2;
+ --primary: 265 89% 78%;
+ --primary-foreground: 231 15% 18%;
+ }
+
+ [data-theme="monokai"] {
+ /* Monokai Pro Theme */
+ --background: 300 3% 18%;
+ --foreground: 45 7% 85%;
+ --ide-bg: 300 3% 18%;
+ --ide-surface: 300 3% 22%;
+ --ide-surface-2: 300 3% 26%;
+ --ide-surface-3: 300 3% 30%;
+ --ide-border: 300 3% 30%;
+ --ide-border-subtle: 300 3% 22%;
+ --ide-text: 45 7% 85%;
+ --ide-text-dim: 300 3% 55%;
+ --ide-text-muted: 45 7% 70%;
+ --ide-indigo: 290 100% 70%; /* Magenta */
+ --ide-indigo-dim: 290 100% 70% / 0.1;
+ --ide-indigo-border: 290 100% 70% / 0.2;
+ --primary: 290 100% 70%;
+ }
+
+ [data-theme="deepocean"] {
+ /* Deep Ocean Theme */
+ --background: 227 22% 8%;
+ --foreground: 220 20% 90%;
+ --ide-bg: 227 22% 8%;
+ --ide-surface: 227 22% 12%;
+ --ide-surface-2: 227 22% 15%;
+ --ide-surface-3: 227 22% 18%;
+ --ide-border: 227 22% 18%;
+ --ide-border-subtle: 227 22% 10%;
+ --ide-text: 220 20% 90%;
+ --ide-text-dim: 220 10% 50%;
+ --ide-text-muted: 220 15% 70%;
+ --ide-indigo: 180 100% 45%; /* Cyan */
+ --ide-indigo-dim: 180 100% 45% / 0.1;
+ --ide-indigo-border: 180 100% 45% / 0.2;
+ --primary: 180 100% 45%;
+ }
+
+ [data-theme="synthwave"] {
+ /* Synthwave '84 Theme */
+ --background: 251 20% 17%;
+ --foreground: 0 0% 100%;
+ --ide-bg: 251 20% 17%;
+ --ide-surface: 251 20% 21%;
+ --ide-surface-2: 251 20% 25%;
+ --ide-surface-3: 251 20% 29%;
+ --ide-border: 320 100% 70% / 0.2;
+ --ide-border-subtle: 251 20% 21%;
+ --ide-text: 0 0% 100%;
+ --ide-text-dim: 251 10% 60%;
+ --ide-text-muted: 320 100% 70% / 0.8;
+ --ide-indigo: 320 100% 70%; /* Neon Pink */
+ --ide-indigo-dim: 320 100% 70% / 0.15;
+ --ide-indigo-border: 320 100% 70% / 0.4;
+ --primary: 320 100% 70%;
+ }
+
+ [data-theme="rosepine"] {
+ /* Rose Pine Theme */
+ --background: 249 22% 12%;
+ --foreground: 245 50% 91%;
+ --ide-bg: 249 22% 12%;
+ --ide-surface: 249 22% 15%;
+ --ide-surface-2: 249 22% 18%;
+ --ide-surface-3: 249 22% 22%;
+ --ide-border: 249 22% 22%;
+ --ide-border-subtle: 249 22% 15%;
+ --ide-text: 245 50% 91%;
+ --ide-text-dim: 249 10% 55%;
+ --ide-text-muted: 245 20% 75%;
+ --ide-indigo: 343 35% 65%; /* Rose */
+ --ide-indigo-dim: 343 35% 65% / 0.1;
+ --ide-indigo-border: 343 35% 65% / 0.2;
+ --primary: 343 35% 65%;
+ }
+
+ [data-theme="githubdark"] {
+ /* GitHub Dark Theme */
+ --background: 210 10% 9%;
+ --foreground: 210 10% 85%;
+ --ide-bg: 210 10% 9%;
+ --ide-surface: 210 10% 13%;
+ --ide-surface-2: 210 10% 16%;
+ --ide-surface-3: 210 10% 19%;
+ --ide-border: 210 10% 20%;
+ --ide-border-subtle: 210 10% 12%;
+ --ide-text: 210 10% 85%;
+ --ide-text-dim: 210 10% 50%;
+ --ide-text-muted: 210 10% 65%;
+ --ide-indigo: 210 80% 55%; /* GitHub Blue */
+ --ide-indigo-dim: 210 80% 55% / 0.1;
+ --ide-indigo-border: 210 80% 55% / 0.2;
+ --primary: 210 80% 55%;
+ }
+
+ [data-theme="onelight"] {
+ /* One Light Theme */
+ --background: 0 0% 98%;
+ --foreground: 200 5% 20%;
+ --ide-bg: 0 0% 98%;
+ --ide-surface: 0 0% 94%;
+ --ide-surface-2: 0 0% 90%;
+ --ide-surface-3: 0 0% 86%;
+ --ide-border: 0 0% 88%;
+ --ide-border-subtle: 0 0% 94%;
+ --ide-text: 200 5% 20%;
+ --ide-text-dim: 200 5% 50%;
+ --ide-text-muted: 200 5% 40%;
+ --ide-indigo: 220 80% 55%; /* Blue */
+ --ide-indigo-dim: 220 80% 55% / 0.05;
+ --ide-indigo-border: 220 80% 55% / 0.15;
+ --primary: 220 80% 55%;
+ --primary-foreground: 0 0% 100%;
+ --border: 0 0% 90%;
+ --input: 0 0% 92%;
+ --muted: 0 0% 94%;
+ --muted-foreground: 0 0% 45%;
+ }
 }
 
 @layer base {
-  * {
-    border-color: hsl(var(--border));
-  }
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-    font-family: 'Geist', sans-serif;
-  }
+ * {
+ border-color: hsl(var(--border));
+ }
+ html, body {
+ background-color: transparent !important;
+ color: hsl(var(--foreground));
+ font-family: 'Geist', sans-serif;
+ height: 100%;
+ margin: 0;
+ overflow: hidden;
+ }
 }
 
 @layer utilities {
-  .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+ .font-mono {
+ font-family: 'JetBrains Mono', monospace;
+ }
+ .scrollbar-none::-webkit-scrollbar {
+ width: 0;
+ }
+ .scrollbar-thin::-webkit-scrollbar {
+ width: 2px;
+ }
+ .scrollbar-thin::-webkit-scrollbar-thumb {
+ background: hsl(0 0% 20%);
+ border-radius: 10px;
+ }
+ .glass {
+ backdrop-filter: blur(24px) saturate(180%);
+ -webkit-backdrop-filter: blur(24px) saturate(180%);
+ }
+  /* Unified Theme-Toned Translucency - For Sidebar, Header, and Window BG */
+  .glass-surface {
+    background-color: hsl(var(--background) / 0.7);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid hsla(0, 0%, 100%, 0.03);
   }
-  .scrollbar-none::-webkit-scrollbar {
-    width: 0;
+  
+  .solid-chat-area {
+    background-color: hsl(var(--background));
+    box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.5);
+    border: 1px solid hsla(0, 0%, 100%, 0.05);
   }
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 2px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: hsl(0 0% 13%);
-  }
+ .hugged-card {
+ border-radius: 20px;
+ box-shadow: 0 10px 50px -15px rgba(0, 0, 0, 0.9);
+ border: 1px solid hsla(0, 0%, 100%, 0.05);
+ }
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+ 0%, 100% { opacity: 1; }
+ 50% { opacity: 0; }
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 4px hsl(var(--ide-green)); }
-  50% { box-shadow: 0 0 8px hsl(var(--ide-green)); }
+ 0%, 100% { box-shadow: 0 0 4px hsl(var(--ide-green)); }
+ 50% { box-shadow: 0 0 8px hsl(var(--ide-green)); }
 }
 
 @keyframes bounce-dot {
-  0%, 80%, 100% {
-    transform: translateY(0);
-    opacity: 0.4;
-  }
-  40% {
-    transform: translateY(-4px);
-    opacity: 1;
-  }
+ 0%, 80%, 100% {
+ transform: translateY(0);
+ opacity: 0.4;
+ }
+ 40% {
+ transform: translateY(-4px);
+ opacity: 1;
+ }
 }
 
 .animate-bounce-dot-1 {
-  animation: bounce-dot 1.2s ease-in-out infinite;
+ animation: bounce-dot 1.2s infinite;
 }
 
 .animate-bounce-dot-2 {
-  animation: bounce-dot 1.2s ease-in-out 0.15s infinite;
+ animation: bounce-dot 1.2s 0.15s infinite;
 }
 
 .animate-bounce-dot-3 {
-  animation: bounce-dot 1.2s ease-in-out 0.3s infinite;
+ animation: bounce-dot 1.2s 0.3s infinite;
+}
+
+@keyframes terminal-pulse {
+ 0%, 100% { opacity: 1; transform: scale(1); }
+ 50% { opacity: 0.7; transform: scale(0.95); }
+}
+
+.animate-terminal-pulse {
+ animation: terminal-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.terminal-node-glow {
+ box-shadow: 0 0 10px -2px currentColor;
 }

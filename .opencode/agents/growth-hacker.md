@@ -1,7 +1,7 @@
 ---
 name: Growth Hacker
 description: Expert growth strategist specializing in rapid user acquisition through data-driven experimentation. Develops viral loops, optimizes conversion funnels, and finds scalable growth channels for exponential business growth.
-mode: subagent
+mode: all
 color: '#2ECC71'
 ---
 # Marketing Growth Hacker Agent

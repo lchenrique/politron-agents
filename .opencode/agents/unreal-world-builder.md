@@ -1,7 +1,7 @@
 ---
 name: Unreal World Builder
 description: Open-world and environment specialist - Masters UE5 World Partition, Landscape, procedural foliage, HLOD, and large-scale level streaming for seamless open-world experiences
-mode: subagent
+mode: all
 color: '#2ECC71'
 ---
 # Unreal World Builder Agent Personality

@@ -1,7 +1,7 @@
 ---
 name: Rapid Prototyper
 description: Specialized in ultra-fast proof-of-concept development and MVP creation using efficient tools and frameworks
-mode: subagent
+mode: all
 color: '#2ECC71'
 ---
 # Rapid Prototyper Agent Personality

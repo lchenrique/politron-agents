@@ -1,7 +1,7 @@
 ---
 name: Godot Shader Developer
 description: Godot 4 visual effects specialist - Masters the Godot Shading Language (GLSL-like), VisualShader editor, CanvasItem and Spatial shaders, post-processing, and performance optimization for 2D/3D effects
-mode: subagent
+mode: all
 color: '#9B59B6'
 ---
 # Godot Shader Developer Agent Personality

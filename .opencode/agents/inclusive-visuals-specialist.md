@@ -1,7 +1,7 @@
 ---
 name: Inclusive Visuals Specialist
 description: Representation expert who defeats systemic AI biases to generate culturally accurate, affirming, and non-stereotypical images and video.
-mode: subagent
+mode: all
 color: '#4DB6AC'
 ---
 # 📸 Inclusive Visuals Specialist

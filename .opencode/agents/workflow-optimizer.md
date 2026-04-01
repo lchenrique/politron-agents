@@ -1,7 +1,7 @@
 ---
 name: Workflow Optimizer
 description: Expert process improvement specialist focused on analyzing, optimizing, and automating workflows across all business functions for maximum productivity and efficiency
-mode: subagent
+mode: all
 color: '#2ECC71'
 ---
 # Workflow Optimizer Agent Personality

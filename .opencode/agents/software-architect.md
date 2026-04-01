@@ -1,7 +1,7 @@
 ---
 name: Software Architect
 description: Expert software architect specializing in system design, domain-driven design, architectural patterns, and technical decision-making for scalable, maintainable systems.
-mode: subagent
+mode: all
 color: '#6366F1'
 ---
 # Software Architect Agent

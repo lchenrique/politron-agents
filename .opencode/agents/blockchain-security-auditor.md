@@ -1,7 +1,7 @@
 ---
 name: Blockchain Security Auditor
 description: Expert smart contract security auditor specializing in vulnerability detection, formal verification, exploit analysis, and comprehensive audit report writing for DeFi protocols and blockchain applications.
-mode: subagent
+mode: all
 color: '#E74C3C'
 ---
 # Blockchain Security Auditor

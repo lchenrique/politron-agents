@@ -1,7 +1,7 @@
 ---
 name: Technical Artist
 description: Art-to-engine pipeline specialist - Masters shaders, VFX systems, LOD pipelines, performance budgeting, and cross-engine asset optimization
-mode: subagent
+mode: all
 color: '#E84393'
 ---
 # Technical Artist Agent Personality

@@ -1,7 +1,7 @@
 ---
 name: Embedded Firmware Engineer
 description: Specialist in bare-metal and RTOS firmware - ESP32/ESP-IDF, PlatformIO, Arduino, ARM Cortex-M, STM32 HAL/LL, Nordic nRF5/nRF Connect SDK, FreeRTOS, Zephyr
-mode: subagent
+mode: all
 color: '#F39C12'
 ---
 # Embedded Firmware Engineer

@@ -1,7 +1,7 @@
-import { EventEmitter } from "events"
+﻿import { EventEmitter } from "events"
 import * as cp from "child_process"
 import { existsSync, readFileSync } from "fs"
-import { dirname, join, resolve } from "path"
+import { basename, dirname, join, resolve } from "path"
 import { createOpencode } from "@opencode-ai/sdk"
 import type { OpencodeClient } from "@opencode-ai/sdk/dist/v2/client"
 import type { Session, GlobalEvent, Event } from "@opencode-ai/sdk/dist/gen/types.gen"
@@ -50,6 +50,11 @@ interface SubtaskPartInput {
 }
 
 type PartInput = TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput
+
+interface ResolvedAgentConfig {
+  agentSlug?: string
+  systemPrompt?: string
+}
 
 
 
@@ -141,6 +146,53 @@ class OpenCodeSdkService extends EventEmitter {
 
     const fileContent = readFileSync(absolutePromptPath, 'utf8')
     return this.stripFrontmatter(fileContent)
+  }
+
+  private resolveOpenCodeAgentName(workspaceDirectory: string, systemPromptPath?: string): string | undefined {
+    if (systemPromptPath) {
+      const absolutePromptPath = resolve(workspaceDirectory, systemPromptPath)
+
+      if (existsSync(absolutePromptPath)) {
+        const fileContent = readFileSync(absolutePromptPath, "utf8")
+        const match = fileContent.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/m)
+        const frontmatterBlock = match?.[1]
+        const nameLine = frontmatterBlock?.match(/(?:^|\r?\n)name:\s*(.+)\s*$/m)
+        const rawName = nameLine?.[1]?.trim().replace(/^['"]|['"]$/g, "")
+        if (rawName) {
+          return rawName
+        }
+      }
+
+      const normalizedPath = systemPromptPath.replace(/\\/g, "/")
+      return basename(normalizedPath, ".md")
+    }
+    
+    return undefined
+  }
+
+  private resolveAgentConfig(
+    workspaceDirectory: string,
+    systemPrompt?: string,
+    systemPromptPath?: string,
+    agentSlug?: string
+  ): ResolvedAgentConfig {
+    const resolvedAgentName = this.resolveOpenCodeAgentName(workspaceDirectory, systemPromptPath)
+
+    if (resolvedAgentName) {
+      return {
+        agentSlug: resolvedAgentName
+      }
+    }
+
+    if (agentSlug) {
+      return {
+        agentSlug
+      }
+    }
+
+    return {
+      systemPrompt: this.resolveSystemPrompt(workspaceDirectory, systemPrompt, systemPromptPath)
+    }
   }
 
   private async doInitialize(): Promise<void> {
@@ -240,31 +292,41 @@ class OpenCodeSdkService extends EventEmitter {
         }
 
         const session: Session = createResult.data
+        const resolvedAgentConfig = this.resolveAgentConfig(
+          workspaceDirectory,
+          systemPrompt,
+          systemPromptPath,
+          agentSlug
+        )
 
         const managedSession: ManagedSession = {
           agentId,
           teamId,
           role,
           session,
-          agentSlug,
+          agentSlug: resolvedAgentConfig.agentSlug,
           status: "idle",
           lastEventAt: new Date().toISOString()
         }
 
         sessionStore.setSession(managedSession)
 
-        const resolvedSystemPrompt = this.resolveSystemPrompt(
-          workspaceDirectory,
-          systemPrompt,
-          systemPromptPath
-        )
+        console.log(`[OpenCodeSdkService] Resolved agent config for ${agentId}`, {
+          requestedAgentSlug: agentSlug,
+          resolvedAgentSlug: resolvedAgentConfig.agentSlug,
+          systemPromptPath,
+          hasSystemPrompt: !!resolvedAgentConfig.systemPrompt
+        })
 
-        console.log(`[OpenCodeSdkService] Resolved system prompt path: ${systemPromptPath}, Found: ${!!resolvedSystemPrompt}`)
-
-        if (agentSlug || resolvedSystemPrompt) {
-          console.log(`[OpenCodeSdkService] Warming up session for ${agentId} with slug: ${agentSlug}`)
+        if (resolvedAgentConfig.agentSlug || resolvedAgentConfig.systemPrompt) {
+          console.log(`[OpenCodeSdkService] Warming up session for ${agentId} with slug: ${resolvedAgentConfig.agentSlug}`)
           // This must complete before we consider the session "ready"
-          await this.sendMessageToSession(session.id, "Quem é você? Identifique-se.", resolvedSystemPrompt, agentSlug)
+          await this.sendMessageToSession(
+            session.id,
+            "Quem é você? Identifique-se.",
+            resolvedAgentConfig.systemPrompt,
+            resolvedAgentConfig.agentSlug
+          )
         }
 
         console.log(`[OpenCodeSdkService] Session created: ${session.id} for agent: ${agentId}`)
@@ -301,24 +363,14 @@ class OpenCodeSdkService extends EventEmitter {
       throw new Error("SDK client not initialized")
     }
 
-    const parts: PartInput[] = []
-
-    // If we have an agent slug, use a structured AgentPart for routing.
-    // This is the native SDK way to signal a sub-agent context.
-    if (agentSlug) {
-      parts.push({
-        type: "agent",
-        name: agentSlug
-      })
-    }
-
-    parts.push({
+    const parts: PartInput[] = [{
       type: "text",
       text: content
-    })
+    }]
 
-    // If we are using a specific agent, we should NOT pass a separate system prompt
-    // to avoid overriding the instructions defined in the agent's .md file.
+    // Direct conversations in this app should route via body.agent only.
+    // Sending an AgentPart as well makes the model treat the request like a
+    // sub-agent delegation task, which leads to unexpected planning/todo behavior.
     const finalSystemPrompt = agentSlug ? undefined : systemPrompt
 
     console.log(`[OpenCodeSdkService] Prompting session ${sessionId}:`, {
@@ -545,6 +597,15 @@ class OpenCodeSdkService extends EventEmitter {
           const managedSession = this.findManagedSessionBySessionId(sessionID)
           if (managedSession) {
             const toolState = part.state
+            this.emit("vibe:agent:tool", {
+              agentId: managedSession.agentId,
+              sessionId: sessionID,
+              tool: part.tool,
+              title: (toolState as any).title || part.tool,
+              state: toolState.status,
+              input: ((part as any).input ?? (toolState as any).input) as Record<string, unknown> | undefined,
+            })
+
             let activity: "idle" | "reading" | "editing" | "creating" | "thinking" = "thinking"
             
             // Determine activity based on tool name and state
@@ -693,3 +754,4 @@ class OpenCodeSdkService extends EventEmitter {
 }
 
 export const openCodeSdkService = new OpenCodeSdkService()
+

@@ -1,7 +1,7 @@
 ---
 name: Email Intelligence Engineer
 description: Expert in extracting structured, reasoning-ready data from raw email threads for AI agents and automation systems
-mode: subagent
+mode: all
 color: '#6366F1'
 ---
 # Email Intelligence Engineer Agent

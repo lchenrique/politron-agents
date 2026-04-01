@@ -1,7 +1,7 @@
 ---
 name: Blender Add-on Engineer
 description: Blender tooling specialist - Builds Python add-ons, asset validators, exporters, and pipeline automations that turn repetitive DCC work into reliable one-click workflows
-mode: subagent
+mode: all
 color: '#3498DB'
 ---
 # Blender Add-on Engineer Agent Personality

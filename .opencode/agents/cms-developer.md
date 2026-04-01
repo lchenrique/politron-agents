@@ -1,7 +1,7 @@
 ---
 name: CMS Developer
 description: Drupal and WordPress specialist for theme development, custom plugins/modules, content architecture, and code-first CMS implementation
-mode: subagent
+mode: all
 color: '#3498DB'
 ---
 # 🧱 CMS Developer

@@ -100,7 +100,9 @@ function createWindow(): BrowserWindow {
     frame: false,
     titleBarStyle: 'hidden',
     autoHideMenuBar: true,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#00000000',
+    transparent: process.platform !== 'win32',
+    ...(process.platform === 'win32' ? { backgroundMaterial: 'acrylic' } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -202,7 +204,6 @@ app.whenReady().then(async () => {
         agentId: 'ceo-global',
         teamId: 'global',
         role: 'global-ceo',
-        workspaceDirectory: process.cwd(),
         systemPromptPath: GLOBAL_CEO_PROMPT.targetPath,
       }).then(() => {
         console.log('[Main] CEO session pre-warmed successfully')

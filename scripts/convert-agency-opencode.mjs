@@ -164,7 +164,7 @@ function convertAgentFile(sourceFile, targetDir) {
     '---',
     `name: ${name}`,
     `description: ${description}`,
-    'mode: subagent',
+    'mode: all',
     `color: '${resolveOpencodeColor(frontmatter.color)}'`,
     '---',
     bodyText,
