@@ -1,21 +1,23 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import TitleBar from "@/components/ide/TitleBar";
 import AppSidebar from "@/components/ide/AppSidebar";
-import ChatArea from "@/components/ide/ChatArea";
+import { AgentChatShell } from "@/features/chat/components/shell/AgentChatShell";
 import TerminalPanel from "@/components/ide/TerminalPanel";
 import AddProjectModal from "@/components/ide/AddProjectModal";
 import HireAgentModal from "@/components/ide/HireAgentModal";
-import { WorkspaceProvider, useWorkspace } from "@/hooks/useWorkspace";
+import {
+ WorkspaceProvider,
+ useWorkspaceActiveTeam,
+ useWorkspaceAddAgentToTeam,
+ useWorkspaceAddProject,
+ useWorkspaceRegisterCeoHireRequest,
+} from "@/hooks/useWorkspace";
 
 const IDELayout = () => {
- const { 
- workspace, 
- activeTeam, 
- addProject, 
- addAgentToTeam, 
- onCeoHireRequest,
- enterProject 
- } = useWorkspace();
+ const activeTeam = useWorkspaceActiveTeam();
+ const addProject = useWorkspaceAddProject();
+ const addAgentToTeam = useWorkspaceAddAgentToTeam();
+ const onCeoHireRequest = useWorkspaceRegisterCeoHireRequest();
  const isWindows = window.vibeAPI.platform === "win32";
  const [terminalOpen, setTerminalOpen] = useState(true);
  const [terminalWidth, setTerminalWidth] = useState(320);
@@ -77,8 +79,8 @@ const IDELayout = () => {
  <div className="flex-1 flex flex-col overflow-hidden p-3 pt-1">
  <div className="flex flex-1 overflow-hidden">
  <div className="flex-1 flex flex-col solid-chat-area overflow-hidden relative" style={{ borderRadius: '16px' }}>
- <ChatArea activeView={activeTab} />
- </div>
+  {activeTab === 'chat' ? <AgentChatShell /> : null}
+</div>
  {terminalOpen && (
  <>
  <div

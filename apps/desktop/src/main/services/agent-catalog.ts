@@ -139,9 +139,9 @@ export const AGENCY_AGENTS_VENDOR_ROOT = '.vendor/agency-agents'
 export const OPENCODE_PROJECT_AGENTS_DIR = '.opencode/agents'
 
 export const GLOBAL_CEO_PROMPT = {
-  slug: 'agents-orchestrator',
+  slug: 'ceo',
   sourcePath: 'specialized/agents-orchestrator.md',
-  targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/agents-orchestrator.md`,
+  targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/ceo.md`,
 }
 
 export const AGENCY_AGENT_SYNC_MAP: Record<string, { sourcePath: string; targetPath: string }> = {

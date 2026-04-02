@@ -597,6 +597,7 @@ class OpenCodeSdkService extends EventEmitter {
           const managedSession = this.findManagedSessionBySessionId(sessionID)
           if (managedSession) {
             const toolState = part.state
+            const normalizedToolState = toolState as unknown as Record<string, unknown>
             this.emit("vibe:agent:tool", {
               agentId: managedSession.agentId,
               sessionId: sessionID,
@@ -604,6 +605,7 @@ class OpenCodeSdkService extends EventEmitter {
               title: (toolState as any).title || part.tool,
               state: toolState.status,
               input: ((part as any).input ?? (toolState as any).input) as Record<string, unknown> | undefined,
+              output: this.extractToolPayloadText(normalizedToolState),
             })
 
             let activity: "idle" | "reading" | "editing" | "creating" | "thinking" = "thinking"
@@ -655,8 +657,11 @@ class OpenCodeSdkService extends EventEmitter {
       }
 
       case "file.edited": {
-        const { file } = event.properties
+        const { file, sessionID } = event.properties as { file: unknown; sessionID?: string }
+        const managedSession = sessionID ? this.findManagedSessionBySessionId(sessionID) : undefined
         this.emit("vibe:pipeline:update", {
+          agentId: managedSession?.agentId,
+          sessionId: sessionID,
           type: "file.edited",
           file
         })
@@ -684,6 +689,40 @@ class OpenCodeSdkService extends EventEmitter {
 
   private findManagedSessionBySessionId(sessionId: string): ManagedSession | undefined {
     return sessionStore.listSessions().find(s => s.session?.id === sessionId)
+  }
+
+  private extractToolPayloadText(toolState: Record<string, unknown> | undefined): string | undefined {
+    if (!toolState) return undefined
+
+    const metadata = toolState.metadata as Record<string, unknown> | undefined
+    const candidates = [
+      toolState.output,
+      toolState.result,
+      toolState.stdout,
+      toolState.stderr,
+      toolState.error,
+      metadata?.output,
+      metadata?.result,
+      metadata?.stdout,
+      metadata?.stderr,
+      metadata?.error,
+    ]
+
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate
+      }
+
+      if (candidate && typeof candidate === "object") {
+        try {
+          return JSON.stringify(candidate, null, 2)
+        } catch {
+          continue
+        }
+      }
+    }
+
+    return undefined
   }
 
   private publishSessionText(sessionId: string, text: string, replace: boolean): void {

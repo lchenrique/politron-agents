@@ -1,13 +1,5 @@
 export type AgentStatus = "idle" | "running" | "waiting" | "blocked" | "done" | "error";
 
-export type AgentActivity = "idle" | "thinking" | "reading" | "editing" | "creating";
-
-export interface AgentActivityState {
- activity: AgentActivity;
- filename?: string;
- toolName?: string;
-}
-
 export interface Agent {
  id: string;
  name: string;
@@ -52,37 +44,6 @@ export interface Project {
  color: string;
 }
 
-// Typed message parts (mirrors OpenCode SDK types)
-export type MessagePart =
- | { type: "text"; text: string }
- | { type: "reasoning"; text: string; isOngoing: boolean }
- | { type: "tool"; tool: string; title: string; state: "pending" | "running" | "completed" | "error"; input?: Record<string, unknown> }
- | { type: "ask-human"; question: string }
- | { type: "checkpoint"; title: string }
- | { type: "diagnostics"; errors: string[]; warnings: string[] }
- | { type: "plan"; steps: string[] }
- | { type: "completed"; message?: string };
-
-export interface ChatMessage {
- id: string;
- streamId?: string;
- agentId: string;
- agentInitials: string;
- agentName: string;
- agentColor: string;
- isUser: boolean;
- text: string; // legacy flat text for backwards compat
- parts: MessagePart[]; // new structured parts
- isReasoning?: boolean;
- diff?: {
- filename: string;
- additions: number;
- deletions: number;
- lines: { type: "add" | "rem" | "ctx"; text: string }[];
- };
- timestamp: number;
-}
-
 export interface Workspace {
  globalCeoAgent: Agent;
  teams: Team[];
@@ -90,8 +51,6 @@ export interface Workspace {
  activeProjectId: string | null;
  activeTeamId: string | null;
  activeAgentTabId: string | null;
- messages: Record<string, ChatMessage[]>;
- agentActivities: Record<string, AgentActivityState>;
 }
 
 export const AGENT_CATALOG: { name: string; role: string; initials: string; color: string; bgColor: string; borderColor: string }[] = [

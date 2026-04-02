@@ -12,7 +12,12 @@
     "@assistant-ui/react": "^0.12.21",
     "@electron-toolkit/utils": "^3.0.0",
     "@opencode-ai/sdk": "^1.0.0",
-    "@pierre/diffs": "^1.1.7"
+    "@pierre/diffs": "^1.1.7",
+    "@tanstack/react-virtual": "^3.13.23",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.7.0",
+    "tailwind-merge": "^3.5.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@types/node": "^22.16.5",

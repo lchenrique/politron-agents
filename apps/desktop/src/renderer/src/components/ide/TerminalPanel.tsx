@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 
-const TerminalPanel = () => {
+const TerminalPanel = memo(() => {
  const [activeTab, setActiveTab] = useState("terminal");
 
  return (
@@ -65,8 +65,10 @@ const TerminalPanel = () => {
  ))}
  </div>
  )}
- </div>
- );
-};
+  </div>
+  );
+});
+
+TerminalPanel.displayName = 'TerminalPanel';
 
 export default TerminalPanel;
