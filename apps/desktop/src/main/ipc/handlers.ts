@@ -322,6 +322,98 @@ export function registerHandlers(): void {
     return { success: true, team: attachPipelineState(teamStore.getTeam(team.id)) }
   })
 
+  // Session management handlers - SDK sessions
+  ipcMain.handle('vibe:session:list', async () => {
+    await openCodeSdkService.initialize()
+    const client = openCodeSdkService.getClient()
+    if (!client) {
+      throw new Error('SDK client not initialized')
+    }
+    const result = await client.session.list({})
+    return result.data || []
+  })
+
+  ipcMain.handle('vibe:session:create', async (_, input?: { directory?: string; agentSlug?: string; systemPrompt?: string }) => {
+    await openCodeSdkService.initialize()
+    const client = openCodeSdkService.getClient()
+    if (!client) {
+      throw new Error('SDK client not initialized')
+    }
+    const workspaceDirectory = input?.directory || process.cwd()
+    const result = await client.session.create({
+      query: { directory: workspaceDirectory }
+    })
+    return result.data
+  })
+
+  ipcMain.handle('vibe:session:delete', async (_, sessionId: string) => {
+    await openCodeSdkService.initialize()
+    const client = openCodeSdkService.getClient()
+    if (!client) {
+      throw new Error('SDK client not initialized')
+    }
+    const result = await client.session.delete({ path: { id: sessionId } })
+    return result.data ?? result
+  })
+
+  ipcMain.handle('vibe:session:get', async (_, sessionId: string) => {
+    await openCodeSdkService.initialize()
+    const client = openCodeSdkService.getClient()
+    if (!client) {
+      throw new Error('SDK client not initialized')
+    }
+    const result = await client.session.get({ path: { id: sessionId } })
+    return result.data
+  })
+
+  ipcMain.handle('vibe:session:messages', async (_, sessionId: string) => {
+    await openCodeSdkService.initialize()
+    const client = openCodeSdkService.getClient()
+    if (!client) {
+      throw new Error('SDK client not initialized')
+    }
+    const result = await client.session.messages({ path: { id: sessionId } })
+    return result.data || []
+  })
+
+  ipcMain.handle('vibe:session:prompt', async (_, { sessionId, message, agentSlug, systemPrompt }: { sessionId: string; message: string; agentSlug?: string; systemPrompt?: string }) => {
+    await openCodeSdkService.initialize()
+    const client = openCodeSdkService.getClient()
+    if (!client) {
+      throw new Error('SDK client not initialized')
+    }
+    
+    const parts = [{ type: "text" as const, text: message }]
+    const finalSystemPrompt = agentSlug ? undefined : systemPrompt
+
+    const result = await client.session.promptAsync({
+      body: {
+        parts,
+        system: finalSystemPrompt,
+        agent: agentSlug
+      },
+      path: {
+        id: sessionId
+      }
+    })
+
+    const status = result.response?.status
+    const isSuccessfulResponse =
+      typeof status === "number" ? status >= 200 && status < 300 : !!result.data
+
+    if (!isSuccessfulResponse) {
+      throw new Error(`Failed to prompt session: ${result.error}`)
+    }
+    
+    return { success: true }
+  })
+
+  ipcMain.handle('vibe:session:subscribe', async (_, sessionId: string) => {
+    // Subscribe to events for a specific session
+    // The SDK's global event subscription already handles this via sessionID in events
+    await openCodeSdkService.subscribeToGlobalEvents()
+  })
+
   openCodeSdkService.on('vibe:agent:chunk', (...args) => {
     forwardEventToRenderer('vibe:agent:chunk', ...args)
   })

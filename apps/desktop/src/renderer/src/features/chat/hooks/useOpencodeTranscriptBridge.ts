@@ -27,6 +27,7 @@ import {
   measureChatBridgeOperation,
   recordChatBridgeEvent,
 } from '../perf/chatPerf';
+import { useActiveSession } from '../context/ActiveSessionContext';
 
 type AgentChunkEvent = {
   agentId: string;
@@ -105,6 +106,9 @@ type RuntimeState = {
   bufferedTextByAgent: Map<string, string>;
   lastFlushedTextByAgent: Map<string, string>;
   flushHandleByAgent: Map<string, number>;
+  // Flag: quando true, próximo texto do agente cria um NOVO assistant block
+  // (permite que texto após tools apareça DEPOIS das tools, não antes)
+  needsNewAssistantBlock: Map<string, boolean>;
 };
 
 function createId(prefix: string): string {
@@ -126,6 +130,19 @@ function normalizeError(error: unknown): string {
     }
   }
   return 'Erro desconhecido ao processar evento do agente.';
+}
+
+function extractTextFromParts(parts?: Array<{ type: string; text?: string; [key: string]: unknown }>): string {
+  if (!parts || parts.length === 0) return '';
+  
+  const textParts: string[] = [];
+  for (const part of parts) {
+    if (part.type === 'text' && part.text) {
+      textParts.push(part.text);
+    }
+  }
+  
+  return textParts.join('\n');
 }
 
 function mapAgentStatusToBlockStatus(status: Agent['status']): BlockStatus {
@@ -159,6 +176,11 @@ export function useOpencodeTranscriptBridge() {
   const activeAgentTeam = useAtomValue(activeAgentTeamAtom);
   const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
   const actions = useChatActions();
+  
+  // Obter sessão ativa do contexto
+  const { activeSessionId } = useActiveSession();
+  
+  console.log('[TranscriptBridge] Hook render, activeSessionId from context:', activeSessionId);
 
   const adapterRef = useRef<AgentEventAdapter | null>(null);
   if (!adapterRef.current) {
@@ -181,6 +203,7 @@ export function useOpencodeTranscriptBridge() {
     bufferedTextByAgent: new Map(),
     lastFlushedTextByAgent: new Map(),
     flushHandleByAgent: new Map(),
+    needsNewAssistantBlock: new Map(),
   });
 
   const activeContext = useMemo<ActiveAgentContext | null>(() => {
@@ -203,6 +226,12 @@ export function useOpencodeTranscriptBridge() {
 
   const activeAgentId = activeContext?.agent.id ?? null;
   const activeAgentIdRef = useRef<string | null>(activeAgentId);
+
+  // emit precisa estar antes do useEffect que usa ele
+  const emit = useCallback((event: Parameters<AgentEventAdapter['emit']>[0]) => {
+    recordChatBridgeEvent(`emit:${event.type}`);
+    adapterRef.current?.emit(event);
+  }, []);
 
   useEffect(() => {
     activeAgentIdRef.current = activeAgentId;
@@ -233,10 +262,82 @@ export function useOpencodeTranscriptBridge() {
     previousAgentIdRef.current = activeAgentId;
   }, [activeAgentId, actions]);
 
-  const emit = useCallback((event: Parameters<AgentEventAdapter['emit']>[0]) => {
-    recordChatBridgeEvent(`emit:${event.type}`);
-    adapterRef.current?.emit(event);
-  }, []);
+  // Quando a sessão ativa muda, carregar histórico e assinar eventos
+  useEffect(() => {
+    console.log('[TranscriptBridge] useEffect triggered, activeSessionId:', activeSessionId, 'activeContext:', !!activeContext);
+    
+    if (!activeSessionId || !activeContext) {
+      console.log('[TranscriptBridge] Skipping - no session or context');
+      return;
+    }
+
+    console.log('[TranscriptBridge] Session changed to:', activeSessionId);
+    
+    // Limpar chat atual quando troca de sessão
+    actions.clearChat();
+    
+    const loadSessionHistory = async () => {
+      try {
+        // Carregar mensagens históricas
+        const messages = await window.vibeAPI.session.messages(activeSessionId);
+        console.log('[TranscriptBridge] Loaded messages:', messages?.length);
+        console.log('[TranscriptBridge] First message structure:', JSON.stringify(messages?.[0], null, 2));
+        
+        if (messages && messages.length > 0) {
+          // Processar mensagens históricas e adicionar ao chat
+          for (const msg of messages) {
+            // Verificar a estrutura real da mensagem
+            const role = msg.info?.role;
+            const textContent = extractTextFromParts(msg.parts);
+            
+            console.log('[TranscriptBridge] Message role:', role, 'text length:', textContent?.length);
+            
+            if (role === 'user' && textContent) {
+              // Mensagem de usuário
+              const turnId = createId('turn-user');
+              const blockId = createId('user-historic');
+              const userBlock: UserMessageBlock = {
+                id: blockId,
+                turnId,
+                type: 'user-message',
+                status: 'success',
+                timestamp: msg.info?.createdAt || Date.now(),
+                content: textContent,
+              };
+              actions.createTurn(turnId);
+              emit({ type: 'block-added', turnId, data: userBlock });
+            } else if (role === 'assistant' && textContent) {
+              // Mensagem de assistant
+              const turnId = createId('turn-asst');
+              const blockId = createId('asst-historic');
+              const assistantBlock: AssistantMessageBlock = {
+                id: blockId,
+                turnId,
+                type: 'assistant-message',
+                status: 'success',
+                timestamp: msg.info?.createdAt || Date.now(),
+                content: textContent,
+              };
+              actions.createTurn(turnId);
+              emit({ type: 'block-added', turnId, data: assistantBlock });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[TranscriptBridge] Failed to load session history:', error);
+      }
+      
+      // Depois de carregar histórico, assinar para novos eventos
+      try {
+        await window.vibeAPI.session.subscribe(activeSessionId);
+        console.log('[TranscriptBridge] Subscribed to session:', activeSessionId);
+      } catch (error) {
+        console.error('[TranscriptBridge] Failed to subscribe to session:', error);
+      }
+    };
+    
+    loadSessionHistory();
+  }, [activeSessionId, activeContext, actions, emit]);
 
   const ensureTurn = useCallback((agentId: string): string => {
     const runtime = runtimeRef.current;
@@ -324,6 +425,26 @@ export function useOpencodeTranscriptBridge() {
       if (!bufferedText) return;
 
       recordChatBridgeEvent('flush:text');
+
+      // Verificar se precisamos criar um NOVO assistant block (texto após tools)
+      const needsNewBlock = runtime.needsNewAssistantBlock.get(agentId);
+      
+      if (needsNewBlock) {
+        // Finalizar o assistant block anterior se existir
+        const oldAssistantBlockId = runtime.assistantBlockByAgent.get(agentId);
+        if (oldAssistantBlockId) {
+          emit({
+            type: 'block-updated',
+            blockId: oldAssistantBlockId,
+            data: { status: 'success' } as Partial<AssistantMessageBlock>,
+          });
+        }
+        // Limpar o mapa para forçar criação de um novo assistant block
+        runtime.assistantBlockByAgent.delete(agentId);
+        runtime.lastFlushedTextByAgent.delete(agentId);
+        // Resetar o flag
+        runtime.needsNewAssistantBlock.set(agentId, false);
+      }
 
       const assistantBlockId = ensureAssistantBlock(agentId);
       const thinkingBlockId = runtime.thinkingBlockByAgent.get(agentId);
@@ -448,6 +569,7 @@ export function useOpencodeTranscriptBridge() {
     runtime.bufferedTextByAgent.delete(agentId);
     runtime.lastFlushedTextByAgent.delete(agentId);
     runtime.flushHandleByAgent.delete(agentId);
+    runtime.needsNewAssistantBlock.delete(agentId);
   }, [emit, flushBufferedText]);
 
   const handleChunk = useCallback((event: AgentChunkEvent) => {
@@ -549,6 +671,10 @@ export function useOpencodeTranscriptBridge() {
     }
 
     if (event.state === 'completed' || event.state === 'error') {
+      // Marcar que próximo texto do agente deve criar um NOVO assistant block
+      // Assim o texto após tools aparece DEPOIS das tools na conversa
+      runtime.needsNewAssistantBlock.set(event.agentId, true);
+
       let resultMap = runtime.toolResultBlocksByAgent.get(event.agentId);
       if (!resultMap) {
         resultMap = new Map();
@@ -722,6 +848,7 @@ export function useOpencodeTranscriptBridge() {
     runtime.filePathsByAgent.delete(agentId);
     runtime.bufferedTextByAgent.delete(agentId);
     runtime.lastFlushedTextByAgent.delete(agentId);
+    runtime.needsNewAssistantBlock.delete(agentId);
 
     const handle = runtime.flushHandleByAgent.get(agentId);
     if (handle) {
@@ -757,6 +884,7 @@ export function useOpencodeTranscriptBridge() {
 
   const sendMessage = useCallback(async (text: string) => {
     const context = activeContext;
+    
     if (!context || !text.trim()) return;
     recordChatBridgeEvent('outgoing:sendMessage');
 
@@ -802,6 +930,7 @@ export function useOpencodeTranscriptBridge() {
     runtime.filePathsByAgent.delete(context.agent.id);
     runtime.bufferedTextByAgent.delete(context.agent.id);
     runtime.lastFlushedTextByAgent.delete(context.agent.id);
+    runtime.needsNewAssistantBlock.delete(context.agent.id);
 
     const handle = runtime.flushHandleByAgent.get(context.agent.id);
     if (handle) {
@@ -810,30 +939,46 @@ export function useOpencodeTranscriptBridge() {
     }
 
     try {
-      if (context.isCeo) {
-        await window.vibeAPI.ceo.ensure({
-          agentId: context.agent.id,
-          agentSlug: context.agent.catalogSlug,
-          workspaceDirectory: '',
-        });
-        await window.vibeAPI.ceo.subscribe();
-        await window.vibeAPI.ceo.send({
-          agentId: context.agent.id,
+      // Se temos uma sessão ativa, usar session.prompt diretamente
+      if (activeSessionId) {
+        console.log('[TranscriptBridge] Using active session:', activeSessionId);
+        
+        // Subscribe to events first
+        await window.vibeAPI.session.subscribe(activeSessionId);
+        
+        // Send message to specific session
+        await window.vibeAPI.session.prompt({
+          sessionId: activeSessionId,
           message: text,
+          agentSlug: context.agent.catalogSlug,
         });
       } else {
-        await window.vibeAPI.agent.ensure({
-          agentId: context.agent.id,
-          teamId: context.team?.id,
-          role: context.agent.role,
-          agentSlug: context.agent.catalogSlug,
-          workspaceDirectory: context.team?.projectPath,
-        });
-        await window.vibeAPI.agent.subscribe(context.agent.id);
-        await window.vibeAPI.agent.send({
-          agentId: context.agent.id,
-          message: text,
-        });
+        // Fallback: usar o fluxo padrão (cria/usa sessão padrão do agente)
+        if (context.isCeo) {
+          await window.vibeAPI.ceo.ensure({
+            agentId: context.agent.id,
+            agentSlug: context.agent.catalogSlug,
+            workspaceDirectory: '',
+          });
+          await window.vibeAPI.ceo.subscribe();
+          await window.vibeAPI.ceo.send({
+            agentId: context.agent.id,
+            message: text,
+          });
+        } else {
+          await window.vibeAPI.agent.ensure({
+            agentId: context.agent.id,
+            teamId: context.team?.id,
+            role: context.agent.role,
+            agentSlug: context.agent.catalogSlug,
+            workspaceDirectory: context.team?.projectPath,
+          });
+          await window.vibeAPI.agent.subscribe(context.agent.id);
+          await window.vibeAPI.agent.send({
+            agentId: context.agent.id,
+            message: text,
+          });
+        }
       }
     } catch (error) {
       handleError({
@@ -841,7 +986,7 @@ export function useOpencodeTranscriptBridge() {
         error,
       });
     }
-  }, [activeContext, actions.createTurn, emit, handleError]);
+  }, [activeContext, activeSessionId, actions.createTurn, emit, handleError]);
 
   const header = useMemo(() => {
     if (!activeContext) {

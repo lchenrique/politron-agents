@@ -31,16 +31,14 @@ const NavItem = ({ icon, label, active, onClick, badge, color, className }: NavI
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm group ${
-        active
-          ? "bg-ide-indigo/10 text-ide-indigo"
-          : "text-ide-text-dim hover:bg-white/5 hover:text-ide-text"
-      } ${className}`}
+      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm group ${active
+        ? "bg-ide-indigo/10 text-ide-indigo"
+        : "text-ide-text-dim hover:bg-white/5 hover:text-ide-text"
+        } ${className}`}
     >
       <div
-        className={`shrink-0 group-hover:scale-110 ${
-          active ? "text-ide-indigo" : "text-ide-text-dim"
-        }`}
+        className={`shrink-0 group-hover:scale-110 ${active ? "text-ide-indigo" : "text-ide-text-dim"
+          }`}
         style={color ? { color } : {}}
       >
         {icon}
@@ -80,17 +78,6 @@ export const AppSidebar = ({ onAddProject }: { onAddProject: () => void }) => {
 
   return (
     <div className="w-[260px] h-full flex flex-col glass-sidebar border-r border-ide-border/10 z-20">
-      <div className="h-14 flex items-center px-4 gap-3">
-        <div className="w-8 h-8 rounded-lg bg-ide-indigo flex items-center justify-center shadow-lg shadow-ide-indigo/20">
-          <Target className="text-white" size={18} />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-sm font-bold text-ide-text tracking-tight">POLITRON</span>
-          <span className="text-[10px] text-ide-text-dim font-medium uppercase tracking-tighter opacity-50">
-            Enterprise AI
-          </span>
-        </div>
-      </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 custom-scrollbar">
         {sidebarView === "root" ? (
@@ -104,7 +91,7 @@ export const AppSidebar = ({ onAddProject }: { onAddProject: () => void }) => {
                 onClick={() => setActiveAgentTab(workspace.globalCeoAgent.id)}
                 badge="Online"
               />
-              <NavItem icon={<ShoppingBag size={18} />} label="Mercado de Agentes" onClick={() => {}} />
+              <NavItem icon={<ShoppingBag size={18} />} label="Mercado de Agentes" onClick={() => { }} />
             </div>
 
             <SectionHeader label="Projetos" onAction={onAddProject} />
@@ -130,7 +117,7 @@ export const AppSidebar = ({ onAddProject }: { onAddProject: () => void }) => {
 
             <SectionHeader label="Sistema" />
             <div className="space-y-1">
-              <NavItem icon={<Settings size={18} />} label="Configurações" onClick={() => {}} />
+              <NavItem icon={<Settings size={18} />} label="Configurações" onClick={() => { }} />
             </div>
           </>
         ) : (

@@ -295,7 +295,7 @@ const toggleTeamStatusAtom = atom(null, async (get, set, teamId: string) => {
 });
 
 export const useWorkspaceSetActiveProject = () => {
-  const setActiveProject = useSetAtom(setActiveProjectAtom as never);
+  const setActiveProject = useSetAtom(setActiveProjectAtom);
   return useCallback(
     (id: string) => {
       setActiveProject(id);
@@ -305,7 +305,7 @@ export const useWorkspaceSetActiveProject = () => {
 };
 
 export const useWorkspaceSetActiveAgentTab = () => {
-  const setActiveAgentTab = useSetAtom(setActiveAgentTabAtom as never);
+  const setActiveAgentTab = useSetAtom(setActiveAgentTabAtom);
   return useCallback(
     (id: string) => {
       setActiveAgentTab(id);
@@ -315,7 +315,7 @@ export const useWorkspaceSetActiveAgentTab = () => {
 };
 
 export const useWorkspaceToggleTeamStatus = () => {
-  const toggleTeamStatus = useSetAtom(toggleTeamStatusAtom as never);
+  const toggleTeamStatus = useSetAtom(toggleTeamStatusAtom);
   return useCallback(
     (teamId: string) => {
       toggleTeamStatus(teamId);
@@ -333,7 +333,7 @@ export const useWorkspaceSelectCeo = () => {
 };
 
 export const useWorkspaceAddProject = () => {
-  const addProject = useSetAtom(addProjectAtom as never);
+  const addProject = useSetAtom(addProjectAtom);
   return useCallback(
     (name: string, teamName: string, color: string, projectPath: string) => {
       return addProject({ name, teamName, color, projectPath });
@@ -343,7 +343,7 @@ export const useWorkspaceAddProject = () => {
 };
 
 export const useWorkspaceAddAgentToTeam = () => {
-  const addAgentToTeam = useSetAtom(addAgentToTeamAtom as never);
+  const addAgentToTeam = useSetAtom(addAgentToTeamAtom);
   return useCallback(
     (teamId: string, template: AgentTemplate) => {
       addAgentToTeam({ teamId, template });
@@ -360,34 +360,39 @@ export const useWorkspaceRegisterCeoHireRequest = () => {
 
 export const useWorkspaceEnterProject = () => {
   const workspace = useWorkspaceState();
-  const setProjectId = useSetAtom(activeProjectIdAtom as never);
-  const setTeamId = useSetAtom(activeTeamIdAtom as never);
-  const setSidebarView = useSetAtom(sidebarViewAtom as never);
-  const setAgentTabId = useSetAtom(activeAgentTabIdAtom as never);
+  const setWorkspace = useSetAtom(workspaceAtom);
 
   return useCallback(
     (id: string) => {
       const project = workspace.projects.find((item) => item.id === id);
       if (!project) return;
 
-      setProjectId(id);
-      setTeamId(project.teamId);
-      setSidebarView("project");
-
       const team = workspace.teams.find((item) => item.id === project.teamId);
-      if (team) {
-        setAgentTabId(team.techLeadAgentId || team.agents[0]?.id || null);
-      }
+
+      setWorkspace({
+        ...workspace,
+        activeProjectId: id,
+        activeTeamId: project.teamId,
+        activeAgentTabId: team?.techLeadAgentId || team?.agents[0]?.id || workspace.globalCeoAgent.id,
+      });
     },
-    [workspace, setProjectId, setTeamId, setSidebarView, setAgentTabId]
+    [workspace, setWorkspace]
   );
 };
 
 export const useWorkspaceBackToRoot = () => {
-  const setSidebarView = useSetAtom(sidebarViewAtom as never);
+  const workspace = useWorkspaceState();
+  const setWorkspace = useSetAtom(workspaceAtom);
+
   return useCallback(() => {
-    setSidebarView("root");
-  }, [setSidebarView]);
+    if (!workspace) return;
+    setWorkspace({
+      ...workspace,
+      activeProjectId: null,
+      activeTeamId: null,
+      activeAgentTabId: workspace.globalCeoAgent.id,
+    });
+  }, [workspace, setWorkspace]);
 };
 
 function buildWorkspaceFromBackendTeams(backendTeams: BackendTeam[]): Workspace {
@@ -440,7 +445,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
 
     function handleTeamAgentAdded(data: { teamId: string; agent: BackendAgent }) {
       const agent = mapBackendAgentToFrontend(data.agent);
-      setWorkspace((prev) => {
+      setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -452,7 +457,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     function handleTeamAgentRemoved(data: { teamId: string; agentId: string }) {
-      setWorkspace((prev) => {
+      setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -466,7 +471,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     function handleTeamPaused(data: { teamId: string }) {
-      setWorkspace((prev) => {
+      setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -476,7 +481,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     function handleTeamResumed(data: { teamId: string }) {
-      setWorkspace((prev) => {
+      setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -486,7 +491,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     function handlePipelineStatusChanged(data: { teamId: string; tasks?: BackendPipelineTask[] }) {
-      setWorkspace((prev) => {
+      setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -498,7 +503,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     function handleAgentStatus(data: { agentId: string; status: Agent["status"] }) {
-      setWorkspace((prev) => {
+      setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
 
         if (data.agentId === prev.globalCeoAgent.id) {

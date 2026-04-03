@@ -25,7 +25,7 @@ const npmGlobalPath = join(userProfilePath, 'AppData', 'Roaming', 'npm')
 if (existsSync(npmGlobalPath)) {
   // Add npm global bin to PATH
   process.env.PATH = `${npmGlobalPath};${process.env.PATH}`
-  
+
   // Find and add the actual opencode binary to PATH
   const opencodeBinPath = join(npmGlobalPath, 'node_modules', 'opencode-ai', 'node_modules', 'opencode-windows-x64', 'bin')
   if (existsSync(opencodeBinPath)) {
@@ -194,7 +194,7 @@ app.whenReady().then(async () => {
 
   console.log('[Main] PATH check:', process.env.PATH?.split(';').filter(p => p.includes('npm') || p.includes('Roaming')))
   console.log('[Main] USERPROFILE:', process.env.USERPROFILE)
-  
+
   openCodeSdkService.initialize()
     .then(async () => {
       // Pre-warm the CEO session immediately after SDK is ready so the first

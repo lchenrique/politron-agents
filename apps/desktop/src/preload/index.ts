@@ -191,7 +191,23 @@ const api = {
   onWorktreeError: (callback: EventCallback) => onChannel('vibe:worktree:error', callback),
   onLockAcquired: (callback: EventCallback) => onChannel('vibe:lock:acquired', callback),
   onLockReleased: (callback: EventCallback) => onChannel('vibe:lock:released', callback),
-  onLockDenied: (callback: EventCallback) => onChannel('vibe:lock:denied', callback)
+  onLockDenied: (callback: EventCallback) => onChannel('vibe:lock:denied', callback),
+
+  session: {
+    list: () => ipcRenderer.invoke('vibe:session:list'),
+    create: (input?: { directory?: string; agentSlug?: string; systemPrompt?: string }) => 
+      ipcRenderer.invoke('vibe:session:create', input),
+    delete: (sessionId: string) => 
+      ipcRenderer.invoke('vibe:session:delete', sessionId),
+    get: (sessionId: string) => 
+      ipcRenderer.invoke('vibe:session:get', sessionId),
+    messages: (sessionId: string) => 
+      ipcRenderer.invoke('vibe:session:messages', sessionId),
+    prompt: (input: { sessionId: string; message: string; agentSlug?: string; systemPrompt?: string }) => 
+      ipcRenderer.invoke('vibe:session:prompt', input),
+    subscribe: (sessionId: string) => 
+      ipcRenderer.invoke('vibe:session:subscribe', sessionId)
+  }
 }
 
 contextBridge.exposeInMainWorld('vibeAPI', api)

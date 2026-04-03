@@ -87,6 +87,15 @@ interface Window {
  onWorktreeError: (callback: (data: any) => void) => void;
  onLockAcquired: (callback: (data: any) => void) => void;
  onLockReleased: (callback: (data: any) => void) => void;
- onLockDenied: (callback: (data: any) => void) => void;
- };
+  onLockDenied: (callback: (data: any) => void) => void;
+  session: {
+    list: () => Promise<any[]>;
+    create: (input?: { directory?: string; agentSlug?: string; systemPrompt?: string }) => Promise<any>;
+    delete: (sessionId: string) => Promise<boolean>;
+    get: (sessionId: string) => Promise<any>;
+    messages: (sessionId: string) => Promise<any[]>;
+    prompt: (input: { sessionId: string; message: string; agentSlug?: string; systemPrompt?: string }) => Promise<{ success: boolean }>;
+    subscribe: (sessionId: string) => Promise<void>;
+  };
+  };
 }
