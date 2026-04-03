@@ -105,6 +105,7 @@ type RuntimeState = {
   filePathsByAgent: Map<string, Set<string>>;
   bufferedTextByAgent: Map<string, string>;
   lastFlushedTextByAgent: Map<string, string>;
+  textOffsetByAgent: Map<string, number>;
   flushHandleByAgent: Map<string, number>;
   // Flag: quando true, próximo texto do agente cria um NOVO assistant block
   // (permite que texto após tools apareça DEPOIS das tools, não antes)
@@ -202,6 +203,7 @@ export function useOpencodeTranscriptBridge() {
     filePathsByAgent: new Map(),
     bufferedTextByAgent: new Map(),
     lastFlushedTextByAgent: new Map(),
+    textOffsetByAgent: new Map(),
     flushHandleByAgent: new Map(),
     needsNewAssistantBlock: new Map(),
   });
@@ -439,16 +441,22 @@ export function useOpencodeTranscriptBridge() {
             data: { status: 'success' } as Partial<AssistantMessageBlock>,
           });
         }
+        
+        // Antes de deletar a referência, salvamos o offset do que já foi "exibido"
+        const contentSoFar = runtime.lastFlushedTextByAgent.get(agentId) || "";
+        runtime.textOffsetByAgent.set(agentId, contentSoFar.length);
+
         // Limpar o mapa para forçar criação de um novo assistant block
         runtime.assistantBlockByAgent.delete(agentId);
-        runtime.lastFlushedTextByAgent.delete(agentId);
+        // lastFlushedText continua com o texto completo para mantermos o histórico
         // Resetar o flag
         runtime.needsNewAssistantBlock.set(agentId, false);
       }
 
       const assistantBlockId = ensureAssistantBlock(agentId);
       const thinkingBlockId = runtime.thinkingBlockByAgent.get(agentId);
-      const previousFlushedText = runtime.lastFlushedTextByAgent.get(agentId) ?? '';
+      const previousTotalFlushed = runtime.lastFlushedTextByAgent.get(agentId) ?? '';
+      const offsetInTurn = runtime.textOffsetByAgent.get(agentId) ?? 0;
 
       if (thinkingBlockId && !runtime.thinkingSettledByAgent.has(agentId)) {
         emit({
@@ -459,10 +467,14 @@ export function useOpencodeTranscriptBridge() {
         runtime.thinkingSettledByAgent.add(agentId);
       }
 
-      if (bufferedText === previousFlushedText) return;
+      if (bufferedText === previousTotalFlushed) return;
 
-      if (previousFlushedText && bufferedText.startsWith(previousFlushedText)) {
-        const delta = bufferedText.slice(previousFlushedText.length);
+      // O texto que deve aparecer neste bloco específico é apenas após o offset
+      const blockBufferedText = bufferedText.slice(offsetInTurn);
+      const blockPreviousFlushed = previousTotalFlushed.slice(offsetInTurn);
+
+      if (blockPreviousFlushed && blockBufferedText.startsWith(blockPreviousFlushed)) {
+        const delta = blockBufferedText.slice(blockPreviousFlushed.length);
         if (delta) {
           emit({
             type: 'content-appended',
@@ -475,7 +487,7 @@ export function useOpencodeTranscriptBridge() {
           type: 'block-updated',
           blockId: assistantBlockId,
           data: {
-            content: bufferedText,
+            content: blockBufferedText,
             status: 'streaming',
           } as Partial<AssistantMessageBlock>,
         });
@@ -568,6 +580,7 @@ export function useOpencodeTranscriptBridge() {
     runtime.filePathsByAgent.delete(agentId);
     runtime.bufferedTextByAgent.delete(agentId);
     runtime.lastFlushedTextByAgent.delete(agentId);
+    runtime.textOffsetByAgent.delete(agentId);
     runtime.flushHandleByAgent.delete(agentId);
     runtime.needsNewAssistantBlock.delete(agentId);
   }, [emit, flushBufferedText]);
@@ -864,7 +877,7 @@ export function useOpencodeTranscriptBridge() {
       onAgentActivity?: (cb: (data: AgentActivityEvent) => void) => () => void;
     };
 
-    const unsubscribers = [
+    const unsubscribers = ([
       window.vibeAPI.onAgentChunk(handleChunk),
       maybeExtendedApi.onAgentReasoning?.(handleReasoning),
       maybeExtendedApi.onAgentTool?.(handleTool),
@@ -873,7 +886,7 @@ export function useOpencodeTranscriptBridge() {
       window.vibeAPI.onAgentDone(handleDone),
       window.vibeAPI.onAgentError(handleError),
       window.vibeAPI.onPipelineUpdate(handlePipelineUpdate),
-    ].filter(Boolean) as Array<() => void>;
+    ].filter((u) => typeof u === 'function') as unknown) as Array<() => void>;
 
     return () => {
       for (const unsubscribe of unsubscribers) {
@@ -881,6 +894,7 @@ export function useOpencodeTranscriptBridge() {
       }
     };
   }, [handleActivity, handleChunk, handleDone, handleError, handlePipelineUpdate, handleReasoning, handleStatus, handleTool]);
+
 
   const sendMessage = useCallback(async (text: string) => {
     const context = activeContext;

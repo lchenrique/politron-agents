@@ -1,21 +1,18 @@
 /**
  * SlashCommandMenu - Autocomplete menu for / commands
- *
- * Performance:
- * - Only rendered when active
- * - Categorized commands
- * - Keyboard navigation support
+ * 
+ * Redesigned to show command on left and description on right.
  */
 
-import React, { memo, useEffect, useRef, useState } from 'react';
-import { Search, FileCode, Terminal, MessageSquare, Settings } from 'lucide-react';
+import React, { memo, useEffect, useRef, useState, useMemo } from 'react';
+import { Search, Terminal, MessageSquare, Shield, Box, Globe, Copy, LogOut, Maximize } from 'lucide-react';
 import clsx from 'clsx';
 
 interface SlashCommand {
   id: string;
   name: string;
   description: string;
-  category: 'file' | 'terminal' | 'chat' | 'settings';
+  category: 'builtin' | 'user - Skill';
   icon?: React.ReactNode;
 }
 
@@ -28,42 +25,26 @@ interface SlashCommandMenuProps {
 }
 
 const commands: SlashCommand[] = [
-  { id: 'read', name: '/read', description: 'Ler conteúdo de um arquivo', category: 'file' },
-  { id: 'edit', name: '/edit', description: 'Editar arquivo existente', category: 'file' },
-  { id: 'create', name: '/create', description: 'Criar novo arquivo', category: 'file' },
-  { id: 'terminal', name: '/terminal', description: 'Executar comando no terminal', category: 'terminal' },
-  { id: 'bash', name: '/bash', description: 'Executar script bash', category: 'terminal' },
-  { id: 'ask', name: '/ask', description: 'Fazer uma pergunta ao agente', category: 'chat' },
-  { id: 'explain', name: '/explain', description: 'Explicar código seleccionado', category: 'chat' },
-  { id: 'review', name: '/review', description: 'Solicitar code review', category: 'chat' },
-  { id: 'config', name: '/config', description: 'Configurações do agente', category: 'settings' },
-  { id: 'model', name: '/model', description: 'Trocar modelo de IA', category: 'settings' },
+  { id: 'agents', name: '/agents', description: 'Switch agent', category: 'builtin' },
+  { id: 'animation', name: '/animation-systems', description: 'Use when designing or animating systems', category: 'user - Skill' },
+  { id: 'browser', name: '/browser-use', description: 'Automates browser interaction', category: 'user - Skill' },
+  { id: 'cancel', name: '/cancel-ralph', description: 'Cancel active Ralph Loop', category: 'builtin' },
+  { id: 'compact', name: '/compact', description: 'Compact session', category: 'builtin' },
+  { id: 'connect', name: '/connect', description: 'Connect provider', category: 'builtin' },
+  { id: 'copy', name: '/copy', description: 'Copy session transcript', category: 'builtin' },
+  { id: 'cover', name: '/cover-image', description: 'Generate article cover image', category: 'user - Skill' },
+  { id: 'editor', name: '/editor', description: 'Open editor view', category: 'builtin' },
+  { id: 'exit', name: '/exit', description: 'Exit the application', category: 'builtin' },
 ];
 
-const getCategoryIcon = (category: SlashCommand['category']) => {
-  switch (category) {
-    case 'file':
-      return <FileCode className="w-4 h-4 text-indigo-400" />;
-    case 'terminal':
-      return <Terminal className="w-4 h-4 text-emerald-400" />;
-    case 'chat':
-      return <MessageSquare className="w-4 h-4 text-amber-400" />;
-    case 'settings':
-      return <Settings className="w-4 h-4 text-zinc-400" />;
-  }
-};
-
-const getCategoryColor = (category: SlashCommand['category']) => {
-  switch (category) {
-    case 'file':
-      return 'text-indigo-400';
-    case 'terminal':
-      return 'text-emerald-400';
-    case 'chat':
-      return 'text-amber-400';
-    case 'settings':
-      return 'text-zinc-400';
-  }
+const getIcon = (name: string) => {
+  if (name.includes('agents')) return <Shield className="w-4 h-4 text-amber-400" />;
+  if (name.includes('animation')) return <Box className="w-4 h-4 text-purple-400" />;
+  if (name.includes('browser')) return <Globe className="w-4 h-4 text-blue-400" />;
+  if (name.includes('copy')) return <Copy className="w-4 h-4 text-zinc-400" />;
+  if (name.includes('exit')) return <LogOut className="w-4 h-4 text-red-400" />;
+  if (name.includes('editor')) return <Maximize className="w-4 h-4 text-emerald-400" />;
+  return <Terminal className="w-4 h-4 text-zinc-400" />;
 };
 
 export const SlashCommandMenu = memo(({
@@ -76,28 +57,20 @@ export const SlashCommandMenu = memo(({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Filter commands based on search query
-  const filteredCommands = searchQuery
-    ? commands.filter(
-        (cmd) =>
-          cmd.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          cmd.description.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : commands;
+  const filteredCommands = useMemo(() => 
+    searchQuery
+      ? commands.filter(
+          (cmd) =>
+            cmd.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            cmd.description.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : commands
+  , [searchQuery]);
 
-  // Group by category
-  const groupedCommands = filteredCommands.reduce((acc, cmd) => {
-    if (!acc[cmd.category]) acc[cmd.category] = [];
-    acc[cmd.category].push(cmd);
-    return acc;
-  }, {} as Record<string, SlashCommand[]>);
-
-  // Reset selection when items change
   useEffect(() => {
     setSelectedIndex(0);
   }, [filteredCommands.length]);
 
-  // Keyboard navigation
   useEffect(() => {
     if (!isOpen) return;
 
@@ -128,92 +101,78 @@ export const SlashCommandMenu = memo(({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, filteredCommands, selectedIndex, onSelect, onClose]);
 
-  // Click outside to close
   useEffect(() => {
     if (!isOpen) return;
-
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  let globalIndex = 0;
-
   return (
     <div
       ref={menuRef}
       className={clsx(
-        'fixed z-50',
-        'w-80 max-h-96 overflow-y-auto',
-        'bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl',
-        'animate-in fade-in slide-in-from-top-2 duration-150'
+        'fixed z-[100]',
+        'w-[500px] max-h-96 overflow-y-auto',
+        'bg-ide-surface-2 border border-ide-indigo/20 rounded-xl shadow-2xl backdrop-blur-xl',
+        'animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200'
       )}
       style={{
         left: position.x,
-        top: position.y + 24,
+        bottom: `calc(100vh - ${position.y}px)`,
       }}
     >
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-zinc-800">
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
+      <div className="px-3 py-2 border-b border-ide-border bg-ide-surface/50">
+        <div className="flex items-center gap-2 text-[10px] font-bold text-ide-text-dim uppercase tracking-widest">
           <Search className="w-3 h-3" />
-          <span>Comandos disponíveis</span>
+          <span>Comandos</span>
         </div>
       </div>
 
-      {/* Commands grouped by category */}
       <div className="py-1">
-        {Object.entries(groupedCommands).map(([category, cmds]) => (
-          <div key={category}>
-            <div className="px-3 py-1.5 text-xs font-medium text-zinc-500 uppercase tracking-wider bg-zinc-950/50">
-              {category}
-            </div>
-            {cmds.map((cmd) => {
-              const index = globalIndex++;
-              return (
-                <button
-                  key={cmd.id}
-                  onClick={() => onSelect(cmd)}
-                  className={clsx(
-                    'w-full flex items-start gap-3 px-3 py-2 text-left',
-                    'hover:bg-zinc-800 transition-colors',
-                    index === selectedIndex && 'bg-zinc-800'
-                  )}
-                >
-                  <div className="flex-shrink-0 mt-0.5">
-                    {getCategoryIcon(cmd.category)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className={clsx('text-sm font-mono font-medium', getCategoryColor(cmd.category))}>
-                      {cmd.name}
-                    </div>
-                    <div className="text-xs text-zinc-500 mt-0.5">
-                      {cmd.description}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        ))}
-
-        {filteredCommands.length === 0 && (
-          <div className="px-3 py-4 text-center text-sm text-zinc-500">
+        {filteredCommands.length === 0 ? (
+          <div className="px-3 py-4 text-center text-sm text-ide-text-dim">
             Nenhum comando encontrado
           </div>
+        ) : (
+          filteredCommands.map((cmd, index) => (
+            <button
+              key={cmd.id}
+              onClick={() => onSelect(cmd)}
+              className={clsx(
+                'w-full flex items-center justify-between gap-4 px-3 py-2 text-left transition-all',
+                index === selectedIndex ? 'bg-ide-indigo/10 border-l-2 border-ide-indigo' : 'hover:bg-ide-surface-3'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">{getIcon(cmd.name)}</div>
+                <div className="text-sm font-mono font-bold text-ide-text">
+                  {cmd.name}
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2 text-right overflow-hidden">
+                <span className="text-[10px] text-ide-text-dim font-bold uppercase truncate max-w-[120px] opacity-40">
+                  ({cmd.category})
+                </span>
+                <span className="text-xs text-ide-text-dim truncate">
+                  {cmd.description}
+                </span>
+              </div>
+            </button>
+          ))
         )}
       </div>
 
-      {/* Footer hint */}
-      <div className="px-3 py-2 border-t border-zinc-800 text-xs text-zinc-600">
-        ↑↓ navegar • Enter selecionar • Esc fechar
+      <div className="px-3 py-2 border-t border-ide-border bg-ide-surface/30 text-[10px] text-ide-text-dim/50 font-bold uppercase flex justify-between">
+        <span>↑↓ navegar • Enter selecionar</span>
+        <span>Esc fechar</span>
       </div>
     </div>
   );

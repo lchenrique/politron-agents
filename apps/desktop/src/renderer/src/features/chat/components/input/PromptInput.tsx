@@ -1,5 +1,5 @@
 import React, { KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { CornerDownLeft } from 'lucide-react';
+import { CornerDownLeft, AtSign, Slash, ShieldAlert } from 'lucide-react';
 import { MentionMenu } from './MentionMenu';
 import { PromptToolbar } from './PromptToolbar';
 import { SlashCommandMenu } from './SlashCommandMenu';
@@ -22,30 +22,33 @@ export function PromptInput({
   selectedModel = 'gemini-1.5-pro-exp',
 }: PromptInputProps) {
   const [text, setText] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [slashQuery, setSlashQuery] = useState('');
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Debounced auto-resize to avoid layout thrashing on each keystroke
+  // Auto-resize logic that correctly handles shrinking
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    // Only resize if needed - skip if height hasn't changed
-    const newHeight = Math.min(textarea.scrollHeight, 250);
-    if (textarea.offsetHeight !== newHeight) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${newHeight}px`;
-    }
+    textarea.style.height = 'auto';
+    const newHeight = Math.min(textarea.scrollHeight, 200); 
+    textarea.style.height = `${newHeight}px`;
   }, [text]);
 
   const updateMenuPosition = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    const rect = textarea.getBoundingClientRect();
-    setMenuPosition({ x: rect.left, y: rect.top });
+    const rect = textarea.parentElement?.getBoundingClientRect();
+    if (!rect) return;
+
+    // Position menu above the input bar
+    setMenuPosition({ x: rect.left, y: rect.top - 8 });
   }, []);
 
   const closeMenus = useCallback(() => {
@@ -71,25 +74,29 @@ export function PromptInput({
     const cursorPos = textarea.selectionStart;
     const textBeforeCursor = newText.slice(0, cursorPos);
 
-    const lastSlash = textBeforeCursor.lastIndexOf('/');
-    const shouldOpenSlash =
-      lastSlash !== -1 &&
-      lastSlash === textBeforeCursor.length - 1 &&
-      (lastSlash === 0 || textBeforeCursor[lastSlash - 1] === ' ' || textBeforeCursor[lastSlash - 1] === '\n');
+    // Mention Logic
+    const lastAt = textBeforeCursor.lastIndexOf('@');
+    const textAfterAt = textBeforeCursor.slice(lastAt + 1);
+    const hasMentionQuery = lastAt !== -1 && !textAfterAt.includes(' ');
 
-    if (shouldOpenSlash) {
-      setShowSlashMenu(true);
-      setShowMentionMenu(false);
+    if (hasMentionQuery) {
+      setMentionQuery(textAfterAt);
+      setShowMentionMenu(true);
+      setShowSlashMenu(false);
       updateMenuPosition();
       return;
     }
 
-    const lastAt = textBeforeCursor.lastIndexOf('@');
-    const hasMentionQuery = lastAt !== -1 && !textBeforeCursor.slice(lastAt + 1).includes(' ');
+    // Command Logic
+    const lastSlash = textBeforeCursor.lastIndexOf('/');
+    const textAfterSlash = textBeforeCursor.slice(lastSlash + 1);
+    const isAtStart = lastSlash === 0 || textBeforeCursor[lastSlash - 1] === ' ' || textBeforeCursor[lastSlash - 1] === '\n';
+    const hasSlashQuery = lastSlash !== -1 && isAtStart && !textAfterSlash.includes(' ');
 
-    if (hasMentionQuery) {
-      setShowMentionMenu(true);
-      setShowSlashMenu(false);
+    if (hasSlashQuery) {
+      setSlashQuery(textAfterSlash);
+      setShowSlashMenu(true);
+      setShowMentionMenu(false);
       updateMenuPosition();
       return;
     }
@@ -105,9 +112,13 @@ export function PromptInput({
     }
 
     if (e.key === 'Escape') {
-      closeMenus();
+      if (showMentionMenu || showSlashMenu) {
+        closeMenus();
+      } else {
+        textareaRef.current?.blur();
+      }
     }
-  }, [closeMenus, submit]);
+  }, [closeMenus, submit, showMentionMenu, showSlashMenu]);
 
   const handleMentionSelect = useCallback((item: { name: string }) => {
     const textarea = textareaRef.current;
@@ -135,46 +146,111 @@ export function PromptInput({
     textarea.focus();
   }, [text]);
 
-  return (
-    <div className="flex flex-col w-full max-w-4xl mx-auto rounded-xl border border-zinc-700 bg-zinc-900 shadow-xl focus-within:ring-2 focus-within:ring-indigo-500/50 focus-within:border-indigo-500 transition-all group overflow-hidden">
-      <PromptToolbar
-        onAttach={onAttach}
-        onMention={() => setShowMentionMenu((current) => !current)}
-        onSlashCommand={() => setShowSlashMenu((current) => !current)}
-        onModelChange={onModelChange}
-        selectedModel={selectedModel}
-      />
+  const isActive = isFocused || text.length > 0;
 
-      <div className="relative px-4 py-3 flex items-end">
+  return (
+    <div 
+      className={`
+        flex flex-col w-full max-w-4xl mx-auto rounded-3xl border transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) overflow-hidden
+        ${isActive 
+          ? 'bg-ide-surface-2 border-ide-indigo/30 shadow-2xl ring-1 ring-ide-indigo/10 translate-y-[-8px]' 
+          : 'bg-ide-surface/80 border-ide-border shadow-lg hover:border-ide-border-subtle backdrop-blur-md'
+        }
+      `}
+    >
+      {/* Toolbar Area */}
+      <div className={`
+        overflow-hidden transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
+        ${isActive ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'}
+      `}>
+        <PromptToolbar
+          onAttach={onAttach}
+          onMention={() => {
+            setText(t => t + (t.endsWith(' ') || t === '' ? '' : ' ') + '@');
+            setMentionQuery('');
+            setShowMentionMenu(true);
+            setShowSlashMenu(false);
+            updateMenuPosition();
+          }}
+          onSlashCommand={() => {
+            setText(t => t + (t.endsWith(' ') || t === '' ? '' : ' ') + '/');
+            setSlashQuery('');
+            setShowSlashMenu(true);
+            setShowMentionMenu(false);
+            updateMenuPosition();
+          }}
+          onModelChange={onModelChange}
+          selectedModel={selectedModel}
+        />
+      </div>
+
+      {/* Main Container - Centered Vertically */}
+      <div className={`relative px-6 flex items-center transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) ${isActive ? 'py-5' : 'py-3'}`}>
         <textarea
           ref={textareaRef}
           value={text}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           onChange={(e) => handleTextChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="O que vamos construir hoje?"
-          className="w-full bg-transparent border-none outline-none resize-none text-zinc-200 placeholder:text-zinc-600 font-sans leading-relaxed max-h-[250px] overflow-y-auto no-scrollbar"
+          className="w-full bg-transparent border-none outline-none resize-none text-ide-text placeholder:text-ide-text-dim/40 font-sans text-[16px] leading-[1.6] py-1 max-h-[200px] overflow-y-auto no-scrollbar scroll-smooth"
           rows={1}
-          autoFocus
         />
 
         <button
           onClick={submit}
           disabled={!text.trim() || showMentionMenu || showSlashMenu}
-          className="flex-shrink-0 ml-2 p-2 rounded-lg bg-indigo-600 text-white disabled:bg-zinc-800 disabled:text-zinc-600 transition-colors"
+          className={`
+            flex-shrink-0 ml-4 p-3.5 rounded-2xl transition-all duration-500
+            ${text.trim() 
+              ? 'bg-ide-indigo text-white shadow-lg shadow-ide-indigo/30 scale-100 hover:opacity-90 active:scale-95' 
+              : 'bg-ide-surface-3 text-ide-text-dim scale-90 opacity-20 pointer-events-none'
+            }
+          `}
         >
-          <CornerDownLeft className="w-4 h-4" />
+          <CornerDownLeft className="w-5 h-5 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
 
-      <div className="flex justify-between items-center px-4 py-2 text-[11px] text-zinc-600 bg-zinc-950/30">
-        <span>Use Shift + Enter para quebrar linha</span>
-        <span>A IA pode cometer erros. Revise o código.</span>
+      {/* Simplified and Fix Footer */}
+      <div className={`
+        overflow-hidden transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
+        ${isActive 
+          ? 'max-h-14 opacity-100 bg-ide-bg border-t border-ide-border' 
+          : 'max-h-0 opacity-0'
+        }
+      `}>
+        <div className="flex justify-between items-center px-6 py-3">
+          <div className="flex items-center gap-5">
+            <div className="flex items-center gap-1.5 group cursor-default">
+              <kbd className="px-1.5 py-0.5 rounded-md bg-ide-surface border border-ide-border text-ide-text-dim text-[10px] font-bold">Shift + Enter</kbd>
+              <span className="text-[10px] text-ide-text-dim uppercase tracking-wider font-bold group-hover:text-ide-text transition-colors">Linha</span>
+            </div>
+            
+            <div className="flex items-center gap-1.5 group cursor-default">
+              <AtSign className="w-3 h-3 text-ide-text-dim group-hover:text-ide-indigo transition-colors" />
+              <span className="text-[10px] text-ide-text-dim uppercase tracking-wider font-bold group-hover:text-ide-text transition-colors">Arquivo</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 group cursor-default">
+              <Slash className="w-3 h-3 text-ide-text-dim group-hover:text-ide-indigo transition-colors" />
+              <span className="text-[10px] text-ide-text-dim uppercase tracking-wider font-bold group-hover:text-ide-text transition-colors">Comandos</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-1.5 text-ide-text-dim/40 hover:text-ide-text-dim transition-colors cursor-default">
+            <ShieldAlert className="w-3 h-3" />
+            <span className="text-[9px] font-black uppercase tracking-widest whitespace-nowrap">IA Experimental</span>
+          </div>
+        </div>
       </div>
 
       {showMentionMenu && (
         <MentionMenu
           isOpen={showMentionMenu}
           position={menuPosition}
+          searchQuery={mentionQuery}
           onSelect={handleMentionSelect}
           onClose={() => setShowMentionMenu(false)}
         />
@@ -184,6 +260,7 @@ export function PromptInput({
         <SlashCommandMenu
           isOpen={showSlashMenu}
           position={menuPosition}
+          searchQuery={slashQuery}
           onSelect={handleSlashSelect}
           onClose={() => setShowSlashMenu(false)}
         />

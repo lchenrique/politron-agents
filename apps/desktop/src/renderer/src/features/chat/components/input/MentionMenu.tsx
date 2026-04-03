@@ -1,14 +1,11 @@
 /**
  * MentionMenu - Autocomplete menu for @ mentions
- *
- * Performance:
- * - Only rendered when active
- * - Virtualized list for large number of items
- * - Keyboard navigation support
+ * 
+ * Redesigned to show icon + name on left and metadata on right.
  */
 
-import React, { memo, useEffect, useRef, useState } from 'react';
-import { FileText, Hash, AtSign } from 'lucide-react';
+import React, { memo, useEffect, useRef, useState, useMemo } from 'react';
+import { FileCode, Shield, Hash, AtSign, Search, Box, Code2, AppWindow } from 'lucide-react';
 import clsx from 'clsx';
 
 interface MentionItem {
@@ -31,21 +28,25 @@ interface MentionMenuProps {
 // Mock items for demonstration
 const mockItems: MentionItem[] = [
   { id: '1', type: 'file', name: 'chatStore.ts', path: 'src/features/chat/store/chatStore.ts' },
-  { id: '2', type: 'file', name: 'AgentChatShell.tsx', path: 'src/features/chat/components/AgentChatShell.tsx' },
-  { id: '3', type: 'function', name: 'useChatStore', path: 'chatStore.ts' },
-  { id: '4', type: 'function', name: 'TranscriptViewport', path: 'TranscriptViewport.tsx' },
-  { id: '5', type: 'variable', name: 'blockIds', path: 'chatStore.ts' },
+  { id: '2', type: 'file', name: 'AgentChatShell.tsx', path: 'src/renderer/src/features/chat/components/shell' },
+  { id: '3', type: 'file', name: 'HireAgentModal.tsx', path: 'src/renderer/src/components/ide' },
+  { id: '4', type: 'file', name: 'UserMessageCard.tsx', path: 'src/renderer/src/features/chat/components/blocks' },
+  { id: '5', type: 'file', name: 'PromptInput.tsx', path: 'src/renderer/src/features/chat/components/input' },
+  { id: '6', type: 'function', name: 'useChatStore', path: 'chatStore.ts' },
+  { id: '7', type: 'symbol', name: 'TranscriptViewport', path: 'TranscriptViewport.tsx' },
+  { id: '8', type: 'variable', name: 'sessionId', path: 'chatStore.ts' },
 ];
 
-const getIcon = (type: MentionItem['type']) => {
-  switch (type) {
-    case 'file':
-      return <FileText className="w-4 h-4 text-zinc-400" />;
-    case 'function':
-      return <Hash className="w-4 h-4 text-indigo-400" />;
-    default:
-      return <AtSign className="w-4 h-4 text-zinc-400" />;
-  }
+const getIcon = (item: MentionItem) => {
+  const name = item.name.toLowerCase();
+  
+  if (name.endsWith('.tsx') || name.endsWith('.jsx')) return <Code2 className="w-4 h-4 text-blue-400" />;
+  if (name.endsWith('.ts') || name.endsWith('.js')) return <Box className="w-4 h-4 text-indigo-400" />;
+  if (name.endsWith('.md')) return <FileCode className="w-4 h-4 text-zinc-400" />;
+  if (item.type === 'function') return <Hash className="w-4 h-4 text-amber-400" />;
+  if (item.type === 'symbol') return <AppWindow className="w-4 h-4 text-emerald-400" />;
+  
+  return <AtSign className="w-4 h-4 text-zinc-400" />;
 };
 
 export const MentionMenu = memo(({
@@ -59,19 +60,19 @@ export const MentionMenu = memo(({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Filter items based on search query
-  const filteredItems = searchQuery
-    ? items.filter((item) =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : items;
+  const filteredItems = useMemo(() => 
+    searchQuery
+      ? items.filter((item) =>
+          item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (item.path && item.path.toLowerCase().includes(searchQuery.toLowerCase()))
+        )
+      : items
+  , [items, searchQuery]);
 
-  // Reset selection when items change
   useEffect(() => {
     setSelectedIndex(0);
   }, [filteredItems.length]);
 
-  // Keyboard navigation
   useEffect(() => {
     if (!isOpen) return;
 
@@ -102,16 +103,13 @@ export const MentionMenu = memo(({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, filteredItems, selectedIndex, onSelect, onClose]);
 
-  // Click outside to close
   useEffect(() => {
     if (!isOpen) return;
-
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
@@ -122,25 +120,26 @@ export const MentionMenu = memo(({
     <div
       ref={menuRef}
       className={clsx(
-        'fixed z-50',
-        'w-72 max-h-80 overflow-y-auto',
-        'bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl',
-        'animate-in fade-in slide-in-from-top-2 duration-150'
+        'fixed z-[100]',
+        'w-[500px] max-h-80 overflow-y-auto',
+        'bg-ide-surface-2 border border-ide-indigo/20 rounded-xl shadow-2xl backdrop-blur-xl',
+        'animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200'
       )}
       style={{
         left: position.x,
-        top: position.y + 24,
+        bottom: `calc(100vh - ${position.y}px)`,
       }}
     >
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-zinc-800 text-xs text-zinc-500">
-        Mencionar arquivo ou símbolo
+      <div className="px-3 py-2 border-b border-ide-border bg-ide-surface/50">
+        <div className="flex items-center gap-2 text-[10px] font-bold text-ide-text-dim uppercase tracking-widest">
+          <Search className="w-3 h-3" />
+          <span>Arquivos e Símbolos</span>
+        </div>
       </div>
 
-      {/* Items */}
       <div className="py-1">
         {filteredItems.length === 0 ? (
-          <div className="px-3 py-4 text-center text-sm text-zinc-500">
+          <div className="px-3 py-4 text-center text-sm text-ide-text-dim">
             Nenhum resultado encontrado
           </div>
         ) : (
@@ -149,19 +148,25 @@ export const MentionMenu = memo(({
               key={item.id}
               onClick={() => onSelect(item)}
               className={clsx(
-                'w-full flex items-center gap-3 px-3 py-2 text-left',
-                'hover:bg-zinc-800 transition-colors',
-                index === selectedIndex && 'bg-zinc-800'
+                'w-full flex items-center justify-between gap-4 px-3 py-2 text-left transition-all',
+                index === selectedIndex ? 'bg-ide-indigo/10 border-l-2 border-ide-indigo' : 'hover:bg-ide-surface-3'
               )}
             >
-              <div className="flex-shrink-0">{getIcon(item.type)}</div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm text-zinc-200 truncate">{item.name}</div>
-                {item.path && (
-                  <div className="text-xs text-zinc-500 truncate">{item.path}</div>
-                )}
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex-shrink-0">{getIcon(item)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-ide-text truncate">
+                    {item.name}
+                  </div>
+                  {item.path && (
+                    <div className="text-[10px] text-ide-text-dim truncate opacity-40">
+                      {item.path}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex-shrink-0 text-xs text-zinc-600 capitalize">
+              
+              <div className="flex-shrink-0 text-[10px] font-bold text-ide-text-dim/30 uppercase tracking-widest">
                 {item.type}
               </div>
             </button>
@@ -169,9 +174,9 @@ export const MentionMenu = memo(({
         )}
       </div>
 
-      {/* Footer hint */}
-      <div className="px-3 py-2 border-t border-zinc-800 text-xs text-zinc-600">
-        ↑↓ navegar • Enter selecionar • Esc fechar
+      <div className="px-3 py-2 border-t border-ide-border bg-ide-surface/30 text-[10px] text-ide-text-dim/50 font-bold uppercase flex justify-between">
+        <span>↑↓ navegar • Enter selecionar</span>
+        <span>Esc fechar</span>
       </div>
     </div>
   );
