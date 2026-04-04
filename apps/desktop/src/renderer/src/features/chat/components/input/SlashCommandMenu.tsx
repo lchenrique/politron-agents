@@ -118,7 +118,7 @@ export const SlashCommandMenu = memo(({
     <div
       ref={menuRef}
       className={clsx(
-        'fixed z-[100]',
+        'fixed z-100',
         'w-[500px] max-h-96 overflow-y-auto',
         'bg-ide-surface-2 border border-ide-indigo/20 rounded-xl shadow-2xl backdrop-blur-xl',
         'animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200'
@@ -151,7 +151,7 @@ export const SlashCommandMenu = memo(({
               )}
             >
               <div className="flex items-center gap-3">
-                <div className="flex-shrink-0">{getIcon(cmd.name)}</div>
+                <div className="shrink-0">{getIcon(cmd.name)}</div>
                 <div className="text-sm font-mono font-bold text-ide-text">
                   {cmd.name}
                 </div>

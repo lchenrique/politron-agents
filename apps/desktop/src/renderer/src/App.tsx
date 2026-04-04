@@ -6,25 +6,28 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ZoomController } from "@/hooks/useZoom";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const queryClient = new QueryClient();
 
 const App = () => (
- <QueryClientProvider client={queryClient}>
- <TooltipProvider>
- <Toaster />
- <Sonner />
- <ZoomController>
- <BrowserRouter>
- <Routes>
- <Route path="/" element={<Index />} />
- {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
- <Route path="*" element={<NotFound />} />
- </Routes>
- </BrowserRouter>
- </ZoomController>
- </TooltipProvider>
- </QueryClientProvider>
+  <ThemeProvider defaultMode="dark" defaultTheme="default" storageKey="politron-ui-theme">
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <ZoomController>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </ZoomController>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;

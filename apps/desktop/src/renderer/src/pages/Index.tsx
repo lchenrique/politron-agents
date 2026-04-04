@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
+import { useAtomValue } from "jotai";
 import TitleBar from "@/components/ide/TitleBar";
 import AppSidebar from "@/components/ide/AppSidebar";
 import { AgentChatShell } from "@/features/chat/components/shell/AgentChatShell";
@@ -13,22 +14,29 @@ import {
   useWorkspaceAddProject,
   useWorkspaceRegisterCeoHireRequest,
 } from "@/hooks/useWorkspace";
-import { Textarea } from "@/components/ui/textarea";
+import { globalCeoAgentAtom, activeAgentTabIdAtom } from "@/hooks/atoms";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 
-const IDELayout = () => {
+const IDELayout = memo(() => {
   const activeTeam = useWorkspaceActiveTeam();
   const addProject = useWorkspaceAddProject();
   const addAgentToTeam = useWorkspaceAddAgentToTeam();
   const onCeoHireRequest = useWorkspaceRegisterCeoHireRequest();
-  const isWindows = window.vibeAPI.platform === "win32";
+  const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
+  const activeAgentTabId = useAtomValue(activeAgentTabIdAtom);
+  
   const [terminalOpen, setTerminalOpen] = useState(true);
-  const [terminalWidth, setTerminalWidth] = useState(320);
   const [activeTab, setActiveTab] = useState<"chat" | "board">("chat");
   const [showAddProject, setShowAddProject] = useState(false);
   const [showHireAgent, setShowHireAgent] = useState(false);
-  const isResizing = useRef(false);
-  const startX = useRef(0);
-  const startW = useRef(0);
+
+  // Terminal shows when: has project AND terminal is open (regardless of which agent is active)
+  const hasProjectSelected = !!activeTeam?.projectPath;
+  const showTerminal = terminalOpen && hasProjectSelected;
 
   // Register CEO hire request callback
   useEffect(() => {
@@ -37,96 +45,62 @@ const IDELayout = () => {
     });
   }, [onCeoHireRequest]);
 
-  // const handleMouseDown = useCallback((e: React.MouseEvent) => {
-  //   isResizing.current = true;
-  //   startX.current = e.clientX;
-  //   startW.current = terminalWidth;
-  //   document.body.style.cursor = "col-resize";
-  //   document.body.style.userSelect = "none";
-
-  //   const handleMouseMove = (ev: MouseEvent) => {
-  //     if (!isResizing.current) return;
-  //     const delta = startX.current - ev.clientX;
-  //     setTerminalWidth(Math.min(600, Math.max(200, startW.current + delta)));
-  //   };
-  //   const handleMouseUp = () => {
-  //     isResizing.current = false;
-  //     document.body.style.cursor = "";
-  //     document.body.style.userSelect = "";
-  //     document.removeEventListener("mousemove", handleMouseMove);
-  //     document.removeEventListener("mouseup", handleMouseUp);
-  //   };
-  //   document.addEventListener("mousemove", handleMouseMove);
-  //   document.addEventListener("mouseup", handleMouseUp);
-  // }, [terminalWidth]);
-
-  return <div className="w-full h-dvh flex flex-col ">
-    <TitleBar
-      terminalOpen={terminalOpen}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      onToggleTerminal={() => setTerminalOpen(!terminalOpen)}
-      className="glass-surface"
-    />
-    <div className="flex h-full ">
-      <AppSidebar onAddProject={() => setShowAddProject(true)} />
-      <div className="h-full flex-1 rounded-3xl shadow-lg">
-        <ActiveSessionProvider>
-          <AgentChatShell />
-        </ActiveSessionProvider>
-      </div>
-      <div
-        className="glass-panel border-l border-ide-border/50 flex flex-col overflow-hidden"
-        style={{ width: terminalWidth, minWidth: 200, maxWidth: 600 }}
-      >
-        <TerminalPanel />
-      </div>
-    </div>
-  </div>
-
-
-
   return (
-    <>
-      <div
-        className={`w-full h-screen flex flex-col `}
-      >
-        {/* <TitleBar
-          terminalOpen={terminalOpen}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          onToggleTerminal={() => setTerminalOpen(!terminalOpen)}
-          className="glass-surface"
-        /> */}
-        <div className="flex flex-1 overflow-hidden glass-surface h-screen">
-          <div className="w-[260px] h-full shrink-0">
+    <div className="w-full h-dvh flex flex-col bg-background text-foreground overflow-hidden font-sans">
+      <TitleBar
+        terminalOpen={showTerminal}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onToggleTerminal={() => setTerminalOpen(!terminalOpen)}
+        className="glass-surface border-b border-border/10"
+      />
+      
+      <main className="flex-1 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal">
+          {/* SIDEBAR PANEL */}
+          <ResizablePanel 
+            defaultSize={18} 
+            minSize={12} 
+            maxSize={25}
+            className="h-full border-r border-border/10"
+          >
             <AppSidebar onAddProject={() => setShowAddProject(true)} />
-          </div>
-          <div className="flex-1 flex flex-col overflow-hidden p-3 pt-1">
-            <div className="flex flex-1 overflow-hidden">
-              <div className="flex-1 flex flex-col solid-chat-area overflow-hidden relative" style={{ borderRadius: '16px' }}>
-                {/* {activeTab === 'chat' ? <AgentChatShell /> : null} */}
-                <Textarea />
-              </div>
-              {/* {terminalOpen && (
-                <>
-                  <div
-                    onMouseDown={handleMouseDown}
-                    className="w-1.5 bg-ide-border/30 cursor-col-resize shrink-0 hover:bg-ide-indigo "
-                  />
-                  <div
-                    className="glass-panel border-l border-ide-border/50 flex flex-col overflow-hidden"
-                    style={{ width: terminalWidth, minWidth: 200, maxWidth: 600 }}
-                  >
-                    <TerminalPanel />
-                  </div>
-                </>
-              )} */}
-            </div>
-          </div>
-        </div>
-      </div>
+          </ResizablePanel>
 
+          <ResizableHandle withHandle className="bg-border/10 hover:bg-primary/20 transition-colors" />
+
+          {/* MAIN CHAT CONTENT */}
+          <ResizablePanel defaultSize={54} className="h-full">
+            <div className="h-full overflow-hidden p-3 pt-1">
+              <div className="h-full border border-border/20 rounded-3xl overflow-hidden shadow-2xl relative">
+                <ActiveSessionProvider>
+                  <AgentChatShell />
+                </ActiveSessionProvider>
+              </div>
+            </div>
+          </ResizablePanel>
+
+          {showTerminal && (
+            <>
+              <ResizableHandle withHandle className="bg-border/10 hover:bg-primary/20 transition-colors" />
+              
+              {/* TERMINAL PANEL */}
+              <ResizablePanel 
+                defaultSize={28} 
+                minSize={15} 
+                maxSize={45}
+                className="h-full"
+              >
+                <div className="h-full pl-0 p-3 pt-1">
+                   <TerminalPanel />
+                </div>
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+      </main>
+
+      {/* MODALS */}
       <AddProjectModal
         open={showAddProject}
         onClose={() => setShowAddProject(false)}
@@ -138,9 +112,11 @@ const IDELayout = () => {
         onHire={(template) => activeTeam && addAgentToTeam(activeTeam.id, template)}
         existingRoles={activeTeam?.agents.map((a) => a.role) ?? []}
       />
-    </>
+    </div>
   );
-};
+});
+
+IDELayout.displayName = "IDELayout";
 
 const Index = () => (
   <WorkspaceProvider>

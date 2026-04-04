@@ -194,7 +194,7 @@ const api = {
   onLockDenied: (callback: EventCallback) => onChannel('vibe:lock:denied', callback),
 
   session: {
-    list: () => ipcRenderer.invoke('vibe:session:list'),
+    list: (input?: { directory?: string }) => ipcRenderer.invoke('vibe:session:list', input),
     create: (input?: { directory?: string; agentSlug?: string; systemPrompt?: string }) => 
       ipcRenderer.invoke('vibe:session:create', input),
     delete: (sessionId: string) => 
@@ -207,6 +207,22 @@ const api = {
       ipcRenderer.invoke('vibe:session:prompt', input),
     subscribe: (sessionId: string) => 
       ipcRenderer.invoke('vibe:session:subscribe', sessionId)
+  },
+
+  terminal: {
+    create: (input: { rows: number; cols: number; cwd?: string }) => 
+      ipcRenderer.invoke('vibe:terminal:create', input),
+    write: (data: string) => 
+      ipcRenderer.send('vibe:terminal:write', data),
+    resize: (input: { cols: number; rows: number }) => 
+      ipcRenderer.send('vibe:terminal:resize', input),
+    onData: (callback: EventCallback) => onChannel('vibe:terminal:data', callback),
+    onExit: (callback: EventCallback) => onChannel('vibe:terminal:exit', callback)
+  },
+
+  system: {
+    getHomeDir: () => ipcRenderer.invoke('vibe:system:homedir'),
+    getPlatform: () => ipcRenderer.invoke('vibe:system:platform')
   }
 }
 

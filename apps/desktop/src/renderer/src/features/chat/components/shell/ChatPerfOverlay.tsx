@@ -33,7 +33,7 @@ export function ChatPerfOverlay() {
   if (!snapshot.enabled) return null;
 
   return (
-    <div className="absolute top-3 right-3 z-20 w-[320px] rounded-xl border border-emerald-500/20 bg-zinc-950/90 shadow-2xl backdrop-blur pointer-events-auto">
+    <div className="absolute top-3 right-3 z-20 w-[320px] rounded-xl border border-emerald-500/20 bg-zinc-950/90 shadow-2xl backdrop-blur-sm pointer-events-auto">
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">

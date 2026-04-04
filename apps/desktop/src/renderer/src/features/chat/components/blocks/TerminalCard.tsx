@@ -7,27 +7,27 @@ export const TerminalCard = memo(({ block }: { block: TerminalBlock }) => {
 
   return (
     <div className="flex w-full group py-2">
-      <div className="flex-1 ml-12 rounded-xl overflow-hidden border border-zinc-800 bg-[#0d0d0d] font-mono text-sm leading-relaxed">
-        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-800 text-zinc-400 select-none">
+      <div className="flex-1 ml-12 rounded-xl overflow-hidden border border-border bg-background/50 font-mono text-sm leading-relaxed">
+        <div className="flex items-center gap-2 px-3 py-2 bg-secondary border-b border-border text-muted-foreground select-none">
           <TerminalIcon className="w-4 h-4" />
           <span className="flex-1 truncate">{block.cwd || '~'}</span>
           {isRunning ? (
-            <Loader2 className="w-4 h-4 animate-spin text-indigo-400" style={{ willChange: 'transform' }} />
+            <Loader2 className="w-4 h-4 animate-spin text-primary" style={{ willChange: 'transform' }} />
           ) : (
-            <Play className="w-4 h-4 text-zinc-600" />
+            <Play className="w-4 h-4 text-muted-foreground/40" />
           )}
         </div>
 
-        <div className="p-4 overflow-x-auto text-zinc-300">
-          <div className="mb-2 text-indigo-400">
+        <div className="p-4 overflow-x-auto text-foreground/90">
+          <div className="mb-2 text-primary">
             <span className="text-emerald-400 mr-2">$</span>
             {block.command}
           </div>
 
-          <div className="whitespace-pre-wrap text-zinc-400">
+          <div className="whitespace-pre-wrap text-muted-foreground">
             {block.output}
             {isRunning && (
-              <span className="inline-block w-2 h-4 ml-1 align-middle bg-zinc-500 cursor-blink" />
+              <span className="inline-block w-2 h-4 ml-1 align-middle bg-primary/40 animate-pulse" />
             )}
           </div>
         </div>

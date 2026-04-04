@@ -1,45 +1,60 @@
-import { useEffect } from "react";
-import { useAtom } from "jotai";
-import { themeAtom } from "@/hooks/atoms/workspace";
+import { useTheme } from "@/components/theme-provider";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Moon, Sun } from "lucide-react";
 
 const THEMES = [
- { id: "default", label: "Vibe Dark" },
- { id: "opencode", label: "OpenCode" },
- { id: "cursor", label: "Cursor" },
- { id: "tokyonight", label: "Tokyo Night" },
- { id: "catppuccin", label: "Mocha" },
- { id: "nord", label: "Nord" },
- { id: "aura", label: "Aura" },
- { id: "dracula", label: "Dracula" },
- { id: "monokai", label: "Monokai Pro" },
- { id: "synthwave", label: "Synthwave '84" },
- { id: "rosepine", label: "Rose Pine" },
- { id: "githubdark", label: "GitHub Dark" },
- { id: "deepocean", label: "Deep Ocean" },
- { id: "onelight", label: "One Light (☀️)" },
+    { id: "default", label: "Vibe Dark" },
+    { id: "cafeine", label: "Cafeine" },
+    { id: "candyland", label: "Candy Land" },
+    { id: "claude", label: "Claude" },
 ];
 
 export function ThemeSelector() {
- const [theme, setTheme] = useAtom(themeAtom);
+    const { theme, setTheme, mode, setMode } = useTheme();
 
- useEffect(() => {
- document.documentElement.setAttribute("data-theme", theme);
- }, [theme]);
+    const toggleMode = () => {
+        setMode(mode === "dark" ? "light" : "dark");
+    };
 
- // A minimalist dropdown to switch themes
- return (
- <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
- <select
- value={theme}
- onChange={(e) => setTheme(e.target.value)}
- className="h-6 text-[11px] bg-transparent text-ide-text-dim border border-transparent hover:border-ide-border hover:bg-ide-surface-2 rounded outline-none px-1.5 cursor-pointer "
- >
- {THEMES.map((t) => (
- <option key={t.id} value={t.id} className="bg-ide-surface text-ide-text">
- {t.label}
- </option>
- ))}
- </select>
- </div>
- );
+    return (
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+            <Select value={theme} onValueChange={setTheme}>
+                <SelectTrigger className="h-7 w-[120px] text-[10px] uppercase tracking-wider font-bold border-border/10  transition-colors focus:ring-0 focus:ring-offset-0">
+                    <SelectValue placeholder="Tema" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border/50 shadow-xl">
+                    {THEMES.map((t) => (
+                        <SelectItem
+                            key={t.id}
+                            value={t.id}
+                            className="text-[11px] font-medium"
+                        >
+                            {t.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleMode}
+                className="h-7 w-7 rounded-sm hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-all duration-300"
+            >
+                {mode === "dark" ? (
+                    <Moon className="h-3.5 w-3.5 rotate-0 scale-100 transition-all" />
+                ) : (
+                    <Sun className="h-3.5 w-3.5 rotate-0 scale-100 transition-all underline-offset-1" />
+                )}
+                <span className="sr-only">Alternar modo</span>
+            </Button>
+        </div>
+    );
 }

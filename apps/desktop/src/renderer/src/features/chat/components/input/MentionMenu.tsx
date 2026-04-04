@@ -120,7 +120,7 @@ export const MentionMenu = memo(({
     <div
       ref={menuRef}
       className={clsx(
-        'fixed z-[100]',
+        'fixed z-100',
         'w-[500px] max-h-80 overflow-y-auto',
         'bg-ide-surface-2 border border-ide-indigo/20 rounded-xl shadow-2xl backdrop-blur-xl',
         'animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200'
@@ -153,7 +153,7 @@ export const MentionMenu = memo(({
               )}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className="flex-shrink-0">{getIcon(item)}</div>
+                <div className="shrink-0">{getIcon(item)}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-ide-text truncate">
                     {item.name}
@@ -166,7 +166,7 @@ export const MentionMenu = memo(({
                 </div>
               </div>
               
-              <div className="flex-shrink-0 text-[10px] font-bold text-ide-text-dim/30 uppercase tracking-widest">
+              <div className="shrink-0 text-[10px] font-bold text-ide-text-dim/30 uppercase tracking-widest">
                 {item.type}
               </div>
             </button>

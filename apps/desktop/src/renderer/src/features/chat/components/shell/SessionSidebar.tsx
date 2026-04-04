@@ -11,7 +11,7 @@
 
 import React, { memo, useState, useCallback, useEffect } from 'react';
 import { MessageSquare, Plus, Trash2, Clock, Loader2 } from 'lucide-react';
-import { useSessionStore, type SdkSession } from '../../store/sessionStore';
+import { useSessionStore } from '../../store/sessionStore';
 import { useActiveSession } from '../../context/ActiveSessionContext';
 
 function formatTime(timestamp?: number): string {
@@ -111,17 +111,17 @@ export const SessionSidebar = memo(function SessionSidebar() {
   }, [selectSession]);
 
   return (
-    <div className="w-56 h-full bg-zinc-900/50 border-r border-zinc-800/50 flex flex-col">
+    <div className="w-56 h-full bg-secondary/50 border-r border-border/50 flex flex-col">
       {/* Header */}
-      <div className="px-3 py-3 border-b border-zinc-800/50">
+      <div className="px-3 py-3 border-b border-border/50">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Sessões
           </h3>
           <button
             onClick={handleCreateSession}
             disabled={loading}
-            className="p-1 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
+            className="p-1 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             title="Nova sessão"
           >
             {loading ? (
@@ -137,12 +137,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
       <div className="flex-1 overflow-y-auto py-2">
         {loading && sessions.length === 0 && (
           <div className="px-3 py-4 flex items-center justify-center">
-            <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
           </div>
         )}
         
         {!loading && sessions.length === 0 && (
-          <div className="px-3 py-4 text-center text-zinc-500 text-sm">
+          <div className="px-3 py-4 text-center text-muted-foreground text-sm">
             Nenhuma sessão ainda.
             <br />
             Clique + para criar.
@@ -157,8 +157,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
               key={session.id}
               className={`mx-2 mb-1 rounded-lg cursor-pointer transition-all duration-150 relative group ${
                 isActive
-                  ? 'bg-indigo-500/20 border border-indigo-500/30'
-                  : 'hover:bg-zinc-800/50 border border-transparent'
+                  ? 'bg-primary/20 border border-primary/30'
+                  : 'hover:bg-secondary/50 border border-transparent'
               }`}
               onClick={() => handleSelectSession(session.id)}
               onMouseEnter={() => setHoveredSessionId(session.id)}
@@ -166,19 +166,19 @@ export const SessionSidebar = memo(function SessionSidebar() {
             >
               <div className="px-3 py-2">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className={`w-4 h-4 flex-shrink-0 ${
-                    isActive ? 'text-indigo-400' : 'text-zinc-500'
+                  <MessageSquare className={`w-4 h-4 shrink-0 ${
+                    isActive ? 'text-primary' : 'text-muted-foreground'
                   }`} />
                   <span className={`text-sm truncate ${
-                    isActive ? 'text-zinc-100' : 'text-zinc-300'
+                    isActive ? 'text-foreground' : 'text-muted-foreground'
                   }`}>
                     {/* title vem do SDK */}
                     {(session as any).title || `Sessão ${index + 1}`}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 ml-6">
-                  <Clock className="w-3 h-3 text-zinc-600" />
-                  <span className="text-xs text-zinc-600">
+                  <Clock className="w-3 h-3 text-muted-foreground/40" />
+                  <span className="text-xs text-muted-foreground/40">
                     {formatTime((session as any).time?.updated || (session as any).time?.created)}
                   </span>
                 </div>
@@ -191,7 +191,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                   className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-colors ${
                     isActive 
                       ? 'opacity-0' 
-                      : 'hover:bg-zinc-700 text-zinc-500 hover:text-red-400'
+                      : 'hover:bg-muted text-muted-foreground hover:text-destructive'
                   }`}
                   title="Excluir sessão"
                 >
@@ -204,14 +204,14 @@ export const SessionSidebar = memo(function SessionSidebar() {
       </div>
 
       {/* Footer com info */}
-      <div className="px-3 py-2 border-t border-zinc-800/50 flex items-center justify-between">
-        <span className="text-xs text-zinc-600">
+      <div className="px-3 py-2 border-t border-border/50 flex items-center justify-between">
+        <span className="text-xs text-muted-foreground/60">
           {sessions.length} sessão{sessions.length !== 1 ? 'ões' : ''}
         </span>
         <button
           onClick={loadSdkSessions}
           disabled={loading}
-          className="text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-50"
+          className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
           title="Atualizar"
         >
           <Loader2 className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
@@ -220,3 +220,5 @@ export const SessionSidebar = memo(function SessionSidebar() {
     </div>
   );
 });
+
+SessionSidebar.displayName = 'SessionSidebar';

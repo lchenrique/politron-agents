@@ -30,9 +30,8 @@ export const TranscriptTurn = memo(({ turnId, showSeparator = true }: Transcript
     <div className="relative">
       {/* Separator line */}
       {showSeparator && (
-        <div className="absolute -top-4 left-0 right-0 h-4 bg-gradient-to-b from-zinc-950/80 to-transparent pointer-events-none" />
+        <div className="absolute -top-4 left-0 right-0 h-4 bg-linear-to-b from-background/80 to-transparent pointer-events-none" />
       )}
-
       {/* Blocks in this turn */}
       <div className="space-y-1">
         {blockIds.map((blockId) => (

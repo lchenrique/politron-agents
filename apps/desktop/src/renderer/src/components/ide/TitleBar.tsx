@@ -91,19 +91,19 @@ const TitleBar = ({ terminalOpen, activeTab, onTabChange, onToggleTerminal, clas
             <div className="flex gap-2">
                 <button
                     onClick={() => window.vibeAPI.windowControls.close()}
-                    className="w-3 h-3 rounded-full bg-[#ff5f57] border border-black/10 cursor-pointer hover:brightness-110 shadow-sm"
+                    className="w-3 h-3 rounded-full bg-[#ff5f57] border border-black/10 cursor-pointer hover:brightness-110 shadow-xs"
                     style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
                     title="Close"
                 />
                 <button
                     onClick={() => window.vibeAPI.windowControls.minimize()}
-                    className="w-3 h-3 rounded-full bg-[#febc2e] border border-black/10 cursor-pointer hover:brightness-110 shadow-sm"
+                    className="w-3 h-3 rounded-full bg-[#febc2e] border border-black/10 cursor-pointer hover:brightness-110 shadow-xs"
                     style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
                     title="Minimize"
                 />
                 <button
                     onClick={() => window.vibeAPI.windowControls.maximize()}
-                    className="w-3 h-3 rounded-full bg-[#28c840] border border-black/10 cursor-pointer hover:brightness-110 shadow-sm"
+                    className="w-3 h-3 rounded-full bg-[#28c840] border border-black/10 cursor-pointer hover:brightness-110 shadow-xs"
                     style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
                     title="Maximize"
                 />

@@ -5,6 +5,7 @@ import {
   activeAgentTeamAtom,
   globalCeoAgentAtom,
   workspaceAtom,
+  projectsAtom,
 } from '@/hooks/atoms';
 import type { Agent, Team } from '@/types/workspace';
 import type {
@@ -28,6 +29,7 @@ import {
   recordChatBridgeEvent,
 } from '../perf/chatPerf';
 import { useActiveSession } from '../context/ActiveSessionContext';
+import { useSessionStore } from '../store/sessionStore';
 
 type AgentChunkEvent = {
   agentId: string;
@@ -172,6 +174,7 @@ function getFilePath(file: PipelineUpdateEvent['file']): string | null {
 
 export function useOpencodeTranscriptBridge() {
   const workspace = useAtomValue(workspaceAtom);
+  const projects = useAtomValue(projectsAtom);
   const activeAgentTabId = workspace?.activeAgentTabId ?? null;
   const activeAgent = useAtomValue(activeAgentAtom);
   const activeAgentTeam = useAtomValue(activeAgentTeamAtom);
@@ -207,6 +210,9 @@ export function useOpencodeTranscriptBridge() {
     flushHandleByAgent: new Map(),
     needsNewAssistantBlock: new Map(),
   });
+
+  // Track previous context type to detect CEO ↔ project switches
+  const previousContextTypeRef = useRef<'ceo' | 'project' | null>(null);
 
   const activeContext = useMemo<ActiveAgentContext | null>(() => {
     if (!activeAgentTabId || !activeAgent || !globalCeoAgent) return null;
@@ -263,6 +269,18 @@ export function useOpencodeTranscriptBridge() {
 
     previousAgentIdRef.current = activeAgentId;
   }, [activeAgentId, actions]);
+
+  // When context type changes (CEO ↔ project), clear active session to force new session
+  useEffect(() => {
+    const currentContextType = activeContext?.isCeo ? 'ceo' : 'project';
+    
+    if (previousContextTypeRef.current !== null && previousContextTypeRef.current !== currentContextType) {
+      console.log('[TranscriptBridge] Context type changed from', previousContextTypeRef.current, 'to', currentContextType, '- clearing active session');
+      useSessionStore.getState().selectSession(null);
+    }
+    
+    previousContextTypeRef.current = currentContextType;
+  }, [activeContext?.isCeo]);
 
   // Quando a sessão ativa muda, carregar histórico e assinar eventos
   useEffect(() => {
@@ -899,7 +917,22 @@ export function useOpencodeTranscriptBridge() {
   const sendMessage = useCallback(async (text: string) => {
     const context = activeContext;
     
-    if (!context || !text.trim()) return;
+    if (!context || !text.trim()) {
+      console.log('[TranscriptBridge] sendMessage skipped: no context or empty text', { context, textLength: text?.length });
+      return;
+    }
+    
+    const isCeoActive = context.isCeo;
+    const agentName = context.agent.name;
+    const agentCatalogSlug = context.agent.catalogSlug;
+    console.log('[TranscriptBridge] >>> sendMessage', { 
+      isCeo: isCeoActive, 
+      agentName, 
+      catalogSlug: agentCatalogSlug,
+      agentId: context.agent.id, 
+      activeSessionId,
+      text: text.substring(0, 30)
+    });
     recordChatBridgeEvent('outgoing:sendMessage');
 
     // Create separate turns: user turn and agent turn
@@ -960,34 +993,78 @@ export function useOpencodeTranscriptBridge() {
         // Subscribe to events first
         await window.vibeAPI.session.subscribe(activeSessionId);
         
+        // Build message with project context for CEO
+        let messageToSend = text;
+        if (context.isCeo && projects.length > 0) {
+          const projectList = projects
+            .map((p) => {
+              const team = workspace?.teams.find(t => t.id === p.teamId);
+              const path = team?.projectPath || 'sem pasta definida';
+              return `- ${p.name} (pasta: ${path})`;
+            })
+            .join('\n');
+          messageToSend = `Você é o CEO Global e conhece todos os projetos existentes.\n\nProjetos disponíveis:\n${projectList}\n\n---\n\n${text}`;
+        }
+        
         // Send message to specific session
         await window.vibeAPI.session.prompt({
           sessionId: activeSessionId,
-          message: text,
+          message: messageToSend,
           agentSlug: context.agent.catalogSlug,
         });
       } else {
         // Fallback: usar o fluxo padrão (cria/usa sessão padrão do agente)
+        console.log('[TranscriptBridge] No active session, using fallback path', { isCeo: context.isCeo });
         if (context.isCeo) {
+          console.log('[TranscriptBridge] Using CEO path');
           await window.vibeAPI.ceo.ensure({
             agentId: context.agent.id,
             agentSlug: context.agent.catalogSlug,
             workspaceDirectory: '',
           });
           await window.vibeAPI.ceo.subscribe();
+          
+          // Build message with project context for CEO
+          let messageToSend = text;
+          if (projects.length > 0) {
+            const projectList = projects
+              .map((p) => {
+                const team = workspace?.teams.find(t => t.id === p.teamId);
+                const path = team?.projectPath || 'sem pasta definida';
+                return `- ${p.name} (pasta: ${path})`;
+              })
+              .join('\n');
+            messageToSend = `Você é o CEO Global e conhece todos os projetos existentes.\n\nProjetos disponíveis:\n${projectList}\n\n---\n\n${text}`;
+          }
+          
           await window.vibeAPI.ceo.send({
             agentId: context.agent.id,
-            message: text,
+            message: messageToSend,
           });
         } else {
-          await window.vibeAPI.agent.ensure({
+          console.log('[TranscriptBridge] Using AGENT path', { 
+            teamId: context.team?.id, 
+            projectPath: context.team?.projectPath, 
+            catalogSlug: context.agent.catalogSlug,
             agentId: context.agent.id,
-            teamId: context.team?.id,
-            role: context.agent.role,
-            agentSlug: context.agent.catalogSlug,
-            workspaceDirectory: context.team?.projectPath,
+            agentRole: context.agent.role
           });
+          console.log('[TranscriptBridge] Calling agent.ensure...');
+          try {
+            const ensureResult = await window.vibeAPI.agent.ensure({
+              agentId: context.agent.id,
+              teamId: context.team?.id,
+              role: context.agent.role,
+              agentSlug: context.agent.catalogSlug,
+              workspaceDirectory: context.team?.projectPath,
+            });
+            console.log('[TranscriptBridge] agent.ensure result:', ensureResult);
+          } catch (e) {
+            console.error('[TranscriptBridge] agent.ensure FAILED:', e);
+          }
+          console.log('[TranscriptBridge] Calling agent.subscribe...');
           await window.vibeAPI.agent.subscribe(context.agent.id);
+          console.log('[TranscriptBridge] Sending message via agent.send');
           await window.vibeAPI.agent.send({
             agentId: context.agent.id,
             message: text,

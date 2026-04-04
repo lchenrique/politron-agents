@@ -20,6 +20,34 @@ import {
   workspaceAtom,
 } from "./atoms";
 
+export const useWorkspaceDeleteProject = () => {
+  const workspace = useWorkspaceState();
+  const setWorkspace = useSetAtom(workspaceAtom);
+  const setSidebarView = useSetAtom(sidebarViewAtom);
+
+  return useCallback(
+    (projectId: string) => {
+      const project = workspace.projects.find((p) => p.id === projectId);
+      if (!project) return;
+
+      // If deleting the currently active project, go back to root
+      if (workspace.activeProjectId === projectId) {
+        setWorkspace({
+          ...workspace,
+          activeProjectId: null,
+          activeTeamId: null,
+          activeAgentTabId: workspace.globalCeoAgent.id,
+        });
+        setSidebarView('root');
+      }
+
+      // Delete via API
+      window.vibeAPI.team.delete(project.teamId);
+    },
+    [workspace, setWorkspace, setSidebarView]
+  );
+};
+
 export interface AgentTemplate {
   slug: string;
   name: string;
@@ -361,6 +389,8 @@ export const useWorkspaceRegisterCeoHireRequest = () => {
 export const useWorkspaceEnterProject = () => {
   const workspace = useWorkspaceState();
   const setWorkspace = useSetAtom(workspaceAtom);
+  const setActiveTeamId = useSetAtom(activeTeamIdAtom);
+  const setSidebarView = useSetAtom(sidebarViewAtom);
 
   return useCallback(
     (id: string) => {
@@ -375,14 +405,18 @@ export const useWorkspaceEnterProject = () => {
         activeTeamId: project.teamId,
         activeAgentTabId: team?.techLeadAgentId || team?.agents[0]?.id || workspace.globalCeoAgent.id,
       });
+      setActiveTeamId(project.teamId);
+      setSidebarView('project');
     },
-    [workspace, setWorkspace]
+    [workspace, setWorkspace, setActiveTeamId, setSidebarView]
   );
 };
 
 export const useWorkspaceBackToRoot = () => {
   const workspace = useWorkspaceState();
   const setWorkspace = useSetAtom(workspaceAtom);
+  const setActiveTeamId = useSetAtom(activeTeamIdAtom);
+  const setSidebarView = useSetAtom(sidebarViewAtom);
 
   return useCallback(() => {
     if (!workspace) return;
@@ -392,7 +426,9 @@ export const useWorkspaceBackToRoot = () => {
       activeTeamId: null,
       activeAgentTabId: workspace.globalCeoAgent.id,
     });
-  }, [workspace, setWorkspace]);
+    setActiveTeamId(null);
+    setSidebarView('root');
+  }, [workspace, setWorkspace, setActiveTeamId, setSidebarView]);
 };
 
 function buildWorkspaceFromBackendTeams(backendTeams: BackendTeam[]): Workspace {

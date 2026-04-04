@@ -9,7 +9,7 @@
  * @heavy This component is lazy loaded
  */
 
-import React, { memo, useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import clsx from 'clsx';
 
 interface DiffViewerProps {
@@ -34,7 +34,6 @@ const DiffViewerComponent = memo(({ originalContent, modifiedContent }: DiffView
     let newLine = 1;
 
     // Simple line-by-line diff
-    // In production, use a library like diff-match-patch or monaco-diff-editor
     const maxLines = Math.max(originalLines.length, modifiedLines.length);
 
     for (let i = 0; i < maxLines; i++) {
@@ -83,47 +82,43 @@ const DiffViewerComponent = memo(({ originalContent, modifiedContent }: DiffView
 
   return (
     <div className="px-4 pb-4">
-      <div className="rounded-lg overflow-hidden border border-zinc-800/50 bg-zinc-950/50 font-mono text-sm">
+      <div className="rounded-lg overflow-hidden border border-border/50 bg-background/50 font-mono text-sm shadow-inner">
         {/* Diff header */}
-        <div className="flex items-center gap-4 px-3 py-2 bg-zinc-900/50 border-b border-zinc-800/50 text-xs text-zinc-500">
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded bg-red-500/20 text-red-400 flex items-center justify-center">
-              -
-            </span>
-            <span>removed</span>
+        <div className="flex items-center gap-4 px-3 py-2 bg-secondary border-b border-border/50 text-[10px] uppercase font-bold tracking-widest text-muted-foreground/60">
+          <span className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded bg-red-500/40" />
+            <span>Removido</span>
           </span>
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              +
-            </span>
-            <span>added</span>
+          <span className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded bg-emerald-500/40" />
+            <span>Adicionado</span>
           </span>
         </div>
 
         {/* Diff lines */}
-        <div className="max-h-96 overflow-y-auto">
+        <div className="max-h-96 overflow-y-auto custom-scrollbar">
           {lines.map((line, idx) => (
             <div
               key={idx}
               className={clsx(
-                'flex items-start',
-                line.type === 'added' && 'bg-emerald-500/10',
-                line.type === 'removed' && 'bg-red-500/10'
+                'flex items-start transition-colors duration-150',
+                line.type === 'added' && 'bg-emerald-500/15',
+                line.type === 'removed' && 'bg-red-500/15'
               )}
             >
               {/* Line numbers */}
-              <div className="flex-shrink-0 flex w-16 text-right pr-4 py-0.5 text-xs text-zinc-600 select-none">
+              <div className="shrink-0 flex w-16 text-right pr-4 py-0.5 text-xs text-muted-foreground/40 select-none border-r border-border/20">
                 <span className="w-8 text-right">{line.oldLineNum || ''}</span>
-                <span className="w-8 text-right">{line.newLineNum || ''}</span>
+                <span className="w-8 text-right font-medium text-muted-foreground/60">{line.newLineNum || ''}</span>
               </div>
 
               {/* Diff indicator */}
-              <div className="flex-shrink-0 w-4 py-0.5 text-center">
+              <div className="shrink-0 w-6 py-0.5 text-center text-xs">
                 {line.type === 'added' && (
-                  <span className="text-emerald-400">+</span>
+                  <span className="text-emerald-500 font-bold">+</span>
                 )}
                 {line.type === 'removed' && (
-                  <span className="text-red-400">-</span>
+                  <span className="text-red-500 font-bold">-</span>
                 )}
               </div>
 
@@ -131,9 +126,9 @@ const DiffViewerComponent = memo(({ originalContent, modifiedContent }: DiffView
               <pre
                 className={clsx(
                   'flex-1 py-0.5 pr-4 whitespace-pre-wrap break-all',
-                  line.type === 'added' && 'text-emerald-300',
-                  line.type === 'removed' && 'text-red-300',
-                  line.type === 'unchanged' && 'text-zinc-400'
+                  line.type === 'added' && 'text-emerald-400 dark:text-emerald-300',
+                  line.type === 'removed' && 'text-red-600 dark:text-red-300',
+                  line.type === 'unchanged' && 'text-foreground/70'
                 )}
               >
                 {line.content}
@@ -148,5 +143,4 @@ const DiffViewerComponent = memo(({ originalContent, modifiedContent }: DiffView
 
 DiffViewerComponent.displayName = 'DiffViewer';
 
-// Default export for lazy loading
 export default DiffViewerComponent;

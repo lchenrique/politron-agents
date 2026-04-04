@@ -6,16 +6,19 @@ import {
   Settings,
   ShoppingBag,
   Target,
+  Trash2,
 } from "lucide-react";
 import {
   useWorkspaceActiveAgentTabId,
   useWorkspaceActiveProjectId,
   useWorkspaceBackToRoot,
+  useWorkspaceDeleteProject,
   useWorkspaceEnterProject,
   useWorkspaceSetActiveAgentTab,
   useWorkspaceSidebarView,
   useWorkspaceState,
 } from "@/hooks/useWorkspace";
+import { cn } from "@/lib/utils";
 
 interface NavItemProps {
   icon: React.ReactNode;
@@ -32,20 +35,19 @@ const NavItem = ({ icon, label, active, onClick, badge, color, className }: NavI
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm group ${active
-        ? "bg-ide-indigo/10 text-ide-indigo"
-        : "text-ide-text-dim hover:bg-white/5 hover:text-ide-text"
+        ? "bg-primary"
+        : " hover:bg-white/5"
         } ${className}`}
     >
       <div
-        className={`shrink-0 group-hover:scale-110 ${active ? "text-ide-indigo" : "text-ide-text-dim"
-          }`}
+        className={cn("shrink-0 group-hover:scale-110", active ? "text-primary-foreground" : "text-foreground", className)}
         style={color ? { color } : {}}
       >
         {icon}
       </div>
-      <span className="flex-1 text-left truncate font-medium">{label}</span>
+      <span className={cn("flex-1 text-left truncate font-medium", active ? "text-primary-foreground" : "text-foreground", className)}>{label}</span>
       {badge !== undefined && (
-        <span className="px-1.5 py-0.5 rounded-full bg-white/10 text-[10px] font-bold text-ide-text-dim group-hover:bg-ide-indigo group-hover:text-white ">
+        <span className={cn("px-1.5 py-0.5 rounded-full", active ? "bg-background/70 text-foreground" : "bg-white/10 text-ide-text-dim group-hover:bg-ide-indigo group-hover:text-white ")}>
           {badge}
         </span>
       )}
@@ -72,12 +74,13 @@ export const AppSidebar = ({ onAddProject }: { onAddProject: () => void }) => {
   const enterProject = useWorkspaceEnterProject();
   const backToRoot = useWorkspaceBackToRoot();
   const setActiveAgentTab = useWorkspaceSetActiveAgentTab();
+  const deleteProject = useWorkspaceDeleteProject();
 
   const activeProject = workspace.projects.find((project) => project.id === activeProjectId) ?? null;
   const activeTeam = workspace.teams.find((team) => team.id === workspace.activeTeamId) ?? null;
 
   return (
-    <div className="w-[260px] h-full flex flex-col glass-sidebar border-r border-ide-border/10 z-20">
+    <div className="w-full h-full flex flex-col z-20">
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 custom-scrollbar">
         {sidebarView === "root" ? (
@@ -97,12 +100,24 @@ export const AppSidebar = ({ onAddProject }: { onAddProject: () => void }) => {
             <SectionHeader label="Projetos" onAction={onAddProject} />
             <div className="space-y-1">
               {workspace.projects.map((project) => (
-                <NavItem
+                <div
                   key={project.id}
-                  icon={<div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: project.color }} />}
-                  label={project.name}
+                  className="group relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer"
                   onClick={() => enterProject(project.id)}
-                />
+                >
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
+                  <span className="flex-1 text-sm text-foreground truncate">{project.name}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteProject(project.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-ide-text-dim hover:text-ide-red transition-all"
+                    title="Deletar projeto"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               ))}
 
               {workspace.projects.length === 0 && (
@@ -132,12 +147,28 @@ export const AppSidebar = ({ onAddProject }: { onAddProject: () => void }) => {
 
             {activeProject && (
               <div className="px-3 mb-6 bg-ide-indigo/5 p-3 rounded-lg border border-ide-indigo/10">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: activeProject.color }} />
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2.5 h-2.5 rounded-full shadow-xs" style={{ backgroundColor: activeProject.color }} />
                   <h2 className="text-xs font-bold text-ide-text truncate">{activeProject.name}</h2>
                 </div>
+                {activeTeam?.projectPath && (
+                  <div className="text-[10px] text-ide-text-dim truncate font-mono bg-black/20 px-2 py-1 rounded" title={activeTeam.projectPath}>
+                    {activeTeam.projectPath}
+                  </div>
+                )}
               </div>
             )}
+
+            <SectionHeader label="Global" />
+            <div className="space-y-1 mb-4">
+              <NavItem
+                icon={<MessageSquare size={18} className="text-ide-indigo" />}
+                label="CEO Global"
+                active={activeAgentTabId === workspace.globalCeoAgent.id}
+                onClick={() => setActiveAgentTab(workspace.globalCeoAgent.id)}
+                badge="Online"
+              />
+            </div>
 
             <SectionHeader label="Time do Projeto" />
             <div className="space-y-1">
@@ -146,7 +177,7 @@ export const AppSidebar = ({ onAddProject }: { onAddProject: () => void }) => {
                   key={agent.id}
                   icon={
                     <div
-                      className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+                      className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white shadow-xs"
                       style={{ backgroundColor: agent.color }}
                     >
                       {agent.initials}
@@ -165,7 +196,7 @@ export const AppSidebar = ({ onAddProject }: { onAddProject: () => void }) => {
 
       <div className="p-3 border-t border-ide-border/30 bg-transparent">
         <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer group">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-ide-indigo to-ide-purple flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full bg-linear-to-tr from-ide-indigo to-ide-purple flex items-center justify-center">
             <span className="text-xs font-bold text-white">LC</span>
           </div>
           <div className="flex flex-1 flex-col overflow-hidden">

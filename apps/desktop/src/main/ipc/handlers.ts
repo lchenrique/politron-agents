@@ -1,4 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
+import * as os from 'os'
+import { registerTerminalHandlers } from './terminal'
 import { getAppWindow } from '../windows/manager'
 import { openCodeSdkService } from '../services/opencode-sdk'
 import { sessionStore } from '../services/session-store'
@@ -54,6 +56,8 @@ function resolveAgentSystemPromptPath(agentId: string, teamId?: string): string 
 }
 
 export function registerHandlers(): void {
+  registerTerminalHandlers()
+
   ipcMain.handle('vibe:window:minimize', () => {
     const win = getAppWindow()
     win?.minimize()
@@ -323,13 +327,13 @@ export function registerHandlers(): void {
   })
 
   // Session management handlers - SDK sessions
-  ipcMain.handle('vibe:session:list', async () => {
+  ipcMain.handle('vibe:session:list', async (_, input?: { directory?: string }) => {
     await openCodeSdkService.initialize()
     const client = openCodeSdkService.getClient()
     if (!client) {
       throw new Error('SDK client not initialized')
     }
-    const result = await client.session.list({})
+    const result = await client.session.list(input?.directory ? { query: { directory: input.directory } } : {})
     return result.data || []
   })
 
@@ -528,5 +532,14 @@ export function registerHandlers(): void {
 
   fileLockManager.on('lock:denied', (...args) => {
     forwardEventToRenderer('vibe:lock:denied', ...args)
+  })
+
+  // System info handlers
+  ipcMain.handle('vibe:system:homedir', () => {
+    return os.homedir()
+  })
+
+  ipcMain.handle('vibe:system:platform', () => {
+    return os.platform()
   })
 }

@@ -52,7 +52,7 @@ const AddProjectModal = ({ open, onClose, onAdd }: AddProjectModalProps) => {
  };
 
  return (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+ <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs" onClick={onClose}>
  <div className="w-[420px] bg-ide-surface-2 border border-ide-border rounded-xl p-0 shadow-2xl" onClick={(e) => e.stopPropagation()}>
  <div className="flex items-center justify-between px-5 py-4 border-b border-ide-border">
  <h2 className="text-sm font-medium text-ide-text">Novo Projeto</h2>
@@ -67,7 +67,7 @@ const AddProjectModal = ({ open, onClose, onAdd }: AddProjectModalProps) => {
  value={name}
  onChange={(e) => setName(e.target.value)}
  placeholder="Ex: E-commerce, SaaS App..."
- className="w-full bg-ide-surface border border-ide-border rounded-lg px-3 py-2 text-sm text-ide-text placeholder:text-ide-text-dim/40 outline-none focus:border-ide-indigo/40 "
+ className="w-full bg-ide-surface border border-ide-border rounded-lg px-3 py-2 text-sm text-ide-text placeholder:text-ide-text-dim/40 outline-hidden focus:border-ide-indigo/40 "
  autoFocus
  />
  </div>
@@ -77,7 +77,7 @@ const AddProjectModal = ({ open, onClose, onAdd }: AddProjectModalProps) => {
  value={teamName}
  onChange={(e) => setTeamName(e.target.value)}
  placeholder="Ex: MVP Startup, Core Team..."
- className="w-full bg-ide-surface border border-ide-border rounded-lg px-3 py-2 text-sm text-ide-text placeholder:text-ide-text-dim/40 outline-none focus:border-ide-indigo/40 "
+ className="w-full bg-ide-surface border border-ide-border rounded-lg px-3 py-2 text-sm text-ide-text placeholder:text-ide-text-dim/40 outline-hidden focus:border-ide-indigo/40 "
  />
  </div>
  <div>
@@ -87,7 +87,7 @@ const AddProjectModal = ({ open, onClose, onAdd }: AddProjectModalProps) => {
  value={projectPath}
  onChange={(e) => setProjectPath(e.target.value)}
  placeholder="Selecione a pasta do projeto"
- className="flex-1 bg-ide-surface border border-ide-border rounded-lg px-3 py-2 text-sm text-ide-text placeholder:text-ide-text-dim/40 outline-none focus:border-ide-indigo/40 "
+ className="flex-1 bg-ide-surface border border-ide-border rounded-lg px-3 py-2 text-sm text-ide-text placeholder:text-ide-text-dim/40 outline-hidden focus:border-ide-indigo/40 "
  />
  <button
  onClick={handlePickFolder}

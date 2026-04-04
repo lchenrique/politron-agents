@@ -190,7 +190,7 @@ Instalar SDK → Configurar cliente → Criar serviço → Adicionar handlers IP
   - [x] System prompt aplicado corretamente
   - [x] Sessão persiste até app fechar
 
-- [ ] 7. Teste de integração básica
+- [x] 7. Teste de integração básica
 
   **What to do**:
   - Build do app
@@ -202,7 +202,7 @@ Instalar SDK → Configurar cliente → Criar serviço → Adicionar handlers IP
   - npm run dev para testar
 
   **Acceptance Criteria**:
-  - [ ] `npm run build` succeeds
+  - [x] `npm run build` succeeds
   - [ ] `npm run dev` inicia sem erros de SDK
   - [ ] Logs mostram inicialização do SDK
 

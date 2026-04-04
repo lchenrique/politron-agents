@@ -34,10 +34,10 @@ function SimpleMarkdown({ content }: { content: string }) {
     processed = processed.replace(/_(.+?)_/g, '<em>$1</em>');
     
     // Inline code: `code`
-    processed = processed.replace(/`([^`]+)`/g, '<code class="bg-zinc-800/50 px-1.5 py-0.5 rounded text-indigo-300 text-sm font-mono border border-zinc-700/30">$1</code>');
+    processed = processed.replace(/`([^`]+)`/g, '<code class="bg-muted/50 px-1.5 py-0.5 rounded text-primary text-sm font-mono border border-border/30">$1</code>');
     
     // Links: [text](url)
-    processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-indigo-400 hover:text-indigo-300 underline" target="_blank" rel="noopener noreferrer">$1</a>');
+    processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-primary hover:opacity-80 underline" target="_blank" rel="noopener noreferrer">$1</a>');
 
     return <span key={key} dangerouslySetInnerHTML={{ __html: processed }} />;
   };
@@ -63,12 +63,12 @@ function SimpleMarkdown({ content }: { content: string }) {
       elements.push(
         <div key={keyIndex++} className="my-4 group relative">
           {language && (
-            <div className="absolute top-0 right-0 px-2 py-1 text-xs font-mono text-zinc-500 bg-zinc-900 border-l border-b border-zinc-800 rounded-bl-md z-10">
+            <div className="absolute top-0 right-0 px-2 py-1 text-xs font-mono text-muted-foreground bg-secondary border-l border-b border-border rounded-bl-md z-10">
               {language}
             </div>
           )}
-          <pre className="bg-zinc-900/80 rounded-xl p-4 overflow-x-auto text-sm font-mono border border-zinc-800/50 shadow-inner">
-            <code className="text-zinc-300">{code}</code>
+          <pre className="bg-secondary/40 rounded-xl p-4 overflow-x-auto text-sm font-mono border border-border/50 shadow-inner">
+            <code className="text-foreground/90">{code}</code>
           </pre>
         </div>
       );
@@ -83,10 +83,10 @@ function SimpleMarkdown({ content }: { content: string }) {
       const text = headerMatch[2];
       const HeaderTag = `h${level + 1}` as keyof JSX.IntrinsicElements; // Offset because we're inside a page
       const sizeClasses = {
-        h2: 'text-xl font-bold text-zinc-100',
-        h3: 'text-lg font-bold text-zinc-200',
-        h4: 'text-base font-semibold text-zinc-300',
-        h5: 'text-sm font-semibold text-zinc-400',
+        h2: 'text-xl font-bold text-foreground',
+        h3: 'text-lg font-bold text-foreground/90',
+        h4: 'text-base font-semibold text-foreground/80',
+        h5: 'text-sm font-semibold text-muted-foreground',
       };
       
       elements.push(
@@ -106,7 +106,7 @@ function SimpleMarkdown({ content }: { content: string }) {
         i++;
       }
       elements.push(
-        <ul key={keyIndex++} className="list-disc list-outside ml-6 my-3 space-y-1.5 text-zinc-300 text-sm md:text-base">
+        <ul key={keyIndex++} className="list-disc list-outside ml-6 my-3 space-y-1.5 text-foreground/90 text-sm md:text-base">
           {listItems.map((item, idx) => (
             <li key={idx} className="pl-1 leading-relaxed">
               {processInline(item, 0)}
@@ -120,7 +120,7 @@ function SimpleMarkdown({ content }: { content: string }) {
     // Paragraph
     if (line.trim()) {
       elements.push(
-        <p key={keyIndex++} className="my-3 text-zinc-300 leading-relaxed text-sm md:text-base break-words">
+        <p key={keyIndex++} className="my-3 text-foreground/90 leading-relaxed text-sm md:text-base wrap-break-word">
           {processInline(line, 0)}
         </p>
       );
@@ -140,19 +140,19 @@ export const AssistantMessageCard = memo(({ block }: { block: AssistantMessageBl
   return (
     <div className="flex w-full group py-4 items-start">
       {/* Icon/Avatar area */}
-      <div className="w-8 flex-shrink-0 flex items-start justify-center mt-0.5">
-        <div className="w-6 h-6 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 shadow-sm">
+      <div className="w-8 shrink-0 flex items-start justify-center mt-0.5">
+        <div className="w-6 h-6 rounded-lg bg-secondary border border-border flex items-center justify-center text-muted-foreground shadow-xs">
           <Sparkles className="w-3.5 h-3.5" />
         </div>
       </div>
       
       {/* Content area - NO bubble background as requested */}
       <div className="flex-1 px-4 min-w-0">
-        <div className="text-zinc-200">
+        <div className="text-foreground/90">
           <SimpleMarkdown content={block.content} />
           {isStreaming && (
             <div className="inline-flex gap-1 ml-1 items-center h-4 align-middle">
-              <span className="w-1 h-3.5 bg-indigo-500/80 rounded-full animate-cursor-blink" />
+              <span className="w-1 h-3.5 bg-primary/80 rounded-full animate-cursor-blink" />
             </div>
           )}
         </div>

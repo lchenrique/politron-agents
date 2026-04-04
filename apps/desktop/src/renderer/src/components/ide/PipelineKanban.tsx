@@ -38,7 +38,7 @@ const KanbanColumn = ({ column, tasks, onDropTask, isDragOver, onDragOver, onDra
   return (
     <div
       className={cn(
-        "flex flex-col min-w-[220px] max-w-[280px] rounded-2xl bg-ide-surface/30 backdrop-blur-sm border ",
+        "flex flex-col min-w-[220px] max-w-[280px] rounded-2xl bg-ide-surface/30 backdrop-blur-xs border ",
         isDragOver ? "border-ide-indigo ring-1 ring-ide-indigo/20 scale-[1.02]" : "border-ide-border/30 hover:border-ide-border/60"
       )}
       onDragOver={onDragOver}

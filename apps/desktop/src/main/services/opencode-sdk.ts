@@ -1,7 +1,8 @@
 ﻿import { EventEmitter } from "events"
 import * as cp from "child_process"
-import { existsSync, readFileSync } from "fs"
+import { existsSync, readFileSync, mkdirSync } from "fs"
 import { basename, dirname, join, resolve } from "path"
+import * as os from "os"
 import { createOpencode } from "@opencode-ai/sdk"
 import type { OpencodeClient } from "@opencode-ai/sdk/dist/v2/client"
 import type { Session, GlobalEvent, Event } from "@opencode-ai/sdk/dist/gen/types.gen"
@@ -56,7 +57,7 @@ interface ResolvedAgentConfig {
   systemPrompt?: string
 }
 
-
+const GLOBAL_CEO_PATH = join(os.homedir(), '.politron', 'global-ceo')
 
 class OpenCodeSdkService extends EventEmitter {
   private client: OpencodeClient | null = null
@@ -273,19 +274,29 @@ class OpenCodeSdkService extends EventEmitter {
       try {
         console.log(`[OpenCodeSdkService] Creating new session for agent: ${agentId}, role: ${role}`)
 
-        const workspaceDirectory = input.workspaceDirectory || this.resolveWorkspaceDirectory()
+        // Empty string means "global CEO" mode - use global CEO folder
+        // Only use default resolution if workspaceDirectory is undefined, not empty string
+        const effectiveWorkspaceDir = input.workspaceDirectory === ''
+          ? GLOBAL_CEO_PATH
+          : (input.workspaceDirectory || this.resolveWorkspaceDirectory())
+
+        // Ensure global CEO folder exists
+        if (effectiveWorkspaceDir === GLOBAL_CEO_PATH) {
+          if (!existsSync(GLOBAL_CEO_PATH)) {
+            mkdirSync(GLOBAL_CEO_PATH, { recursive: true })
+            console.log('[OpenCodeSdkService] Created global CEO folder:', GLOBAL_CEO_PATH)
+          }
+        }
 
         const createResult = await this.client!.session.create({
-          query: {
-            directory: workspaceDirectory
-          }
+          query: effectiveWorkspaceDir ? { directory: effectiveWorkspaceDir } : undefined
         })
 
         if (!createResult.data) {
           console.error("[OpenCodeSdkService] Session creation failed", {
             agentId,
             role,
-            workspaceDirectory,
+            effectiveWorkspaceDir,
             result: createResult
           })
           throw new Error(`Failed to create session for agent: ${agentId}`)
@@ -293,7 +304,7 @@ class OpenCodeSdkService extends EventEmitter {
 
         const session: Session = createResult.data
         const resolvedAgentConfig = this.resolveAgentConfig(
-          workspaceDirectory,
+          effectiveWorkspaceDir,
           systemPrompt,
           systemPromptPath,
           agentSlug
@@ -352,9 +363,11 @@ class OpenCodeSdkService extends EventEmitter {
 
     const managedSession = sessionStore.getSession(agentId)
     if (!managedSession) {
+      console.error(`[OpenCodeSdkService] No session found for agent: ${agentId}`)
       throw new Error(`No session found for agent: ${agentId}`)
     }
 
+    console.log(`[OpenCodeSdkService] sendMessage for ${agentId}, message: "${message.substring(0, 50)}...", sessionId: ${managedSession.session.id}`)
     await this.sendMessageToSession(managedSession.session.id, message, undefined, managedSession.agentSlug)
   }
 
@@ -554,7 +567,8 @@ class OpenCodeSdkService extends EventEmitter {
         console.log("[OpenCodeSdkService] Message updated", {
           sessionId: info.sessionID,
           role: info.role,
-          messageId: info.id
+          messageId: info.id,
+          allSessionIds: sessionStore.listSessions().map(s => s.session?.id)
         })
         break
       }
@@ -563,9 +577,11 @@ class OpenCodeSdkService extends EventEmitter {
         const { sessionID, messageID, field, delta } = (event.properties as any)
         
         if (messageID && !this.assistantMessageIds.has(messageID)) {
+          console.log("[OpenCodeSdkService] message.part.delta IGNORED - messageID not in assistantMessageIds", { sessionID, messageID, delta: delta?.substring(0, 30) });
           break
         }
 
+        console.log("[OpenCodeSdkService] message.part.delta", { sessionID, messageID, field, delta: delta?.substring(0, 30) });
         if (field === "text" && delta) {
           this.publishSessionText(sessionID, delta, false)
         }
@@ -728,8 +744,11 @@ class OpenCodeSdkService extends EventEmitter {
   private publishSessionText(sessionId: string, text: string, replace: boolean): void {
     const managedSession = this.findManagedSessionBySessionId(sessionId)
     if (!managedSession || !text) {
+      console.log("[OpenCodeSdkService] publishSessionText skipped", { sessionId, foundSession: !!managedSession, textLength: text?.length });
       return
     }
+    
+    console.log("[OpenCodeSdkService] publishSessionText", { sessionId, agentId: managedSession.agentId, agentRole: managedSession.role, text: text.substring(0, 50) });
 
     const currentText = this.sessionTextBuffers.get(sessionId) || ""
     const nextText = replace ? text : currentText + text

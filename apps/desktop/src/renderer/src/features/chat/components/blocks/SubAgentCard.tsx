@@ -48,7 +48,7 @@ export const SubAgentCard = memo(({ blockId }: SubAgentCardProps) => {
           disabled={!block.result}
         >
           {/* Agent icon */}
-          <div className="flex-shrink-0">{statusIcon}</div>
+          <div className="shrink-0">{statusIcon}</div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
@@ -65,7 +65,7 @@ export const SubAgentCard = memo(({ blockId }: SubAgentCardProps) => {
 
           {/* Expand indicator */}
           {block.result && (
-            <div className="flex-shrink-0 text-zinc-500">
+            <div className="shrink-0 text-zinc-500">
               {isExpanded ? (
                 <ChevronUp className="w-4 h-4" />
               ) : (

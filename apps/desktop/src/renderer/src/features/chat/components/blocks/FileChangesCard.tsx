@@ -38,7 +38,7 @@ export const FileChangesCard = memo(({ blockId }: FileChangesCardProps) => {
           onClick={() => toggleBlockExpanded(blockId)}
           className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-zinc-800/30 transition-colors"
         >
-          <div className="flex-shrink-0 text-zinc-400">
+          <div className="shrink-0 text-zinc-400">
             <FolderOpen className="w-5 h-5" />
           </div>
 
@@ -68,7 +68,7 @@ export const FileChangesCard = memo(({ blockId }: FileChangesCardProps) => {
             </div>
           </div>
 
-          <div className="flex-shrink-0 text-zinc-500">
+          <div className="shrink-0 text-zinc-500">
             {isExpanded ? (
               <ChevronUp className="w-4 h-4" />
             ) : (
@@ -86,7 +86,7 @@ export const FileChangesCard = memo(({ blockId }: FileChangesCardProps) => {
                   key={idx}
                   className="flex items-center gap-2 py-1.5 px-2 rounded bg-zinc-950/50"
                 >
-                  <div className="flex-shrink-0">
+                  <div className="shrink-0">
                     {file.action === 'created' && (
                       <FilePlus className="w-4 h-4 text-emerald-400" />
                     )}

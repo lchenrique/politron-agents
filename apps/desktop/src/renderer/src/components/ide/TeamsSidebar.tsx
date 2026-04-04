@@ -42,7 +42,7 @@ const TeamsSidebar = ({ onHireAgent }: TeamsSidebarProps) => {
           className={`flex items-center gap-3 rounded-xl p-2.5 cursor-pointer border ${
             activeAgentTabId === globalCeoAgent.id
               ? "bg-ide-indigo/10 border-ide-indigo/40 ring-1 ring-ide-indigo/20"
-              : "bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-white/10"
+              : "bg-white/2 border-white/5 hover:bg-white/5 hover:border-white/10"
           }`}
         >
           <div className="w-8 h-8 rounded-lg bg-ide-indigo/10 border border-ide-indigo/30 flex items-center justify-center text-[12px] font-bold text-ide-indigo shrink-0">
@@ -63,7 +63,7 @@ const TeamsSidebar = ({ onHireAgent }: TeamsSidebarProps) => {
         {teams.map((team) => (
           <div key={team.id} className="mb-4">
             <div
-              className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-white/[0.03] mb-1 group "
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-white/3 mb-1 group "
               onClick={() => toggleTeamStatus(team.id)}
             >
               <div className="w-1 h-4 rounded-full shrink-0" style={{ background: team.color }} />
@@ -87,8 +87,8 @@ const TeamsSidebar = ({ onHireAgent }: TeamsSidebarProps) => {
                     }}
                     className={`flex items-center gap-2.5 py-2 px-2.5 pl-5 rounded-xl cursor-pointer border ${
                       activeAgentTabId === agent.id
-                        ? "bg-white/[0.05] border-white/10 translate-x-1"
-                        : "hover:bg-white/[0.03] border-transparent"
+                        ? "bg-white/5 border-white/10 translate-x-1"
+                        : "hover:bg-white/3 border-transparent"
                     }`}
                   >
                     <div
@@ -134,7 +134,7 @@ const TeamsSidebar = ({ onHireAgent }: TeamsSidebarProps) => {
         </div>
         <button
           onClick={onHireAgent}
-          className="w-full py-2 bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 rounded-xl text-ide-text/70 text-[11px] font-medium cursor-pointer flex items-center justify-center gap-2 group"
+          className="w-full py-2 bg-white/3 hover:bg-white/8 border border-white/5 rounded-xl text-ide-text/70 text-[11px] font-medium cursor-pointer flex items-center justify-center gap-2 group"
         >
           <Plus className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 " />
           Novo Agente

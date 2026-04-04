@@ -55,7 +55,7 @@ const HireAgentModal = ({ open, onClose, onHire, existingRoles }: HireAgentModal
  );
 
  return (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+ <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs" onClick={onClose}>
  <div className="w-[480px] max-h-[520px] bg-ide-surface-2 border border-ide-border rounded-xl shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
  <div className="flex items-center justify-between px-5 py-4 border-b border-ide-border shrink-0">
  <h2 className="text-sm font-medium text-ide-text">Contratar Agente</h2>
@@ -71,7 +71,7 @@ const HireAgentModal = ({ open, onClose, onHire, existingRoles }: HireAgentModal
  value={search}
  onChange={(e) => setSearch(e.target.value)}
  placeholder="Buscar agente..."
- className="flex-1 bg-transparent text-sm text-ide-text placeholder:text-ide-text-dim/40 outline-none"
+ className="flex-1 bg-transparent text-sm text-ide-text placeholder:text-ide-text-dim/40 outline-hidden"
  autoFocus
  />
  </div>
