@@ -84,7 +84,7 @@ class TeamStore extends EventEmitter {
     }
     this.teams.set(teamId, updatedTeam)
     appStateDb.saveTeam(updatedTeam)
-    this.emit("team:agent-added", teamId, agent)
+    this.emit("team:agent-added", { teamId, agent })
     return updatedTeam
   }
 
@@ -100,7 +100,7 @@ class TeamStore extends EventEmitter {
     }
     this.teams.set(teamId, updatedTeam)
     appStateDb.saveTeam(updatedTeam)
-    this.emit("team:agent-removed", teamId, agentId)
+    this.emit("team:agent-removed", { teamId, agentId })
     return updatedTeam
   }
 
@@ -116,7 +116,7 @@ class TeamStore extends EventEmitter {
     }
     this.teams.set(teamId, updatedTeam)
     appStateDb.saveTeam(updatedTeam)
-    this.emit("team:techlead-changed", teamId, agentId)
+    this.emit("team:techlead-changed", { teamId, agentId })
     return updatedTeam
   }
 
@@ -132,7 +132,7 @@ class TeamStore extends EventEmitter {
     }
     this.teams.set(teamId, updatedTeam)
     appStateDb.saveTeam(updatedTeam)
-    this.emit("team:paused", updatedTeam)
+    this.emit("team:paused", { teamId })
     return updatedTeam
   }
 
@@ -148,7 +148,7 @@ class TeamStore extends EventEmitter {
     }
     this.teams.set(teamId, updatedTeam)
     appStateDb.saveTeam(updatedTeam)
-    this.emit("team:resumed", updatedTeam)
+    this.emit("team:resumed", { teamId })
     return updatedTeam
   }
 

@@ -58,7 +58,7 @@
 }
 
 .dark {
-  --background: hsla(0, 0%, 4%, 0.70);
+  --background: hsla(0, 0%, 4%, 0.50);
   --foreground: hsl(223.8136 0.0004% 98.0256%);
   --card: hsl(223.8136 0.0000% 9.0527%);
   --card-foreground: hsl(223.8136 0.0004% 98.0256%);
@@ -108,7 +108,7 @@
 
 /* CAFEINE THEME */
 [data-theme="cafeine"] {
-  --background: hsla(0, 0%, 98%, 0.70);
+  --background: hsla(0, 0%, 98%, 0.50);
   --foreground: hsl(0 0% 12.5490%);
   --card: hsl(0 0% 98.8235%);
   --card-foreground: hsl(0 0% 12.5490%);
@@ -163,7 +163,7 @@
 }
 
 .dark[data-theme="cafeine"] {
-  --background: hsla(0, 0%, 7%, 0.70);
+  --background: hsla(0, 0%, 7%, 0.50);
   --foreground: hsl(0 0% 93.3333%);
   --card: hsl(0 0% 9.8039%);
   --card-foreground: hsl(0 0% 93.3333%);
@@ -217,7 +217,7 @@
 
 /* CANDYLAND THEME */
 [data-theme="candyland"] {
-  --background: hsla(200, 23%, 97%, 0.70);
+  --background: hsla(200, 23%, 97%, 0.50);
   --foreground: hsl(0 0% 20%);
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(0 0% 20%);
@@ -272,7 +272,7 @@
 }
 
 .dark[data-theme="candyland"] {
-  --background: hsla(220, 15%, 12%, 0.70);
+  --background: hsla(220, 15%, 12%, 0.50);
   --foreground: hsl(0 0% 89.8039%);
   --card: hsl(197.1429 6.9307% 19.8039%);
   --card-foreground: hsl(0 0% 89.8039%);
@@ -325,7 +325,7 @@
 }
 
 [data-theme="claude"] {
-  --background: hsla(48, 33%, 97%, 0.70);
+  --background: hsla(48, 33%, 97%, 0.50);
   --foreground: hsl(48 19.6078% 20%);
   --card: hsl(48 33.3333% 97.0588%);
   --card-foreground: hsl(60 2.5641% 7.6471%);
@@ -380,7 +380,7 @@
 }
 
 .dark[data-theme="claude"] {
-  --background: hsla(60, 3%, 15%, 0.70);
+  --background: hsla(60, 3%, 15%, 0.50);
   --foreground: hsl(46.1538 9.7744% 73.9216%);
   --card: hsl(60 2.7027% 14.5098%);
   --card-foreground: hsl(48 33.3333% 97.0588%);

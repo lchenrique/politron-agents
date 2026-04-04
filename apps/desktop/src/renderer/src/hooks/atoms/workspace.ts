@@ -43,23 +43,23 @@ const selectActiveAgent = (workspace: Workspace | null) => {
     }
     for (const team of workspace.teams) {
         const agent = team.agents.find((a) => a.id === activeAgentTabId)
-        if (agent) return agent
+        if (agent) {
+            console.log('[selectActiveAgent] Found agent:', agent.name, 'id:', agent.id, 'in team:', team.name)
+            return agent
+        }
     }
+    console.log('[selectActiveAgent] Agent not found for activeAgentTabId:', activeAgentTabId)
+    console.log('[selectActiveAgent] Available agents in workspace:', workspace.teams.flatMap(t => t.agents.map(a => ({id: a.id, name: a.name, team: t.name}))))
     return null
 }
 const selectActiveAgentTeam = (workspace: Workspace | null) => {
     if (!workspace) return null
     const activeAgentTabId = workspace.activeAgentTabId
-    const activeTeamId = workspace.activeTeamId
     if (!activeAgentTabId || activeAgentTabId === workspace.globalCeoAgent.id) {
         return null
     }
-    if (activeTeamId) {
-        const activeTeam = workspace.teams.find((team) => team.id === activeTeamId) ?? null
-        if (activeTeam?.agents.some((agent) => agent.id === activeAgentTabId)) {
-            return activeTeam
-        }
-    }
+    // Always search all teams to find the agent's team - don't rely on activeTeamId
+    // because it might not be set correctly for newly added agents
     return workspace.teams.find((team) => team.agents.some((agent) => agent.id === activeAgentTabId)) ?? null
 }
 

@@ -237,6 +237,7 @@ const setActiveProjectAtom = atom(null, (get, set, id: string) => {
 const setActiveAgentTabAtom = atom(null, (get, set, id: string | null) => {
   const workspace = get(workspaceAtom);
   if (!workspace) return;
+  console.log('[setActiveAgentTabAtom] Setting activeAgentTabId to:', id);
   set(workspaceAtom, { ...workspace, activeAgentTabId: id });
   set(activeAgentTabIdAtom, id);
 });
@@ -256,29 +257,7 @@ const addProjectAtom = atom(
 const addAgentToTeamAtom = atom(
   null,
   async (get, set, { teamId, template }: { teamId: string; template: AgentTemplate }) => {
-    const workspace = get(workspaceAtom);
-    if (!workspace) return;
-
-    const optimisticAgent: Agent = {
-      id: uid(),
-      name: template.name,
-      role: template.role,
-      catalogSlug: template.slug,
-      initials: template.initials,
-      status: "idle",
-      color: template.color,
-      bgColor: "bg-ide-indigo/10",
-      borderColor: "border-ide-indigo/20",
-      currentFiles: [],
-    };
-
-    set(workspaceAtom, {
-      ...workspace,
-      teams: workspace.teams.map((team) =>
-        team.id === teamId ? { ...team, agents: [...team.agents, optimisticAgent] } : team
-      ),
-    });
-
+    // Não fazer update otimístico - o evento team:agent-added vai atualizar o workspace
     try {
       await window.vibeAPI.team.hire({
         teamId,
@@ -287,18 +266,13 @@ const addAgentToTeamAtom = atom(
           role: template.role,
           catalogSlug: template.slug,
           systemPromptPath: template.systemPromptPath,
+          color: template.color,
+          initials: template.initials,
         },
       });
+      // O evento team:agent-added do backend vai disparar e atualizar o workspace
     } catch (error) {
       console.error("Failed to hire agent:", error);
-      set(workspaceAtom, {
-        ...workspace,
-        teams: workspace.teams.map((team) =>
-          team.id === teamId
-            ? { ...team, agents: team.agents.filter((agent) => agent.id !== optimisticAgent.id) }
-            : team
-        ),
-      });
     }
   }
 );
@@ -383,6 +357,38 @@ export const useWorkspaceAddAgentToTeam = () => {
       addAgentToTeam({ teamId, template });
     },
     [addAgentToTeam]
+  );
+};
+
+export const useWorkspaceCreateTeamWithAgent = () => {
+  const setWorkspace = useSetAtom(workspaceAtom);
+  const addAgentToTeam = useSetAtom(addAgentToTeamAtom);
+  
+  return useCallback(
+    async (template: AgentTemplate, teamName: string, projectPath: string, color: string) => {
+      // Create team via API
+      const teamResult = await window.vibeAPI.team.create({
+        name: teamName,
+        projectPath: projectPath,
+        projectName: teamName,
+        projectColor: color,
+      });
+      
+      // The team.create will emit an event that updates workspace
+      // For now, we need to hire the agent after team creation
+      // Wait a bit for the team to be created and fetched
+      return new Promise<void>((resolve) => {
+        setTimeout(async () => {
+          const teams = await window.vibeAPI.team.list();
+          const createdTeam = (teams as BackendTeam[]).find((t) => t.name === teamName);
+          if (createdTeam) {
+            addAgentToTeam({ teamId: createdTeam.id, template });
+          }
+          resolve();
+        }, 500);
+      });
+    },
+    [setWorkspace, addAgentToTeam]
   );
 };
 
@@ -524,15 +530,19 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     function handleTeamAgentAdded(data: { teamId: string; agent: BackendAgent }) {
+      console.log('[handleTeamAgentAdded] Received event:', JSON.stringify(data));
       const agent = mapBackendAgentToFrontend(data.agent);
+      console.log('[handleTeamAgentAdded] Mapped agent:', agent.name, 'id:', agent.id, 'role:', agent.role);
       setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
-        return {
+        const updatedWorkspace = {
           ...prev,
           teams: prev.teams.map((team) =>
             team.id === data.teamId ? { ...team, agents: [...team.agents, agent] } : team
           ),
         };
+        console.log('[handleTeamAgentAdded] Updated workspace. Teams now have agents:', updatedWorkspace.teams.map(t => ({name: t.name, agents: t.agents.map(a => a.name)})));
+        return updatedWorkspace;
       });
     }
 

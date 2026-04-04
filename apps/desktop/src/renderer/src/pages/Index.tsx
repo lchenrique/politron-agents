@@ -1,17 +1,19 @@
-import { useState, useEffect, memo } from "react";
+import { useState, useEffect, memo, useMemo, useCallback } from "react";
 import TitleBar from "@/components/ide/TitleBar";
 import AppSidebar from "@/components/ide/AppSidebar";
 import { AgentChatShell } from "@/features/chat/components/shell/AgentChatShell";
 import { ActiveSessionProvider } from "@/features/chat/context/ActiveSessionContext";
 import TerminalPanel from "@/components/ide/TerminalPanel";
 import AddProjectModal from "@/components/ide/AddProjectModal";
-import HireAgentModal from "@/components/ide/HireAgentModal";
+import HireAgentModal, { AgentModalMode } from "@/components/ide/HireAgentModal";
 import {
   WorkspaceProvider,
   useWorkspaceActiveTeam,
+  useWorkspaceTeams,
   useWorkspaceAddAgentToTeam,
   useWorkspaceAddProject,
   useWorkspaceRegisterCeoHireRequest,
+  useWorkspaceCreateTeamWithAgent,
 } from "@/hooks/useWorkspace";
 import {
   ResizableHandle,
@@ -21,22 +23,53 @@ import {
 
 const IDELayout = memo(() => {
   const activeTeam = useWorkspaceActiveTeam();
+  const teams = useWorkspaceTeams();
   const addProject = useWorkspaceAddProject();
   const addAgentToTeam = useWorkspaceAddAgentToTeam();
+  const createTeamWithAgent = useWorkspaceCreateTeamWithAgent();
   const onCeoHireRequest = useWorkspaceRegisterCeoHireRequest();
   const [terminalOpen, setTerminalOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<"chat" | "board">("chat");
   const [showAddProject, setShowAddProject] = useState(false);
-  const [showHireAgent, setShowHireAgent] = useState(false);
+  const [showMarketplace, setShowMarketplace] = useState(false);
+  const [marketplaceMode, setMarketplaceMode] = useState<AgentModalMode>("add-to-project");
 
   const showTerminal = terminalOpen;
+
+  // Available teams for add-to-project mode
+  const availableTeams = useMemo(() => teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    projectName: t.agents[0]?.name,
+  })), [teams]);
 
   // Register CEO hire request callback
   useEffect(() => {
     onCeoHireRequest(() => {
-      setShowHireAgent(true);
+      setMarketplaceMode("add-to-project");
+      setShowMarketplace(true);
     });
   }, [onCeoHireRequest]);
+
+  const openMarketplaceCreateTeam = () => {
+    setMarketplaceMode("create-team");
+    setShowMarketplace(true);
+  };
+
+  const openMarketplaceAddToProject = () => {
+    setMarketplaceMode("add-to-project");
+    setShowMarketplace(true);
+  };
+
+  const handleHireAgent = useCallback(async (template: any, teamName?: string, projectPath?: string) => {
+    if (marketplaceMode === "create-team" && teamName && projectPath) {
+      await createTeamWithAgent(template, teamName, projectPath, "hsl(239 84% 67%)");
+    } else if (activeTeam) {
+      addAgentToTeam(activeTeam.id, template);
+    }
+  }, [marketplaceMode, createTeamWithAgent, activeTeam, addAgentToTeam]);
+
+  const existingRoles = useMemo(() => activeTeam?.agents.map((a) => a.role) ?? [], [activeTeam?.agents]);
 
   return (
     <div className="w-full h-dvh flex flex-col bg-background text-foreground overflow-hidden font-sans">
@@ -47,25 +80,28 @@ const IDELayout = memo(() => {
         onToggleTerminal={() => setTerminalOpen(!terminalOpen)}
         className="glass-surface border-b border-border/10"
       />
-      
+
       <main className="flex-1 overflow-hidden">
         <ResizablePanelGroup direction="horizontal">
           {/* SIDEBAR PANEL */}
-          <ResizablePanel 
-            defaultSize={18} 
-            minSize={12} 
+          <ResizablePanel
+            defaultSize={18}
+            minSize={12}
             maxSize={25}
-            className="h-full border-r border-border/10"
+            className="h-full"
           >
-            <AppSidebar onAddProject={() => setShowAddProject(true)} />
+            <AppSidebar
+              onAddProject={() => setShowAddProject(true)}
+              onOpenMarketplaceAddToProject={openMarketplaceAddToProject}
+            />
           </ResizablePanel>
 
-          <ResizableHandle withHandle className="bg-border/10 hover:bg-primary/20 transition-colors" />
+          <ResizableHandle withHandle className="bg-transparent hover:bg-primary/20 transition-colors" />
 
           {/* MAIN CHAT CONTENT */}
           <ResizablePanel defaultSize={54} className="h-full">
             <div className="h-full overflow-hidden p-3 pt-1">
-              <div className="h-full border border-border/20 rounded-3xl overflow-hidden shadow-2xl relative">
+              <div className="h-full rounded-3xl overflow-hidden shadow-2xl relative">
                 <ActiveSessionProvider>
                   <AgentChatShell />
                 </ActiveSessionProvider>
@@ -75,17 +111,17 @@ const IDELayout = memo(() => {
 
           {showTerminal && (
             <>
-              <ResizableHandle withHandle className="bg-border/10 hover:bg-primary/20 transition-colors" />
-              
+              <ResizableHandle withHandle className="bg-transparent hover:bg-primary/20 transition-colors" />
+
               {/* TERMINAL PANEL */}
-              <ResizablePanel 
-                defaultSize={28} 
-                minSize={15} 
+              <ResizablePanel
+                defaultSize={28}
+                minSize={15}
                 maxSize={45}
                 className="h-full"
               >
                 <div className="h-full pl-0 p-3 pt-1">
-                   <TerminalPanel />
+                  <TerminalPanel />
                 </div>
               </ResizablePanel>
             </>
@@ -100,10 +136,12 @@ const IDELayout = memo(() => {
         onAdd={addProject}
       />
       <HireAgentModal
-        open={showHireAgent}
-        onClose={() => setShowHireAgent(false)}
-        onHire={(template) => activeTeam && addAgentToTeam(activeTeam.id, template)}
-        existingRoles={activeTeam?.agents.map((a) => a.role) ?? []}
+        open={showMarketplace}
+        mode={marketplaceMode}
+        onClose={() => setShowMarketplace(false)}
+        onHire={handleHireAgent}
+        existingRoles={existingRoles}
+        availableTeams={availableTeams}
       />
     </div>
   );

@@ -241,7 +241,11 @@ export function useOpencodeTranscriptBridge() {
   const previousChatContextKeyRef = useRef<string | null>(null);
 
   const activeContext = useMemo<ActiveAgentContext | null>(() => {
-    if (!activeAgentTabId || !activeAgent || !globalCeoAgent) return null;
+    console.log('[activeContext useMemo] activeAgentTabId:', activeAgentTabId, 'activeAgent:', activeAgent?.name, 'activeAgent.id:', activeAgent?.id, 'globalCeoAgent.id:', globalCeoAgent?.id);
+    if (!activeAgentTabId || !activeAgent || !globalCeoAgent) {
+      console.log('[activeContext useMemo] Returning null because:', !activeAgentTabId ? 'no activeAgentTabId' : !activeAgent ? 'no activeAgent' : 'no globalCeoAgent');
+      return null;
+    }
 
     if (activeAgentTabId === globalCeoAgent.id) {
       return {

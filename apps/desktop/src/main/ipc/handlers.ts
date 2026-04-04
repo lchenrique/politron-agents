@@ -1,5 +1,7 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron'
+import { ipcMain, BrowserWindow, dialog, app } from 'electron'
 import * as os from 'os'
+import * as path from 'path'
+import * as fs from 'fs'
 import { registerTerminalHandlers } from './terminal'
 import { getAppWindow } from '../windows/manager'
 import { openCodeSdkService } from '../services/opencode-sdk'
@@ -178,7 +180,18 @@ export function registerHandlers(): void {
   })
 
   ipcMain.handle('vibe:team:hire', async (_, input) => {
-    return teamStore.addAgentToTeam(input.teamId, input.agent as Agent)
+    const fullAgent: Agent = {
+      id: crypto.randomUUID(),
+      name: input.agent.name,
+      role: input.agent.role,
+      catalogSlug: input.agent.catalogSlug,
+      systemPromptPath: input.agent.systemPromptPath || '',
+      status: 'idle',
+      color: input.agent.color || 'hsl(239 84% 67%)',
+      currentFiles: [],
+      hiredAt: new Date().toISOString(),
+    }
+    return teamStore.addAgentToTeam(input.teamId, fullAgent)
   })
 
   ipcMain.handle('vibe:team:fire', async (_, input) => {
@@ -266,8 +279,29 @@ export function registerHandlers(): void {
     return getTemplateById(templateId) || null
   })
 
-  ipcMain.handle('vibe:agent-template:list', async () => {
-    return loadAgentTemplates()
+  ipcMain.handle('vibe:agent-template:list', async (_, projectPath?: string) => {
+    // Use provided projectPath or fall back to looking relative to app root
+    // In development, app runs from apps/desktop, so we need to go up to project root
+    let agentsDir: string
+    
+    if (projectPath) {
+      agentsDir = path.join(projectPath, '.opencode', 'agents')
+    } else {
+      // Try multiple possible locations for .opencode/agents
+      const possiblePaths = [
+        path.join(process.cwd(), '.opencode', 'agents'),
+        path.join(process.cwd(), '..', '.opencode', 'agents'),
+        path.join(app.getAppPath(), '.opencode', 'agents'),
+        path.join(app.getAppPath(), '..', '.opencode', 'agents'),
+        path.join(app.getAppPath(), '..', '..', '.opencode', 'agents'),
+      ]
+      
+      // Find the first path that exists
+      agentsDir = possiblePaths.find(p => fs.existsSync(p)) || possiblePaths[0]
+    }
+    
+    console.log(`[agent-catalog] Loading agents from: ${agentsDir}`)
+    return loadAgentTemplates(agentsDir)
   })
 
   ipcMain.handle('vibe:team:createFromTemplate', async (_, { templateId, teamName, projectPath }) => {
