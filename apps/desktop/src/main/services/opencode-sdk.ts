@@ -58,6 +58,14 @@ interface ResolvedAgentConfig {
 }
 
 const GLOBAL_CEO_PATH = join(os.homedir(), '.politron', 'global-ceo')
+const AGENT_SLUG_ALIASES: Record<string, string> = {
+  "frontend-dev": "frontend-developer",
+  "backend-dev": "backend-architect",
+  "qa-tester": "reality-checker",
+  "devops-eng": "devops-automator",
+  "ux-designer": "ui-designer",
+  "studio-producer": "software-architect",
+}
 
 class OpenCodeSdkService extends EventEmitter {
   private client: OpencodeClient | null = null
@@ -71,6 +79,7 @@ class OpenCodeSdkService extends EventEmitter {
   private sessionTextBuffers: Map<string, string> = new Map()
   private assistantMessageIds: Set<string> = new Set()
   private sessionCreationPromises: Map<string, Promise<ManagedSession>> = new Map()
+  private availableAgentsPromise: Promise<Map<string, string>> | null = null
 
   constructor() {
     super()
@@ -149,10 +158,77 @@ class OpenCodeSdkService extends EventEmitter {
     return this.stripFrontmatter(fileContent)
   }
 
-  private resolveOpenCodeAgentName(workspaceDirectory: string, systemPromptPath?: string): string | undefined {
-    if (systemPromptPath) {
-      const absolutePromptPath = resolve(workspaceDirectory, systemPromptPath)
+  private toAgentLookupKeys(value: string): string[] {
+    const trimmed = value.trim()
+    if (!trimmed) return []
 
+    const lower = trimmed.toLowerCase()
+    const slugified = lower
+      .normalize("NFKD")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+
+    return Array.from(new Set([trimmed, lower, slugified]))
+  }
+
+  private async getAvailableAgentMap(): Promise<Map<string, string>> {
+    if (!this.client) {
+      return new Map()
+    }
+
+    if (this.availableAgentsPromise) {
+      return this.availableAgentsPromise
+    }
+
+    this.availableAgentsPromise = (async () => {
+      try {
+        const result = await this.client!.app.agents()
+        const map = new Map<string, string>()
+
+        for (const agent of result.data || []) {
+          if (!agent?.name) continue
+          for (const key of this.toAgentLookupKeys(agent.name)) {
+            map.set(key, agent.name)
+          }
+        }
+
+        return map
+      } catch (error) {
+        console.warn("[OpenCodeSdkService] Failed to load available agents from SDK:", error)
+        return new Map<string, string>()
+      }
+    })()
+
+    return this.availableAgentsPromise
+  }
+
+  private async resolveOpenCodeAgentName(
+    workspaceDirectory: string,
+    systemPromptPath?: string,
+    agentSlug?: string
+  ): Promise<string | undefined> {
+    const availableAgents = await this.getAvailableAgentMap()
+    const candidates: string[] = []
+
+    if (agentSlug) {
+      candidates.push(agentSlug)
+      const aliasedSlug = AGENT_SLUG_ALIASES[agentSlug]
+      if (aliasedSlug) {
+        candidates.push(aliasedSlug)
+      }
+    }
+
+    if (systemPromptPath) {
+      const normalizedPath = systemPromptPath.replace(/\\/g, "/")
+      const fileSlug = basename(normalizedPath, ".md")
+      candidates.push(fileSlug)
+      const aliasedFileSlug = AGENT_SLUG_ALIASES[fileSlug]
+      if (aliasedFileSlug) {
+        candidates.push(aliasedFileSlug)
+      }
+
+      const absolutePromptPath = resolve(workspaceDirectory, systemPromptPath)
       if (existsSync(absolutePromptPath)) {
         const fileContent = readFileSync(absolutePromptPath, "utf8")
         const match = fileContent.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/m)
@@ -160,24 +236,30 @@ class OpenCodeSdkService extends EventEmitter {
         const nameLine = frontmatterBlock?.match(/(?:^|\r?\n)name:\s*(.+)\s*$/m)
         const rawName = nameLine?.[1]?.trim().replace(/^['"]|['"]$/g, "")
         if (rawName) {
-          return rawName
+          candidates.push(rawName)
         }
       }
-
-      const normalizedPath = systemPromptPath.replace(/\\/g, "/")
-      return basename(normalizedPath, ".md")
     }
-    
-    return undefined
+
+    for (const candidate of candidates) {
+      for (const key of this.toAgentLookupKeys(candidate)) {
+        const resolved = availableAgents.get(key)
+        if (resolved) {
+          return resolved
+        }
+      }
+    }
+
+    return candidates[0]
   }
 
-  private resolveAgentConfig(
+  private async resolveAgentConfig(
     workspaceDirectory: string,
     systemPrompt?: string,
     systemPromptPath?: string,
     agentSlug?: string
-  ): ResolvedAgentConfig {
-    const resolvedAgentName = this.resolveOpenCodeAgentName(workspaceDirectory, systemPromptPath)
+  ): Promise<ResolvedAgentConfig> {
+    const resolvedAgentName = await this.resolveOpenCodeAgentName(workspaceDirectory, systemPromptPath, agentSlug)
 
     if (resolvedAgentName) {
       return {
@@ -255,11 +337,48 @@ class OpenCodeSdkService extends EventEmitter {
     }
 
     const { agentId, teamId, role, agentSlug, systemPrompt, systemPromptPath } = input
+    const effectiveWorkspaceDir = input.workspaceDirectory === ''
+      ? GLOBAL_CEO_PATH
+      : (input.workspaceDirectory || this.resolveWorkspaceDirectory())
 
     const existingSession = sessionStore.getSession(agentId)
     if (existingSession) {
+      const existingDirectory =
+        existingSession.workspaceDirectory ||
+        (typeof existingSession.session?.directory === "string" ? existingSession.session.directory : undefined)
+
+      if (
+        effectiveWorkspaceDir &&
+        existingDirectory &&
+        resolve(existingDirectory) !== resolve(effectiveWorkspaceDir)
+      ) {
+        console.log(`[OpenCodeSdkService] Discarding resumed session for ${agentId} because directory changed`, {
+          previousDirectory: existingDirectory,
+          nextDirectory: effectiveWorkspaceDir,
+        })
+        sessionStore.removeSession(agentId)
+      }
+    }
+
+    const existingSessionAfterDirectoryCheck = sessionStore.getSession(agentId)
+    if (existingSessionAfterDirectoryCheck) {
+      const resolvedExistingConfig = await this.resolveAgentConfig(
+        effectiveWorkspaceDir,
+        systemPrompt,
+        systemPromptPath,
+        agentSlug || existingSessionAfterDirectoryCheck.agentSlug
+      )
+
+      if (resolvedExistingConfig.agentSlug && existingSessionAfterDirectoryCheck.agentSlug !== resolvedExistingConfig.agentSlug) {
+        console.log(`[OpenCodeSdkService] Updating resumed session agent slug for ${agentId}`, {
+          previousAgentSlug: existingSessionAfterDirectoryCheck.agentSlug,
+          nextAgentSlug: resolvedExistingConfig.agentSlug,
+        })
+        existingSessionAfterDirectoryCheck.agentSlug = resolvedExistingConfig.agentSlug
+      }
+
       console.log(`[OpenCodeSdkService] Resuming existing session for agent: ${agentId}`)
-      return existingSession
+      return existingSessionAfterDirectoryCheck
     }
 
     // Check if session is already being created
@@ -276,10 +395,6 @@ class OpenCodeSdkService extends EventEmitter {
 
         // Empty string means "global CEO" mode - use global CEO folder
         // Only use default resolution if workspaceDirectory is undefined, not empty string
-        const effectiveWorkspaceDir = input.workspaceDirectory === ''
-          ? GLOBAL_CEO_PATH
-          : (input.workspaceDirectory || this.resolveWorkspaceDirectory())
-
         // Ensure global CEO folder exists
         if (effectiveWorkspaceDir === GLOBAL_CEO_PATH) {
           if (!existsSync(GLOBAL_CEO_PATH)) {
@@ -303,7 +418,7 @@ class OpenCodeSdkService extends EventEmitter {
         }
 
         const session: Session = createResult.data
-        const resolvedAgentConfig = this.resolveAgentConfig(
+        const resolvedAgentConfig = await this.resolveAgentConfig(
           effectiveWorkspaceDir,
           systemPrompt,
           systemPromptPath,
@@ -315,6 +430,7 @@ class OpenCodeSdkService extends EventEmitter {
           teamId,
           role,
           session,
+          workspaceDirectory: effectiveWorkspaceDir,
           agentSlug: resolvedAgentConfig.agentSlug,
           status: "idle",
           lastEventAt: new Date().toISOString()
@@ -328,17 +444,6 @@ class OpenCodeSdkService extends EventEmitter {
           systemPromptPath,
           hasSystemPrompt: !!resolvedAgentConfig.systemPrompt
         })
-
-        if (resolvedAgentConfig.agentSlug || resolvedAgentConfig.systemPrompt) {
-          console.log(`[OpenCodeSdkService] Warming up session for ${agentId} with slug: ${resolvedAgentConfig.agentSlug}`)
-          // This must complete before we consider the session "ready"
-          await this.sendMessageToSession(
-            session.id,
-            "Quem é você? Identifique-se.",
-            resolvedAgentConfig.systemPrompt,
-            resolvedAgentConfig.agentSlug
-          )
-        }
 
         console.log(`[OpenCodeSdkService] Session created: ${session.id} for agent: ${agentId}`)
         return managedSession

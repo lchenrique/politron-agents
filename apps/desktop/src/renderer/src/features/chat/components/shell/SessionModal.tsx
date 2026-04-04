@@ -115,10 +115,11 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
   }, [open, loadSdkSessions]);
 
   const handleCreateSession = useCallback(async () => {
+    if (!sessionDirectory) return;
     setLoading(true);
     try {
       const newSession = await window.vibeAPI.session.create({
-        directory: process.cwd()
+        directory: sessionDirectory
       });
       if (newSession?.id) {
         addSession(newSession);
@@ -129,7 +130,7 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
     } finally {
       setLoading(false);
     }
-  }, [addSession, onClose]);
+  }, [addSession, onClose, sessionDirectory]);
 
   const handleDeleteSession = useCallback(async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();

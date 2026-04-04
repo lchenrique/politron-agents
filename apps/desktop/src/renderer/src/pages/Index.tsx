@@ -1,5 +1,4 @@
 import { useState, useEffect, memo } from "react";
-import { useAtomValue } from "jotai";
 import TitleBar from "@/components/ide/TitleBar";
 import AppSidebar from "@/components/ide/AppSidebar";
 import { AgentChatShell } from "@/features/chat/components/shell/AgentChatShell";
@@ -14,7 +13,6 @@ import {
   useWorkspaceAddProject,
   useWorkspaceRegisterCeoHireRequest,
 } from "@/hooks/useWorkspace";
-import { globalCeoAgentAtom, activeAgentTabIdAtom } from "@/hooks/atoms";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -26,17 +24,12 @@ const IDELayout = memo(() => {
   const addProject = useWorkspaceAddProject();
   const addAgentToTeam = useWorkspaceAddAgentToTeam();
   const onCeoHireRequest = useWorkspaceRegisterCeoHireRequest();
-  const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
-  const activeAgentTabId = useAtomValue(activeAgentTabIdAtom);
-  
   const [terminalOpen, setTerminalOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<"chat" | "board">("chat");
   const [showAddProject, setShowAddProject] = useState(false);
   const [showHireAgent, setShowHireAgent] = useState(false);
 
-  // Terminal shows when: has project AND terminal is open (regardless of which agent is active)
-  const hasProjectSelected = !!activeTeam?.projectPath;
-  const showTerminal = terminalOpen && hasProjectSelected;
+  const showTerminal = terminalOpen;
 
   // Register CEO hire request callback
   useEffect(() => {
@@ -48,7 +41,7 @@ const IDELayout = memo(() => {
   return (
     <div className="w-full h-dvh flex flex-col bg-background text-foreground overflow-hidden font-sans">
       <TitleBar
-        terminalOpen={showTerminal}
+        terminalOpen={terminalOpen}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onToggleTerminal={() => setTerminalOpen(!terminalOpen)}

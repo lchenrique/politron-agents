@@ -3,6 +3,14 @@ import { join } from "path"
 import { DatabaseSync } from "node:sqlite"
 import type { Agent, PipelineTask, Team } from "../types/team"
 
+function normalizeCatalogSlug(role: string, catalogSlug: string): string {
+  if (role === "tech-lead" && catalogSlug === "studio-producer") {
+    return "software-architect"
+  }
+
+  return catalogSlug
+}
+
 interface PersistedState {
   teams: Team[]
   tasks: PipelineTask[]
@@ -101,7 +109,7 @@ class AppStateDb {
         id: row.id,
         name: row.name,
         role: row.role,
-        catalogSlug: row.catalog_slug,
+        catalogSlug: normalizeCatalogSlug(row.role, row.catalog_slug),
         systemPromptPath: row.system_prompt_path,
         status: row.status,
         color: row.color,

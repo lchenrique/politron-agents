@@ -149,7 +149,7 @@ export function registerHandlers(): void {
       id: crypto.randomUUID(),
       name: 'Tech Lead',
       role: 'tech-lead',
-      catalogSlug: 'studio-producer',
+      catalogSlug: 'software-architect',
       systemPromptPath: getAgentBySlug('studio-producer')?.systemPromptPath || '',
       status: 'idle' as const,
       color: input.projectColor || 'hsl(239 84% 67%)',
@@ -380,12 +380,52 @@ export function registerHandlers(): void {
     return result.data || []
   })
 
-  ipcMain.handle('vibe:session:prompt', async (_, { sessionId, message, agentSlug, systemPrompt }: { sessionId: string; message: string; agentSlug?: string; systemPrompt?: string }) => {
+  ipcMain.handle(
+    'vibe:session:prompt',
+    async (
+      _,
+      {
+        sessionId,
+        message,
+        agentId,
+        teamId,
+        role,
+        agentSlug,
+        systemPrompt,
+        workspaceDirectory,
+      }: {
+        sessionId: string
+        message: string
+        agentId: string
+        teamId?: string
+        role: 'global-ceo' | 'tech-lead' | 'team-agent'
+        agentSlug?: string
+        systemPrompt?: string
+        workspaceDirectory?: string
+      }
+    ) => {
     await openCodeSdkService.initialize()
     const client = openCodeSdkService.getClient()
     if (!client) {
       throw new Error('SDK client not initialized')
     }
+
+    const sessionResult = await client.session.get({ path: { id: sessionId } })
+    const session = sessionResult.data
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`)
+    }
+
+    sessionStore.setSession({
+      agentId,
+      teamId,
+      role,
+      session,
+      workspaceDirectory,
+      agentSlug,
+      status: 'idle',
+      lastEventAt: new Date().toISOString(),
+    })
     
     const parts = [{ type: "text" as const, text: message }]
     const finalSystemPrompt = agentSlug ? undefined : systemPrompt

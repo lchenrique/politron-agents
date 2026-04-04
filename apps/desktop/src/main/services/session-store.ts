@@ -9,6 +9,7 @@ export interface ManagedSession {
   teamId?: string
   role: AgentRole
   session: any
+  workspaceDirectory?: string
   status: AgentStatus
   agentSlug?: string
   lastEventAt?: string

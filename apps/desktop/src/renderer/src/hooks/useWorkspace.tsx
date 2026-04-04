@@ -23,6 +23,9 @@ import {
 export const useWorkspaceDeleteProject = () => {
   const workspace = useWorkspaceState();
   const setWorkspace = useSetAtom(workspaceAtom);
+  const setActiveProjectId = useSetAtom(activeProjectIdAtom);
+  const setActiveTeamId = useSetAtom(activeTeamIdAtom);
+  const setActiveAgentTabId = useSetAtom(activeAgentTabIdAtom);
   const setSidebarView = useSetAtom(sidebarViewAtom);
 
   return useCallback(
@@ -36,15 +39,18 @@ export const useWorkspaceDeleteProject = () => {
           ...workspace,
           activeProjectId: null,
           activeTeamId: null,
-          activeAgentTabId: workspace.globalCeoAgent.id,
+          activeAgentTabId: null,
         });
+        setActiveProjectId(null);
+        setActiveTeamId(null);
+        setActiveAgentTabId(null);
         setSidebarView('root');
       }
 
       // Delete via API
       window.vibeAPI.team.delete(project.teamId);
     },
-    [workspace, setWorkspace, setSidebarView]
+    [workspace, setWorkspace, setActiveProjectId, setActiveTeamId, setActiveAgentTabId, setSidebarView]
   );
 };
 
@@ -184,7 +190,7 @@ function createEmptyWorkspace(): Workspace {
     projects: [],
     activeProjectId: null,
     activeTeamId: null,
-    activeAgentTabId: defaultCeo.id, // Start with CEO selected
+    activeAgentTabId: null,
   };
 }
 
@@ -228,7 +234,7 @@ const setActiveProjectAtom = atom(null, (get, set, id: string) => {
   set(activeTeamIdAtom, project?.teamId ?? workspace.activeTeamId);
 });
 
-const setActiveAgentTabAtom = atom(null, (get, set, id: string) => {
+const setActiveAgentTabAtom = atom(null, (get, set, id: string | null) => {
   const workspace = get(workspaceAtom);
   if (!workspace) return;
   set(workspaceAtom, { ...workspace, activeAgentTabId: id });
@@ -335,7 +341,7 @@ export const useWorkspaceSetActiveProject = () => {
 export const useWorkspaceSetActiveAgentTab = () => {
   const setActiveAgentTab = useSetAtom(setActiveAgentTabAtom);
   return useCallback(
-    (id: string) => {
+    (id: string | null) => {
       setActiveAgentTab(id);
     },
     [setActiveAgentTab]
@@ -389,7 +395,9 @@ export const useWorkspaceRegisterCeoHireRequest = () => {
 export const useWorkspaceEnterProject = () => {
   const workspace = useWorkspaceState();
   const setWorkspace = useSetAtom(workspaceAtom);
+  const setActiveProjectId = useSetAtom(activeProjectIdAtom);
   const setActiveTeamId = useSetAtom(activeTeamIdAtom);
+  const setActiveAgentTabId = useSetAtom(activeAgentTabIdAtom);
   const setSidebarView = useSetAtom(sidebarViewAtom);
 
   return useCallback(
@@ -399,23 +407,28 @@ export const useWorkspaceEnterProject = () => {
 
       const team = workspace.teams.find((item) => item.id === project.teamId);
 
+      const nextAgentTabId = team?.techLeadAgentId || team?.agents[0]?.id || workspace.globalCeoAgent.id;
       setWorkspace({
         ...workspace,
         activeProjectId: id,
         activeTeamId: project.teamId,
-        activeAgentTabId: team?.techLeadAgentId || team?.agents[0]?.id || workspace.globalCeoAgent.id,
+        activeAgentTabId: nextAgentTabId,
       });
+      setActiveProjectId(id);
       setActiveTeamId(project.teamId);
+      setActiveAgentTabId(nextAgentTabId);
       setSidebarView('project');
     },
-    [workspace, setWorkspace, setActiveTeamId, setSidebarView]
+    [workspace, setWorkspace, setActiveProjectId, setActiveTeamId, setActiveAgentTabId, setSidebarView]
   );
 };
 
 export const useWorkspaceBackToRoot = () => {
   const workspace = useWorkspaceState();
   const setWorkspace = useSetAtom(workspaceAtom);
+  const setActiveProjectId = useSetAtom(activeProjectIdAtom);
   const setActiveTeamId = useSetAtom(activeTeamIdAtom);
+  const setActiveAgentTabId = useSetAtom(activeAgentTabIdAtom);
   const setSidebarView = useSetAtom(sidebarViewAtom);
 
   return useCallback(() => {
@@ -424,26 +437,45 @@ export const useWorkspaceBackToRoot = () => {
       ...workspace,
       activeProjectId: null,
       activeTeamId: null,
-      activeAgentTabId: workspace.globalCeoAgent.id,
+      activeAgentTabId: null,
     });
+    setActiveProjectId(null);
     setActiveTeamId(null);
+    setActiveAgentTabId(null);
     setSidebarView('root');
-  }, [workspace, setWorkspace, setActiveTeamId, setSidebarView]);
+  }, [workspace, setWorkspace, setActiveProjectId, setActiveTeamId, setActiveAgentTabId, setSidebarView]);
 };
 
-function buildWorkspaceFromBackendTeams(backendTeams: BackendTeam[]): Workspace {
+function buildWorkspaceFromBackendTeams(backendTeams: BackendTeam[], previousWorkspace?: Workspace | null): Workspace {
   const teams = backendTeams.map(mapBackendTeamToFrontend);
   const projects = mapBackendTeamsToProjects(backendTeams);
   const workspace = createEmptyWorkspace();
   workspace.teams = teams;
   workspace.projects = projects;
 
-  // Start with CEO selected by default
-  workspace.activeAgentTabId = workspace.globalCeoAgent.id;
+  const previousActiveTeamId = previousWorkspace?.activeTeamId;
+  const previousActiveProjectId = previousWorkspace?.activeProjectId;
+  const previousActiveAgentTabId = previousWorkspace?.activeAgentTabId;
 
-  if (teams.length > 0) {
-    workspace.activeTeamId = teams[0].id;
-    workspace.activeProjectId = projects[0]?.id ?? teams[0].id;
+  workspace.activeTeamId =
+    previousActiveTeamId && teams.some((team) => team.id === previousActiveTeamId)
+      ? previousActiveTeamId
+      : null;
+
+  workspace.activeProjectId =
+    previousActiveProjectId && projects.some((project) => project.id === previousActiveProjectId)
+      ? previousActiveProjectId
+      : null;
+
+  const previousAgentStillExists =
+    previousActiveAgentTabId &&
+    (previousActiveAgentTabId === workspace.globalCeoAgent.id ||
+      teams.some((team) => team.agents.some((agent) => agent.id === previousActiveAgentTabId)));
+
+  if (previousAgentStillExists) {
+    workspace.activeAgentTabId = previousActiveAgentTabId;
+  } else {
+    workspace.activeAgentTabId = null;
   }
 
   return workspace;
@@ -451,6 +483,9 @@ function buildWorkspaceFromBackendTeams(backendTeams: BackendTeam[]): Workspace 
 
 export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
   const setWorkspace = useSetAtom(workspaceAtom);
+  const setActiveProjectId = useSetAtom(activeProjectIdAtom);
+  const setActiveTeamId = useSetAtom(activeTeamIdAtom);
+  const setActiveAgentTabId = useSetAtom(activeAgentTabIdAtom);
 
   useEffect(() => {
     let cancelled = false;
@@ -459,11 +494,20 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
       try {
         const backendTeams = await window.vibeAPI.team.list();
         if (cancelled) return;
-        setWorkspace(buildWorkspaceFromBackendTeams(backendTeams as BackendTeam[]));
+        setWorkspace((prev: Workspace | null) => {
+          const nextWorkspace = buildWorkspaceFromBackendTeams(backendTeams as BackendTeam[], prev);
+          setActiveProjectId(nextWorkspace.activeProjectId);
+          setActiveTeamId(nextWorkspace.activeTeamId);
+          setActiveAgentTabId(nextWorkspace.activeAgentTabId);
+          return nextWorkspace;
+        });
       } catch (error) {
         if (cancelled) return;
         console.error("Failed to load teams:", error);
         setWorkspace(createEmptyWorkspace());
+        setActiveProjectId(null);
+        setActiveTeamId(null);
+        setActiveAgentTabId(null);
       }
     }
 
@@ -591,7 +635,7 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     };
-  }, [setWorkspace]);
+  }, [setWorkspace, setActiveProjectId, setActiveTeamId, setActiveAgentTabId]);
 
   return <>{children}</>;
 };

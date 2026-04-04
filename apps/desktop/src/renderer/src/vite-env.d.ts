@@ -94,7 +94,16 @@ interface Window {
     delete: (sessionId: string) => Promise<boolean>;
     get: (sessionId: string) => Promise<any>;
     messages: (sessionId: string) => Promise<any[]>;
-    prompt: (input: { sessionId: string; message: string; agentSlug?: string; systemPrompt?: string }) => Promise<{ success: boolean }>;
+    prompt: (input: {
+      sessionId: string;
+      message: string;
+      agentId: string;
+      teamId?: string;
+      role: "global-ceo" | "tech-lead" | "team-agent";
+      agentSlug?: string;
+      systemPrompt?: string;
+      workspaceDirectory?: string;
+    }) => Promise<{ success: boolean }>;
     subscribe: (sessionId: string) => Promise<void>;
   };
   };
