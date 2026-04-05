@@ -126,6 +126,9 @@ function normalizeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (error && typeof error === 'object') {
     try {
+      if (!context.isCeo && !context.team?.projectPath?.trim()) {
+        throw new Error(`O agente ${context.agent.name} não tem pasta de projeto configurada.`);
+      }
       return JSON.stringify(error, null, 2);
     } catch {
       return 'Erro desconhecido ao processar evento do agente.';
@@ -1090,7 +1093,7 @@ export function useOpencodeTranscriptBridge() {
           teamId: context.team?.id,
           role: context.isCeo ? 'global-ceo' : context.agent.role === 'tech-lead' ? 'tech-lead' : 'team-agent',
           agentSlug: context.agent.catalogSlug,
-          workspaceDirectory: context.isCeo ? '' : context.team?.projectPath,
+          workspaceDirectory: context.isCeo ? '' : context.team!.projectPath,
         });
       } else {
         // Fallback: usar o fluxo padrão (cria/usa sessão padrão do agente)
@@ -1136,7 +1139,7 @@ export function useOpencodeTranscriptBridge() {
               teamId: context.team?.id,
               role: context.agent.role,
               agentSlug: context.agent.catalogSlug,
-              workspaceDirectory: context.team?.projectPath,
+              workspaceDirectory: context.team!.projectPath,
             });
             console.log('[TranscriptBridge] agent.ensure result:', ensureResult);
           } catch (e) {

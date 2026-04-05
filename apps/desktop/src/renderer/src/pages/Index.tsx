@@ -72,7 +72,7 @@ const IDELayout = memo(() => {
   const existingRoles = useMemo(() => activeTeam?.agents.map((a) => a.role) ?? [], [activeTeam?.agents]);
 
   return (
-    <div className="w-full h-dvh flex flex-col bg-background text-foreground overflow-hidden font-sans">
+    <div className="w-full h-dvh flex flex-col text-foreground overflow-hidden font-sans">
       <TitleBar
         terminalOpen={terminalOpen}
         activeTab={activeTab}

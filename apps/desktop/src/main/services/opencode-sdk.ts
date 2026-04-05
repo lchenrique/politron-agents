@@ -337,9 +337,14 @@ class OpenCodeSdkService extends EventEmitter {
     }
 
     const { agentId, teamId, role, agentSlug, systemPrompt, systemPromptPath } = input
+    console.log(`[OpenCodeSdkService] ensureSession called for ${agentId}, workspaceDirectory from input: ${input.workspaceDirectory}`)
+    if (role !== "global-ceo" && !input.workspaceDirectory?.trim()) {
+      throw new Error(`Project agent ${agentId} requires an explicit workspaceDirectory`)
+    }
     const effectiveWorkspaceDir = input.workspaceDirectory === ''
       ? GLOBAL_CEO_PATH
       : (input.workspaceDirectory || this.resolveWorkspaceDirectory())
+    console.log(`[OpenCodeSdkService] effectiveWorkspaceDir resolved to: ${effectiveWorkspaceDir}`)
 
     const existingSession = sessionStore.getSession(agentId)
     if (existingSession) {
@@ -403,9 +408,11 @@ class OpenCodeSdkService extends EventEmitter {
           }
         }
 
+        console.log(`[OpenCodeSdkService] Creating session with directory: ${effectiveWorkspaceDir}`)
         const createResult = await this.client!.session.create({
           query: effectiveWorkspaceDir ? { directory: effectiveWorkspaceDir } : undefined
         })
+        console.log(`[OpenCodeSdkService] Session created! Session ID: ${createResult.data?.id}, Session directory: ${createResult.data?.directory}`)
 
         if (!createResult.data) {
           console.error("[OpenCodeSdkService] Session creation failed", {
@@ -472,11 +479,11 @@ class OpenCodeSdkService extends EventEmitter {
       throw new Error(`No session found for agent: ${agentId}`)
     }
 
-    console.log(`[OpenCodeSdkService] sendMessage for ${agentId}, message: "${message.substring(0, 50)}...", sessionId: ${managedSession.session.id}`)
-    await this.sendMessageToSession(managedSession.session.id, message, undefined, managedSession.agentSlug)
+    console.log(`[OpenCodeSdkService] sendMessage for ${agentId}, message: "${message.substring(0, 50)}...", sessionId: ${managedSession.session.id}, workspaceDirectory: ${managedSession.workspaceDirectory}`)
+    await this.sendMessageToSession(managedSession.session.id, message, undefined, managedSession.agentSlug, managedSession.workspaceDirectory)
   }
 
-  private async sendMessageToSession(sessionId: string, content: string, systemPrompt?: string, agentSlug?: string): Promise<void> {
+  private async sendMessageToSession(sessionId: string, content: string, systemPrompt?: string, agentSlug?: string, workspaceDirectory?: string): Promise<void> {
     if (!this.client) {
       throw new Error("SDK client not initialized")
     }
@@ -494,7 +501,8 @@ class OpenCodeSdkService extends EventEmitter {
     console.log(`[OpenCodeSdkService] Prompting session ${sessionId}:`, {
       agent: agentSlug,
       hasSystem: !!finalSystemPrompt,
-      partsCount: parts.length
+      partsCount: parts.length,
+      queryDirectory: workspaceDirectory
     })
 
     const result = await this.client.session.promptAsync({
@@ -505,7 +513,8 @@ class OpenCodeSdkService extends EventEmitter {
       },
       path: {
         id: sessionId
-      }
+      },
+      query: workspaceDirectory ? { directory: workspaceDirectory } : undefined
     })
 
     const status = result.response?.status

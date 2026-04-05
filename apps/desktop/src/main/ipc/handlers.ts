@@ -377,7 +377,10 @@ export function registerHandlers(): void {
     if (!client) {
       throw new Error('SDK client not initialized')
     }
-    const workspaceDirectory = input?.directory || process.cwd()
+    const workspaceDirectory = input?.directory?.trim()
+    if (!workspaceDirectory) {
+      throw new Error('Session creation requires an explicit directory')
+    }
     const result = await client.session.create({
       query: { directory: workspaceDirectory }
     })
@@ -472,7 +475,8 @@ export function registerHandlers(): void {
       },
       path: {
         id: sessionId
-      }
+      },
+      query: workspaceDirectory ? { directory: workspaceDirectory } : undefined
     })
 
     const status = result.response?.status

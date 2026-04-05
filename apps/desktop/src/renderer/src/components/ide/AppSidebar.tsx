@@ -34,18 +34,18 @@ const NavItem = ({ icon, label, active, onClick, badge, color, className }: NavI
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm group ${active
-        ? "bg-primary"
+      className={`w-full flex border items-center gap-3 px-3 py-2 rounded-lg text-sm group ${active
+        ? "bg-primary/5  border-primary text-primary"
         : " hover:bg-white/5"
         } ${className}`}
     >
       <div
-        className={cn("shrink-0 group-hover:scale-110", active ? "text-primary-foreground" : "text-foreground", className)}
+        className={cn("shrink-0 group-hover:scale-110", active ? "text-primary" : "text-foreground", className)}
         style={color ? { color } : {}}
       >
         {icon}
       </div>
-      <span className={cn("flex-1 text-left truncate font-medium", active ? "text-primary-foreground" : "text-foreground", className)}>{label}</span>
+      <span className={cn("flex-1 text-left truncate font-medium", active ? "text-primary" : "text-foreground", className)}>{label}</span>
       {badge !== undefined && (
         <span className={cn("px-1.5 py-0.5 rounded-full", active ? "bg-background/70 text-foreground" : "bg-white/10 text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground ")}>
           {badge}
@@ -66,10 +66,10 @@ const SectionHeader = ({ label, onAction }: { label: string; onAction?: () => vo
   </div>
 );
 
-export const AppSidebar = ({ 
-  onAddProject, 
+export const AppSidebar = ({
+  onAddProject,
   onOpenMarketplaceAddToProject,
-}: { 
+}: {
   onAddProject: () => void;
   onOpenMarketplaceAddToProject?: () => void;
 }) => {
@@ -204,7 +204,7 @@ export const AppSidebar = ({
         )}
       </div>
 
-        <div className="p-3 border-t border-border/30 bg-transparent">
+      <div className="p-3 border-t border-border/30 bg-transparent">
         <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer group">
           <div className="w-8 h-8 rounded-full bg-linear-to-tr from-ide-indigo to-ide-purple flex items-center justify-center">
             <span className="text-xs font-bold text-white">LC</span>

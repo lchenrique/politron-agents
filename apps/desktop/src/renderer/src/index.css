@@ -58,7 +58,7 @@
 }
 
 .dark {
-  --background: hsla(0, 0%, 4%, 0.50);
+  --background: hsla(0, 0%, 4%, 1);
   --foreground: hsl(223.8136 0.0004% 98.0256%);
   --card: hsl(223.8136 0.0000% 9.0527%);
   --card-foreground: hsl(223.8136 0.0004% 98.0256%);
@@ -108,7 +108,7 @@
 
 /* CAFEINE THEME */
 [data-theme="cafeine"] {
-  --background: hsla(0, 0%, 98%, 0.50);
+  --background: hsla(0, 0%, 98%, 1);
   --foreground: hsl(0 0% 12.5490%);
   --card: hsl(0 0% 98.8235%);
   --card-foreground: hsl(0 0% 12.5490%);
@@ -163,7 +163,7 @@
 }
 
 .dark[data-theme="cafeine"] {
-  --background: hsla(0, 0%, 7%, 0.50);
+  --background: hsla(0, 0%, 7%, 1);
   --foreground: hsl(0 0% 93.3333%);
   --card: hsl(0 0% 9.8039%);
   --card-foreground: hsl(0 0% 93.3333%);
@@ -217,7 +217,7 @@
 
 /* CANDYLAND THEME */
 [data-theme="candyland"] {
-  --background: hsla(200, 23%, 97%, 0.50);
+  --background: hsla(200, 23%, 97%, 1);
   --foreground: hsl(0 0% 20%);
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(0 0% 20%);
@@ -272,7 +272,7 @@
 }
 
 .dark[data-theme="candyland"] {
-  --background: hsla(220, 15%, 12%, 0.50);
+  --background: hsla(220, 15%, 12%, 1);
   --foreground: hsl(0 0% 89.8039%);
   --card: hsl(197.1429 6.9307% 19.8039%);
   --card-foreground: hsl(0 0% 89.8039%);
@@ -325,7 +325,7 @@
 }
 
 [data-theme="claude"] {
-  --background: hsla(48, 33%, 97%, 0.50);
+  --background: hsla(48, 33%, 97%, 1);
   --foreground: hsl(48 19.6078% 20%);
   --card: hsl(48 33.3333% 97.0588%);
   --card-foreground: hsl(60 2.5641% 7.6471%);
@@ -380,7 +380,7 @@
 }
 
 .dark[data-theme="claude"] {
-  --background: hsla(60, 3%, 15%, 0.50);
+  --background: hsla(60, 3%, 15%, 1);
   --foreground: hsl(46.1538 9.7744% 73.9216%);
   --card: hsl(60 2.7027% 14.5098%);
   --card-foreground: hsl(48 33.3333% 97.0588%);
@@ -545,7 +545,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background/80 text-foreground;
   }
 }
 
@@ -596,4 +596,81 @@
 
 .terminal-container .xterm-scrollable-element {
   background: var(--background) !important;
+}
+
+/* Agent Loader - From Uiverse.io by JkHuger */ 
+@keyframes loader_5191 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.agent-loader {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  transform: scale(0.4);
+  transform-origin: center;
+}
+
+.agent-loader .square {
+  background: currentColor;
+  width: 10px;
+  height: 10px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin-top: -5px;
+  margin-left: -5px;
+}
+
+.agent-loader #sq1 {
+  margin-top: -25px;
+  margin-left: -25px;
+  animation: loader_5191 675ms ease-in-out 0s infinite alternate;
+}
+
+.agent-loader #sq2 {
+  margin-top: -25px;
+  animation: loader_5191 675ms ease-in-out 75ms infinite alternate;
+}
+
+.agent-loader #sq3 {
+  margin-top: -25px;
+  margin-left: 15px;
+  animation: loader_5191 675ms ease-in-out 150ms infinite;
+}
+
+.agent-loader #sq4 {
+  margin-left: -25px;
+  animation: loader_5191 675ms ease-in-out 225ms infinite;
+}
+
+.agent-loader #sq5 {
+  animation: loader_5191 675ms ease-in-out 300ms infinite;
+}
+
+.agent-loader #sq6 {
+  margin-left: 15px;
+  animation: loader_5191 675ms ease-in-out 375ms infinite;
+}
+
+.agent-loader #sq7 {
+  margin-top: 15px;
+  margin-left: -25px;
+  animation: loader_5191 675ms ease-in-out 450ms infinite;
+}
+
+.agent-loader #sq8 {
+  margin-top: 15px;
+  animation: loader_5191 675ms ease-in-out 525ms infinite;
+}
+
+.agent-loader #sq9 {
+  margin-top: 15px;
+  margin-left: 15px;
+  animation: loader_5191 675ms ease-in-out 600ms infinite;
 }

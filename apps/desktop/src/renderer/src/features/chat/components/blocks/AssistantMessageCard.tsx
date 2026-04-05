@@ -117,6 +117,56 @@ function SimpleMarkdown({ content }: { content: string }) {
       continue;
     }
 
+    // Tables
+    if (line.trim().startsWith('|') && line.includes('|')) {
+      const isSeparator = (str: string) => str.replace(/[\s|:-]/g, '') === '';
+      
+      const tableRows: string[] = [];
+      let tempIndex = i;
+      while (tempIndex < lines.length && lines[tempIndex].trim().startsWith('|')) {
+        tableRows.push(lines[tempIndex].trim());
+        tempIndex++;
+      }
+      
+      if (tableRows.length >= 2 && isSeparator(tableRows[1])) {
+        const extractCells = (r: string) => {
+          let cleaned = r.trim();
+          if (cleaned.startsWith('|')) cleaned = cleaned.substring(1);
+          if (cleaned.endsWith('|')) cleaned = cleaned.substring(0, cleaned.length - 1);
+          return cleaned.split('|');
+        };
+
+        elements.push(
+          <div key={keyIndex++} className="my-4 overflow-x-auto rounded-lg shadow-sm border border-border/60">
+            <table className="w-full text-sm text-left border-collapse">
+              <thead>
+                <tr className="border-b border-border bg-secondary/40">
+                  {extractCells(tableRows[0]).map((cell, idx) => (
+                    <th key={idx} className="px-4 py-3 font-semibold text-foreground border-r border-border/30 last:border-0">
+                      {processInline(cell.trim(), idx)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.slice(2).map((row, rowIdx) => (
+                  <tr key={rowIdx} className="border-b border-border/20 last:border-0 hover:bg-secondary/20 transition-colors">
+                    {extractCells(row).map((cell, colIdx) => (
+                      <td key={colIdx} className="px-4 py-2.5 text-foreground/80 border-r border-border/20 last:border-0">
+                        {processInline(cell.trim(), colIdx)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        i = tempIndex;
+        continue;
+      }
+    }
+
     // Paragraph
     if (line.trim()) {
       elements.push(
@@ -151,8 +201,22 @@ export const AssistantMessageCard = memo(({ block }: { block: AssistantMessageBl
         <div className="text-foreground/90">
           <SimpleMarkdown content={block.content} />
           {isStreaming && (
-            <div className="inline-flex gap-1 ml-1 items-center h-4 align-middle">
-              <span className="w-1 h-3.5 bg-primary/80 rounded-full animate-cursor-blink" />
+            <div className="flex items-center gap-2 mt-4 mb-1">
+              <div className="agent-loader text-primary shrink-0 mr-4">
+                <div className="square" id="sq1"></div>
+                <div className="square" id="sq2"></div>
+                <div className="square" id="sq3"></div>
+                <div className="square" id="sq4"></div>
+                <div className="square" id="sq5"></div>
+                <div className="square" id="sq6"></div>
+                <div className="square" id="sq7"></div>
+                <div className="square" id="sq8"></div>
+                <div className="square" id="sq9"></div>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                Gerando resposta...
+              </span>
+              <span className="w-1 h-3.5 bg-primary/80 rounded-full animate-cursor-blink ml-2" />
             </div>
           )}
         </div>

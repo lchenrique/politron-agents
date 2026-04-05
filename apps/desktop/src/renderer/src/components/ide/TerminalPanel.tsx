@@ -15,6 +15,14 @@ const RealTerminal = memo(() => {
   const lastProjectPathRef = useRef<string | null>(null);
   const [platform, setPlatform] = useState<string>('win32'); // default to win32
 
+  const buildNavigationCommand = (targetPath: string) => {
+    if (platform === 'win32') {
+      return `Set-Location -LiteralPath "${targetPath.replace(/"/g, '""')}"\r`;
+    }
+
+    return `cd "${targetPath.replace(/"/g, '\\"')}"\n`;
+  };
+
   // Get platform on mount
   useEffect(() => {
     if (window.vibeAPI.system?.getPlatform) {
@@ -104,18 +112,8 @@ const RealTerminal = memo(() => {
         attributeFilter: ['class', 'data-theme']
       });
 
-      // Navigate to project path
       hasNavigatedRef.current = false;
       lastProjectPathRef.current = activeTeam.projectPath;
-      setTimeout(() => {
-        if (vibeAPIRef.current?.terminal) {
-          hasNavigatedRef.current = true;
-          const cdCommand = platform === 'win32'
-            ? `cd /d "${activeTeam.projectPath}"\r`
-            : `cd "${activeTeam.projectPath}" && `;
-          vibeAPIRef.current.terminal.write(cdCommand);
-        }
-      }, 100);
 
       return () => {
         unbindData();
@@ -142,9 +140,7 @@ const RealTerminal = memo(() => {
       if (vibeAPIRef.current?.terminal && activeTeam?.projectPath) {
         hasNavigatedRef.current = true;
         lastProjectPathRef.current = activeTeam.projectPath;
-        const cdCommand = platform === 'win32'
-          ? `cd /d "${activeTeam.projectPath}"\r`
-          : `cd "${activeTeam.projectPath}" && `;
+        const cdCommand = buildNavigationCommand(activeTeam.projectPath);
         vibeAPIRef.current.terminal.write(cdCommand);
       }
     }, 150);

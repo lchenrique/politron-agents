@@ -55,6 +55,29 @@ export function TranscriptViewport() {
     previousBlockCount.current = blockIds.length;
   }, [autoScroll, blockIds.length]);
 
+  // ResizeObserver to keep scroll at bottom during active streaming when content grows vertically
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const contentEl = el.firstElementChild;
+    if (!contentEl) return;
+
+    const observer = new ResizeObserver(() => {
+      if (autoScroll) {
+        isScrollingRef.current = true;
+        el.scrollTop = el.scrollHeight;
+        setTimeout(() => {
+          isScrollingRef.current = false;
+        }, 50);
+      }
+    });
+
+    observer.observe(contentEl);
+
+    return () => observer.disconnect();
+  }, [autoScroll]);
+
   // Detect scroll position to show/hide ScrollToBottomButton
   // IMPORTANT: Don't update state if we're programmatically scrolling
   const handleScroll = useCallback(() => {

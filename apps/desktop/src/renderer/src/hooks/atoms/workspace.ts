@@ -37,30 +37,36 @@ const selectGlobalCeo = (workspace: Workspace | null) => workspace?.globalCeoAge
 const selectActiveAgent = (workspace: Workspace | null) => {
     if (!workspace) return null
     const activeAgentTabId = workspace.activeAgentTabId
+    console.log('[selectActiveAgent] Looking for agent with activeAgentTabId:', activeAgentTabId);
+    console.log('[selectActiveAgent] globalCeoAgent.id:', workspace.globalCeoAgent.id);
     if (!activeAgentTabId) return null
     if (activeAgentTabId === workspace.globalCeoAgent.id) {
+        console.log('[selectActiveAgent] Found CEO');
         return workspace.globalCeoAgent
     }
     for (const team of workspace.teams) {
         const agent = team.agents.find((a) => a.id === activeAgentTabId)
         if (agent) {
-            console.log('[selectActiveAgent] Found agent:', agent.name, 'id:', agent.id, 'in team:', team.name)
+            console.log('[selectActiveAgent] Found agent:', agent.name, 'id:', agent.id, 'in team:', team.name, 'projectPath:', team.projectPath)
             return agent
         }
     }
     console.log('[selectActiveAgent] Agent not found for activeAgentTabId:', activeAgentTabId)
-    console.log('[selectActiveAgent] Available agents in workspace:', workspace.teams.flatMap(t => t.agents.map(a => ({id: a.id, name: a.name, team: t.name}))))
+    console.log('[selectActiveAgent] Available agents in workspace:', workspace.teams.flatMap(t => t.agents.map(a => ({id: a.id, name: a.name, team: t.name, projectPath: t.projectPath}))))
     return null
 }
 const selectActiveAgentTeam = (workspace: Workspace | null) => {
     if (!workspace) return null
     const activeAgentTabId = workspace.activeAgentTabId
+    console.log('[selectActiveAgentTeam] workspace.activeTeamId:', workspace.activeTeamId, 'activeAgentTabId:', activeAgentTabId);
     if (!activeAgentTabId || activeAgentTabId === workspace.globalCeoAgent.id) {
+        console.log('[selectActiveAgentTeam] Returning null because: no activeAgentTabId or is CEO');
         return null
     }
-    // Always search all teams to find the agent's team - don't rely on activeTeamId
-    // because it might not be set correctly for newly added agents
-    return workspace.teams.find((team) => team.agents.some((agent) => agent.id === activeAgentTabId)) ?? null
+    // Always search all teams to find the agent's team
+    const foundTeam = workspace.teams.find((team) => team.agents.some((agent) => agent.id === activeAgentTabId)) ?? null
+    console.log('[selectActiveAgentTeam] Found team:', foundTeam?.name, 'projectPath:', foundTeam?.projectPath);
+    return foundTeam
 }
 
 export const globalCeoAgentAtomStable = atom((get) => selectGlobalCeo(get(workspaceAtom)))
