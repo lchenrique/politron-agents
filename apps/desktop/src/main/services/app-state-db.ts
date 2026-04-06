@@ -2,13 +2,27 @@ import { mkdirSync, existsSync } from "fs"
 import { join } from "path"
 import { DatabaseSync } from "node:sqlite"
 import type { Agent, PipelineTask, Team } from "../types/team"
+import { getAgentBySlug } from "./agent-catalog"
 
 function normalizeCatalogSlug(role: string, catalogSlug: string): string {
-  if (role === "tech-lead" && catalogSlug === "studio-producer") {
-    return "software-architect"
+  if (role === "tech-lead") return "studio-producer"
+  if (role === "frontend") return "frontend-dev"
+  if (role === "backend") return "backend-dev"
+  if (role === "qa") return "qa-tester"
+  if (role === "devops") return "devops-eng"
+  if (role === "design") return "ux-designer"
+  if (role === "ceo") return "ceo"
+  if (role === "global-ceo") return "ceo"
+  if (role === "team-agent" && catalogSlug === "software-architect") {
+    return "studio-producer"
   }
 
   return catalogSlug
+}
+
+function normalizeSystemPromptPath(catalogSlug: string, currentPath: string): string {
+  const catalogAgent = getAgentBySlug(catalogSlug)
+  return catalogAgent?.systemPromptPath || currentPath
 }
 
 interface PersistedState {
@@ -104,13 +118,24 @@ class AppStateDb {
     `).all() as any[]
 
     const agentsByTeam = new Map<string, Agent[]>()
+    const migratedTeamIds = new Set<string>()
     for (const row of agentRows) {
+      const normalizedCatalogSlug = normalizeCatalogSlug(row.role, row.catalog_slug)
+      const normalizedSystemPromptPath = normalizeSystemPromptPath(normalizedCatalogSlug, row.system_prompt_path)
+
+      if (
+        normalizedCatalogSlug !== row.catalog_slug ||
+        normalizedSystemPromptPath !== row.system_prompt_path
+      ) {
+        migratedTeamIds.add(row.team_id)
+      }
+
       const agent: Agent = {
         id: row.id,
         name: row.name,
         role: row.role,
-        catalogSlug: normalizeCatalogSlug(row.role, row.catalog_slug),
-        systemPromptPath: row.system_prompt_path,
+        catalogSlug: normalizedCatalogSlug,
+        systemPromptPath: normalizedSystemPromptPath,
         status: row.status,
         color: row.color,
         currentFiles: JSON.parse(row.current_files_json || "[]"),
@@ -161,6 +186,13 @@ class AppStateDb {
       createdAt: row.created_at,
       templateId: row.template_id ?? undefined
     }))
+
+    // Persist identity migration so next startup already comes normalized.
+    for (const team of teams) {
+      if (migratedTeamIds.has(team.id)) {
+        this.saveTeam(team)
+      }
+    }
 
     return { teams, tasks }
   }

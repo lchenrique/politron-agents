@@ -1,18 +1,17 @@
 /**
- * SessionSidebar - Sidebar com lista de sessoes SDK por contexto.
+ * SessionSidebar - lista de sessoes SDK no contexto atual do chat.
  *
  * Regras:
- * - Nunca usa process.cwd() para criar sessoes
- * - CEO global ainda nao usa diretorio fixo
- * - Agentes de projeto usam sempre activeTeam.projectPath
+ * - a sessao ativa e separada por contexto
+ * - CEO global nao depende de diretorio fixo
+ * - agentes de projeto usam o projectPath do time quando existir
  */
 
 import React, { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { MessageSquare, Plus, Trash2, Clock, Loader2 } from 'lucide-react';
 import { useAtomValue } from 'jotai';
-import { activeAgentTabIdAtom, activeTeamAtom, globalCeoAgentAtom } from '@/hooks/atoms/workspace';
-import { useSessionStore } from '../../store/sessionStore';
-import { useActiveSession } from '../../context/ActiveSessionContext';
+import { activeAgentAtom, activeAgentTeamAtom, globalCeoAgentAtom } from '@/hooks/atoms/workspace';
+import { buildSessionContextKey, useSessionStore } from '../../store/sessionStore';
 
 function formatTime(timestamp?: number): string {
   if (!timestamp) return '';
@@ -24,9 +23,9 @@ function formatTime(timestamp?: number): string {
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffMins < 1) return 'agora';
-  if (diffMins < 60) return `${diffMins}m atrás`;
-  if (diffHours < 24) return `${diffHours}h atrás`;
-  if (diffDays < 7) return `${diffDays}d atrás`;
+  if (diffMins < 60) return `${diffMins}m atras`;
+  if (diffHours < 24) return `${diffHours}h atras`;
+  if (diffDays < 7) return `${diffDays}d atras`;
   return date.toLocaleDateString();
 }
 
@@ -35,101 +34,114 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const [loading, setLoading] = useState(false);
 
   const sessions = useSessionStore((state) => state.sessions);
-  const activeSessionId = useSessionStore((state) => state.activeSessionId);
   const setSessions = useSessionStore((state) => state.setSessions);
   const addSession = useSessionStore((state) => state.addSession);
   const removeSession = useSessionStore((state) => state.removeSession);
   const selectSession = useSessionStore((state) => state.selectSession);
 
   const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
-  const activeAgentTabId = useAtomValue(activeAgentTabIdAtom);
-  const activeTeam = useAtomValue(activeTeamAtom);
+  const activeAgent = useAtomValue(activeAgentAtom);
+  const activeAgentTeam = useAtomValue(activeAgentTeamAtom);
 
-  useActiveSession();
-
-  const isCeoContext = !!globalCeoAgent && activeAgentTabId === globalCeoAgent.id;
-  const sessionDirectory = useMemo(() => {
-    if (isCeoContext) {
-      return '';
-    }
-
-    return activeTeam?.projectPath ?? '';
-  }, [activeTeam?.projectPath, isCeoContext]);
+  const activeAgentId = activeAgent?.id ?? null;
+  const isCeoContext = !!globalCeoAgent && activeAgentId === globalCeoAgent.id;
+  const contextKey = useMemo(
+    () =>
+      buildSessionContextKey({
+        agentId: activeAgentId,
+        isCeo: isCeoContext,
+        teamId: activeAgentTeam?.id ?? null,
+      }),
+    [activeAgentId, activeAgentTeam?.id, isCeoContext]
+  );
+  const activeSessionId = useSessionStore((state) => state.getActiveSessionId(contextKey));
+  const sessionDirectory = useMemo(
+    () => (isCeoContext ? undefined : activeAgentTeam?.projectPath || undefined),
+    [activeAgentTeam?.projectPath, isCeoContext]
+  );
 
   const loadSdkSessions = useCallback(async () => {
-    if (!sessionDirectory) {
-      setSessions([]);
+    if (!contextKey) {
+      setSessions([], null);
       return;
     }
 
     setLoading(true);
     try {
-      const sdkSessions = await window.vibeAPI.session.list({ directory: sessionDirectory });
-      setSessions(sdkSessions || []);
+      const sdkSessions = await window.vibeAPI.session.list(
+        sessionDirectory ? { directory: sessionDirectory } : undefined
+      );
+      setSessions(sdkSessions || [], contextKey);
     } catch (error) {
       console.error('[SessionSidebar] Failed to load SDK sessions:', error);
-      setSessions([]);
+      setSessions([], contextKey);
     } finally {
       setLoading(false);
     }
-  }, [sessionDirectory, setSessions]);
+  }, [contextKey, sessionDirectory, setSessions]);
 
   useEffect(() => {
     void loadSdkSessions();
   }, [loadSdkSessions]);
 
   const handleCreateSession = useCallback(async () => {
-    if (!sessionDirectory) return;
+    if (!contextKey) return;
 
     setLoading(true);
     try {
-      const newSession = await window.vibeAPI.session.create({
-        directory: sessionDirectory,
-      });
+      const newSession = await window.vibeAPI.session.create(
+        sessionDirectory ? { directory: sessionDirectory } : undefined
+      );
       if (newSession?.id) {
-        addSession(newSession);
+        addSession(newSession, contextKey);
       }
     } catch (error) {
       console.error('[SessionSidebar] Failed to create SDK session:', error);
     } finally {
       setLoading(false);
     }
-  }, [addSession, sessionDirectory]);
+  }, [addSession, contextKey, sessionDirectory]);
 
-  const handleDeleteSession = useCallback((sessionId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteSession = useCallback(
+    (sessionId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
 
-    if (!confirm('Deletar esta sessão? Esta ação não pode ser desfeita.')) {
-      return;
-    }
+      if (!confirm('Deletar esta sessao? Esta acao nao pode ser desfeita.')) {
+        return;
+      }
 
-    setLoading(true);
-    window.vibeAPI.session.delete(sessionId)
-      .then(() => removeSession(sessionId))
-      .catch((error) => {
-        console.error('[SessionSidebar] Failed to delete SDK session:', error);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [removeSession]);
+      setLoading(true);
+      window.vibeAPI.session.delete(sessionId)
+        .then(() => removeSession(sessionId, contextKey))
+        .catch((error) => {
+          console.error('[SessionSidebar] Failed to delete SDK session:', error);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    },
+    [contextKey, removeSession]
+  );
 
-  const handleSelectSession = useCallback((sessionId: string) => {
-    selectSession(sessionId);
-  }, [selectSession]);
+  const handleSelectSession = useCallback(
+    (sessionId: string) => {
+      selectSession(contextKey, sessionId);
+    },
+    [contextKey, selectSession]
+  );
 
   return (
     <div className="flex h-full w-56 flex-col border-r border-border/50 bg-secondary/50">
       <div className="border-b border-border/50 px-3 py-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Sessões
+            Sessoes
           </h3>
           <button
             onClick={handleCreateSession}
-            disabled={loading || !sessionDirectory}
+            disabled={loading || !contextKey}
             className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
-            title="Nova sessão"
+            title="Nova sessao"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -147,23 +159,15 @@ export const SessionSidebar = memo(function SessionSidebar() {
           </div>
         )}
 
-        {!loading && !sessionDirectory && (
+        {!loading && !contextKey && (
           <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-            {isCeoContext ? (
-              <>
-                As sessões do CEO ainda não usam diretório fixo.
-                <br />
-                A configuração do escritório do CEO será adicionada em breve.
-              </>
-            ) : (
-              'Selecione um contexto com pasta válida.'
-            )}
+            Selecione um agente para ver as sessoes.
           </div>
         )}
 
-        {!loading && sessionDirectory && sessions.length === 0 && (
+        {!loading && contextKey && sessions.length === 0 && (
           <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-            Nenhuma sessão ainda.
+            Nenhuma sessao ainda.
             <br />
             Clique em + para criar.
           </div>
@@ -186,13 +190,17 @@ export const SessionSidebar = memo(function SessionSidebar() {
             >
               <div className="px-3 py-2">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className={`h-4 w-4 shrink-0 ${
-                    isActive ? 'text-primary' : 'text-muted-foreground'
-                  }`} />
-                  <span className={`truncate text-sm ${
-                    isActive ? 'text-foreground' : 'text-muted-foreground'
-                  }`}>
-                    {(session as any).title || `Sessão ${index + 1}`}
+                  <MessageSquare
+                    className={`h-4 w-4 shrink-0 ${
+                      isActive ? 'text-primary' : 'text-muted-foreground'
+                    }`}
+                  />
+                  <span
+                    className={`truncate text-sm ${
+                      isActive ? 'text-foreground' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {(session as any).title || `Sessao ${index + 1}`}
                   </span>
                 </div>
                 <div className="mt-1 ml-6 flex items-center gap-2">
@@ -211,7 +219,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                       ? 'opacity-0'
                       : 'text-muted-foreground hover:bg-muted hover:text-destructive'
                   }`}
-                  title="Excluir sessão"
+                  title="Excluir sessao"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -223,11 +231,11 @@ export const SessionSidebar = memo(function SessionSidebar() {
 
       <div className="flex items-center justify-between border-t border-border/50 px-3 py-2">
         <span className="text-xs text-muted-foreground/60">
-          {sessions.length} sessão{sessions.length !== 1 ? 'ões' : ''}
+          {sessions.length} sessao{sessions.length !== 1 ? 's' : ''}
         </span>
         <button
           onClick={loadSdkSessions}
-          disabled={loading || !sessionDirectory}
+          disabled={loading || !contextKey}
           className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
           title="Atualizar"
         >

@@ -34,20 +34,23 @@ const NavItem = ({ icon, label, active, onClick, badge, color, className }: NavI
   return (
     <button
       onClick={onClick}
-      className={`w-full flex border items-center gap-3 px-3 py-2 rounded-lg text-sm group ${active
-        ? "bg-primary/5  border-primary text-primary"
-        : " hover:bg-white/5"
-        } ${className}`}
+      className={cn(
+        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm group transition-colors",
+        active
+          ? "bg-primary text-primary-foreground font-medium"
+          : "hover:bg-accent/50 text-foreground",
+        className
+      )}
     >
       <div
-        className={cn("shrink-0 group-hover:scale-110", active ? "text-primary" : "text-foreground", className)}
+        className={cn("shrink-0 group-hover:scale-110 transition-colors", active ? "text-primary-foreground" : "text-muted-foreground")}
         style={color ? { color } : {}}
       >
         {icon}
       </div>
-      <span className={cn("flex-1 text-left truncate font-medium", active ? "text-primary" : "text-foreground", className)}>{label}</span>
+      <span className={cn("flex-1 text-left truncate", className)}>{label}</span>
       {badge !== undefined && (
-        <span className={cn("px-1.5 py-0.5 rounded-full", active ? "bg-background/70 text-foreground" : "bg-white/10 text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground ")}>
+        <span className={cn("px-1.5 py-0.5 rounded-full text-[10px] font-medium", active ? "bg-primary-foreground/20 text-primary-foreground" : "bg-accent text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground")}>
           {badge}
         </span>
       )}
@@ -56,10 +59,10 @@ const NavItem = ({ icon, label, active, onClick, badge, color, className }: NavI
 };
 
 const SectionHeader = ({ label, onAction }: { label: string; onAction?: () => void }) => (
-  <div className="flex items-center justify-between px-3 mt-6 mb-2">
-    <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">{label}</span>
+  <div className="flex items-center justify-between px-3 mr-1 mt-6 mb-2">
+    <span className="text-[10px] font-bold text-foreground/70 uppercase tracking-widest">{label}</span>
     {onAction && (
-      <button onClick={onAction} className="text-muted-foreground/40 hover:text-primary ">
+      <button onClick={onAction} className="text-foreground/50 hover:text-primary transition-colors p-1 -mr-1">
         <Plus size={14} />
       </button>
     )}
@@ -88,13 +91,13 @@ export const AppSidebar = ({
   return (
     <div className="w-full h-full flex flex-col z-20">
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden pl-3 pr-0 py-3 custom-scrollbar">
         {sidebarView === "root" ? (
           <>
             <SectionHeader label="Global" />
             <div className="space-y-1">
               <NavItem
-                icon={<MessageSquare size={18} className="text-primary" />}
+                icon={<MessageSquare size={18} />}
                 label="Conversar com CEO"
                 active={activeAgentTabId === workspace.globalCeoAgent.id}
                 onClick={() => setActiveAgentTab(workspace.globalCeoAgent.id)}
@@ -107,7 +110,7 @@ export const AppSidebar = ({
               {workspace.projects.map((project) => (
                 <div
                   key={project.id}
-                  className="group relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/5 cursor-pointer"
+                  className="group relative flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
                   onClick={() => enterProject(project.id)}
                 >
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
@@ -117,7 +120,7 @@ export const AppSidebar = ({
                       e.stopPropagation();
                       deleteProject(project.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 text-muted-foreground hover:text-destructive transition-all"
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-accent/60 text-muted-foreground hover:text-destructive transition-all"
                     title="Deletar projeto"
                   >
                     <Trash2 size={14} />
@@ -157,7 +160,7 @@ export const AppSidebar = ({
                   <h2 className="text-xs font-bold text-foreground truncate">{activeProject.name}</h2>
                 </div>
                 {activeTeam?.projectPath && (
-                  <div className="text-[10px] text-muted-foreground truncate font-mono bg-black/20 px-2 py-1 rounded" title={activeTeam.projectPath}>
+                  <div className="text-[10px] text-muted-foreground truncate font-mono bg-foreground/10 px-2 py-1 rounded" title={activeTeam.projectPath}>
                     {activeTeam.projectPath}
                   </div>
                 )}
@@ -167,7 +170,7 @@ export const AppSidebar = ({
             <SectionHeader label="Global" />
             <div className="space-y-1 mb-4">
               <NavItem
-                icon={<MessageSquare size={18} className="text-primary" />}
+                icon={<MessageSquare size={18} />}
                 label="CEO Global"
                 active={activeAgentTabId === workspace.globalCeoAgent.id}
                 onClick={() => setActiveAgentTab(workspace.globalCeoAgent.id)}
@@ -204,18 +207,7 @@ export const AppSidebar = ({
         )}
       </div>
 
-      <div className="p-3 border-t border-border/30 bg-transparent">
-        <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer group">
-          <div className="w-8 h-8 rounded-full bg-linear-to-tr from-ide-indigo to-ide-purple flex items-center justify-center">
-            <span className="text-xs font-bold text-white">LC</span>
-          </div>
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <span className="text-xs font-bold text-foreground truncate group-hover:text-primary ">Luis Henrique</span>
-            <span className="text-[10px] text-muted-foreground truncate">Product Owner</span>
-          </div>
-          <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 " />
-        </div>
-      </div>
+
     </div>
   );
 };

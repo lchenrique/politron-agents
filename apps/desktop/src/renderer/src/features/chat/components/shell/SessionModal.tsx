@@ -1,9 +1,9 @@
 import React, { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { MessageSquare, Plus, Trash2, Loader2 } from 'lucide-react';
-import { useSessionStore } from '../../store/sessionStore';
+import { useSessionStore, buildSessionContextKey } from '../../store/sessionStore';
 import { cn } from "@/lib/utils";
 import { useAtomValue } from 'jotai';
-import { globalCeoAgentAtom, activeTeamAtom, activeAgentTabIdAtom } from '@/hooks/atoms/workspace';
+import { activeAgentAtom, activeAgentTeamAtom, globalCeoAgentAtom } from '@/hooks/atoms/workspace';
 import {
   Dialog,
   DialogContent,
@@ -46,44 +46,52 @@ interface SessionModalProps {
 export const SessionModal = memo(function SessionModal({ open, onClose }: SessionModalProps) {
   const [loading, setLoading] = useState(false);
 
-  const sessions = useSessionStore(state => state.sessions);
-  const activeSessionId = useSessionStore(state => state.activeSessionId);
-  const setSessions = useSessionStore(state => state.setSessions);
-  const addSession = useSessionStore(state => state.addSession);
-  const removeSession = useSessionStore(state => state.removeSession);
-  const selectSession = useSessionStore(state => state.selectSession);
+  const sessions = useSessionStore((state) => state.sessions);
+  const setSessions = useSessionStore((state) => state.setSessions);
+  const addSession = useSessionStore((state) => state.addSession);
+  const removeSession = useSessionStore((state) => state.removeSession);
+  const selectSession = useSessionStore((state) => state.selectSession);
 
   const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
-  const activeAgentTabId = useAtomValue(activeAgentTabIdAtom);
-  const activeTeam = useAtomValue(activeTeamAtom);
+  const activeAgent = useAtomValue(activeAgentAtom);
+  const activeAgentTeam = useAtomValue(activeAgentTeamAtom);
 
-  const isCeoContext = !!globalCeoAgent && activeAgentTabId === globalCeoAgent.id;
-  const sessionDirectory = useMemo(() => {
-    if (isCeoContext) {
-      return '';
-    }
-
-    return activeTeam?.projectPath ?? '';
-  }, [activeTeam?.projectPath, isCeoContext]);
+  const activeAgentId = activeAgent?.id ?? null;
+  const isCeoContext = !!globalCeoAgent && activeAgentId === globalCeoAgent.id;
+  const contextKey = useMemo(
+    () =>
+      buildSessionContextKey({
+        agentId: activeAgentId,
+        isCeo: isCeoContext,
+        teamId: activeAgentTeam?.id ?? null,
+      }),
+    [activeAgentId, activeAgentTeam?.id, isCeoContext]
+  );
+  const activeSessionId = useSessionStore((state) => state.getActiveSessionId(contextKey));
+  const sessionDirectory = useMemo(
+    () => (isCeoContext ? undefined : activeAgentTeam?.projectPath || undefined),
+    [activeAgentTeam?.projectPath, isCeoContext]
+  );
 
   const loadSdkSessions = useCallback(async () => {
-    if (!sessionDirectory) {
-      setSessions([]);
+    if (!contextKey) {
+      setSessions([], null);
       return;
     }
 
     setLoading(true);
     try {
-      const sdkSessions = await window.vibeAPI.session.list({
-        directory: sessionDirectory
-      });
-      setSessions(sdkSessions || []);
+      const sdkSessions = await window.vibeAPI.session.list(
+        sessionDirectory ? { directory: sessionDirectory } : undefined
+      );
+      setSessions(sdkSessions || [], contextKey);
     } catch (error) {
       console.error('[SessionModal] Failed to load sessions:', error);
+      setSessions([], contextKey);
     } finally {
       setLoading(false);
     }
-  }, [sessionDirectory, setSessions]);
+  }, [contextKey, sessionDirectory, setSessions]);
 
   useEffect(() => {
     if (open) {
@@ -92,15 +100,15 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
   }, [open, loadSdkSessions]);
 
   const handleCreateSession = useCallback(async () => {
-    if (!sessionDirectory) return;
+    if (!contextKey) return;
 
     setLoading(true);
     try {
-      const newSession = await window.vibeAPI.session.create({
-        directory: sessionDirectory
-      });
+      const newSession = await window.vibeAPI.session.create(
+        sessionDirectory ? { directory: sessionDirectory } : undefined
+      );
       if (newSession?.id) {
-        addSession(newSession);
+        addSession(newSession, contextKey);
         onClose();
       }
     } catch (error) {
@@ -108,45 +116,43 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
     } finally {
       setLoading(false);
     }
-  }, [addSession, onClose, sessionDirectory]);
+  }, [addSession, contextKey, onClose, sessionDirectory]);
 
   const handleDeleteSession = useCallback((sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Deseja excluir este histórico?')) return;
+    if (!confirm('Deseja excluir este historico?')) return;
 
     setLoading(true);
     window.vibeAPI.session.delete(sessionId)
-      .then(() => removeSession(sessionId))
+      .then(() => removeSession(sessionId, contextKey))
       .catch((error) => {
         console.error('[SessionModal] Failed to delete session:', error);
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [removeSession]);
+  }, [contextKey, removeSession]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
-    selectSession(sessionId);
+    selectSession(contextKey, sessionId);
     onClose();
-  }, [selectSession, onClose]);
+  }, [contextKey, selectSession, onClose]);
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
       <DialogContent className="p-0 sm:max-w-[425px]">
         <DialogHeader className="p-6 pb-0">
-          <DialogTitle>Histórico de Sessões</DialogTitle>
+          <DialogTitle>Historico de Sessoes</DialogTitle>
           <DialogDescription>
-            {isCeoContext
-              ? 'As sessões do CEO ainda não usam um diretório fixo. A configuração será adicionada em breve.'
-              : 'Selecione uma sessão anterior para continuar ou crie uma nova.'}
+            Selecione uma sessao anterior para continuar ou crie uma nova.
           </DialogDescription>
         </DialogHeader>
 
         <Command className="rounded-none border-none shadow-none">
-          <CommandInput placeholder="Filtrar sessões..." />
+          <CommandInput placeholder="Filtrar sessoes..." />
           <CommandList className="max-h-[300px]">
             <CommandEmpty>
-              {sessionDirectory ? 'Nenhuma sessão encontrada.' : 'Sessões indisponíveis neste contexto.'}
+              {contextKey ? 'Nenhuma sessao encontrada.' : 'Sessoes indisponiveis neste contexto.'}
             </CommandEmpty>
             <CommandGroup heading="Recentes">
               {sessions.map((session, index) => {
@@ -187,8 +193,8 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
         </Command>
 
         <DialogFooter className="items-center bg-muted/50 p-6 pt-0 sm:justify-between">
-          <p className="text-xs text-muted-foreground">{sessions.length} sessões registradas</p>
-          <Button onClick={handleCreateSession} disabled={loading || !sessionDirectory} size="sm" className="gap-2">
+          <p className="text-xs text-muted-foreground">{sessions.length} sessoes registradas</p>
+          <Button onClick={handleCreateSession} disabled={loading || !contextKey} size="sm" className="gap-2">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Novo Chat
           </Button>

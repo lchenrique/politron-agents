@@ -1,7 +1,7 @@
 import { EventEmitter } from "events"
 import * as cp from "child_process"
 import { existsSync, readFileSync } from "fs"
-import { basename, dirname, join, resolve } from "path"
+import { basename, dirname, join, resolve, normalize } from "path"
 import { createOpencode } from "@opencode-ai/sdk"
 import type { OpencodeClient } from "@opencode-ai/sdk/dist/v2/client"
 import type { Session, GlobalEvent, Event } from "@opencode-ai/sdk/dist/gen/types.gen"
@@ -61,13 +61,15 @@ interface ResolvedAgentConfig {
   systemPrompt?: string
 }
 
+// Legacy internal slugs -> real project agent slugs in `.opencode/agents`.
+// Important: never remap to unrelated personas (e.g. software-architect),
+// otherwise OpenCode may select a different identity than the team agent.
 const AGENT_SLUG_ALIASES: Record<string, string> = {
   "frontend-dev": "frontend-developer",
   "backend-dev": "backend-architect",
   "qa-tester": "reality-checker",
   "devops-eng": "devops-automator",
   "ux-designer": "ui-designer",
-  "studio-producer": "software-architect",
 }
 
 class OpenCodeSdkService extends EventEmitter {
@@ -139,14 +141,28 @@ class OpenCodeSdkService extends EventEmitter {
     }
 
     const candidates = new Set<string>()
+    const normalizedPromptPath = normalize(systemPromptPath)
+    const promptFileName = basename(normalizedPromptPath)
+    const rootDir = this.resolveWorkspaceDirectory()
 
     if (systemPromptPath === resolve(systemPromptPath)) {
       candidates.add(systemPromptPath)
       return Array.from(candidates)
     }
 
-    candidates.add(resolve(workspaceDirectory, systemPromptPath))
-    candidates.add(resolve(this.resolveWorkspaceDirectory(), systemPromptPath))
+    // Canonical Politron paths first: ensures team identity always comes from
+    // the local `.opencode/agents` prompts instead of SDK default personas.
+    candidates.add(resolve(rootDir, normalizedPromptPath))
+    candidates.add(resolve(rootDir, ".opencode", "agents", promptFileName))
+
+    // Then try runtime directories that can vary between dev/prod launches.
+    candidates.add(resolve(workspaceDirectory, normalizedPromptPath))
+    candidates.add(resolve(process.cwd(), normalizedPromptPath))
+    candidates.add(resolve(process.cwd(), "..", normalizedPromptPath))
+    candidates.add(resolve(process.cwd(), "..", "..", normalizedPromptPath))
+    candidates.add(resolve(__dirname, normalizedPromptPath))
+    candidates.add(resolve(__dirname, "..", normalizedPromptPath))
+    candidates.add(resolve(__dirname, "..", "..", normalizedPromptPath))
 
     return Array.from(candidates)
   }
@@ -285,17 +301,12 @@ class OpenCodeSdkService extends EventEmitter {
     agentSlug?: string
   ): Promise<ResolvedAgentConfig> {
     const resolvedSystemPrompt = this.resolveSystemPrompt(workspaceDirectory, systemPrompt, systemPromptPath)
-    if (resolvedSystemPrompt) {
-      return {
-        systemPrompt: resolvedSystemPrompt
-      }
-    }
-
     const resolvedAgentName = await this.resolveOpenCodeAgentName(workspaceDirectory, systemPromptPath, agentSlug)
 
-    if (resolvedAgentName) {
+    if (resolvedSystemPrompt || resolvedAgentName) {
       return {
-        agentSlug: resolvedAgentName
+        systemPrompt: resolvedSystemPrompt,
+        agentSlug: resolvedAgentName,
       }
     }
 
@@ -504,7 +515,7 @@ class OpenCodeSdkService extends EventEmitter {
       text: content
     }]
 
-    const finalSystemPrompt = agentSlug ? undefined : systemPrompt
+    const finalSystemPrompt = systemPrompt
 
     try {
       const result = await this.client.session.promptAsync({

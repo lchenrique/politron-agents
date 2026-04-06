@@ -1,5 +1,22 @@
 /// <reference types="vite/client" />
 
+interface VibeSdkSession {
+ id: string;
+ title?: string;
+ directory?: string;
+ time?: {
+ created: number;
+ updated: number;
+ compacting?: number;
+ };
+}
+
+interface VibeManagedSession {
+ agentId: string;
+ status: string;
+ session: VibeSdkSession;
+}
+
 interface Window {
  vibeAPI: {
  windowControls: {
@@ -12,13 +29,13 @@ interface Window {
  pickProjectFolder: () => Promise<string | null>;
  };
  agent: {
- ensure: (input: { agentId: string; teamId?: string; role: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<{ agentId: string; status: string }>;
+ ensure: (input: { agentId: string; teamId?: string; role: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<VibeManagedSession>;
  send: (input: { agentId: string; message: string; model?: { modelID: string; providerID: string } }) => Promise<void>;
  stop: (agentId: string) => Promise<void>;
  subscribe: (agentId: string) => Promise<void>;
  };
  ceo: {
- ensure: (input: { agentId: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<{ agentId: string; status: string }>;
+ ensure: (input: { agentId: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<VibeManagedSession>;
  send: (input: { agentId: string; message: string; model?: { modelID: string; providerID: string } }) => Promise<void>;
  subscribe: () => Promise<void>;
  };

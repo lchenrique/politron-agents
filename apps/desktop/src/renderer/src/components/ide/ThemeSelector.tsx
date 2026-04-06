@@ -16,7 +16,9 @@ const THEMES = [
     { id: "claude", label: "Claude" },
     { id: "dark-matter", label: "Dark Matter" },
     { id: "violet-bloom", label: "Violet Bloom" },
-    { id: "tangerine", label: "Tangerine" }
+    { id: "tangerine", label: "Tangerine" },
+    { id: "t3chat", label: "T3Chat" },
+    { id: "cyberpunk", label: "Cyberpunk" },
 ];
 
 

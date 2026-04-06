@@ -30,9 +30,21 @@ interface CeoSendInput {
   model?: { modelID: string, providerID: string }
 }
 
+interface SdkSession {
+  id: string
+  title?: string
+  directory?: string
+  time?: {
+    created: number
+    updated: number
+    compacting?: number
+  }
+}
+
 interface ManagedSession {
   agentId: string
   status: string
+  session: SdkSession
 }
 
 type EventCallback = (data: any) => void

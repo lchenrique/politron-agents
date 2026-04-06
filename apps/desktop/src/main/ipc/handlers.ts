@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, dialog, app } from 'electron'
 import * as os from 'os'
 import * as path from 'path'
+import { existsSync, readFileSync } from 'fs'
 import { registerTerminalHandlers } from './terminal'
 import { getAppWindow } from '../windows/manager'
 import { openCodeSdkService } from '../services/opencode-sdk'
@@ -34,26 +35,164 @@ function attachPipelineState(team: any) {
   }
 }
 
-function resolveAgentSystemPromptPath(agentId: string, teamId?: string): string | undefined {
+function resolveKnownCatalogSlugFromRole(role?: string): string | undefined {
+  if (!role) return undefined
+  if (role === 'tech-lead') return 'studio-producer'
+  if (role === 'frontend') return 'frontend-dev'
+  if (role === 'backend') return 'backend-dev'
+  if (role === 'qa') return 'qa-tester'
+  if (role === 'devops') return 'devops-eng'
+  if (role === 'design') return 'ux-designer'
+  if (role === 'global-ceo' || role === 'ceo') return 'ceo'
+  return undefined
+}
+
+function resolvePromptPathFromAgentIdentity(
+  identity?: { role?: string; catalogSlug?: string; systemPromptPath?: string },
+  workspaceDirectory?: string
+): string | undefined {
+  if (!identity) return undefined
+
+  const candidates: string[] = []
+  const roleSlug = resolveKnownCatalogSlugFromRole(identity.role)
+  if (roleSlug) candidates.push(roleSlug)
+  if (identity.catalogSlug) candidates.push(identity.catalogSlug)
+  if (identity.role) candidates.push(identity.role)
+
+  if (identity.systemPromptPath) {
+    const resolved = resolvePromptContent(identity.systemPromptPath, workspaceDirectory).path
+    if (resolved) return identity.systemPromptPath
+  }
+
+  for (const slug of candidates) {
+    const catalogPath = getAgentBySlug(slug)?.systemPromptPath
+    if (catalogPath) {
+      const resolved = resolvePromptContent(catalogPath, workspaceDirectory).path
+      if (resolved) return catalogPath
+    }
+  }
+
+  for (const slug of candidates) {
+    const projectPath = `.opencode/agents/${slug}.md`
+    const resolved = resolvePromptContent(projectPath, workspaceDirectory).path
+    if (resolved) return projectPath
+  }
+
+  return undefined
+}
+
+function resolveAgentSystemPromptPath(agentId: string, teamId?: string, workspaceDirectory?: string): string | undefined {
   if (agentId === 'ceo-global') {
     return GLOBAL_CEO_PROMPT.targetPath
   }
 
   if (teamId) {
     const teamAgent = teamStore.getTeam(teamId)?.agents.find((agent) => agent.id === agentId)
-    if (teamAgent?.systemPromptPath) {
-      return teamAgent.systemPromptPath
+    const resolvedPath = resolvePromptPathFromAgentIdentity({
+      role: teamAgent?.role,
+      catalogSlug: teamAgent?.catalogSlug,
+      systemPromptPath: teamAgent?.systemPromptPath,
+    }, workspaceDirectory)
+    if (resolvedPath) {
+      return resolvedPath
     }
   }
 
   for (const team of teamStore.listTeams()) {
     const teamAgent = team.agents.find((agent) => agent.id === agentId)
-    if (teamAgent?.systemPromptPath) {
-      return teamAgent.systemPromptPath
+    const resolvedPath = resolvePromptPathFromAgentIdentity({
+      role: teamAgent?.role,
+      catalogSlug: teamAgent?.catalogSlug,
+      systemPromptPath: teamAgent?.systemPromptPath,
+    }, workspaceDirectory)
+    if (resolvedPath) {
+      return resolvedPath
     }
   }
 
   return undefined
+}
+
+function resolveAgentCatalogSlug(agentId: string, teamId?: string): string | undefined {
+  if (agentId === 'ceo-global') {
+    return 'ceo'
+  }
+
+  if (teamId) {
+    const teamAgent = teamStore.getTeam(teamId)?.agents.find((agent) => agent.id === agentId)
+    const roleSlug = resolveKnownCatalogSlugFromRole(teamAgent?.role)
+    if (roleSlug) {
+      return roleSlug
+    }
+    if (teamAgent?.catalogSlug) {
+      return teamAgent.catalogSlug
+    }
+  }
+
+  for (const team of teamStore.listTeams()) {
+    const teamAgent = team.agents.find((agent) => agent.id === agentId)
+    const roleSlug = resolveKnownCatalogSlugFromRole(teamAgent?.role)
+    if (roleSlug) {
+      return roleSlug
+    }
+    if (teamAgent?.catalogSlug) {
+      return teamAgent.catalogSlug
+    }
+  }
+
+  return undefined
+}
+
+function resolveFallbackCatalogSlug(input: { role?: string; agentSlug?: string }): string | undefined {
+  const byRole = resolveKnownCatalogSlugFromRole(input.role)
+  if (byRole) return byRole
+  if (input.agentSlug) return input.agentSlug
+  return undefined
+}
+
+function resolveFallbackPromptPath(input: { role?: string; agentSlug?: string }): string | undefined {
+  const fallbackSlug = resolveFallbackCatalogSlug(input)
+  if (!fallbackSlug) return undefined
+  return getAgentBySlug(fallbackSlug)?.systemPromptPath || `.opencode/agents/${fallbackSlug}.md`
+}
+
+function stripFrontmatter(content: string): string {
+  return content.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+}
+
+function resolvePromptContent(systemPromptPath: string, workspaceDirectory?: string): { content?: string; path?: string } {
+  const candidates = new Set<string>()
+
+  if (path.isAbsolute(systemPromptPath)) {
+    candidates.add(systemPromptPath)
+  } else {
+    candidates.add(path.resolve(systemPromptPath))
+    candidates.add(path.resolve(process.cwd(), systemPromptPath))
+    candidates.add(path.resolve(process.cwd(), '..', systemPromptPath))
+    candidates.add(path.resolve(process.cwd(), '..', '..', systemPromptPath))
+    candidates.add(path.resolve(app.getAppPath(), systemPromptPath))
+    candidates.add(path.resolve(app.getAppPath(), '..', systemPromptPath))
+    candidates.add(path.resolve(app.getAppPath(), '..', '..', systemPromptPath))
+    if (workspaceDirectory) {
+      candidates.add(path.resolve(workspaceDirectory, systemPromptPath))
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) {
+      continue
+    }
+    try {
+      return {
+        content: stripFrontmatter(readFileSync(candidate, 'utf8')),
+        path: candidate
+      }
+    } catch (error) {
+      console.warn('[handlers] Failed to read prompt file:', candidate, error)
+    }
+  }
+
+  return {}
 }
 
 export function registerHandlers(): void {
@@ -110,7 +249,8 @@ export function registerHandlers(): void {
     return await openCodeSdkService.ensureSession({
       ...input,
       workspaceDirectory: input.workspaceDirectory,
-      systemPromptPath: input.systemPromptPath || resolveAgentSystemPromptPath(input.agentId, input.teamId),
+      systemPromptPath:
+        input.systemPromptPath || resolveAgentSystemPromptPath(input.agentId, input.teamId, input.workspaceDirectory),
     })
   })
 
@@ -160,7 +300,7 @@ export function registerHandlers(): void {
       id: crypto.randomUUID(),
       name: 'Tech Lead',
       role: 'tech-lead',
-      catalogSlug: 'software-architect',
+      catalogSlug: 'studio-producer',
       systemPromptPath: getAgentBySlug('studio-producer')?.systemPromptPath || '',
       status: 'idle' as const,
       color: input.projectColor || 'hsl(239 84% 67%)',
@@ -306,7 +446,7 @@ export function registerHandlers(): void {
       ]
       
       // Find the first path that exists
-      agentsDir = possiblePaths.find(p => fs.existsSync(p)) || possiblePaths[0]
+      agentsDir = possiblePaths.find(p => existsSync(p)) || possiblePaths[0]
     }
     
     console.log(`[agent-catalog] Loading agents from: ${agentsDir}`)
@@ -387,11 +527,8 @@ export function registerHandlers(): void {
       throw new Error('SDK client not initialized')
     }
     const workspaceDirectory = input?.directory?.trim()
-    if (!workspaceDirectory) {
-      throw new Error('Session creation requires an explicit directory')
-    }
     const result = await client.session.create({
-      query: { directory: workspaceDirectory }
+      query: workspaceDirectory ? { directory: workspaceDirectory } : undefined
     })
     return result.data
   })
@@ -466,13 +603,37 @@ export function registerHandlers(): void {
       throw new Error(`Session not found: ${sessionId}`)
     }
 
-    const resolvedSystemPromptPath = systemPromptPath || resolveAgentSystemPromptPath(agentId, teamId)
+    const resolvedCatalogSlug =
+      resolveAgentCatalogSlug(agentId, teamId) ||
+      resolveFallbackCatalogSlug({ role, agentSlug }) ||
+      agentSlug
+    const resolvedSystemPromptPath =
+      resolveAgentSystemPromptPath(agentId, teamId, workspaceDirectory) ||
+      systemPromptPath ||
+      resolveFallbackPromptPath({ role, agentSlug: resolvedCatalogSlug || agentSlug })
+    const promptResolution = resolvedSystemPromptPath
+      ? resolvePromptContent(resolvedSystemPromptPath, workspaceDirectory)
+      : {}
+    const forcedSystemPrompt = promptResolution.content
     const resolvedPromptConfig = await openCodeSdkService.resolvePromptConfig({
       workspaceDirectory: workspaceDirectory || '',
-      systemPrompt,
+      systemPrompt: forcedSystemPrompt || systemPrompt,
       systemPromptPath: resolvedSystemPromptPath,
-      agentSlug,
+      agentSlug: resolvedCatalogSlug,
     })
+
+    // Use the exact SDK agent name when we can resolve it, but always reinforce
+    // identity with the local prompt file from `.opencode/agents`.
+    const finalSystemPrompt = forcedSystemPrompt || resolvedPromptConfig.systemPrompt || systemPrompt
+    const finalAgentSlug = resolvedPromptConfig.agentSlug
+
+    // Never silently fall back to default SDK persona.
+    if (!finalSystemPrompt) {
+      throw new Error(
+        `[vibe:session:prompt] Prompt file not found for ${resolvedSystemPromptPath || "(undefined)"}. ` +
+          `Cannot continue without the agent identity prompt.`
+      )
+    }
 
     sessionStore.setSession({
       agentId,
@@ -480,11 +641,22 @@ export function registerHandlers(): void {
       role,
       session,
       workspaceDirectory,
-      agentSlug: resolvedPromptConfig.agentSlug,
-      systemPrompt: resolvedPromptConfig.systemPrompt,
+      agentSlug: finalAgentSlug,
+      systemPrompt: finalSystemPrompt,
       systemPromptPath: resolvedSystemPromptPath,
       status: 'idle',
       lastEventAt: new Date().toISOString(),
+    })
+
+    console.log('[vibe:session:prompt] Identity resolution', {
+      agentId,
+      teamId,
+      role,
+      resolvedCatalogSlug,
+      resolvedSystemPromptPath,
+      promptFileUsed: promptResolution.path,
+      usedSystemPrompt: !!finalSystemPrompt,
+      usedAgentSlug: finalAgentSlug,
     })
     
     const parts = [{ type: "text" as const, text: message }]
@@ -492,8 +664,8 @@ export function registerHandlers(): void {
     const result = await client.session.promptAsync({
       body: {
         parts,
-        system: resolvedPromptConfig.systemPrompt,
-        agent: resolvedPromptConfig.agentSlug,
+        system: finalSystemPrompt,
+        agent: finalAgentSlug,
         model: model
       },
       path: {

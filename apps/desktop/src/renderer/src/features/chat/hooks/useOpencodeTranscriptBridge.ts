@@ -28,7 +28,7 @@ import {
   recordChatBridgeEvent,
 } from '../perf/chatPerf';
 import { useActiveSession } from '../context/ActiveSessionContext';
-import { useSessionStore } from '../store/sessionStore';
+import { buildSessionContextKey, useSessionStore } from '../store/sessionStore';
 
 type AgentChunkEvent = {
   agentId: string;
@@ -199,6 +199,35 @@ function isSimpleGreeting(text: string): boolean {
   ].includes(normalized);
 }
 
+function buildCeoMessage(
+  text: string,
+  projects: Array<{ name: string; teamId: string }>,
+  workspace?: { teams?: Array<{ id: string; projectPath?: string }> } | null
+): string {
+  if (projects.length === 0 || isSimpleGreeting(text)) {
+    return text;
+  }
+
+  const projectList = projects
+    .map((project) => {
+      const team = workspace?.teams?.find((candidate) => candidate.id === project.teamId);
+      const path = team?.projectPath || 'sem pasta definida';
+      return `- ${project.name} (pasta: ${path})`;
+    })
+    .join('\n');
+
+  return `Você é o CEO Global e conhece todos os projetos existentes.
+Não execute comandos, não inspecione arquivos e não analise projetos a menos que o usuário peça isso explicitamente.
+Se a mensagem for apenas uma saudação, responda de forma breve e natural.
+
+Projetos disponíveis:
+${projectList}
+
+---
+
+${text}`;
+}
+
 export function useOpencodeTranscriptBridge() {
   const workspace = useAtomValue(workspaceAtom);
   const projects = useAtomValue(projectsAtom);
@@ -268,7 +297,11 @@ export function useOpencodeTranscriptBridge() {
   const activeAgentId = activeContext?.agent.id ?? null;
   const activeAgentIdRef = useRef<string | null>(activeAgentId);
   const activeContextKey = activeContext
-    ? `${activeContext.isCeo ? 'ceo' : 'project'}:${activeContext.agent.id}:${activeContext.team?.id ?? 'global'}`
+    ? buildSessionContextKey({
+        agentId: activeContext.agent.id,
+        isCeo: activeContext.isCeo,
+        teamId: activeContext.team?.id ?? null,
+      })
     : null;
   const sessionContextKey = activeSessionId && activeContextKey
     ? `${activeSessionId}:${activeContextKey}`
@@ -319,7 +352,7 @@ export function useOpencodeTranscriptBridge() {
     }
 
     if (previousChatContextKeyRef.current !== activeContextKey) {
-      console.log('[TranscriptBridge] Chat context changed from', previousChatContextKeyRef.current, 'to', activeContextKey, '- clearing active session');
+      console.log('[TranscriptBridge] Chat context changed from', previousChatContextKeyRef.current, 'to', activeContextKey, '- clearing visible session cache');
       useSessionStore.getState().clearSessions();
     }
 
@@ -359,7 +392,7 @@ export function useOpencodeTranscriptBridge() {
       try {
         // Carregar mensagens históricas
         const messages = await window.vibeAPI.session.messages(sessionIdAtEffectStart);
-        if (cancelled || useSessionStore.getState().activeSessionId !== sessionIdAtEffectStart) {
+        if (cancelled || useSessionStore.getState().getActiveSessionId(activeContextKey) !== sessionIdAtEffectStart) {
           console.log('[TranscriptBridge] Ignoring stale session history load for:', sessionIdAtEffectStart);
           return;
         }
@@ -407,7 +440,7 @@ export function useOpencodeTranscriptBridge() {
           }
         }
       } catch (error) {
-        if (cancelled || useSessionStore.getState().activeSessionId !== sessionIdAtEffectStart) {
+        if (cancelled || useSessionStore.getState().getActiveSessionId(activeContextKey) !== sessionIdAtEffectStart) {
           return;
         }
         console.error('[TranscriptBridge] Failed to load session history:', error);
@@ -415,16 +448,16 @@ export function useOpencodeTranscriptBridge() {
       
       // Depois de carregar histórico, assinar para novos eventos
       try {
-        if (cancelled || useSessionStore.getState().activeSessionId !== sessionIdAtEffectStart) {
+        if (cancelled || useSessionStore.getState().getActiveSessionId(activeContextKey) !== sessionIdAtEffectStart) {
           return;
         }
         await window.vibeAPI.session.subscribe(sessionIdAtEffectStart);
-        if (cancelled || useSessionStore.getState().activeSessionId !== sessionIdAtEffectStart) {
+        if (cancelled || useSessionStore.getState().getActiveSessionId(activeContextKey) !== sessionIdAtEffectStart) {
           return;
         }
         console.log('[TranscriptBridge] Subscribed to session:', sessionIdAtEffectStart);
       } catch (error) {
-        if (cancelled || useSessionStore.getState().activeSessionId !== sessionIdAtEffectStart) {
+        if (cancelled || useSessionStore.getState().getActiveSessionId(activeContextKey) !== sessionIdAtEffectStart) {
           return;
         }
         console.error('[TranscriptBridge] Failed to subscribe to session:', error);
@@ -436,7 +469,7 @@ export function useOpencodeTranscriptBridge() {
     return () => {
       cancelled = true;
     };
-  }, [activeSessionId, createTurn, emit, sessionContextKey]);
+  }, [activeContextKey, activeSessionId, createTurn, emit, sessionContextKey]);
 
   const ensureTurn = useCallback((agentId: string): string => {
     const runtime = runtimeRef.current;
@@ -1065,26 +1098,15 @@ export function useOpencodeTranscriptBridge() {
     }
 
     try {
+      const messageToSend = context.isCeo ? buildCeoMessage(text, projects, workspace) : text;
+
       // Se temos uma sessão ativa, usar session.prompt diretamente
       if (activeSessionId) {
         console.log('[TranscriptBridge] Using active session:', activeSessionId);
         
         // Subscribe to events first
         await window.vibeAPI.session.subscribe(activeSessionId);
-        
-        // Build message with project context for CEO
-        let messageToSend = text;
-        if (context.isCeo && projects.length > 0 && !isSimpleGreeting(text)) {
-          const projectList = projects
-            .map((p) => {
-              const team = workspace?.teams.find(t => t.id === p.teamId);
-              const path = team?.projectPath || 'sem pasta definida';
-              return `- ${p.name} (pasta: ${path})`;
-            })
-            .join('\n');
-          messageToSend = `Você é o CEO Global e conhece todos os projetos existentes.\nNão execute comandos, não inspecione arquivos e não analise projetos a menos que o usuário peça isso explicitamente.\nSe a mensagem for apenas uma saudação, responda de forma breve e natural.\n\nProjetos disponíveis:\n${projectList}\n\n---\n\n${text}`;
-        }
-        
+
         // Send message to specific session
         await window.vibeAPI.session.prompt({
           sessionId: activeSessionId,
@@ -1098,34 +1120,35 @@ export function useOpencodeTranscriptBridge() {
           model: options?.model,
         });
       } else {
-        // Fallback: usar o fluxo padrão (cria/usa sessão padrão do agente)
+        // Fallback: garantir uma sessão e enviar pela API de sessão
         console.log('[TranscriptBridge] No active session, using fallback path', { isCeo: context.isCeo });
         if (context.isCeo) {
           console.log('[TranscriptBridge] Using CEO path');
-          await window.vibeAPI.ceo.ensure({
+          const ensureResult = await window.vibeAPI.ceo.ensure({
             agentId: context.agent.id,
             agentSlug: context.agent.catalogSlug?.toLowerCase(),
             systemPromptPath: context.agent.systemPromptPath,
             workspaceDirectory: '',
           });
-          await window.vibeAPI.ceo.subscribe();
-          
-          // Build message with project context for CEO
-          let messageToSend = text;
-          if (projects.length > 0 && !isSimpleGreeting(text)) {
-            const projectList = projects
-              .map((p) => {
-                const team = workspace?.teams.find(t => t.id === p.teamId);
-                const path = team?.projectPath || 'sem pasta definida';
-                return `- ${p.name} (pasta: ${path})`;
-              })
-              .join('\n');
-            messageToSend = `Você é o CEO Global e conhece todos os projetos existentes.\nNão execute comandos, não inspecione arquivos e não analise projetos a menos que o usuário peça isso explicitamente.\nSe a mensagem for apenas uma saudação, responda de forma breve e natural.\n\nProjetos disponíveis:\n${projectList}\n\n---\n\n${text}`;
+          const ensuredSessionId = ensureResult.session?.id;
+          if (ensuredSessionId && activeContextKey) {
+            useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
+            useSessionStore.getState().selectSession(activeContextKey, ensuredSessionId);
           }
-          
-          await window.vibeAPI.ceo.send({
-            agentId: context.agent.id,
+          await window.vibeAPI.ceo.subscribe();
+          if (!ensuredSessionId) {
+            throw new Error('CEO session was not created correctly.');
+          }
+
+          await window.vibeAPI.session.prompt({
+            sessionId: ensuredSessionId,
             message: messageToSend,
+            agentId: context.agent.id,
+            teamId: context.team?.id,
+            role: 'global-ceo',
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            systemPromptPath: context.agent.systemPromptPath,
+            workspaceDirectory: '',
             model: options?.model,
           });
         } else {
@@ -1137,6 +1160,7 @@ export function useOpencodeTranscriptBridge() {
             agentRole: context.agent.role
           });
           console.log('[TranscriptBridge] Calling agent.ensure...');
+          let ensuredSessionId: string | undefined;
           try {
             const ensureResult = await window.vibeAPI.agent.ensure({
               agentId: context.agent.id,
@@ -1146,15 +1170,26 @@ export function useOpencodeTranscriptBridge() {
               workspaceDirectory: context.team!.projectPath,
             });
             console.log('[TranscriptBridge] agent.ensure result:', ensureResult);
+            ensuredSessionId = ensureResult.session?.id;
+            if (ensuredSessionId && activeContextKey) {
+              useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
+              useSessionStore.getState().selectSession(activeContextKey, ensuredSessionId);
+            }
           } catch (e) {
             console.error('[TranscriptBridge] agent.ensure FAILED:', e);
           }
-          console.log('[TranscriptBridge] Calling agent.subscribe...');
-          await window.vibeAPI.agent.subscribe(context.agent.id);
-          console.log('[TranscriptBridge] Sending message via agent.send');
-          await window.vibeAPI.agent.send({
-            agentId: context.agent.id,
+          if (!ensuredSessionId) {
+            throw new Error('Agent session was not created correctly.');
+          }
+          await window.vibeAPI.session.prompt({
+            sessionId: ensuredSessionId,
             message: text,
+            agentId: context.agent.id,
+            teamId: context.team?.id,
+            role: context.agent.role === 'tech-lead' ? 'tech-lead' : 'team-agent',
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            systemPromptPath: context.agent.systemPromptPath,
+            workspaceDirectory: context.team!.projectPath,
             model: options?.model,
           });
         }
@@ -1165,7 +1200,7 @@ export function useOpencodeTranscriptBridge() {
         error,
       });
     }
-  }, [activeContext, activeSessionId, createTurn, emit, handleError]);
+  }, [activeContext, activeContextKey, activeSessionId, createTurn, emit, handleError]);
 
   const header = useMemo(() => {
     if (!activeContext) {

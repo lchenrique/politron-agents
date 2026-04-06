@@ -7,7 +7,7 @@
  * - Relies on turn-based virtualization for better stability during streaming
  */
 
-import React, { memo, useState } from "react";
+import React, { memo, useCallback, useState } from "react";
 import { History, FolderOpen, Rocket, Users } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,18 @@ import { TranscriptViewport } from "./TranscriptViewport";
 import { useOpencodeTranscriptBridge } from "../../hooks/useOpencodeTranscriptBridge";
 import { useChatStore } from "../../store/chatStore";
 import { recordChatRender } from "../../perf/chatPerf";
+import { useActiveSession } from "../../context/ActiveSessionContext";
+import { useSessionStore } from "../../store/sessionStore";
 
 export const AgentChatShell = memo(function AgentChatShell() {
   recordChatRender("AgentChatShell");
   const clearChat = useChatStore((state) => state.clearChat);
+  const addSession = useSessionStore((state) => state.addSession);
+  const selectSession = useSessionStore((state) => state.selectSession);
+  const { contextKey } = useActiveSession();
   const { activeAgent, header, sendMessage } = useOpencodeTranscriptBridge();
   const [modalOpen, setModalOpen] = useState(false);
+  const [creatingNewChat, setCreatingNewChat] = useState(false);
   const projects = useAtomValue(projectsAtom);
   const activeTeam = useAtomValue(activeTeamAtom);
   const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
@@ -32,6 +38,38 @@ export const AgentChatShell = memo(function AgentChatShell() {
   const hasActiveAgent = !!activeAgent;
   const isCeoActive = activeAgent?.id === globalCeoAgent?.id;
   const shouldShowSelectionState = hasProjects && !hasActiveAgent;
+
+  const handleNewChat = useCallback(async () => {
+    if (!hasActiveAgent || !contextKey) {
+      return;
+    }
+
+    setCreatingNewChat(true);
+    try {
+      const directory = isCeoActive ? undefined : activeTeam?.projectPath || undefined;
+      const newSession = await window.vibeAPI.session.create(
+        directory ? { directory } : undefined
+      );
+
+      if (newSession?.id) {
+        addSession(newSession, contextKey);
+        selectSession(contextKey, newSession.id);
+      }
+      clearChat();
+    } catch (error) {
+      console.error("[AgentChatShell] Failed to create new chat session:", error);
+    } finally {
+      setCreatingNewChat(false);
+    }
+  }, [
+    activeTeam?.projectPath,
+    addSession,
+    clearChat,
+    contextKey,
+    hasActiveAgent,
+    isCeoActive,
+    selectSession,
+  ]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background font-sans text-foreground">
@@ -61,7 +99,13 @@ export const AgentChatShell = memo(function AgentChatShell() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button onClick={() => clearChat()} variant="outline" size="sm" className="gap-2">
+          <Button
+            onClick={handleNewChat}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            disabled={!hasActiveAgent || creatingNewChat}
+          >
             Novo Chat
           </Button>
         </div>

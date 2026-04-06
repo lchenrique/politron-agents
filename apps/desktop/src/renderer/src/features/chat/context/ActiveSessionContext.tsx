@@ -1,29 +1,41 @@
-/**
- * ActiveSessionContext - Contexto simples para sessão ativa
- *
- * A sessão ativa é gerenciada pelo sessionStore.
- */
-
-import { createContext, useContext, ReactNode } from 'react';
-import { useSessionStore } from '../store/sessionStore';
+import { createContext, useContext, type ReactNode, useMemo } from 'react';
+import { useAtomValue } from 'jotai';
+import { activeAgentAtom, activeAgentTeamAtom, globalCeoAgentAtom } from '@/hooks/atoms/workspace';
+import { buildSessionContextKey, useSessionStore } from '../store/sessionStore';
 
 interface ActiveSessionContextValue {
   activeSessionId: string | null;
+  contextKey: string | null;
   isSessionActive: boolean;
 }
 
 const ActiveSessionContext = createContext<ActiveSessionContextValue>({
   activeSessionId: null,
+  contextKey: null,
   isSessionActive: false,
 });
 
 export function ActiveSessionProvider({ children }: { children: ReactNode }) {
-  const activeSessionId = useSessionStore(state => state.activeSessionId);
+  const activeAgent = useAtomValue(activeAgentAtom);
+  const activeAgentTeam = useAtomValue(activeAgentTeamAtom);
+  const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
 
-  console.log('[ActiveSessionProvider] Render with activeSessionId:', activeSessionId);
+  const contextKey = useMemo(() => {
+    const activeAgentId = activeAgent?.id ?? null;
+    const isCeo = !!activeAgentId && activeAgentId === globalCeoAgent?.id;
+
+    return buildSessionContextKey({
+      agentId: activeAgentId,
+      isCeo,
+      teamId: activeAgentTeam?.id ?? null,
+    });
+  }, [activeAgent?.id, activeAgentTeam?.id, globalCeoAgent?.id]);
+
+  const activeSessionId = useSessionStore((state) => state.getActiveSessionId(contextKey));
 
   const value: ActiveSessionContextValue = {
     activeSessionId,
+    contextKey,
     isSessionActive: activeSessionId !== null,
   };
 
@@ -35,7 +47,5 @@ export function ActiveSessionProvider({ children }: { children: ReactNode }) {
 }
 
 export function useActiveSession() {
-  const context = useContext(ActiveSessionContext);
-  console.log('[useActiveSession] Called, context value:', context);
-  return context;
+  return useContext(ActiveSessionContext);
 }
