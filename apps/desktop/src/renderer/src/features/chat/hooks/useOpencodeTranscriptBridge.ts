@@ -121,20 +121,20 @@ function toolKey(tool?: string, title?: string): string {
   return `${tool ?? 'tool'}::${title ?? 'action'}`;
 }
 
-function normalizeError(error: unknown): string {
+function normalizeError(error: unknown, context?: ActiveAgentContext | null): string {
+  if (context && !context.isCeo && !context.team?.projectPath?.trim()) {
+    return `O agente ${context.agent.name} não tem pasta de projeto configurada. Selecione e configure um projeto no canto superior direito para poder conversar com este Agente.`;
+  }
   if (typeof error === 'string') return error;
   if (error instanceof Error) return error.message;
   if (error && typeof error === 'object') {
     try {
-      if (!context.isCeo && !context.team?.projectPath?.trim()) {
-        throw new Error(`O agente ${context.agent.name} não tem pasta de projeto configurada.`);
-      }
       return JSON.stringify(error, null, 2);
     } catch {
       return 'Erro desconhecido ao processar evento do agente.';
     }
   }
-  return 'Erro desconhecido ao processar evento do agente.';
+  return 'Erro desconhecido.'.concat(String(error));
 }
 
 function extractTextFromParts(parts?: Array<{ type: string; text?: string; [key: string]: unknown }>): string {
@@ -922,7 +922,7 @@ export function useOpencodeTranscriptBridge() {
     const turnId = ensureTurn(agentId);
     const assistantBlockId = ensureAssistantBlock(agentId);
     const thinkingBlockId = runtime.thinkingBlockByAgent.get(agentId);
-    const message = normalizeError(event.error);
+    const message = normalizeError(event.error, activeContext);
 
     if (thinkingBlockId) {
       emit({
@@ -965,7 +965,7 @@ export function useOpencodeTranscriptBridge() {
       window.clearTimeout(handle);
       runtime.flushHandleByAgent.delete(agentId);
     }
-  }, [emit, ensureAssistantBlock, ensureTurn]);
+  }, [emit, ensureAssistantBlock, ensureTurn, activeContext]);
 
   useEffect(() => {
     const maybeExtendedApi = window.vibeAPI as typeof window.vibeAPI & {

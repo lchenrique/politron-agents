@@ -127,6 +127,14 @@ export function registerHandlers(): void {
     await openCodeSdkService.subscribeToSession(agentId)
   })
 
+  ipcMain.handle('vibe:agent:updateConfig', async (_, { teamId, agentId, updates }) => {
+    return teamStore.updateAgent(teamId, agentId, updates)
+  })
+
+  ipcMain.handle('vibe:opencode:listAgents', async () => {
+    return openCodeSdkService.listAgents()
+  })
+
   ipcMain.handle('vibe:ceo:ensure', async (_, input) => {
     return await openCodeSdkService.ensureSession({
       ...input,
@@ -619,5 +627,20 @@ export function registerHandlers(): void {
 
   ipcMain.handle('vibe:system:platform', () => {
     return os.platform()
+  })
+
+  // Dynamic model listing from OpenCode providers
+  ipcMain.handle('vibe:opencode:listModels', async () => {
+    try {
+      return await openCodeSdkService.listModels()
+    } catch (error) {
+      console.error('[handlers] listModels error:', error)
+      return []
+    }
+  })
+
+  // Update agent config (e.g. chosen LLM model)
+  ipcMain.handle('vibe:team:updateAgent', (_event, teamId: string, agentId: string, updates: Partial<Agent>) => {
+    return teamStore.updateAgent(teamId, agentId, updates)
   })
 }

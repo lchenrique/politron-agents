@@ -1,5 +1,5 @@
 import { EventEmitter } from "events"
-import type { Team, Agent, PipelineState, TeamStatus } from "./types/team"
+import type { Team, Agent, PipelineState, TeamStatus } from "../types/team"
 import { appStateDb } from "./app-state-db"
 
 export interface CreateTeamInput {
@@ -96,7 +96,7 @@ class TeamStore extends EventEmitter {
 
     const updatedTeam = {
       ...team,
-      agents: team.agents.filter((a) => a.id !== agentId),
+      agents: team.agents.filter((a: Agent) => a.id !== agentId),
     }
     this.teams.set(teamId, updatedTeam)
     appStateDb.saveTeam(updatedTeam)
@@ -152,8 +152,44 @@ class TeamStore extends EventEmitter {
     return updatedTeam
   }
 
+  updateAgentStatus(teamId: string, agentId: string, status: Agent["status"]): Team | undefined {
+    const team = this.teams.get(teamId)
+    if (!team) return undefined
+
+    const agentIndex = team.agents.findIndex(a => a.id === agentId)
+    if (agentIndex === -1) return undefined
+
+    const updatedAgents = [...team.agents]
+    updatedAgents[agentIndex] = { ...updatedAgents[agentIndex], status }
+
+    const updatedTeam = { ...team, agents: updatedAgents }
+    this.teams.set(teamId, updatedTeam)
+    appStateDb.saveTeam(updatedTeam)
+    this.emit("team:agent-status-updated", { teamId, agentId, status })
+    this.emit("team:updated", updatedTeam)
+    return updatedTeam
+  }
+
+  updateAgent(teamId: string, agentId: string, updates: Partial<Agent>): Team | undefined {
+    const team = this.teams.get(teamId)
+    if (!team) return undefined
+
+    const agentIndex = team.agents.findIndex(a => a.id === agentId)
+    if (agentIndex === -1) return undefined
+
+    const updatedAgents = [...team.agents]
+    updatedAgents[agentIndex] = { ...updatedAgents[agentIndex], ...updates }
+
+    const updatedTeam = { ...team, agents: updatedAgents }
+    this.teams.set(teamId, updatedTeam)
+    appStateDb.saveTeam(updatedTeam)
+    this.emit("team:agent-updated", { teamId, agentId, agent: updatedAgents[agentIndex] })
+    this.emit("team:updated", updatedTeam)
+    return updatedTeam
+  }
+
   getActiveTeams(): Team[] {
-    return Array.from(this.teams.values()).filter((team) => team.status === "active")
+    return Array.from(this.teams.values()).filter((team: Team) => team.status === "active")
   }
 }
 

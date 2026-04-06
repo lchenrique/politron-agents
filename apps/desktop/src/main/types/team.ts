@@ -20,6 +20,10 @@ export interface Agent {
   sessionId?: string
   hiredAt: string
   isTeamLead?: boolean
+  llmModel?: {
+    modelID: string
+    providerID: string
+  }
 }
 
 export interface Team {

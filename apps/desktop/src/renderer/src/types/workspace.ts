@@ -12,6 +12,10 @@ export interface Agent {
  borderColor: string;
  currentFiles: string[];
  isTeamLead?: boolean;
+ llmModel?: {
+   modelID: string;
+   providerID: string;
+ };
 }
 
 export interface PipelineTask {

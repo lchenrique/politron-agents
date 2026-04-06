@@ -113,7 +113,9 @@ const api = {
     resume: (teamId: string) => 
       ipcRenderer.invoke('vibe:team:resume', teamId),
     createFromTemplate: (input: TeamCreateFromTemplateInput) => 
-      ipcRenderer.invoke('vibe:team:createFromTemplate', input)
+      ipcRenderer.invoke('vibe:team:createFromTemplate', input),
+    updateAgent: (teamId: string, agentId: string, updates: Record<string, unknown>) =>
+      ipcRenderer.invoke('vibe:team:updateAgent', teamId, agentId, updates)
   },
 
   template: {
@@ -223,6 +225,11 @@ const api = {
   system: {
     getHomeDir: () => ipcRenderer.invoke('vibe:system:homedir'),
     getPlatform: () => ipcRenderer.invoke('vibe:system:platform')
+  },
+
+  opencode: {
+    listModels: (): Promise<Array<{ id: string; providerID: string; name: string }>> =>
+      ipcRenderer.invoke('vibe:opencode:listModels')
   }
 }
 

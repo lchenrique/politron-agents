@@ -82,11 +82,7 @@ export const AgentChatShell = memo(function AgentChatShell() {
           <div className="w-full max-w-4xl px-4">
             <PromptInput
               onSend={sendMessage}
-              selectedModel={activeAgent?.catalogSlug || "opencode-agent"}
             />
-            <div className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground/60">
-              Politron OpenCode - IA Experimental
-            </div>
           </div>
         </div>
       )}
