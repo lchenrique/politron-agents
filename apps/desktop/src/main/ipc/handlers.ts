@@ -649,13 +649,28 @@ export function registerHandlers(): void {
 
     const parts = [{ type: "text" as const, text: message }]
 
+    // Only pass `agent` to the SDK when we have a valid, resolved SDK agent name.
+    // Otherwise let the SDK use its default behavior with just the system prompt.
+    const promptBody: {
+      parts: typeof parts
+      system: string
+      agent?: string
+      model?: typeof model
+    } = {
+      parts,
+      system: finalSystemPrompt,
+    }
+
+    if (finalAgentSlug) {
+      promptBody.agent = finalAgentSlug
+    }
+
+    if (model) {
+      promptBody.model = model
+    }
+
     const result = await client.session.promptAsync({
-      body: {
-        parts,
-        system: finalSystemPrompt,
-        agent: finalAgentSlug,
-        model: model
-      },
+      body: promptBody,
       path: {
         id: sessionId
       },
@@ -728,6 +743,8 @@ export function registerHandlers(): void {
   })
 
   teamStore.on('team:agent-added', (...args) => {
+    // Invalidate the agent map cache so new agents are discoverable by the SDK.
+    openCodeSdkService.invalidateAvailableAgentsCache()
     forwardEventToRenderer('vibe:team:agent-added', ...args)
   })
 

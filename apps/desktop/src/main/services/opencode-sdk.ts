@@ -61,11 +61,9 @@ interface ResolvedAgentConfig {
   systemPrompt?: string
 }
 
-// Legacy internal slugs -> real project agent slugs in `.opencode/agents`.
-// Important: never remap to unrelated personas (e.g. software-architect),
-// otherwise OpenCode may select a different identity than the team agent.
+// Agent slug aliases for backward compatibility with legacy project agent names.
+// Only map to the SAME persona type - never redirect to an unrelated identity.
 const AGENT_SLUG_ALIASES: Record<string, string> = {
-  "tech-lead": "studio-producer",
   "frontend-dev": "frontend-developer",
   "backend-dev": "backend-architect",
   "qa-tester": "reality-checker",
@@ -86,6 +84,14 @@ class OpenCodeSdkService extends EventEmitter {
   private assistantMessageIds: Set<string> = new Set()
   private sessionCreationPromises: Map<string, Promise<ManagedSession>> = new Map()
   private availableAgentsPromise: Promise<Map<string, string>> | null = null
+
+  /**
+   * Invalidate the cached agent map so the next lookup refetches from SDK.
+   * Call this when new agents may have been registered (e.g., after hiring a team agent).
+   */
+  invalidateAvailableAgentsCache(): void {
+    this.availableAgentsPromise = null
+  }
 
   constructor() {
     super()
@@ -140,6 +146,7 @@ class OpenCodeSdkService extends EventEmitter {
     const candidates = new Set<string>()
     const normalizedPromptPath = normalize(systemPromptPath)
     const promptFileName = basename(normalizedPromptPath)
+    const effectiveWorkspace = workspaceDirectory || this.resolveWorkspaceDirectory()
     const rootDir = this.resolveWorkspaceDirectory()
 
     if (systemPromptPath === resolve(systemPromptPath)) {
@@ -153,7 +160,7 @@ class OpenCodeSdkService extends EventEmitter {
     candidates.add(resolve(rootDir, ".opencode", "agents", promptFileName))
 
     // Then try runtime directories that can vary between dev/prod launches.
-    candidates.add(resolve(workspaceDirectory, normalizedPromptPath))
+    candidates.add(resolve(effectiveWorkspace, normalizedPromptPath))
     candidates.add(resolve(process.cwd(), normalizedPromptPath))
     candidates.add(resolve(process.cwd(), "..", normalizedPromptPath))
     candidates.add(resolve(process.cwd(), "..", "..", normalizedPromptPath))
@@ -288,6 +295,10 @@ class OpenCodeSdkService extends EventEmitter {
       }
     }
 
+    // Do NOT fall back to returning the raw candidate if it wasn't found in the SDK.
+    // Returning undefined lets the caller skip the `agent` field entirely, letting the
+    // system prompt alone define identity - which is the correct behavior for custom
+    // agents like "Tech Lead" or "HR Global" that exist only as local prompt files.
     return undefined
   }
 
