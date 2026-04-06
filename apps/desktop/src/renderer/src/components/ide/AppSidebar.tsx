@@ -96,13 +96,16 @@ export const AppSidebar = ({
           <>
             <SectionHeader label="Global" />
             <div className="space-y-1">
-              <NavItem
-                icon={<MessageSquare size={18} />}
-                label="Conversar com CEO"
-                active={activeAgentTabId === workspace.globalCeoAgent.id}
-                onClick={() => setActiveAgentTab(workspace.globalCeoAgent.id)}
-                badge="Online"
-              />
+              {workspace.globalAgents.map((agent) => (
+                <NavItem
+                  key={agent.id}
+                  icon={<MessageSquare size={18} />}
+                  label={agent.name}
+                  active={activeAgentTabId === agent.id}
+                  onClick={() => setActiveAgentTab(agent.id)}
+                  badge="Online"
+                />
+              ))}
             </div>
 
             <SectionHeader label="Projetos" onAction={onAddProject} />
@@ -169,13 +172,16 @@ export const AppSidebar = ({
 
             <SectionHeader label="Global" />
             <div className="space-y-1 mb-4">
-              <NavItem
-                icon={<MessageSquare size={18} />}
-                label="CEO Global"
-                active={activeAgentTabId === workspace.globalCeoAgent.id}
-                onClick={() => setActiveAgentTab(workspace.globalCeoAgent.id)}
-                badge="Online"
-              />
+              {workspace.globalAgents.map((agent) => (
+                <NavItem
+                  key={agent.id}
+                  icon={<MessageSquare size={18} />}
+                  label={agent.name}
+                  active={activeAgentTabId === agent.id}
+                  onClick={() => setActiveAgentTab(agent.id)}
+                  badge="Online"
+                />
+              ))}
             </div>
 
             <SectionHeader label="Time do Projeto" />

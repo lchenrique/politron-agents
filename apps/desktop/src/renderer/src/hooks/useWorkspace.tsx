@@ -13,6 +13,7 @@ import {
   activeProjectIdAtom,
   activeTeamAtom,
   activeTeamIdAtom,
+  globalAgentsAtom,
   globalCeoAgentAtom,
   projectsAtom,
   sidebarViewAtom,
@@ -173,7 +174,7 @@ function mapBackendTeamsToProjects(teams: BackendTeam[]): Project[] {
 
 const defaultCeo: Agent = {
   id: "ceo-global",
-  name: "CEO",
+  name: "CEO Global",
   catalogSlug: "ceo",
   systemPromptPath: ".opencode/agents/ceo.md",
   role: "ceo",
@@ -185,8 +186,25 @@ const defaultCeo: Agent = {
   currentFiles: [],
 };
 
+const defaultHrGlobal: Agent = {
+  id: "hr-global",
+  name: "RH Global",
+  catalogSlug: "hr-global",
+  systemPromptPath: ".opencode/agents/hr-global.md",
+  role: "hr",
+  initials: "RH",
+  status: "running",
+  color: "hsl(198 89% 48%)",
+  bgColor: "bg-sky-500/10",
+  borderColor: "border-sky-500/20",
+  currentFiles: [],
+};
+
+const defaultGlobalAgents: Agent[] = [defaultCeo, defaultHrGlobal];
+
 function createEmptyWorkspace(): Workspace {
   return {
+    globalAgents: defaultGlobalAgents,
     globalCeoAgent: defaultCeo,
     teams: [],
     projects: [],
@@ -203,6 +221,9 @@ export const useWorkspaceState = () => useAtomValue(workspaceAtom) ?? EMPTY_WORK
 export const useWorkspaceProjects = () => useAtomValue(projectsAtom);
 
 export const useWorkspaceTeams = () => useAtomValue(teamsAtom);
+
+export const useWorkspaceGlobalAgents = () =>
+  useAtomValue(globalAgentsAtom) ?? EMPTY_WORKSPACE.globalAgents;
 
 export const useWorkspaceGlobalCeoAgent = () =>
   useAtomValue(globalCeoAgentAtom) ?? EMPTY_WORKSPACE.globalCeoAgent;
@@ -239,7 +260,6 @@ const setActiveProjectAtom = atom(null, (get, set, id: string) => {
 const setActiveAgentTabAtom = atom(null, (get, set, id: string | null) => {
   const workspace = get(workspaceAtom);
   if (!workspace) return;
-  console.log('[setActiveAgentTabAtom] Setting activeAgentTabId to:', id);
   set(workspaceAtom, { ...workspace, activeAgentTabId: id });
   set(activeAgentTabIdAtom, id);
 });
@@ -477,7 +497,7 @@ function buildWorkspaceFromBackendTeams(backendTeams: BackendTeam[], previousWor
 
   const previousAgentStillExists =
     previousActiveAgentTabId &&
-    (previousActiveAgentTabId === workspace.globalCeoAgent.id ||
+    (workspace.globalAgents.some((agent) => agent.id === previousActiveAgentTabId) ||
       teams.some((team) => team.agents.some((agent) => agent.id === previousActiveAgentTabId)));
 
   if (previousAgentStillExists) {
@@ -532,19 +552,15 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
     }
 
     function handleTeamAgentAdded(data: { teamId: string; agent: BackendAgent }) {
-      console.log('[handleTeamAgentAdded] Received event:', JSON.stringify(data));
       const agent = mapBackendAgentToFrontend(data.agent);
-      console.log('[handleTeamAgentAdded] Mapped agent:', agent.name, 'id:', agent.id, 'role:', agent.role);
       setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
-        const updatedWorkspace = {
+        return {
           ...prev,
           teams: prev.teams.map((team) =>
             team.id === data.teamId ? { ...team, agents: [...team.agents, agent] } : team
           ),
         };
-        console.log('[handleTeamAgentAdded] Updated workspace. Teams now have agents:', updatedWorkspace.teams.map(t => ({name: t.name, agents: t.agents.map(a => a.name)})));
-        return updatedWorkspace;
       });
     }
 
@@ -598,10 +614,15 @@ export const WorkspaceProvider = ({ children }: { children: ReactNode }) => {
       setWorkspace((prev: Workspace | null) => {
         if (!prev) return prev;
 
-        if (data.agentId === prev.globalCeoAgent.id) {
+        if (prev.globalAgents.some((agent) => agent.id === data.agentId)) {
+          const globalAgents = prev.globalAgents.map((agent) =>
+            agent.id === data.agentId ? { ...agent, status: data.status } : agent
+          );
+          const globalCeoAgent = globalAgents.find((agent) => agent.id === prev.globalCeoAgent.id) ?? prev.globalCeoAgent;
           return {
             ...prev,
-            globalCeoAgent: { ...prev.globalCeoAgent, status: data.status },
+            globalAgents,
+            globalCeoAgent,
           };
         }
 

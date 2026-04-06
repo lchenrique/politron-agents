@@ -11,7 +11,7 @@ import React, { memo, useCallback, useState } from "react";
 import { History, FolderOpen, Rocket, Users } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { Button } from "@/components/ui/button";
-import { activeTeamAtom, globalCeoAgentAtom, projectsAtom } from "@/hooks/atoms";
+import { activeTeamAtom, globalAgentsAtom, projectsAtom } from "@/hooks/atoms";
 import { PromptInput } from "../input/PromptInput";
 import { SessionModal } from "./SessionModal";
 import { TranscriptViewport } from "./TranscriptViewport";
@@ -32,11 +32,11 @@ export const AgentChatShell = memo(function AgentChatShell() {
   const [creatingNewChat, setCreatingNewChat] = useState(false);
   const projects = useAtomValue(projectsAtom);
   const activeTeam = useAtomValue(activeTeamAtom);
-  const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
+  const globalAgents = useAtomValue(globalAgentsAtom);
   const hasProjectSelected = !!activeTeam?.projectPath;
   const hasProjects = projects.length > 0;
   const hasActiveAgent = !!activeAgent;
-  const isCeoActive = activeAgent?.id === globalCeoAgent?.id;
+  const isGlobalActive = !!activeAgent && globalAgents.some((agent) => agent.id === activeAgent.id);
   const shouldShowSelectionState = hasProjects && !hasActiveAgent;
 
   const handleNewChat = useCallback(async () => {
@@ -46,7 +46,7 @@ export const AgentChatShell = memo(function AgentChatShell() {
 
     setCreatingNewChat(true);
     try {
-      const directory = isCeoActive ? undefined : activeTeam?.projectPath || undefined;
+      const directory = isGlobalActive ? undefined : activeTeam?.projectPath || undefined;
       const newSession = await window.vibeAPI.session.create(
         directory ? { directory } : undefined
       );
@@ -67,7 +67,7 @@ export const AgentChatShell = memo(function AgentChatShell() {
     clearChat,
     contextKey,
     hasActiveAgent,
-    isCeoActive,
+    isGlobalActive,
     selectSession,
   ]);
 
@@ -171,15 +171,15 @@ const WelcomeScreen = ({ hasProjectSelected }: { hasProjectSelected: boolean }) 
     <h3 className="mb-2 text-xl font-semibold text-ide-text">Selecione um contexto</h3>
     <p className="mb-8 max-w-md text-sm text-ide-text-dim">
       {hasProjectSelected
-        ? "Escolha um agente do projeto na barra lateral ou volte para conversar com o CEO Global."
-        : "Escolha o CEO Global ou entre em um projeto para selecionar um agente do time e começar a conversar."}
+        ? "Escolha um agente do projeto na barra lateral ou volte para conversar com um agente global."
+        : "Escolha um agente global ou entre em um projeto para selecionar um agente do time e começar a conversar."}
     </p>
     <div className="flex items-center gap-2 rounded-lg border border-ide-border bg-ide-surface/50 px-4 py-2 text-xs text-ide-text-dim">
       <span className="text-ide-indigo">←</span>
       <span>
         {hasProjectSelected
           ? "Clique em um agente listado na barra lateral"
-          : "Clique no CEO ou em um projeto listado na barra lateral"}
+          : "Clique em um agente global ou em um projeto listado na barra lateral"}
       </span>
     </div>
   </div>

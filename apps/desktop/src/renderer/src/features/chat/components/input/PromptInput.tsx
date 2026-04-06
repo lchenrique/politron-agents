@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAtomValue, useSetAtom } from "jotai";
-import { activeAgentTeamAtom, activeAgentAtom, activeAgentTabIdAtom } from "@/hooks/atoms";
+import { activeAgentTeamAtom, activeAgentAtom, activeAgentTabIdAtom, globalAgentsAtom } from "@/hooks/atoms";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -94,6 +94,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
 
   const activeTeam = useAtomValue(activeAgentTeamAtom);
   const activeAgent = useAtomValue(activeAgentAtom);
+  const globalAgents = useAtomValue(globalAgentsAtom);
   const setActiveAgentId = useSetAtom(activeAgentTabIdAtom);
 
   // Expanded state — keep expanded while any dropdown is open
@@ -450,7 +451,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
                 <button className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-input/20 border border-input/30 hover:bg-input/30 hover:border-input/40 transition-all group">
                   <Users size={14} className="text-indigo-400" />
                   <span className="text-[11px] font-semibold text-foreground/70 group-hover:text-foreground/90">
-                    {activeAgent?.name || "CEO Global"}
+                    {activeAgent?.name || globalAgents[0]?.name || "Agente Global"}
                   </span>
                   <ChevronDown size={12} className="text-foreground/30 group-hover:text-foreground/50" />
                 </button>
@@ -474,19 +475,26 @@ export const PromptInput: React.FC<PromptInputProps> = ({
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator className="bg-input/20 my-1.5" />
-                <DropdownMenuItem
-                  onClick={() => setActiveAgentId("ceo-global")}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-input/20 transition-colors group",
-                    activeAgent?.id === "ceo-global" && "bg-input/20"
-                  )}
-                >
-                  <Sparkles size={16} className="text-amber-400 shrink-0" />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-medium">CEO Global</span>
-                    <span className="text-[10px] text-foreground/50">Visão sistêmica e orquestração</span>
-                  </div>
-                </DropdownMenuItem>
+                {globalAgents.map(agent => (
+                  <DropdownMenuItem
+                    key={agent.id}
+                    onClick={() => setActiveAgentId(agent.id)}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer hover:bg-input/20 transition-colors group",
+                      activeAgent?.id === agent.id && "bg-input/20"
+                    )}
+                  >
+                    <Sparkles size={16} className="text-amber-400 shrink-0" />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-medium">{agent.name}</span>
+                      <span className="text-[10px] text-foreground/50">
+                        {agent.role === "ceo"
+                          ? "Visão sistêmica e orquestração"
+                          : "People Ops, contratação e onboarding"}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

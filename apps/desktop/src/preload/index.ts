@@ -18,6 +18,7 @@ interface AgentSendInput {
 
 interface CeoEnsureInput {
   agentId: string
+  role?: string
   agentSlug?: string
   systemPrompt?: string
   systemPromptPath?: string
@@ -224,7 +225,7 @@ const api = {
       message: string; 
       agentId: string;
       teamId?: string;
-      role: 'global-ceo' | 'tech-lead' | 'team-agent';
+      role: 'global-ceo' | 'global-agent' | 'tech-lead' | 'team-agent';
       agentSlug?: string; 
       systemPrompt?: string; 
       systemPromptPath?: string;

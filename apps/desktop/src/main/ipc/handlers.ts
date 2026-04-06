@@ -37,7 +37,7 @@ function attachPipelineState(team: any) {
 
 function resolveKnownCatalogSlugFromRole(role?: string): string | undefined {
   if (!role) return undefined
-  if (role === 'tech-lead') return 'studio-producer'
+  if (role === 'tech-lead') return 'tech-lead'
   if (role === 'frontend') return 'frontend-dev'
   if (role === 'backend') return 'backend-dev'
   if (role === 'qa') return 'qa-tester'
@@ -300,8 +300,8 @@ export function registerHandlers(): void {
       id: crypto.randomUUID(),
       name: 'Tech Lead',
       role: 'tech-lead',
-      catalogSlug: 'studio-producer',
-      systemPromptPath: getAgentBySlug('studio-producer')?.systemPromptPath || '',
+      catalogSlug: 'tech-lead',
+      systemPromptPath: getAgentBySlug('tech-lead')?.systemPromptPath || '',
       status: 'idle' as const,
       color: input.projectColor || 'hsl(239 84% 67%)',
       currentFiles: [],
@@ -449,7 +449,6 @@ export function registerHandlers(): void {
       agentsDir = possiblePaths.find(p => existsSync(p)) || possiblePaths[0]
     }
     
-    console.log(`[agent-catalog] Loading agents from: ${agentsDir}`)
     return loadAgentTemplates(agentsDir)
   })
 
@@ -583,7 +582,7 @@ export function registerHandlers(): void {
         message: string
         agentId: string
         teamId?: string
-        role: 'global-ceo' | 'tech-lead' | 'team-agent'
+        role: 'global-ceo' | 'global-agent' | 'tech-lead' | 'team-agent'
         agentSlug?: string
         systemPrompt?: string
         systemPromptPath?: string
@@ -648,17 +647,6 @@ export function registerHandlers(): void {
       lastEventAt: new Date().toISOString(),
     })
 
-    console.log('[vibe:session:prompt] Identity resolution', {
-      agentId,
-      teamId,
-      role,
-      resolvedCatalogSlug,
-      resolvedSystemPromptPath,
-      promptFileUsed: promptResolution.path,
-      usedSystemPrompt: !!finalSystemPrompt,
-      usedAgentSlug: finalAgentSlug,
-    })
-    
     const parts = [{ type: "text" as const, text: message }]
 
     const result = await client.session.promptAsync({

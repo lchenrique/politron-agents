@@ -145,9 +145,9 @@ export const GLOBAL_CEO_PROMPT = {
 }
 
 export const AGENCY_AGENT_SYNC_MAP: Record<string, { sourcePath: string; targetPath: string }> = {
-  'studio-producer': {
+  'tech-lead': {
     sourcePath: 'project-management/project-management-studio-producer.md',
-    targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/studio-producer.md`,
+    targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/tech-lead.md`,
   },
   'frontend-dev': {
     sourcePath: 'engineering/engineering-frontend-developer.md',
@@ -173,14 +173,14 @@ export const AGENCY_AGENT_SYNC_MAP: Record<string, { sourcePath: string; targetP
 
 export const AGENT_CATALOG: AgentCatalogEntry[] = [
   {
-    slug: 'studio-producer',
-    name: 'Studio Producer',
+    slug: 'tech-lead',
+    name: 'Tech Lead',
     role: 'tech-lead',
-    initials: 'SP',
+    initials: 'TL',
     color: 'hsl(239 84% 67%)',
     bgColor: 'bg-ide-indigo/10',
     borderColor: 'border-ide-indigo/20',
-    systemPromptPath: AGENCY_AGENT_SYNC_MAP['studio-producer'].targetPath,
+    systemPromptPath: AGENCY_AGENT_SYNC_MAP['tech-lead'].targetPath,
   },
   {
     slug: 'frontend-dev',
@@ -240,8 +240,8 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
     name: 'MVP Startup',
     description: 'Time enxuto para validar ideias rapidamente',
     icon: '🚀',
-    agentSlugs: ['studio-producer', 'frontend-dev', 'backend-dev'],
-    suggestedTechLeadSlug: 'studio-producer',
+    agentSlugs: ['tech-lead', 'frontend-dev', 'backend-dev'],
+    suggestedTechLeadSlug: 'tech-lead',
     pipelineDescription: 'Desenvolvimento rápido de MVP com feedback contínuo',
   },
   {
@@ -249,8 +249,8 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
     name: 'Fullstack Squad',
     description: 'Time equilibrado para produtos completos',
     icon: '⚡',
-    agentSlugs: ['studio-producer', 'frontend-dev', 'backend-dev', 'qa-tester'],
-    suggestedTechLeadSlug: 'studio-producer',
+    agentSlugs: ['tech-lead', 'frontend-dev', 'backend-dev', 'qa-tester'],
+    suggestedTechLeadSlug: 'tech-lead',
     pipelineDescription: 'Produto completo com testes e qualidade',
   },
   {
@@ -258,8 +258,8 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
     name: 'Platform Team',
     description: 'Time focado em infraestrutura e DX',
     icon: '🔧',
-    agentSlugs: ['studio-producer', 'backend-dev', 'devops-eng'],
-    suggestedTechLeadSlug: 'studio-producer',
+    agentSlugs: ['tech-lead', 'backend-dev', 'devops-eng'],
+    suggestedTechLeadSlug: 'tech-lead',
     pipelineDescription: 'Infraestrutura, APIs e Developer Experience',
   },
   {
@@ -267,14 +267,19 @@ export const TEAM_TEMPLATES: TeamTemplate[] = [
     name: 'Quality First',
     description: 'Time com foco em qualidade e testes',
     icon: '✅',
-    agentSlugs: ['studio-producer', 'frontend-dev', 'backend-dev', 'qa-tester', 'qa-tester'],
-    suggestedTechLeadSlug: 'studio-producer',
+    agentSlugs: ['tech-lead', 'frontend-dev', 'backend-dev', 'qa-tester', 'qa-tester'],
+    suggestedTechLeadSlug: 'tech-lead',
     pipelineDescription: 'Testes extensivos e QA rigoroso',
   },
 ]
 
 export function getAgentBySlug(slug: string): AgentCatalogEntry | undefined {
-  return AGENT_CATALOG.find((agent) => agent.slug === slug)
+  const normalizedSlug =
+    slug === 'studio-producer' || slug === 'software-architect'
+      ? 'tech-lead'
+      : slug
+
+  return AGENT_CATALOG.find((agent) => agent.slug === normalizedSlug)
 }
 
 export function getTemplateById(id: string): TeamTemplate | undefined {

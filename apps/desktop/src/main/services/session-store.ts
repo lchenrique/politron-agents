@@ -2,7 +2,7 @@ import { EventEmitter } from "events"
 
 export type AgentStatus = "idle" | "running" | "waiting" | "blocked" | "done" | "error"
 
-export type AgentRole = "global-ceo" | "tech-lead" | "team-agent"
+export type AgentRole = "global-ceo" | "global-agent" | "tech-lead" | "team-agent"
 
 export interface ManagedSession {
   agentId: string

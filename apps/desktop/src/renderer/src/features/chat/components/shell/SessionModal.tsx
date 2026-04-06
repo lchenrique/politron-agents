@@ -3,7 +3,7 @@ import { MessageSquare, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useSessionStore, buildSessionContextKey } from '../../store/sessionStore';
 import { cn } from "@/lib/utils";
 import { useAtomValue } from 'jotai';
-import { activeAgentAtom, activeAgentTeamAtom, globalCeoAgentAtom } from '@/hooks/atoms/workspace';
+import { activeAgentAtom, activeAgentTeamAtom, globalAgentsAtom } from '@/hooks/atoms/workspace';
 import {
   Dialog,
   DialogContent,
@@ -52,25 +52,25 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
   const removeSession = useSessionStore((state) => state.removeSession);
   const selectSession = useSessionStore((state) => state.selectSession);
 
-  const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
+  const globalAgents = useAtomValue(globalAgentsAtom);
   const activeAgent = useAtomValue(activeAgentAtom);
   const activeAgentTeam = useAtomValue(activeAgentTeamAtom);
 
   const activeAgentId = activeAgent?.id ?? null;
-  const isCeoContext = !!globalCeoAgent && activeAgentId === globalCeoAgent.id;
+  const isGlobalContext = !!activeAgentId && globalAgents.some((agent) => agent.id === activeAgentId);
   const contextKey = useMemo(
     () =>
       buildSessionContextKey({
         agentId: activeAgentId,
-        isCeo: isCeoContext,
+        isGlobal: isGlobalContext,
         teamId: activeAgentTeam?.id ?? null,
       }),
-    [activeAgentId, activeAgentTeam?.id, isCeoContext]
+    [activeAgentId, activeAgentTeam?.id, isGlobalContext]
   );
   const activeSessionId = useSessionStore((state) => state.getActiveSessionId(contextKey));
   const sessionDirectory = useMemo(
-    () => (isCeoContext ? undefined : activeAgentTeam?.projectPath || undefined),
-    [activeAgentTeam?.projectPath, isCeoContext]
+    () => (isGlobalContext ? undefined : activeAgentTeam?.projectPath || undefined),
+    [activeAgentTeam?.projectPath, isGlobalContext]
   );
 
   const loadSdkSessions = useCallback(async () => {

@@ -3,7 +3,7 @@ import { useAtomValue } from 'jotai';
 import {
   activeAgentAtom,
   activeAgentTeamAtom,
-  globalCeoAgentAtom,
+  globalAgentsAtom,
   workspaceAtom,
   projectsAtom,
 } from '@/hooks/atoms';
@@ -91,6 +91,7 @@ type PipelineUpdateEvent = {
 type ActiveAgentContext = {
   agent: Agent;
   team: Team | null;
+  isGlobal: boolean;
   isCeo: boolean;
 };
 
@@ -122,7 +123,7 @@ function toolKey(tool?: string, title?: string): string {
 }
 
 function normalizeError(error: unknown, context?: ActiveAgentContext | null): string {
-  if (context && !context.isCeo && !context.team?.projectPath?.trim()) {
+  if (context && !context.isGlobal && !context.team?.projectPath?.trim()) {
     return `O agente ${context.agent.name} não tem pasta de projeto configurada. Selecione e configure um projeto no canto superior direito para poder conversar com este Agente.`;
   }
   if (typeof error === 'string') return error;
@@ -234,7 +235,7 @@ export function useOpencodeTranscriptBridge() {
   const activeAgentTabId = workspace?.activeAgentTabId ?? null;
   const activeAgent = useAtomValue(activeAgentAtom);
   const activeAgentTeam = useAtomValue(activeAgentTeamAtom);
-  const globalCeoAgent = useAtomValue(globalCeoAgentAtom);
+  const globalAgents = useAtomValue(globalAgentsAtom);
   const createTurn = useChatStore((state) => state.createTurn);
   const replaceTranscript = useChatStore((state) => state.replaceTranscript);
   const clearChat = useChatStore((state) => state.clearChat);
@@ -242,8 +243,6 @@ export function useOpencodeTranscriptBridge() {
   // Obter sessão ativa do contexto
   const { activeSessionId } = useActiveSession();
   
-  console.log('[TranscriptBridge] Hook render, activeSessionId from context:', activeSessionId);
-
   const adapterRef = useRef<AgentEventAdapter | null>(null);
   if (!adapterRef.current) {
     adapterRef.current = AgentEventAdapter.create();
@@ -273,33 +272,34 @@ export function useOpencodeTranscriptBridge() {
   const previousChatContextKeyRef = useRef<string | null>(null);
 
   const activeContext = useMemo<ActiveAgentContext | null>(() => {
-    console.log('[activeContext useMemo] activeAgentTabId:', activeAgentTabId, 'activeAgent:', activeAgent?.name, 'activeAgent.id:', activeAgent?.id, 'globalCeoAgent.id:', globalCeoAgent?.id);
-    if (!activeAgentTabId || !activeAgent || !globalCeoAgent) {
-      console.log('[activeContext useMemo] Returning null because:', !activeAgentTabId ? 'no activeAgentTabId' : !activeAgent ? 'no activeAgent' : 'no globalCeoAgent');
+    if (!activeAgentTabId || !activeAgent) {
       return null;
     }
 
-    if (activeAgentTabId === globalCeoAgent.id) {
+    const matchedGlobalAgent = globalAgents.find((agent) => agent.id === activeAgentTabId);
+    if (matchedGlobalAgent) {
       return {
-        agent: globalCeoAgent,
+        agent: matchedGlobalAgent,
         team: null,
-        isCeo: true,
+        isGlobal: true,
+        isCeo: matchedGlobalAgent.role === 'ceo',
       };
     }
 
     return {
       agent: activeAgent,
       team: activeAgentTeam,
+      isGlobal: false,
       isCeo: false,
     };
-  }, [activeAgent, activeAgentTabId, activeAgentTeam, globalCeoAgent]);
+  }, [activeAgent, activeAgentTabId, activeAgentTeam, globalAgents]);
 
   const activeAgentId = activeContext?.agent.id ?? null;
   const activeAgentIdRef = useRef<string | null>(activeAgentId);
   const activeContextKey = activeContext
     ? buildSessionContextKey({
         agentId: activeContext.agent.id,
-        isCeo: activeContext.isCeo,
+        isGlobal: activeContext.isGlobal,
         teamId: activeContext.team?.id ?? null,
       })
     : null;
@@ -352,7 +352,6 @@ export function useOpencodeTranscriptBridge() {
     }
 
     if (previousChatContextKeyRef.current !== activeContextKey) {
-      console.log('[TranscriptBridge] Chat context changed from', previousChatContextKeyRef.current, 'to', activeContextKey, '- clearing visible session cache');
       useSessionStore.getState().clearSessions();
     }
 
@@ -360,8 +359,6 @@ export function useOpencodeTranscriptBridge() {
   }, [activeContextKey]);
 
   useLayoutEffect(() => {
-    console.log('[TranscriptBridge] useLayoutEffect session reset, activeSessionId:', activeSessionId, 'activeContext:', !!activeContext);
-
     if (!sessionContextKey) {
       lastSessionContextKeyRef.current = null;
       return;
@@ -377,14 +374,9 @@ export function useOpencodeTranscriptBridge() {
 
   // Quando a sessão ativa muda, carregar histórico e assinar eventos
   useEffect(() => {
-    console.log('[TranscriptBridge] useEffect triggered, activeSessionId:', activeSessionId, 'activeContext:', !!activeContext);
-    
     if (!activeSessionId || !sessionContextKey) {
-      console.log('[TranscriptBridge] Skipping - no session or context');
       return;
     }
-
-    console.log('[TranscriptBridge] Session changed to:', activeSessionId);
     let cancelled = false;
     const sessionIdAtEffectStart = activeSessionId;
 
@@ -393,11 +385,8 @@ export function useOpencodeTranscriptBridge() {
         // Carregar mensagens históricas
         const messages = await window.vibeAPI.session.messages(sessionIdAtEffectStart);
         if (cancelled || useSessionStore.getState().getActiveSessionId(activeContextKey) !== sessionIdAtEffectStart) {
-          console.log('[TranscriptBridge] Ignoring stale session history load for:', sessionIdAtEffectStart);
           return;
         }
-        console.log('[TranscriptBridge] Loaded messages:', messages?.length);
-        console.log('[TranscriptBridge] First message structure:', JSON.stringify(messages?.[0], null, 2));
         
         if (messages && messages.length > 0) {
           // Processar mensagens históricas e adicionar ao chat
@@ -405,8 +394,6 @@ export function useOpencodeTranscriptBridge() {
             // Verificar a estrutura real da mensagem
             const role = msg.info?.role;
             const textContent = extractTextFromParts(msg.parts);
-            
-            console.log('[TranscriptBridge] Message role:', role, 'text length:', textContent?.length);
             
             if (role === 'user' && textContent) {
               // Mensagem de usuário
@@ -455,7 +442,6 @@ export function useOpencodeTranscriptBridge() {
         if (cancelled || useSessionStore.getState().getActiveSessionId(activeContextKey) !== sessionIdAtEffectStart) {
           return;
         }
-        console.log('[TranscriptBridge] Subscribed to session:', sessionIdAtEffectStart);
       } catch (error) {
         if (cancelled || useSessionStore.getState().getActiveSessionId(activeContextKey) !== sessionIdAtEffectStart) {
           return;
@@ -1030,21 +1016,11 @@ export function useOpencodeTranscriptBridge() {
     const context = activeContext;
     
     if (!context || !text.trim()) {
-      console.log('[TranscriptBridge] sendMessage skipped: no context or empty text', { context, textLength: text?.length });
       return;
     }
     
-    const isCeoActive = context.isCeo;
     const agentName = context.agent.name;
     const agentCatalogSlug = context.agent.catalogSlug;
-    console.log('[TranscriptBridge] >>> sendMessage', { 
-      isCeo: isCeoActive, 
-      agentName, 
-      catalogSlug: agentCatalogSlug,
-      agentId: context.agent.id, 
-      activeSessionId,
-      text: text.substring(0, 30)
-    });
     recordChatBridgeEvent('outgoing:sendMessage');
 
     // Create separate turns: user turn and agent turn
@@ -1102,8 +1078,6 @@ export function useOpencodeTranscriptBridge() {
 
       // Se temos uma sessão ativa, usar session.prompt diretamente
       if (activeSessionId) {
-        console.log('[TranscriptBridge] Using active session:', activeSessionId);
-        
         // Subscribe to events first
         await window.vibeAPI.session.subscribe(activeSessionId);
 
@@ -1113,19 +1087,25 @@ export function useOpencodeTranscriptBridge() {
           message: messageToSend,
           agentId: context.agent.id,
           teamId: context.team?.id,
-          role: context.isCeo ? 'global-ceo' : context.agent.role === 'tech-lead' ? 'tech-lead' : 'team-agent',
+          role: context.isCeo
+            ? 'global-ceo'
+            : context.isGlobal
+            ? 'global-agent'
+            : context.agent.role === 'tech-lead'
+            ? 'tech-lead'
+            : 'team-agent',
           agentSlug: context.agent.catalogSlug?.toLowerCase(),
           systemPromptPath: context.agent.systemPromptPath,
-          workspaceDirectory: context.isCeo ? '' : context.team!.projectPath,
+          workspaceDirectory: context.isGlobal ? '' : context.team!.projectPath,
           model: options?.model,
         });
       } else {
         // Fallback: garantir uma sessão e enviar pela API de sessão
-        console.log('[TranscriptBridge] No active session, using fallback path', { isCeo: context.isCeo });
-        if (context.isCeo) {
-          console.log('[TranscriptBridge] Using CEO path');
+        if (context.isGlobal) {
+          const ensureRole = context.isCeo ? 'global-ceo' : 'global-agent';
           const ensureResult = await window.vibeAPI.ceo.ensure({
             agentId: context.agent.id,
+            role: ensureRole,
             agentSlug: context.agent.catalogSlug?.toLowerCase(),
             systemPromptPath: context.agent.systemPromptPath,
             workspaceDirectory: '',
@@ -1135,9 +1115,13 @@ export function useOpencodeTranscriptBridge() {
             useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
             useSessionStore.getState().selectSession(activeContextKey, ensuredSessionId);
           }
-          await window.vibeAPI.ceo.subscribe();
+          if (context.isCeo) {
+            await window.vibeAPI.ceo.subscribe();
+          } else {
+            await window.vibeAPI.agent.subscribe(context.agent.id);
+          }
           if (!ensuredSessionId) {
-            throw new Error('CEO session was not created correctly.');
+            throw new Error('Global agent session was not created correctly.');
           }
 
           await window.vibeAPI.session.prompt({
@@ -1145,21 +1129,13 @@ export function useOpencodeTranscriptBridge() {
             message: messageToSend,
             agentId: context.agent.id,
             teamId: context.team?.id,
-            role: 'global-ceo',
+            role: ensureRole,
             agentSlug: context.agent.catalogSlug?.toLowerCase(),
             systemPromptPath: context.agent.systemPromptPath,
             workspaceDirectory: '',
             model: options?.model,
           });
         } else {
-          console.log('[TranscriptBridge] Using AGENT path', { 
-            teamId: context.team?.id, 
-            projectPath: context.team?.projectPath, 
-            catalogSlug: context.agent.catalogSlug?.toLowerCase(),
-            agentId: context.agent.id,
-            agentRole: context.agent.role
-          });
-          console.log('[TranscriptBridge] Calling agent.ensure...');
           let ensuredSessionId: string | undefined;
           try {
             const ensureResult = await window.vibeAPI.agent.ensure({
@@ -1169,7 +1145,6 @@ export function useOpencodeTranscriptBridge() {
               agentSlug: context.agent.catalogSlug?.toLowerCase(),
               workspaceDirectory: context.team!.projectPath,
             });
-            console.log('[TranscriptBridge] agent.ensure result:', ensureResult);
             ensuredSessionId = ensureResult.session?.id;
             if (ensuredSessionId && activeContextKey) {
               useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
@@ -1214,6 +1189,8 @@ export function useOpencodeTranscriptBridge() {
       title: activeContext.agent.name,
       subtitle: activeContext.isCeo
         ? 'OpenCode global orchestration'
+        : activeContext.isGlobal
+        ? `Global · ${activeContext.agent.role}`
         : `${activeContext.team?.name ?? 'Workspace'} · ${activeContext.agent.role}`,
     };
   }, [activeContext]);

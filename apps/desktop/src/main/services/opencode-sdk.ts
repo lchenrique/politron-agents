@@ -65,6 +65,7 @@ interface ResolvedAgentConfig {
 // Important: never remap to unrelated personas (e.g. software-architect),
 // otherwise OpenCode may select a different identity than the team agent.
 const AGENT_SLUG_ALIASES: Record<string, string> = {
+  "tech-lead": "studio-producer",
   "frontend-dev": "frontend-developer",
   "backend-dev": "backend-architect",
   "qa-tester": "reality-checker",
@@ -98,13 +99,10 @@ class OpenCodeSdkService extends EventEmitter {
   private resolveWorkspaceDirectory(): string {
     const searchMarkers = [".git", "AGENTS.md", ".opencode"]
     let current = __dirname
-    
-    console.log(`[OpenCodeSdkService] Resolving workspace root starting from: ${current}`)
 
     for (let i = 0; i < 10; i++) {
       for (const marker of searchMarkers) {
         if (existsSync(join(current, marker))) {
-          console.log(`[OpenCodeSdkService] Found marker "${marker}" at: ${current}`)
           return current
         }
       }
@@ -114,7 +112,6 @@ class OpenCodeSdkService extends EventEmitter {
       current = parent
     }
 
-    console.log(`[OpenCodeSdkService] Fallback to process.cwd(): ${process.cwd()}`)
     return process.cwd()
   }
 
@@ -340,8 +337,6 @@ class OpenCodeSdkService extends EventEmitter {
     while (attempt < maxRetries) {
       try {
         attempt++;
-        console.log(`[OpenCodeSdkService] SDK initialization attempt ${attempt}/${maxRetries}...`)
-        
         const result = await createOpencode({
           port: 0,
           hostname: "127.0.0.1",
@@ -352,7 +347,6 @@ class OpenCodeSdkService extends EventEmitter {
         this.serverUrl = result.server.url
         this.isInitialized = true
         this.initPromise = null
-        console.log("[OpenCodeSdkService] SDK initialized successfully, server running at:", this.serverUrl)
         return;
       } catch (error) {
         console.error(`[OpenCodeSdkService] SDK initialization attempt ${attempt} failed:`, error)
@@ -503,13 +497,6 @@ class OpenCodeSdkService extends EventEmitter {
       throw new Error("SDK client not initialized")
     }
 
-    console.log('[OpenCodeSdkService] sendMessageToSession called', {
-      sessionId,
-      agentSlug,
-      workspaceDirectory,
-      contentPreview: content.substring(0, 100)
-    })
-
     const parts: PartInput[] = [{
       type: "text",
       text: content
@@ -529,12 +516,6 @@ class OpenCodeSdkService extends EventEmitter {
           id: sessionId
         },
         query: workspaceDirectory ? { directory: workspaceDirectory } : undefined
-      })
-
-      console.log('[OpenCodeSdkService] promptAsync response', {
-        status: result.response?.status,
-        hasData: !!result.data,
-        error: result.error
       })
 
       const status = result.response?.status

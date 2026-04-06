@@ -35,7 +35,7 @@ interface SdkSession {
 
 export interface SessionContextInput {
   agentId: string | null;
-  isCeo: boolean;
+  isGlobal: boolean;
   teamId?: string | null;
 }
 
@@ -44,8 +44,8 @@ export function buildSessionContextKey(input: SessionContextInput): string | nul
     return null;
   }
 
-  if (input.isCeo) {
-    return `ceo:${input.agentId}`;
+  if (input.isGlobal) {
+    return `global:${input.agentId}`;
   }
 
   return `project:${input.teamId ?? 'global'}:${input.agentId}`;

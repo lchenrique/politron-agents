@@ -35,7 +35,7 @@ interface Window {
  subscribe: (agentId: string) => Promise<void>;
  };
  ceo: {
- ensure: (input: { agentId: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<VibeManagedSession>;
+ ensure: (input: { agentId: string; role?: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<VibeManagedSession>;
  send: (input: { agentId: string; message: string; model?: { modelID: string; providerID: string } }) => Promise<void>;
  subscribe: () => Promise<void>;
  };
@@ -116,7 +116,7 @@ interface Window {
       message: string;
       agentId: string;
       teamId?: string;
-      role: "global-ceo" | "tech-lead" | "team-agent";
+      role: "global-ceo" | "global-agent" | "tech-lead" | "team-agent";
       agentSlug?: string;
       systemPrompt?: string;
       systemPromptPath?: string;

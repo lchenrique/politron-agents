@@ -5,7 +5,7 @@ import type { Agent, PipelineTask, Team } from "../types/team"
 import { getAgentBySlug } from "./agent-catalog"
 
 function normalizeCatalogSlug(role: string, catalogSlug: string): string {
-  if (role === "tech-lead") return "studio-producer"
+  if (role === "tech-lead") return "tech-lead"
   if (role === "frontend") return "frontend-dev"
   if (role === "backend") return "backend-dev"
   if (role === "qa") return "qa-tester"
@@ -13,8 +13,8 @@ function normalizeCatalogSlug(role: string, catalogSlug: string): string {
   if (role === "design") return "ux-designer"
   if (role === "ceo") return "ceo"
   if (role === "global-ceo") return "ceo"
-  if (role === "team-agent" && catalogSlug === "software-architect") {
-    return "studio-producer"
+  if (role === "team-agent" && (catalogSlug === "software-architect" || catalogSlug === "studio-producer")) {
+    return "tech-lead"
   }
 
   return catalogSlug

@@ -50,6 +50,7 @@ export interface Project {
 }
 
 export interface Workspace {
+ globalAgents: Agent[];
  globalCeoAgent: Agent;
  teams: Team[];
  projects: Project[];

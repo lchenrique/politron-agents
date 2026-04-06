@@ -1,8 +1,7 @@
 import {
   useWorkspaceActiveAgentTabId,
   useWorkspaceActiveTeam,
-  useWorkspaceGlobalCeoAgent,
-  useWorkspaceSelectCeo,
+  useWorkspaceGlobalAgents,
   useWorkspaceSetActiveAgentTab,
   useWorkspaceSetActiveProject,
   useWorkspaceTeams,
@@ -27,32 +26,45 @@ const TeamsSidebar = ({ onHireAgent }: TeamsSidebarProps) => {
   const teams = useWorkspaceTeams();
   const activeTeam = useWorkspaceActiveTeam();
   const activeAgentTabId = useWorkspaceActiveAgentTabId();
-  const globalCeoAgent = useWorkspaceGlobalCeoAgent();
+  const globalAgents = useWorkspaceGlobalAgents();
   const toggleTeamStatus = useWorkspaceToggleTeamStatus();
   const setActiveAgentTab = useWorkspaceSetActiveAgentTab();
   const setActiveProject = useWorkspaceSetActiveProject();
-  const selectCeo = useWorkspaceSelectCeo();
 
   return (
     <div className="w-[240px] flex flex-col shrink-0 overflow-hidden bg-transparent">
       <div className="p-4 border-b border-white/5 shrink-0">
-        <div className="text-[10px] text-ide-text-dim/60 tracking-[0.2em] font-semibold uppercase mb-3 px-1">CEO</div>
-        <div
-          onClick={selectCeo}
-          className={`flex items-center gap-3 rounded-xl p-2.5 cursor-pointer border ${
-            activeAgentTabId === globalCeoAgent.id
-              ? "bg-ide-indigo/10 border-ide-indigo/40 ring-1 ring-ide-indigo/20"
-              : "bg-white/2 border-white/5 hover:bg-white/5 hover:border-white/10"
-          }`}
-        >
-          <div className="w-8 h-8 rounded-lg bg-ide-indigo/10 border border-ide-indigo/30 flex items-center justify-center text-[12px] font-bold text-ide-indigo shrink-0">
-            {globalCeoAgent.initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold text-ide-text/90">{globalCeoAgent.name}</div>
-            <div className="text-[10px] text-ide-text-dim/80">Diretoria Executiva</div>
-          </div>
-          <div className="w-2 h-2 rounded-full bg-ide-green shadow-[0_0_8px_hsl(var(--ide-green))] ml-auto shrink-0" />
+        <div className="text-[10px] text-ide-text-dim/60 tracking-[0.2em] font-semibold uppercase mb-3 px-1">Global</div>
+        <div className="space-y-2">
+          {globalAgents.map((agent) => (
+            <div
+              key={agent.id}
+              onClick={() => setActiveAgentTab(agent.id)}
+              className={`flex items-center gap-3 rounded-xl p-2.5 cursor-pointer border ${
+                activeAgentTabId === agent.id
+                  ? "bg-ide-indigo/10 border-ide-indigo/40 ring-1 ring-ide-indigo/20"
+                  : "bg-white/2 border-white/5 hover:bg-white/5 hover:border-white/10"
+              }`}
+            >
+              <div
+                className="w-8 h-8 rounded-lg border flex items-center justify-center text-[12px] font-bold shrink-0"
+                style={{
+                  color: agent.color,
+                  backgroundColor: `color-mix(in srgb, ${agent.color} 12%, transparent)`,
+                  borderColor: `color-mix(in srgb, ${agent.color} 30%, transparent)`,
+                }}
+              >
+                {agent.initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-ide-text/90">{agent.name}</div>
+                <div className="text-[10px] text-ide-text-dim/80">
+                  {agent.role === "ceo" ? "Diretoria Executiva" : "People Ops e Contratação"}
+                </div>
+              </div>
+              <div className="w-2 h-2 rounded-full bg-ide-green shadow-[0_0_8px_hsl(var(--ide-green))] ml-auto shrink-0" />
+            </div>
+          ))}
         </div>
       </div>
 
