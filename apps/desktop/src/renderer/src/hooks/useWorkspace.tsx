@@ -119,6 +119,7 @@ function mapBackendAgentToFrontend(backend: BackendAgent): Agent {
     name: backend.name,
     role: backend.role,
     catalogSlug: backend.catalogSlug,
+    systemPromptPath: backend.systemPromptPath,
     initials: backend.catalogSlug
       ? backend.catalogSlug.slice(0, 2).toUpperCase()
       : backend.name.slice(0, 2).toUpperCase(),
@@ -174,6 +175,7 @@ const defaultCeo: Agent = {
   id: "ceo-global",
   name: "CEO",
   catalogSlug: "ceo",
+  systemPromptPath: ".opencode/agents/ceo.md",
   role: "ceo",
   initials: "CEO",
   status: "running",

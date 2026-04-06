@@ -13,13 +13,13 @@ interface Window {
  };
  agent: {
  ensure: (input: { agentId: string; teamId?: string; role: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<{ agentId: string; status: string }>;
- send: (input: { agentId: string; message: string }) => Promise<void>;
+ send: (input: { agentId: string; message: string; model?: { modelID: string; providerID: string } }) => Promise<void>;
  stop: (agentId: string) => Promise<void>;
  subscribe: (agentId: string) => Promise<void>;
  };
  ceo: {
  ensure: (input: { agentId: string; agentSlug?: string; systemPrompt?: string; systemPromptPath?: string; workspaceDirectory?: string }) => Promise<{ agentId: string; status: string }>;
- send: (input: { agentId: string; message: string }) => Promise<void>;
+ send: (input: { agentId: string; message: string; model?: { modelID: string; providerID: string } }) => Promise<void>;
  subscribe: () => Promise<void>;
  };
  team: {
@@ -102,7 +102,9 @@ interface Window {
       role: "global-ceo" | "tech-lead" | "team-agent";
       agentSlug?: string;
       systemPrompt?: string;
+      systemPromptPath?: string;
       workspaceDirectory?: string;
+      model?: { modelID: string; providerID: string };
     }) => Promise<{ success: boolean }>;
     subscribe: (sessionId: string) => Promise<void>;
   };

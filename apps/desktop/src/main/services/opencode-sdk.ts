@@ -1,8 +1,7 @@
 import { EventEmitter } from "events"
 import * as cp from "child_process"
-import { existsSync, readFileSync, mkdirSync } from "fs"
+import { existsSync, readFileSync } from "fs"
 import { basename, dirname, join, resolve } from "path"
-import * as os from "os"
 import { createOpencode } from "@opencode-ai/sdk"
 import type { OpencodeClient } from "@opencode-ai/sdk/dist/v2/client"
 import type { Session, GlobalEvent, Event } from "@opencode-ai/sdk/dist/gen/types.gen"
@@ -26,6 +25,10 @@ interface EnsureSessionInput {
 interface SendMessageInput {
   agentId: string
   message: string
+  model?: {
+    modelID: string
+    providerID: string
+  }
 }
 
 interface TextPartInput {
@@ -58,7 +61,6 @@ interface ResolvedAgentConfig {
   systemPrompt?: string
 }
 
-const GLOBAL_CEO_PATH = join(os.homedir(), '.politron', 'global-ceo')
 const AGENT_SLUG_ALIASES: Record<string, string> = {
   "frontend-dev": "frontend-developer",
   "backend-dev": "backend-architect",
@@ -131,6 +133,24 @@ class OpenCodeSdkService extends EventEmitter {
     return content.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
   }
 
+  private getPromptResolutionPaths(workspaceDirectory: string, systemPromptPath?: string): string[] {
+    if (!systemPromptPath) {
+      return []
+    }
+
+    const candidates = new Set<string>()
+
+    if (systemPromptPath === resolve(systemPromptPath)) {
+      candidates.add(systemPromptPath)
+      return Array.from(candidates)
+    }
+
+    candidates.add(resolve(workspaceDirectory, systemPromptPath))
+    candidates.add(resolve(this.resolveWorkspaceDirectory(), systemPromptPath))
+
+    return Array.from(candidates)
+  }
+
   private resolveSystemPrompt(
     workspaceDirectory: string,
     systemPrompt?: string,
@@ -144,14 +164,19 @@ class OpenCodeSdkService extends EventEmitter {
       return undefined
     }
 
-    const absolutePromptPath = resolve(workspaceDirectory, systemPromptPath)
-    if (!existsSync(absolutePromptPath)) {
-      console.warn(`[OpenCodeSdkService] Prompt file not found: ${absolutePromptPath}`)
-      return undefined
+    for (const absolutePromptPath of this.getPromptResolutionPaths(workspaceDirectory, systemPromptPath)) {
+      if (!existsSync(absolutePromptPath)) {
+        continue
+      }
+
+      const fileContent = readFileSync(absolutePromptPath, 'utf8')
+      return this.stripFrontmatter(fileContent)
     }
 
-    const fileContent = readFileSync(absolutePromptPath, 'utf8')
-    return this.stripFrontmatter(fileContent)
+    console.warn(
+      `[OpenCodeSdkService] Prompt file not found for "${systemPromptPath}" in workspace "${workspaceDirectory}"`
+    )
+    return undefined
   }
 
   private toAgentLookupKeys(value: string): string[] {
@@ -199,7 +224,7 @@ class OpenCodeSdkService extends EventEmitter {
     return this.availableAgentsPromise
   }
 
-  private async resolveOpenCodeAgentName(
+  public async resolveOpenCodeAgentName(
     workspaceDirectory: string,
     systemPromptPath?: string,
     agentSlug?: string
@@ -224,8 +249,11 @@ class OpenCodeSdkService extends EventEmitter {
         candidates.push(aliasedFileSlug)
       }
 
-      const absolutePromptPath = resolve(workspaceDirectory, systemPromptPath)
-      if (existsSync(absolutePromptPath)) {
+      for (const absolutePromptPath of this.getPromptResolutionPaths(workspaceDirectory, systemPromptPath)) {
+        if (!existsSync(absolutePromptPath)) {
+          continue
+        }
+
         const fileContent = readFileSync(absolutePromptPath, "utf8")
         const match = fileContent.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/m)
         const frontmatterBlock = match?.[1]
@@ -234,6 +262,7 @@ class OpenCodeSdkService extends EventEmitter {
         if (rawName) {
           candidates.push(rawName)
         }
+        break
       }
     }
 
@@ -255,18 +284,18 @@ class OpenCodeSdkService extends EventEmitter {
     systemPromptPath?: string,
     agentSlug?: string
   ): Promise<ResolvedAgentConfig> {
+    const resolvedSystemPrompt = this.resolveSystemPrompt(workspaceDirectory, systemPrompt, systemPromptPath)
+    if (resolvedSystemPrompt) {
+      return {
+        systemPrompt: resolvedSystemPrompt
+      }
+    }
+
     const resolvedAgentName = await this.resolveOpenCodeAgentName(workspaceDirectory, systemPromptPath, agentSlug)
 
     if (resolvedAgentName) {
       return {
         agentSlug: resolvedAgentName
-      }
-    }
-
-    const resolvedSystemPrompt = this.resolveSystemPrompt(workspaceDirectory, systemPrompt, systemPromptPath)
-    if (resolvedSystemPrompt) {
-      return {
-        systemPrompt: resolvedSystemPrompt
       }
     }
 
@@ -277,6 +306,20 @@ class OpenCodeSdkService extends EventEmitter {
     }
 
     return {}
+  }
+
+  public async resolvePromptConfig(input: {
+    workspaceDirectory: string
+    systemPrompt?: string
+    systemPromptPath?: string
+    agentSlug?: string
+  }): Promise<ResolvedAgentConfig> {
+    return this.resolveAgentConfig(
+      input.workspaceDirectory,
+      input.systemPrompt,
+      input.systemPromptPath,
+      input.agentSlug
+    )
   }
 
   private async doInitialize(): Promise<void> {
@@ -337,7 +380,7 @@ class OpenCodeSdkService extends EventEmitter {
 
     const { agentId, teamId, role, agentSlug, systemPrompt, systemPromptPath } = input
     const effectiveWorkspaceDir = input.workspaceDirectory === ''
-      ? GLOBAL_CEO_PATH
+      ? undefined
       : (input.workspaceDirectory || this.resolveWorkspaceDirectory())
 
     const existingSession = sessionStore.getSession(agentId)
@@ -364,9 +407,11 @@ class OpenCodeSdkService extends EventEmitter {
         agentSlug || existingSessionAfterDirectoryCheck.agentSlug
       )
 
-      if (resolvedExistingConfig.agentSlug && existingSessionAfterDirectoryCheck.agentSlug !== resolvedExistingConfig.agentSlug) {
-        existingSessionAfterDirectoryCheck.agentSlug = resolvedExistingConfig.agentSlug
-      }
+      existingSessionAfterDirectoryCheck.workspaceDirectory = effectiveWorkspaceDir
+      existingSessionAfterDirectoryCheck.agentSlug = resolvedExistingConfig.agentSlug
+      existingSessionAfterDirectoryCheck.systemPrompt = resolvedExistingConfig.systemPrompt
+      existingSessionAfterDirectoryCheck.systemPromptPath =
+        systemPromptPath || existingSessionAfterDirectoryCheck.systemPromptPath
 
       return existingSessionAfterDirectoryCheck
     }
@@ -378,12 +423,6 @@ class OpenCodeSdkService extends EventEmitter {
 
     const creationPromise = (async () => {
       try {
-        if (effectiveWorkspaceDir === GLOBAL_CEO_PATH) {
-          if (!existsSync(GLOBAL_CEO_PATH)) {
-            mkdirSync(GLOBAL_CEO_PATH, { recursive: true })
-          }
-        }
-
         const createResult = await this.client!.session.create({
           query: effectiveWorkspaceDir ? { directory: effectiveWorkspaceDir } : undefined
         })
@@ -407,6 +446,8 @@ class OpenCodeSdkService extends EventEmitter {
           session,
           workspaceDirectory: effectiveWorkspaceDir,
           agentSlug: resolvedAgentConfig.agentSlug,
+          systemPrompt: resolvedAgentConfig.systemPrompt,
+          systemPromptPath,
           status: "idle",
           lastEventAt: new Date().toISOString()
         }
@@ -429,17 +470,24 @@ class OpenCodeSdkService extends EventEmitter {
       throw new Error("SDK client not initialized")
     }
 
-    const { agentId, message } = input
+    const { agentId, message, model } = input
 
     const managedSession = sessionStore.getSession(agentId)
     if (!managedSession) {
       throw new Error(`No session found for agent: ${agentId}`)
     }
 
-    await this.sendMessageToSession(managedSession.session.id, message, undefined, managedSession.agentSlug, managedSession.workspaceDirectory)
+    await this.sendMessageToSession(
+      managedSession.session.id,
+      message,
+      managedSession.agentSlug ? undefined : managedSession.systemPrompt,
+      managedSession.agentSlug,
+      managedSession.workspaceDirectory,
+      model
+    )
   }
 
-  private async sendMessageToSession(sessionId: string, content: string, systemPrompt?: string, agentSlug?: string, workspaceDirectory?: string): Promise<void> {
+  private async sendMessageToSession(sessionId: string, content: string, systemPrompt?: string, agentSlug?: string, workspaceDirectory?: string, model?: { modelID: string, providerID: string }): Promise<void> {
     if (!this.client) {
       throw new Error("SDK client not initialized")
     }
@@ -463,7 +511,8 @@ class OpenCodeSdkService extends EventEmitter {
         body: {
           parts,
           system: finalSystemPrompt,
-          agent: agentSlug
+          agent: agentSlug,
+          model: model
         },
         path: {
           id: sessionId

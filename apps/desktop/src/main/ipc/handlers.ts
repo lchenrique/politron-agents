@@ -1,7 +1,6 @@
 import { ipcMain, BrowserWindow, dialog, app } from 'electron'
 import * as os from 'os'
 import * as path from 'path'
-import * as fs from 'fs'
 import { registerTerminalHandlers } from './terminal'
 import { getAppWindow } from '../windows/manager'
 import { openCodeSdkService } from '../services/opencode-sdk'
@@ -115,8 +114,9 @@ export function registerHandlers(): void {
     })
   })
 
-  ipcMain.handle('vibe:agent:send', async (_, input) => {
-    await openCodeSdkService.sendMessage(input)
+  ipcMain.handle('vibe:agent:send', async (_, { agentId, message, model }) => {
+    await openCodeSdkService.initialize()
+    await openCodeSdkService.sendMessage({ agentId, message, model })
   })
 
   ipcMain.handle('vibe:agent:stop', async (_, agentId) => {
@@ -144,8 +144,9 @@ export function registerHandlers(): void {
     })
   })
 
-  ipcMain.handle('vibe:ceo:send', async (_, input) => {
-    await openCodeSdkService.sendMessage(input)
+  ipcMain.handle('vibe:ceo:send', async (_, { agentId, message, model }) => {
+    await openCodeSdkService.initialize()
+    await openCodeSdkService.sendMessage({ agentId, message, model })
   })
 
   ipcMain.handle('vibe:ceo:subscribe', async () => {
@@ -437,7 +438,9 @@ export function registerHandlers(): void {
         role,
         agentSlug,
         systemPrompt,
+        systemPromptPath,
         workspaceDirectory,
+        model,
       }: {
         sessionId: string
         message: string
@@ -446,7 +449,9 @@ export function registerHandlers(): void {
         role: 'global-ceo' | 'tech-lead' | 'team-agent'
         agentSlug?: string
         systemPrompt?: string
+        systemPromptPath?: string
         workspaceDirectory?: string
+        model?: { modelID: string, providerID: string }
       }
     ) => {
     await openCodeSdkService.initialize()
@@ -461,25 +466,35 @@ export function registerHandlers(): void {
       throw new Error(`Session not found: ${sessionId}`)
     }
 
+    const resolvedSystemPromptPath = systemPromptPath || resolveAgentSystemPromptPath(agentId, teamId)
+    const resolvedPromptConfig = await openCodeSdkService.resolvePromptConfig({
+      workspaceDirectory: workspaceDirectory || '',
+      systemPrompt,
+      systemPromptPath: resolvedSystemPromptPath,
+      agentSlug,
+    })
+
     sessionStore.setSession({
       agentId,
       teamId,
       role,
       session,
       workspaceDirectory,
-      agentSlug,
+      agentSlug: resolvedPromptConfig.agentSlug,
+      systemPrompt: resolvedPromptConfig.systemPrompt,
+      systemPromptPath: resolvedSystemPromptPath,
       status: 'idle',
       lastEventAt: new Date().toISOString(),
     })
     
     const parts = [{ type: "text" as const, text: message }]
-    const finalSystemPrompt = agentSlug ? undefined : systemPrompt
 
     const result = await client.session.promptAsync({
       body: {
         parts,
-        system: finalSystemPrompt,
-        agent: agentSlug
+        system: resolvedPromptConfig.systemPrompt,
+        agent: resolvedPromptConfig.agentSlug,
+        model: model
       },
       path: {
         id: sessionId

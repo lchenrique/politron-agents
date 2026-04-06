@@ -14,7 +14,11 @@ const THEMES = [
     { id: "cafeine", label: "Cafeine" },
     { id: "candyland", label: "Candy Land" },
     { id: "claude", label: "Claude" },
+    { id: "dark-matter", label: "Dark Matter" },
+    { id: "violet-bloom", label: "Violet Bloom" },
+    { id: "tangerine", label: "Tangerine" }
 ];
+
 
 export function ThemeSelector() {
     const { theme, setTheme, mode, setMode } = useTheme();

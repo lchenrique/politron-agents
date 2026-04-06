@@ -12,6 +12,8 @@ export interface ManagedSession {
   workspaceDirectory?: string
   status: AgentStatus
   agentSlug?: string
+  systemPrompt?: string
+  systemPromptPath?: string
   lastEventAt?: string
 }
 

@@ -993,7 +993,7 @@ export function useOpencodeTranscriptBridge() {
   }, [handleActivity, handleChunk, handleDone, handleError, handlePipelineUpdate, handleReasoning, handleStatus, handleTool]);
 
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, options?: { model?: { modelID: string, providerID: string } }) => {
     const context = activeContext;
     
     if (!context || !text.trim()) {
@@ -1092,8 +1092,10 @@ export function useOpencodeTranscriptBridge() {
           agentId: context.agent.id,
           teamId: context.team?.id,
           role: context.isCeo ? 'global-ceo' : context.agent.role === 'tech-lead' ? 'tech-lead' : 'team-agent',
-          agentSlug: context.agent.catalogSlug,
+          agentSlug: context.agent.catalogSlug?.toLowerCase(),
+          systemPromptPath: context.agent.systemPromptPath,
           workspaceDirectory: context.isCeo ? '' : context.team!.projectPath,
+          model: options?.model,
         });
       } else {
         // Fallback: usar o fluxo padrão (cria/usa sessão padrão do agente)
@@ -1102,7 +1104,8 @@ export function useOpencodeTranscriptBridge() {
           console.log('[TranscriptBridge] Using CEO path');
           await window.vibeAPI.ceo.ensure({
             agentId: context.agent.id,
-            agentSlug: context.agent.catalogSlug,
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            systemPromptPath: context.agent.systemPromptPath,
             workspaceDirectory: '',
           });
           await window.vibeAPI.ceo.subscribe();
@@ -1123,12 +1126,13 @@ export function useOpencodeTranscriptBridge() {
           await window.vibeAPI.ceo.send({
             agentId: context.agent.id,
             message: messageToSend,
+            model: options?.model,
           });
         } else {
           console.log('[TranscriptBridge] Using AGENT path', { 
             teamId: context.team?.id, 
             projectPath: context.team?.projectPath, 
-            catalogSlug: context.agent.catalogSlug,
+            catalogSlug: context.agent.catalogSlug?.toLowerCase(),
             agentId: context.agent.id,
             agentRole: context.agent.role
           });
@@ -1138,7 +1142,7 @@ export function useOpencodeTranscriptBridge() {
               agentId: context.agent.id,
               teamId: context.team?.id,
               role: context.agent.role,
-              agentSlug: context.agent.catalogSlug,
+              agentSlug: context.agent.catalogSlug?.toLowerCase(),
               workspaceDirectory: context.team!.projectPath,
             });
             console.log('[TranscriptBridge] agent.ensure result:', ensureResult);
@@ -1151,6 +1155,7 @@ export function useOpencodeTranscriptBridge() {
           await window.vibeAPI.agent.send({
             agentId: context.agent.id,
             message: text,
+            model: options?.model,
           });
         }
       }

@@ -5,6 +5,7 @@ export interface Agent {
  name: string;
  role: string;
  catalogSlug?: string;
+ systemPromptPath?: string;
  initials: string;
  status: AgentStatus;
  color: string;

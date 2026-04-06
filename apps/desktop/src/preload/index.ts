@@ -13,6 +13,7 @@ interface AgentEnsureInput {
 interface AgentSendInput {
   agentId: string
   message: string
+  model?: { modelID: string, providerID: string }
 }
 
 interface CeoEnsureInput {
@@ -26,6 +27,7 @@ interface CeoEnsureInput {
 interface CeoSendInput {
   agentId: string
   message: string
+  model?: { modelID: string, providerID: string }
 }
 
 interface ManagedSession {
@@ -197,7 +199,7 @@ const api = {
 
   session: {
     list: (input?: { directory?: string }) => ipcRenderer.invoke('vibe:session:list', input),
-    create: (input?: { directory?: string; agentSlug?: string; systemPrompt?: string }) => 
+    create: (input?: { directory?: string; agentSlug?: string; systemPrompt?: string; model?: { modelID: string; providerID: string } }) => 
       ipcRenderer.invoke('vibe:session:create', input),
     delete: (sessionId: string) => 
       ipcRenderer.invoke('vibe:session:delete', sessionId),
@@ -205,7 +207,18 @@ const api = {
       ipcRenderer.invoke('vibe:session:get', sessionId),
     messages: (sessionId: string) => 
       ipcRenderer.invoke('vibe:session:messages', sessionId),
-    prompt: (input: { sessionId: string; message: string; agentSlug?: string; systemPrompt?: string }) => 
+    prompt: (input: { 
+      sessionId: string; 
+      message: string; 
+      agentId: string;
+      teamId?: string;
+      role: 'global-ceo' | 'tech-lead' | 'team-agent';
+      agentSlug?: string; 
+      systemPrompt?: string; 
+      systemPromptPath?: string;
+      workspaceDirectory?: string;
+      model?: { modelID: string, providerID: string } 
+    }) => 
       ipcRenderer.invoke('vibe:session:prompt', input),
     subscribe: (sessionId: string) => 
       ipcRenderer.invoke('vibe:session:subscribe', sessionId)
