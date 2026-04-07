@@ -37,7 +37,6 @@ export const AgentChatShell = memo(function AgentChatShell() {
   const hasProjects = projects.length > 0;
   const hasActiveAgent = !!activeAgent;
   const isGlobalActive = !!activeAgent && globalAgents.some((agent) => agent.id === activeAgent.id);
-  const shouldShowSelectionState = hasProjects && !hasActiveAgent;
 
   const handleNewChat = useCallback(async () => {
     if (!hasActiveAgent || !contextKey) {
@@ -112,10 +111,12 @@ export const AgentChatShell = memo(function AgentChatShell() {
       </header>
 
       <div className="relative flex-1 overflow-hidden">
-        {!hasProjects ? (
-          <EmptyStateScreen />
-        ) : shouldShowSelectionState ? (
-          <WelcomeScreen hasProjectSelected={hasProjectSelected} />
+        {!hasActiveAgent ? (
+          hasProjects ? (
+            <WelcomeScreen hasProjectSelected={hasProjectSelected} />
+          ) : (
+            <EmptyStateScreen />
+          )
         ) : (
           <TranscriptViewport />
         )}
@@ -143,21 +144,21 @@ const EmptyStateScreen = () => (
     </div>
     <h3 className="mb-2 text-xl font-semibold text-ide-text">Bem-vindo ao Politron</h3>
     <p className="mb-8 max-w-md text-sm text-ide-text-dim">
-      Você ainda não tem nenhum projeto. Clique no botão <strong className="text-ide-text">"+"</strong> na barra
-      lateral esquerda para criar seu primeiro projeto e começar a trabalhar com seus agentes de IA.
+      Você ainda não tem nenhum projeto. Os agentes globais continuam disponíveis na barra lateral esquerda para
+      conversar sem precisar criar um projeto.
     </p>
     <div className="flex items-center gap-6 text-xs text-ide-text-dim">
       <div className="flex items-center gap-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-ide-border bg-ide-surface">
           <Users className="h-4 w-4" />
         </div>
-        <span>Crie equipes</span>
+        <span>Use agentes globais</span>
       </div>
       <div className="flex items-center gap-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-ide-border bg-ide-surface">
           <Rocket className="h-4 w-4" />
         </div>
-        <span>Automatize tarefas</span>
+        <span>Depois crie projetos</span>
       </div>
     </div>
   </div>

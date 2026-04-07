@@ -1232,3 +1232,70 @@
   margin-left: 15px;
   animation: loader_5191 675ms ease-in-out 600ms infinite;
 }
+
+/* Markdown transcript styling */
+.markdown-body pre {
+  margin: 0;
+}
+
+.markdown-body pre code {
+  display: block;
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.markdown-body code.hljs {
+  background: transparent;
+  color: inherit;
+}
+
+.markdown-body .hljs-comment,
+.markdown-body .hljs-quote {
+  color: color-mix(in srgb, var(--muted-foreground) 82%, transparent);
+  font-style: italic;
+}
+
+.markdown-body .hljs-keyword,
+.markdown-body .hljs-selector-tag,
+.markdown-body .hljs-literal,
+.markdown-body .hljs-doctag {
+  color: hsl(262 83% 58%);
+  font-weight: 600;
+}
+
+.markdown-body .hljs-string,
+.markdown-body .hljs-regexp,
+.markdown-body .hljs-addition {
+  color: hsl(142 71% 45%);
+}
+
+.markdown-body .hljs-number,
+.markdown-body .hljs-symbol,
+.markdown-body .hljs-bullet,
+.markdown-body .hljs-attr,
+.markdown-body .hljs-attribute {
+  color: hsl(24 95% 53%);
+}
+
+.markdown-body .hljs-title,
+.markdown-body .hljs-section,
+.markdown-body .hljs-name,
+.markdown-body .hljs-selector-id {
+  color: hsl(199 89% 48%);
+  font-weight: 600;
+}
+
+.markdown-body .hljs-variable,
+.markdown-body .hljs-template-variable,
+.markdown-body .hljs-built_in,
+.markdown-body .hljs-type {
+  color: hsl(38 92% 50%);
+}
+
+.markdown-body .hljs-meta,
+.markdown-body .hljs-selector-attr,
+.markdown-body .hljs-selector-pseudo,
+.markdown-body .hljs-deletion {
+  color: hsl(0 84% 60%);
+}

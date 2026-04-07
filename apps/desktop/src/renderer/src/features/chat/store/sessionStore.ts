@@ -13,7 +13,7 @@ import { persist } from 'zustand/middleware';
 
 interface SdkSession {
   id: string;
-  title: string;
+  title?: string;
   directory?: string;
   projectID?: string;
   parentID?: string;

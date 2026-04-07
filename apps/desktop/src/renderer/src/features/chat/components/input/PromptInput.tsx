@@ -13,6 +13,7 @@ import {
   Loader2,
   Search
 } from "lucide-react";
+import type { LucideProps } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAtomValue, useSetAtom } from "jotai";
 import { activeAgentTeamAtom, activeAgentAtom, activeAgentTabIdAtom, globalAgentsAtom } from "@/hooks/atoms";
@@ -48,7 +49,9 @@ const SUGGESTIONS = [
 ];
 
 // Provider display metadata
-const PROVIDER_META: Record<string, { color: string; icon: React.ComponentType<any> }> = {
+type ProviderIcon = React.ComponentType<LucideProps>;
+
+const PROVIDER_META: Record<string, { color: string; icon: ProviderIcon }> = {
   anthropic: { color: "text-orange-400", icon: Sparkles },
   openai: { color: "text-green-400", icon: Sparkles },
   google: { color: "text-blue-400", icon: Zap },
@@ -60,7 +63,7 @@ function getProviderColor(providerID: string): string {
   return PROVIDER_META[providerID]?.color ?? "text-white/50";
 }
 
-function getProviderIcon(providerID: string): React.ComponentType<any> {
+function getProviderIcon(providerID: string): ProviderIcon {
   return PROVIDER_META[providerID]?.icon ?? Sparkles;
 }
 
@@ -102,7 +105,11 @@ export const PromptInput: React.FC<PromptInputProps> = ({
 
   // Load models from OpenCode
   useEffect(() => {
-    const api = (window as any).vibeAPI;
+    const api = window.vibeAPI as typeof window.vibeAPI & {
+      opencode?: {
+        listModels?: () => Promise<ModelOption[]>;
+      };
+    };
     if (!api?.opencode?.listModels) return;
 
     setIsLoadingModels(true);
@@ -112,7 +119,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
         // Initialize selection: prefer activeAgent's saved model, else first available
         if (result.length > 0) {
           const agentModel = activeAgent?.llmModel
-            ? result.find(m => m.id === (activeAgent as any).llmModel?.modelID)
+            ? result.find((m) => m.id === activeAgent.llmModel?.modelID)
             : null;
           setSelectedModel(agentModel ?? result[0]);
         }
@@ -125,7 +132,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
   // When active agent changes, sync model selection
   useEffect(() => {
     if (!activeAgent || models.length === 0) return;
-    const agentModel = (activeAgent as any).llmModel;
+    const agentModel = activeAgent.llmModel;
     if (agentModel?.modelID) {
       const match = models.find(m => m.id === agentModel.modelID);
       if (match) setSelectedModel(match);
@@ -136,7 +143,11 @@ export const PromptInput: React.FC<PromptInputProps> = ({
     setSelectedModel(model);
 
     // Persist the selection to agent config
-    const api = (window as any).vibeAPI;
+    const api = window.vibeAPI as typeof window.vibeAPI & {
+      team: typeof window.vibeAPI.team & {
+        updateAgent?: (teamId: string, agentId: string, updates: Record<string, unknown>) => Promise<unknown>;
+      };
+    };
     if (!api?.team?.updateAgent || !activeTeam?.id || !activeAgent?.id) return;
 
     api.team.updateAgent(activeTeam.id, activeAgent.id, {
@@ -169,6 +180,9 @@ export const PromptInput: React.FC<PromptInputProps> = ({
   };
 
   const handleSend = useCallback(() => {
+    if (!text.trim()) {
+      return;
+    }
     if (text.trim()) {
       onSend(text, {
         model: selectedModel ? { modelID: selectedModel.id, providerID: selectedModel.providerID } : undefined
@@ -216,12 +230,12 @@ export const PromptInput: React.FC<PromptInputProps> = ({
     }
   };
 
-  const handleSelectSlash = (item: any) => {
+  const handleSelectSlash = (item: { name: string }) => {
     insertMenuText('/', item.name);
     setSlashMenu(prev => ({ ...prev, isOpen: false }));
   };
 
-  const handleSelectMention = (item: any) => {
+  const handleSelectMention = (item: { name: string }) => {
     insertMenuText('@', `@${item.name}`);
     setMentionMenu(prev => ({ ...prev, isOpen: false }));
   };
@@ -353,6 +367,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
                 ? "bg-foreground text-background scale-100 hover:scale-105"
                 : "bg-foreground/10 text-foreground/30 scale-95"
             )}
+            title="Enviar mensagem"
           >
             <ArrowUp size={20} strokeWidth={2.5} />
           </button>

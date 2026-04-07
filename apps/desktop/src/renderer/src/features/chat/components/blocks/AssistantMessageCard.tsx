@@ -1,222 +1,118 @@
-import React, { memo } from 'react';
+import { memo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
+import remarkGfm from 'remark-gfm';
 import { Sparkles } from 'lucide-react';
-import { AssistantMessageBlock } from '../../types/block.types';
+import type { Components } from 'react-markdown';
+import type { AssistantMessageBlock } from '../../types/block.types';
 
-/**
- * SimpleMarkdown - A lightweight markdown parser for streaming assistant responses
- */
-function SimpleMarkdown({ content }: { content: string }) {
-  if (!content) return null;
+const markdownComponents: Components = {
+  p: ({ children }) => (
+    <p className="my-3 text-sm leading-relaxed text-foreground/90 md:text-base">
+      {children}
+    </p>
+  ),
+  h1: ({ children }) => <h1 className="my-4 text-2xl font-bold text-foreground">{children}</h1>,
+  h2: ({ children }) => <h2 className="my-4 text-xl font-bold text-foreground">{children}</h2>,
+  h3: ({ children }) => <h3 className="my-3 text-lg font-bold text-foreground/90">{children}</h3>,
+  h4: ({ children }) => <h4 className="my-3 text-base font-semibold text-foreground/80">{children}</h4>,
+  ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-6 text-sm text-foreground/90 md:text-base">{children}</ul>,
+  ol: ({ children }) => <ol className="my-3 list-decimal space-y-1.5 pl-6 text-sm text-foreground/90 md:text-base">{children}</ol>,
+  li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="my-4 border-l-2 border-border pl-4 italic text-foreground/70">
+      {children}
+    </blockquote>
+  ),
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="text-primary underline underline-offset-2 hover:opacity-80"
+    >
+      {children}
+    </a>
+  ),
+  pre: ({ children }) => (
+    <pre className="my-4 overflow-x-auto rounded-2xl border border-border/60 bg-secondary/35 p-4 text-sm shadow-inner">
+      {children}
+    </pre>
+  ),
+  code: ({ className, children, ...props }) => {
+    const isBlockCode = /language-/.test(className ?? '');
 
-  // Process a segment of text for inline formatting (bold, italic, code, links)
-  // Returns a React element with dangerouslySetInnerHTML
-  const processInline = (text: string, key: number) => {
-    if (!text) return null;
-    
-    // First escape HTML
-    let processed = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-
-    // Bold + Italic combined: ***text*** or ___text___
-    processed = processed.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    processed = processed.replace(/___(.+?)___/g, '<strong><em>$1</em></strong>');
-    
-    // Bold: **text** or __text__
-    processed = processed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    processed = processed.replace(/__(.+?)__/g, '<strong>$1</strong>');
-    
-    // Italic: *text* or _text_
-    processed = processed.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    processed = processed.replace(/_(.+?)_/g, '<em>$1</em>');
-    
-    // Inline code: `code`
-    processed = processed.replace(/`([^`]+)`/g, '<code class="bg-muted/50 px-1.5 py-0.5 rounded text-primary text-sm font-mono border border-border/30">$1</code>');
-    
-    // Links: [text](url)
-    processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-primary hover:opacity-80 underline" target="_blank" rel="noopener noreferrer">$1</a>');
-
-    return <span key={key} dangerouslySetInnerHTML={{ __html: processed }} />;
-  };
-
-  const lines = content.split('\n');
-  const elements: React.ReactNode[] = [];
-  let i = 0;
-  let keyIndex = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Code blocks
-    if (line.startsWith('```')) {
-      const language = line.slice(3).trim();
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith('```')) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      const code = codeLines.join('\n');
-      elements.push(
-        <div key={keyIndex++} className="my-4 group relative">
-          {language && (
-            <div className="absolute top-0 right-0 px-2 py-1 text-xs font-mono text-muted-foreground bg-secondary border-l border-b border-border rounded-bl-md z-10">
-              {language}
-            </div>
-          )}
-          <pre className="bg-secondary/40 rounded-xl p-4 overflow-x-auto text-sm font-mono border border-border/50 shadow-inner">
-            <code className="text-foreground/90">{code}</code>
-          </pre>
-        </div>
+    if (!isBlockCode) {
+      return (
+        <code
+          className="rounded-md border border-border/30 bg-muted/70 px-1.5 py-0.5 font-mono text-[0.92em] text-primary"
+          {...props}
+        >
+          {children}
+        </code>
       );
-      i++;
-      continue;
     }
 
-    // Headers
-    const headerMatch = line.match(/^(#{1,4})\s+(.+)$/);
-    if (headerMatch) {
-      const level = headerMatch[1].length;
-      const text = headerMatch[2];
-      const HeaderTag = `h${level + 1}` as keyof JSX.IntrinsicElements; // Offset because we're inside a page
-      const sizeClasses = {
-        h2: 'text-xl font-bold text-foreground',
-        h3: 'text-lg font-bold text-foreground/90',
-        h4: 'text-base font-semibold text-foreground/80',
-        h5: 'text-sm font-semibold text-muted-foreground',
-      };
-      
-      elements.push(
-        <HeaderTag key={keyIndex++} className={`${sizeClasses[HeaderTag as keyof typeof sizeClasses]} mt-6 mb-3 first:mt-2`}>
-          {processInline(text, 0)}
-        </HeaderTag>
-      );
-      i++;
-      continue;
-    }
-
-    // Lists
-    if (line.match(/^[-*]\s+/)) {
-      const listItems: string[] = [];
-      while (i < lines.length && lines[i].match(/^[-*]\s+/)) {
-        listItems.push(lines[i].replace(/^[-*]\s+/, ''));
-        i++;
-      }
-      elements.push(
-        <ul key={keyIndex++} className="list-disc list-outside ml-6 my-3 space-y-1.5 text-foreground/90 text-sm md:text-base">
-          {listItems.map((item, idx) => (
-            <li key={idx} className="pl-1 leading-relaxed">
-              {processInline(item, 0)}
-            </li>
-          ))}
-        </ul>
-      );
-      continue;
-    }
-
-    // Tables
-    if (line.trim().startsWith('|') && line.includes('|')) {
-      const isSeparator = (str: string) => str.replace(/[\s|:-]/g, '') === '';
-      
-      const tableRows: string[] = [];
-      let tempIndex = i;
-      while (tempIndex < lines.length && lines[tempIndex].trim().startsWith('|')) {
-        tableRows.push(lines[tempIndex].trim());
-        tempIndex++;
-      }
-      
-      if (tableRows.length >= 2 && isSeparator(tableRows[1])) {
-        const extractCells = (r: string) => {
-          let cleaned = r.trim();
-          if (cleaned.startsWith('|')) cleaned = cleaned.substring(1);
-          if (cleaned.endsWith('|')) cleaned = cleaned.substring(0, cleaned.length - 1);
-          return cleaned.split('|');
-        };
-
-        elements.push(
-          <div key={keyIndex++} className="my-4 overflow-x-auto rounded-lg shadow-sm border border-border/60">
-            <table className="w-full text-sm text-left border-collapse">
-              <thead>
-                <tr className="border-b border-border bg-secondary/40">
-                  {extractCells(tableRows[0]).map((cell, idx) => (
-                    <th key={idx} className="px-4 py-3 font-semibold text-foreground border-r border-border/30 last:border-0">
-                      {processInline(cell.trim(), idx)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.slice(2).map((row, rowIdx) => (
-                  <tr key={rowIdx} className="border-b border-border/20 last:border-0 hover:bg-secondary/20 transition-colors">
-                    {extractCells(row).map((cell, colIdx) => (
-                      <td key={colIdx} className="px-4 py-2.5 text-foreground/80 border-r border-border/20 last:border-0">
-                        {processInline(cell.trim(), colIdx)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        i = tempIndex;
-        continue;
-      }
-    }
-
-    // Paragraph
-    if (line.trim()) {
-      elements.push(
-        <p key={keyIndex++} className="my-3 text-foreground/90 leading-relaxed text-sm md:text-base wrap-break-word">
-          {processInline(line, 0)}
-        </p>
-      );
-    } else {
-      // Empty line - add some vertical space
-      elements.push(<div key={keyIndex++} className="h-2" />);
-    }
-    i++;
-  }
-
-  return <div className="markdown-body">{elements}</div>;
-}
+    return (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  },
+  table: ({ children }) => (
+    <div className="my-4 overflow-x-auto rounded-xl border border-border/60 shadow-sm">
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-secondary/50">{children}</thead>,
+  tbody: ({ children }) => <tbody>{children}</tbody>,
+  tr: ({ children }) => <tr className="border-b border-border/30 last:border-0">{children}</tr>,
+  th: ({ children }) => (
+    <th className="border-r border-border/30 px-4 py-3 text-left font-semibold text-foreground last:border-0">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="border-r border-border/20 px-4 py-2.5 text-foreground/80 last:border-0">
+      {children}
+    </td>
+  ),
+};
 
 export const AssistantMessageCard = memo(({ block }: { block: AssistantMessageBlock }) => {
   const isStreaming = block.status === 'streaming';
 
   return (
-    <div className="flex w-full group py-4 items-start">
-      {/* Icon/Avatar area */}
-      <div className="w-8 shrink-0 flex items-start justify-center mt-0.5">
-        <div className="w-6 h-6 rounded-lg bg-secondary border border-border flex items-center justify-center text-muted-foreground shadow-xs">
-          <Sparkles className="w-3.5 h-3.5" />
+    <div className="flex w-full items-start py-4 group">
+      <div className="mt-0.5 flex w-8 shrink-0 items-start justify-center">
+        <div className="flex h-6 w-6 items-center justify-center rounded-lg border border-border bg-secondary text-muted-foreground shadow-xs">
+          <Sparkles className="h-3.5 w-3.5" />
         </div>
       </div>
-      
-      {/* Content area - NO bubble background as requested */}
-      <div className="flex-1 px-4 min-w-0">
-        <div className="text-foreground/90">
-          <SimpleMarkdown content={block.content} />
+
+      <div className="min-w-0 flex-1 px-4">
+        <div className="markdown-body text-foreground/90">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+            {block.content}
+          </ReactMarkdown>
+
           {isStreaming && (
-            <div className="flex items-center gap-2 mt-4 mb-1">
-              <div className="agent-loader text-primary shrink-0 mr-4">
-                <div className="square" id="sq1"></div>
-                <div className="square" id="sq2"></div>
-                <div className="square" id="sq3"></div>
-                <div className="square" id="sq4"></div>
-                <div className="square" id="sq5"></div>
-                <div className="square" id="sq6"></div>
-                <div className="square" id="sq7"></div>
-                <div className="square" id="sq8"></div>
-                <div className="square" id="sq9"></div>
+            <div className="mt-4 mb-1 flex items-center gap-2">
+              <div className="agent-loader shrink-0 text-primary mr-4">
+                <div className="square" id="sq1" />
+                <div className="square" id="sq2" />
+                <div className="square" id="sq3" />
+                <div className="square" id="sq4" />
+                <div className="square" id="sq5" />
+                <div className="square" id="sq6" />
+                <div className="square" id="sq7" />
+                <div className="square" id="sq8" />
+                <div className="square" id="sq9" />
               </div>
               <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
                 Gerando resposta...
               </span>
-              <span className="w-1 h-3.5 bg-primary/80 rounded-full animate-cursor-blink ml-2" />
+              <span className="ml-2 h-3.5 w-1 animate-cursor-blink rounded-full bg-primary/80" />
             </div>
           )}
         </div>

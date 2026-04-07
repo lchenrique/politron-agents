@@ -78,6 +78,13 @@ type AgentErrorEvent = {
   error?: unknown;
 };
 
+type QueuedSendRequest = {
+  contextKey: string;
+  context: ActiveAgentContext;
+  text: string;
+  options?: { model?: { modelID: string; providerID: string } };
+};
+
 type PipelineUpdateEvent = {
   agentId?: string;
   sessionId?: string;
@@ -281,6 +288,11 @@ export function useOpencodeTranscriptBridge() {
 
   // Track previous chat context so an active SDK session never leaks across agents/directories
   const previousChatContextKeyRef = useRef<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(activeSessionId);
+  const sendQueueRef = useRef<Map<string, QueuedSendRequest[]>>(new Map());
+  const activeQueueContextsRef = useRef<Set<string>>(new Set());
+  const inFlightQueueContextByAgentRef = useRef<Map<string, string>>(new Map());
+  const handleErrorRef = useRef<((event: AgentErrorEvent) => void) | null>(null);
 
   const activeContext = useMemo<ActiveAgentContext | null>(() => {
     if (!activeAgentTabId || !activeAgent) {
@@ -306,6 +318,7 @@ export function useOpencodeTranscriptBridge() {
   }, [activeAgent, activeAgentTabId, activeAgentTeam, globalAgents]);
 
   const activeAgentId = activeContext?.agent.id ?? null;
+  const isCeoContext = activeContext?.isCeo ?? false;
   const activeAgentIdRef = useRef<string | null>(activeAgentId);
   const activeContextKey = activeContext
     ? buildSessionContextKey({
@@ -328,6 +341,252 @@ export function useOpencodeTranscriptBridge() {
   useEffect(() => {
     activeAgentIdRef.current = activeAgentId;
   }, [activeAgentId]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
+  const isRelevantSessionEvent = useCallback((sessionId?: string) => {
+    const currentSessionId = activeSessionIdRef.current;
+    return !sessionId || !currentSessionId || sessionId === currentSessionId;
+  }, []);
+
+  const releaseQueueForAgent = useCallback((agentId: string) => {
+    const contextKey = inFlightQueueContextByAgentRef.current.get(agentId);
+    if (!contextKey) {
+      return null;
+    }
+
+    inFlightQueueContextByAgentRef.current.delete(agentId);
+    activeQueueContextsRef.current.delete(contextKey);
+    return contextKey;
+  }, []);
+
+  const executeQueuedRequest = useCallback(async (request: QueuedSendRequest) => {
+    const { context, text, options } = request;
+
+    recordChatBridgeEvent('outgoing:sendMessage');
+
+    const agentTurnId = createId('turn-agent');
+    const thinkingBlockId = createId('thinking');
+
+    createTurn(agentTurnId);
+    const thinkingBlock: ThinkingBlock = {
+      id: thinkingBlockId,
+      turnId: agentTurnId,
+      type: 'thinking',
+      status: 'streaming',
+      timestamp: Date.now(),
+      content: 'Conectando ao OpenCode...',
+    };
+    emit({ type: 'streaming-start' });
+    emit({ type: 'block-added', turnId: agentTurnId, data: thinkingBlock });
+
+    const runtime = runtimeRef.current;
+    runtime.currentTurnByAgent.set(context.agent.id, agentTurnId);
+    runtime.thinkingBlockByAgent.set(context.agent.id, thinkingBlockId);
+    runtime.assistantBlockByAgent.delete(context.agent.id);
+    runtime.toolCallBlocksByAgent.delete(context.agent.id);
+    runtime.toolResultBlocksByAgent.delete(context.agent.id);
+    runtime.terminalBlocksByAgent.delete(context.agent.id);
+    runtime.fileChangesBlocksByAgent.delete(context.agent.id);
+    runtime.filePathsByAgent.delete(context.agent.id);
+    runtime.bufferedTextByAgent.delete(context.agent.id);
+    runtime.lastFlushedTextByAgent.delete(context.agent.id);
+    runtime.needsNewAssistantBlock.delete(context.agent.id);
+
+    const handle = runtime.flushHandleByAgent.get(context.agent.id);
+    if (handle) {
+      window.clearTimeout(handle);
+      runtime.flushHandleByAgent.delete(context.agent.id);
+    }
+
+    try {
+      const messageToSend = context.isCeo ? buildCeoMessage(text, projects, workspace) : text;
+      let ensuredActiveSessionId = activeSessionIdRef.current ?? activeSessionId;
+
+      if (activeSessionIdRef.current) {
+        if (context.isGlobal) {
+          const ensureRole = context.isCeo ? 'global-ceo' : 'global-agent';
+          const ensureResult = await window.vibeAPI.ceo.ensure({
+            agentId: context.agent.id,
+            role: ensureRole,
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            systemPromptPath: context.agent.systemPromptPath,
+            workspaceDirectory: '',
+          });
+          const refreshedSessionId = ensureResult.session?.id;
+
+          if (refreshedSessionId) {
+            ensuredActiveSessionId = refreshedSessionId;
+
+            if (request.contextKey) {
+              useSessionStore.getState().addSession(ensureResult.session, request.contextKey);
+              useSessionStore.getState().selectSession(request.contextKey, refreshedSessionId);
+            }
+          }
+        } else {
+          const ensureResult = await window.vibeAPI.agent.ensure({
+            agentId: context.agent.id,
+            teamId: context.team?.id,
+            role: context.agent.role,
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            workspaceDirectory: context.team!.projectPath,
+          });
+          const refreshedSessionId = ensureResult.session?.id;
+
+          if (refreshedSessionId) {
+            ensuredActiveSessionId = refreshedSessionId;
+
+            if (request.contextKey) {
+              useSessionStore.getState().addSession(ensureResult.session, request.contextKey);
+              useSessionStore.getState().selectSession(request.contextKey, refreshedSessionId);
+            }
+          }
+        }
+
+        if (!ensuredActiveSessionId) {
+          throw new Error('Agent session was not created correctly.');
+        }
+
+        await window.vibeAPI.session.subscribe(ensuredActiveSessionId);
+        await window.vibeAPI.session.prompt({
+          sessionId: ensuredActiveSessionId,
+          message: messageToSend,
+          agentId: context.agent.id,
+          teamId: context.team?.id,
+          role: context.isCeo
+            ? 'global-ceo'
+            : context.isGlobal
+            ? 'global-agent'
+            : context.agent.role === 'tech-lead'
+            ? 'tech-lead'
+            : 'team-agent',
+          agentSlug: context.agent.catalogSlug?.toLowerCase(),
+          systemPromptPath: context.agent.systemPromptPath,
+          workspaceDirectory: context.isGlobal ? '' : context.team!.projectPath,
+          model: options?.model,
+        });
+      } else {
+        if (context.isGlobal) {
+          const ensureRole = context.isCeo ? 'global-ceo' : 'global-agent';
+          const ensureResult = await window.vibeAPI.ceo.ensure({
+            agentId: context.agent.id,
+            role: ensureRole,
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            systemPromptPath: context.agent.systemPromptPath,
+            workspaceDirectory: '',
+          });
+          const ensuredSessionId = ensureResult.session?.id;
+          if (ensuredSessionId && request.contextKey) {
+            useSessionStore.getState().addSession(ensureResult.session, request.contextKey);
+            useSessionStore.getState().selectSession(request.contextKey, ensuredSessionId);
+          }
+          if (context.isCeo) {
+            await window.vibeAPI.ceo.subscribe();
+          } else {
+            await window.vibeAPI.agent.subscribe(context.agent.id);
+          }
+          if (!ensuredSessionId) {
+            throw new Error('Global agent session was not created correctly.');
+          }
+
+          await window.vibeAPI.session.prompt({
+            sessionId: ensuredSessionId,
+            message: messageToSend,
+            agentId: context.agent.id,
+            teamId: context.team?.id,
+            role: ensureRole,
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            systemPromptPath: context.agent.systemPromptPath,
+            workspaceDirectory: '',
+            model: options?.model,
+          });
+        } else {
+          let ensuredSessionId: string | undefined;
+          try {
+            const ensureResult = await window.vibeAPI.agent.ensure({
+              agentId: context.agent.id,
+              teamId: context.team?.id,
+              role: context.agent.role,
+              agentSlug: context.agent.catalogSlug?.toLowerCase(),
+              workspaceDirectory: context.team!.projectPath,
+            });
+            ensuredSessionId = ensureResult.session?.id;
+            if (ensuredSessionId && request.contextKey) {
+              useSessionStore.getState().addSession(ensureResult.session, request.contextKey);
+              useSessionStore.getState().selectSession(request.contextKey, ensuredSessionId);
+            }
+          } catch (e) {
+            console.error('[TranscriptBridge] agent.ensure FAILED:', e);
+          }
+          if (!ensuredSessionId) {
+            throw new Error('Agent session was not created correctly.');
+          }
+          await window.vibeAPI.session.prompt({
+            sessionId: ensuredSessionId,
+            message: text,
+            agentId: context.agent.id,
+            teamId: context.team?.id,
+            role: context.agent.role === 'tech-lead' ? 'tech-lead' : 'team-agent',
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            systemPromptPath: context.agent.systemPromptPath,
+            workspaceDirectory: context.team!.projectPath,
+            model: options?.model,
+          });
+        }
+      }
+    } catch (error) {
+      handleErrorRef.current?.({
+        agentId: context.agent.id,
+        error,
+      });
+    }
+  }, [activeSessionId, createTurn, emit, projects, workspace]);
+
+  const drainQueue = useCallback(async (contextKey: string) => {
+    if (!contextKey || activeContextKey !== contextKey) {
+      return;
+    }
+
+    if (activeQueueContextsRef.current.has(contextKey)) {
+      return;
+    }
+
+    const queue = sendQueueRef.current.get(contextKey);
+    const nextRequest = queue?.shift();
+    if (!nextRequest) {
+      if (queue && queue.length === 0) {
+        sendQueueRef.current.delete(contextKey);
+      }
+      return;
+    }
+
+    if (queue && queue.length === 0) {
+      sendQueueRef.current.delete(contextKey);
+    }
+
+    activeQueueContextsRef.current.add(contextKey);
+    inFlightQueueContextByAgentRef.current.set(nextRequest.context.agent.id, contextKey);
+
+    try {
+      await executeQueuedRequest(nextRequest);
+    } catch (error) {
+      console.error('[TranscriptBridge] queued send failed:', error);
+      const releasedContextKey = releaseQueueForAgent(nextRequest.context.agent.id);
+      if (releasedContextKey && activeContextKey === releasedContextKey) {
+        void drainQueue(releasedContextKey);
+      }
+    }
+  }, [activeContextKey, executeQueuedRequest, releaseQueueForAgent]);
+
+  useEffect(() => {
+    if (!activeContextKey) {
+      return;
+    }
+
+    void drainQueue(activeContextKey);
+  }, [activeContextKey, drainQueue]);
 
   useEffect(() => {
     const previousAgentId = previousAgentIdRef.current;
@@ -411,14 +670,14 @@ export function useOpencodeTranscriptBridge() {
             return;
           }
 
-          // Processar mensagens históricas e adicionar ao chat
+            // Processar mensagens históricas e adicionar ao chat
           for (const msg of messages) {
             // Verificar a estrutura real da mensagem
             const role = msg.info?.role;
             const textContent = extractTextFromParts(msg.parts);
             
             if (role === 'user' && textContent) {
-              const normalizedUserText = activeContext?.isCeo
+              const normalizedUserText = isCeoContext
                 ? unwrapCeoMessage(textContent)
                 : textContent;
               // Mensagem de usuário
@@ -480,7 +739,7 @@ export function useOpencodeTranscriptBridge() {
     return () => {
       cancelled = true;
     };
-  }, [activeContextKey, activeSessionId, createTurn, emit, sessionContextKey]);
+  }, [activeContextKey, activeSessionId, createTurn, emit, isCeoContext, sessionContextKey]);
 
   const ensureTurn = useCallback((agentId: string): string => {
     const runtime = runtimeRef.current;
@@ -724,10 +983,15 @@ export function useOpencodeTranscriptBridge() {
     runtime.textOffsetByAgent.delete(agentId);
     runtime.flushHandleByAgent.delete(agentId);
     runtime.needsNewAssistantBlock.delete(agentId);
-  }, [emit, flushBufferedText]);
+    const releasedContextKey = releaseQueueForAgent(agentId);
+    if (releasedContextKey && activeContextKey === releasedContextKey) {
+      void drainQueue(releasedContextKey);
+    }
+  }, [activeContextKey, drainQueue, emit, flushBufferedText, releaseQueueForAgent]);
 
   const handleChunk = useCallback((event: AgentChunkEvent) => {
     if (!event.agentId || event.agentId !== activeAgentIdRef.current) return;
+    if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent('incoming:chunk');
     let nextText = event.message?.content?.text;
     if (!nextText) return;
@@ -748,10 +1012,11 @@ export function useOpencodeTranscriptBridge() {
 
     ensureTurn(event.agentId);
     scheduleTextFlush(event.agentId, nextText);
-  }, [ensureTurn, scheduleTextFlush]);
+  }, [ensureTurn, isRelevantSessionEvent, scheduleTextFlush]);
 
   const handleReasoning = useCallback((event: AgentReasoningEvent) => {
     if (!event.agentId || event.agentId !== activeAgentIdRef.current) return;
+    if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent('incoming:reasoning');
 
     const blockId = ensureThinkingBlock(event.agentId);
@@ -763,12 +1028,14 @@ export function useOpencodeTranscriptBridge() {
         status: event.isOngoing === false ? 'success' : 'streaming',
       } as Partial<ThinkingBlock>,
     });
-  }, [emit, ensureThinkingBlock]);
+  }, [emit, ensureThinkingBlock, isRelevantSessionEvent]);
 
   const handleTool = useCallback((event: AgentToolEvent) => {
     if (!event.agentId || event.agentId !== activeAgentIdRef.current || !event.tool) return;
+    if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent(`incoming:tool:${event.state ?? 'unknown'}`);
 
+    const runtime = runtimeRef.current;
     const turnId = ensureTurn(event.agentId);
     const status = event.state === 'error'
       ? 'error'
@@ -777,6 +1044,9 @@ export function useOpencodeTranscriptBridge() {
       : 'running';
 
     if (isTerminalToolName(event.tool)) {
+      if (event.state === 'running' || event.state === 'pending') {
+        runtime.needsNewAssistantBlock.set(event.agentId, true);
+      }
       const terminalBlockId = ensureTerminalBlock(event.agentId, event.title || event.tool);
       emit({
         type: 'block-updated',
@@ -790,7 +1060,6 @@ export function useOpencodeTranscriptBridge() {
       return;
     }
 
-    const runtime = runtimeRef.current;
     const key = toolKey(event.tool, event.title);
 
     let callMap = runtime.toolCallBlocksByAgent.get(event.agentId);
@@ -866,12 +1135,17 @@ export function useOpencodeTranscriptBridge() {
         });
       }
     }
-  }, [emit, ensureTerminalBlock, ensureTurn]);
+  }, [emit, ensureTerminalBlock, ensureTurn, isRelevantSessionEvent]);
 
   const handleActivity = useCallback((event: AgentActivityEvent) => {
     if (!event.agentId || event.agentId !== activeAgentIdRef.current) return;
+    if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent(`incoming:activity:${event.activity}`);
     if (!isTerminalToolName(event.toolName || event.title)) return;
+
+    if (event.activity !== 'idle') {
+      runtimeRef.current.needsNewAssistantBlock.set(event.agentId, true);
+    }
 
     const blockId = ensureTerminalBlock(event.agentId, event.title || event.toolName || 'terminal');
     emit({
@@ -882,10 +1156,11 @@ export function useOpencodeTranscriptBridge() {
         status: event.activity === 'idle' ? 'success' : 'running',
       } as Partial<TerminalBlock>,
     });
-  }, [emit, ensureTerminalBlock]);
+  }, [emit, ensureTerminalBlock, isRelevantSessionEvent]);
 
   const handlePipelineUpdate = useCallback((event: PipelineUpdateEvent) => {
     if (event.type !== 'file.edited' || !event.agentId || event.agentId !== activeAgentIdRef.current) return;
+    if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent(`incoming:pipeline:${event.type}`);
 
     const filePath = getFilePath(event.file);
@@ -929,10 +1204,11 @@ export function useOpencodeTranscriptBridge() {
         files: [...existing.files, { path: filePath, action: 'modified' }],
       } as Partial<FileChangesBlock>,
     });
-  }, [emit, ensureTurn]);
+  }, [emit, ensureTurn, isRelevantSessionEvent]);
 
   const handleStatus = useCallback((event: AgentStatusEvent) => {
     if (!event.agentId || event.agentId !== activeAgentIdRef.current) return;
+    if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent(`incoming:status:${event.status}`);
     if (event.status === 'idle' || event.status === 'done') {
       finalizeAgentTurn(event.agentId, 'success');
@@ -949,17 +1225,19 @@ export function useOpencodeTranscriptBridge() {
         } as Partial<ThinkingBlock>,
       });
     }
-  }, [emit, finalizeAgentTurn]);
+  }, [emit, finalizeAgentTurn, isRelevantSessionEvent]);
 
   const handleDone = useCallback((event: AgentDoneEvent) => {
     if (!event.agentId || event.agentId !== activeAgentIdRef.current) return;
+    if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent('incoming:done');
     finalizeAgentTurn(event.agentId, 'success');
-  }, [finalizeAgentTurn]);
+  }, [finalizeAgentTurn, isRelevantSessionEvent]);
 
   const handleError = useCallback((event: AgentErrorEvent) => {
     const agentId = event.agentId;
     if (!agentId || agentId !== activeAgentIdRef.current) return;
+    if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent('incoming:error');
 
     const runtime = runtimeRef.current;
@@ -1009,7 +1287,15 @@ export function useOpencodeTranscriptBridge() {
       window.clearTimeout(handle);
       runtime.flushHandleByAgent.delete(agentId);
     }
-  }, [emit, ensureAssistantBlock, ensureTurn, activeContext]);
+    const releasedContextKey = releaseQueueForAgent(agentId);
+    if (releasedContextKey && activeContextKey === releasedContextKey) {
+      void drainQueue(releasedContextKey);
+    }
+  }, [activeContext, activeContextKey, drainQueue, emit, ensureAssistantBlock, ensureTurn, isRelevantSessionEvent, releaseQueueForAgent]);
+
+  useEffect(() => {
+    handleErrorRef.current = handleError;
+  }, [handleError]);
 
   useEffect(() => {
     const maybeExtendedApi = window.vibeAPI as typeof window.vibeAPI & {
@@ -1039,210 +1325,46 @@ export function useOpencodeTranscriptBridge() {
 
   const sendMessage = useCallback(async (text: string, options?: { model?: { modelID: string, providerID: string } }) => {
     const context = activeContext;
-    
-    if (!context || !text.trim()) {
+    const trimmedText = text.trim();
+
+    if (!context || !trimmedText) {
       return;
     }
-    
-    recordChatBridgeEvent('outgoing:sendMessage');
 
-    // Create separate turns: user turn and agent turn
     const userTurnId = createId('turn-user');
-    const agentTurnId = createId('turn-agent');
     const userBlockId = createId('user');
-    const thinkingBlockId = createId('thinking');
 
-    // User turn with user message
     createTurn(userTurnId);
-    const userBlock: UserMessageBlock = {
-      id: userBlockId,
+    emit({
+      type: 'block-added',
       turnId: userTurnId,
-      type: 'user-message',
-      status: 'success',
-      timestamp: Date.now(),
-      content: text,
-    };
-    emit({ type: 'streaming-start' });
-    emit({ type: 'block-added', turnId: userTurnId, data: userBlock });
+      data: {
+        id: userBlockId,
+        turnId: userTurnId,
+        type: 'user-message',
+        status: 'success',
+        timestamp: Date.now(),
+        content: trimmedText,
+      } as UserMessageBlock,
+    });
 
-    // Agent turn with thinking block
-    createTurn(agentTurnId);
-    const thinkingBlock: ThinkingBlock = {
-      id: thinkingBlockId,
-      turnId: agentTurnId,
-      type: 'thinking',
-      status: 'streaming',
-      timestamp: Date.now(),
-      content: 'Conectando ao OpenCode...',
-    };
-    emit({ type: 'block-added', turnId: agentTurnId, data: thinkingBlock });
-
-    const runtime = runtimeRef.current;
-    runtime.currentTurnByAgent.set(context.agent.id, agentTurnId);
-    runtime.thinkingBlockByAgent.set(context.agent.id, thinkingBlockId);
-    runtime.assistantBlockByAgent.delete(context.agent.id);
-    runtime.toolCallBlocksByAgent.delete(context.agent.id);
-    runtime.toolResultBlocksByAgent.delete(context.agent.id);
-    runtime.terminalBlocksByAgent.delete(context.agent.id);
-    runtime.fileChangesBlocksByAgent.delete(context.agent.id);
-    runtime.filePathsByAgent.delete(context.agent.id);
-    runtime.bufferedTextByAgent.delete(context.agent.id);
-    runtime.lastFlushedTextByAgent.delete(context.agent.id);
-    runtime.needsNewAssistantBlock.delete(context.agent.id);
-
-    const handle = runtime.flushHandleByAgent.get(context.agent.id);
-    if (handle) {
-      window.clearTimeout(handle);
-      runtime.flushHandleByAgent.delete(context.agent.id);
-    }
-
-    try {
-      const messageToSend = context.isCeo ? buildCeoMessage(text, projects, workspace) : text;
-      let ensuredActiveSessionId = activeSessionId;
-
-      // Se temos uma sessão ativa, usar session.prompt diretamente
-      if (activeSessionId) {
-        if (context.isGlobal) {
-          const ensureRole = context.isCeo ? 'global-ceo' : 'global-agent';
-          const ensureResult = await window.vibeAPI.ceo.ensure({
-            agentId: context.agent.id,
-            role: ensureRole,
-            agentSlug: context.agent.catalogSlug?.toLowerCase(),
-            systemPromptPath: context.agent.systemPromptPath,
-            workspaceDirectory: '',
-          });
-          const refreshedSessionId = ensureResult.session?.id;
-
-          if (refreshedSessionId) {
-            ensuredActiveSessionId = refreshedSessionId;
-
-            if (activeContextKey) {
-              useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
-              useSessionStore.getState().selectSession(activeContextKey, refreshedSessionId);
-            }
-          }
-        } else {
-          const ensureResult = await window.vibeAPI.agent.ensure({
-            agentId: context.agent.id,
-            teamId: context.team?.id,
-            role: context.agent.role,
-            agentSlug: context.agent.catalogSlug?.toLowerCase(),
-            workspaceDirectory: context.team!.projectPath,
-          });
-          const refreshedSessionId = ensureResult.session?.id;
-
-          if (refreshedSessionId) {
-            ensuredActiveSessionId = refreshedSessionId;
-
-            if (activeContextKey) {
-              useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
-              useSessionStore.getState().selectSession(activeContextKey, refreshedSessionId);
-            }
-          }
-        }
-
-        if (!ensuredActiveSessionId) {
-          throw new Error('Agent session was not created correctly.');
-        }
-
-        // Subscribe to events first
-        await window.vibeAPI.session.subscribe(ensuredActiveSessionId);
-
-        // Send message to specific session
-        await window.vibeAPI.session.prompt({
-          sessionId: ensuredActiveSessionId,
-          message: messageToSend,
-          agentId: context.agent.id,
-          teamId: context.team?.id,
-          role: context.isCeo
-            ? 'global-ceo'
-            : context.isGlobal
-            ? 'global-agent'
-            : context.agent.role === 'tech-lead'
-            ? 'tech-lead'
-            : 'team-agent',
-          agentSlug: context.agent.catalogSlug?.toLowerCase(),
-          systemPromptPath: context.agent.systemPromptPath,
-          workspaceDirectory: context.isGlobal ? '' : context.team!.projectPath,
-          model: options?.model,
-        });
-      } else {
-        // Fallback: garantir uma sessão e enviar pela API de sessão
-        if (context.isGlobal) {
-          const ensureRole = context.isCeo ? 'global-ceo' : 'global-agent';
-          const ensureResult = await window.vibeAPI.ceo.ensure({
-            agentId: context.agent.id,
-            role: ensureRole,
-            agentSlug: context.agent.catalogSlug?.toLowerCase(),
-            systemPromptPath: context.agent.systemPromptPath,
-            workspaceDirectory: '',
-          });
-          const ensuredSessionId = ensureResult.session?.id;
-          if (ensuredSessionId && activeContextKey) {
-            useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
-            useSessionStore.getState().selectSession(activeContextKey, ensuredSessionId);
-          }
-          if (context.isCeo) {
-            await window.vibeAPI.ceo.subscribe();
-          } else {
-            await window.vibeAPI.agent.subscribe(context.agent.id);
-          }
-          if (!ensuredSessionId) {
-            throw new Error('Global agent session was not created correctly.');
-          }
-
-          await window.vibeAPI.session.prompt({
-            sessionId: ensuredSessionId,
-            message: messageToSend,
-            agentId: context.agent.id,
-            teamId: context.team?.id,
-            role: ensureRole,
-            agentSlug: context.agent.catalogSlug?.toLowerCase(),
-            systemPromptPath: context.agent.systemPromptPath,
-            workspaceDirectory: '',
-            model: options?.model,
-          });
-        } else {
-          let ensuredSessionId: string | undefined;
-          try {
-            const ensureResult = await window.vibeAPI.agent.ensure({
-              agentId: context.agent.id,
-              teamId: context.team?.id,
-              role: context.agent.role,
-              agentSlug: context.agent.catalogSlug?.toLowerCase(),
-              workspaceDirectory: context.team!.projectPath,
-            });
-            ensuredSessionId = ensureResult.session?.id;
-            if (ensuredSessionId && activeContextKey) {
-              useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
-              useSessionStore.getState().selectSession(activeContextKey, ensuredSessionId);
-            }
-          } catch (e) {
-            console.error('[TranscriptBridge] agent.ensure FAILED:', e);
-          }
-          if (!ensuredSessionId) {
-            throw new Error('Agent session was not created correctly.');
-          }
-          await window.vibeAPI.session.prompt({
-            sessionId: ensuredSessionId,
-            message: text,
-            agentId: context.agent.id,
-            teamId: context.team?.id,
-            role: context.agent.role === 'tech-lead' ? 'tech-lead' : 'team-agent',
-            agentSlug: context.agent.catalogSlug?.toLowerCase(),
-            systemPromptPath: context.agent.systemPromptPath,
-            workspaceDirectory: context.team!.projectPath,
-            model: options?.model,
-          });
-        }
-      }
-    } catch (error) {
-      handleError({
+    const request: QueuedSendRequest = {
+      contextKey: activeContextKey ?? buildSessionContextKey({
         agentId: context.agent.id,
-        error,
-      });
-    }
-  }, [activeContext, activeContextKey, activeSessionId, createTurn, emit, handleError, projects, workspace]);
+        isGlobal: context.isGlobal,
+        teamId: context.team?.id ?? null,
+      }),
+      context,
+      text: trimmedText,
+      options,
+    };
+
+    const queue = sendQueueRef.current.get(request.contextKey) ?? [];
+    queue.push(request);
+    sendQueueRef.current.set(request.contextKey, queue);
+
+    void drainQueue(request.contextKey);
+  }, [activeContext, activeContextKey, createTurn, drainQueue, emit]);
 
   const header = useMemo(() => {
     if (!activeContext) {
@@ -1268,3 +1390,4 @@ export function useOpencodeTranscriptBridge() {
     sendMessage,
   };
 }
+

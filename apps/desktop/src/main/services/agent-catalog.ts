@@ -28,11 +28,11 @@ export interface AgentTemplateEntry {
  * Parse YAML frontmatter from markdown content
  */
 function parseFrontmatter(content: string): Record<string, string> {
-  const match = content.match(/^---\n([\s\S]*?)\n---/)
+  const match = content.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/)
   if (!match) return {}
   
   const frontmatter: Record<string, string> = {}
-  const lines = match[1].split('\n')
+  const lines = match[1].split(/\r?\n/)
   
   for (const line of lines) {
     const colonIndex = line.indexOf(':')

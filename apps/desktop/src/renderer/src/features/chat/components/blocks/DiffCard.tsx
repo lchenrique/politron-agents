@@ -13,19 +13,22 @@ export const DiffCard = memo(({ blockId }: DiffCardProps) => {
   const block = useBlock(blockId) as DiffBlock | undefined;
   const isExpanded = useIsBlockExpanded(blockId);
   const toggleBlockExpanded = useChatStore((state) => state.toggleBlockExpanded);
+  const stats = useMemo(() => {
+    if (!block || block.type !== 'diff') {
+      return { originalLines: 0, modifiedLines: 0, added: 0 };
+    }
+
+    const originalLines = (block.originalContent || '').split('\n').length;
+    const modifiedLines = (block.modifiedContent || '').split('\n').length;
+    const added = modifiedLines - originalLines;
+    return { originalLines, modifiedLines, added };
+  }, [block]);
 
   const handleToggle = useCallback(() => {
     toggleBlockExpanded(blockId);
   }, [blockId, toggleBlockExpanded]);
 
   if (!block || block.type !== 'diff') return null;
-
-  const stats = useMemo(() => {
-    const originalLines = (block.originalContent || '').split('\n').length;
-    const modifiedLines = (block.modifiedContent || '').split('\n').length;
-    const added = modifiedLines - originalLines;
-    return { originalLines, modifiedLines, added };
-  }, [block.modifiedContent, block.originalContent]);
 
   return (
     <div className="flex w-full group py-2">
@@ -73,6 +76,7 @@ export const DiffCard = memo(({ blockId }: DiffCardProps) => {
             }
           >
             <DiffViewer
+              filePath={block.filePath}
               originalContent={block.originalContent}
               modifiedContent={block.modifiedContent}
             />
