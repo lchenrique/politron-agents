@@ -492,6 +492,7 @@ export function useOpencodeTranscriptBridge() {
       blockId: tracked.blockId,
       data: {
         result: nextResult,
+        isHandoffPlaceholder: false,
         ...(status ? { status } : {}),
       } as Partial<SubAgentBlock>,
     });
@@ -518,6 +519,7 @@ export function useOpencodeTranscriptBridge() {
       blockId: tracked.blockId,
       data: {
         status,
+        isHandoffPlaceholder: false,
         ...(nextResult ? { result: nextResult } : {}),
       } as Partial<SubAgentBlock>,
     });
