@@ -14,7 +14,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
-import { Block, BlockType, BlockStatus } from '../types/block.types';
+import { Block, BlockType, BlockStatus, TodoItem, TodoListState } from '../types/block.types';
 import { measureChatStoreMutation } from '../perf/chatPerf';
 
 // =============================================================================
@@ -43,6 +43,9 @@ export interface UIState {
 
   // Selection state
   selectedBlockId: string | null;
+
+  // Current task lists surfaced from agent updates
+  todoListsByAgent: Record<string, TodoListState>;
 }
 
 export interface ChatState {
@@ -104,6 +107,8 @@ interface ChatActions {
   setBlockExpanded: (blockId: string, expanded: boolean) => void;
   setStreaming: (val: boolean) => void;
   selectBlock: (blockId: string | null) => void;
+  setAgentTodos: (agentId: string, items: TodoItem[], source?: string) => void;
+  clearAgentTodos: (agentId: string) => void;
 
   // Persistence
   setPersistAdapter: (adapter: PersistAdapter) => void;
@@ -124,6 +129,7 @@ const initialUIState: UIState = {
   expandedBlocks: new Set<string>(),
   isStreaming: false,
   selectedBlockId: null,
+  todoListsByAgent: {},
 };
 
 // =============================================================================
@@ -361,6 +367,45 @@ export const useChatStore = create<ChatState & ChatActions>()(
       };
     }, state)),
 
+    setAgentTodos: (agentId, items, source) => set((state) => {
+      if (!agentId) return state;
+
+      const normalizedItems = items
+        .map((item) => ({
+          content: item.content.trim(),
+          priority: item.priority?.trim(),
+          status: item.status?.trim(),
+        }))
+        .filter((item) => item.content.length > 0);
+
+      return {
+        ui: {
+          ...state.ui,
+          todoListsByAgent: {
+            ...state.ui.todoListsByAgent,
+            [agentId]: {
+              agentId,
+              updatedAt: Date.now(),
+              source,
+              items: normalizedItems,
+            },
+          },
+        },
+      };
+    }),
+
+    clearAgentTodos: (agentId) => set((state) => {
+      if (!state.ui.todoListsByAgent[agentId]) return state;
+
+      const { [agentId]: _removed, ...remaining } = state.ui.todoListsByAgent;
+      return {
+        ui: {
+          ...state.ui,
+          todoListsByAgent: remaining,
+        },
+      };
+    }),
+
     // ---------------------------------------------------------------------------
     // PERSISTENCE
     // ---------------------------------------------------------------------------
@@ -377,6 +422,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
         expandedBlocks: new Set<string>(),
         selectedBlockId: null,
         userScrolledUp: false,
+        todoListsByAgent: {},
       },
     }), state)),
 
@@ -437,6 +483,10 @@ export const useAutoScroll = () => useChatStore((state) => state.ui.autoScroll);
 export const useIsStreaming = () => useChatStore((state) => state.ui.isStreaming);
 export const useUserScrolledUp = () => useChatStore((state) => state.ui.userScrolledUp);
 export const useSelectedBlockId = () => useChatStore((state) => state.ui.selectedBlockId);
+export const useAgentTodos = (agentId?: string | null) => useChatStore((state) => {
+  if (!agentId) return undefined;
+  return state.ui.todoListsByAgent[agentId];
+});
 
 /** Check if a block is expanded */
 export const useIsBlockExpanded = (blockId: string) => useChatStore(
@@ -461,6 +511,8 @@ export const useChatActions = () => useChatStore(
     setBlockExpanded: state.setBlockExpanded,
     setStreaming: state.setStreaming,
     selectBlock: state.selectBlock,
+    setAgentTodos: state.setAgentTodos,
+    clearAgentTodos: state.clearAgentTodos,
     replaceTranscript: state.replaceTranscript,
     getSnapshot: state.getSnapshot,
     clearChat: state.clearChat,

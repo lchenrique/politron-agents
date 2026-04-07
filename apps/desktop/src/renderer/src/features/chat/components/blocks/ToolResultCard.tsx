@@ -77,6 +77,7 @@ function getLanguageFromPath(filePath: string): string {
 
 function parseToolResult(result: string): ParsedToolResult {
   const normalized = result.trim();
+
   const pathMatch = normalized.match(/<path>([\s\S]*?)<\/path>/i);
   const typeMatch = normalized.match(/<type>([\s\S]*?)<\/type>/i);
   const contentMatch = normalized.match(/<content>([\s\S]*)/i);
@@ -121,6 +122,7 @@ export const ToolResultCard = memo(({ blockId }: ToolResultCardProps) => {
   if (!block || block.type !== 'tool-result') return null;
 
   const isLongResult = block.result && block.result.length > 500;
+  const isTodoResult = false;
 
   const renderContent = (parsed: ParsedToolResult) => {
     if (parsed.kind === 'file') {
@@ -163,6 +165,7 @@ export const ToolResultCard = memo(({ blockId }: ToolResultCardProps) => {
         >
           {/* Status icon/label */}
           <div className="flex items-center gap-2 flex-1">
+             <div className="h-2 w-2 rounded-full bg-muted-foreground/50" />
              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">result</span>
              <div className="h-px bg-border/40 flex-1"></div>
              <span className="font-mono text-[11px] text-muted-foreground">{block.toolName}</span>

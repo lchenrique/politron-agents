@@ -15,6 +15,7 @@ import { activeTeamAtom, globalAgentsAtom, projectsAtom } from "@/hooks/atoms";
 import { PromptInput } from "../input/PromptInput";
 import { SessionModal } from "./SessionModal";
 import { TranscriptViewport } from "./TranscriptViewport";
+import { TaskTodosPanel } from "./TaskTodosPanel";
 import { useOpencodeTranscriptBridge } from "../../hooks/useOpencodeTranscriptBridge";
 import { useChatStore } from "../../store/chatStore";
 import { recordChatRender } from "../../perf/chatPerf";
@@ -125,6 +126,7 @@ export const AgentChatShell = memo(function AgentChatShell() {
       {hasActiveAgent && (
         <div className="flex flex-col items-center bg-linear-to-t from-background via-background to-transparent p-4 py-6">
           <div className="w-full max-w-4xl px-4">
+            <TaskTodosPanel agentId={activeAgent?.id} />
             <PromptInput
               onSend={sendMessage}
             />

@@ -65,6 +65,7 @@ interface ResolvedAgentConfig {
 interface AgentHandoffEvent {
   team: Team
   sessionId?: string
+  sourceSessionId?: string
   fromAgentId: string
   fromAgentName?: string
   toAgentId: string
@@ -81,6 +82,19 @@ interface AgentHandoffEvent {
 }
 
 type ToolInvocationData = Record<string, unknown>
+
+interface DelegationOrigin {
+  sourceAgentId: string
+  sourceSessionId?: string
+  sourceAgentName?: string
+  targetAgentId: string
+  targetAgentName?: string
+  teamId?: string
+  teamName?: string
+  task: string
+  files?: string[]
+  branchName?: string
+}
 
 function stripCommandMarkupFromText(text: string): string {
   if (!text.trim()) {
@@ -164,6 +178,7 @@ class OpenCodeSdkService extends EventEmitter {
   private sessionCreationPromises: Map<string, Promise<ManagedSession>> = new Map()
   private availableAgentsPromise: Promise<Map<string, string>> | null = null
   private consumedDelegationSessions: Set<string> = new Set()
+  private delegationOriginsBySessionId: Map<string, DelegationOrigin> = new Map()
 
   /**
    * Invalidate the cached agent map so the next lookup refetches from SDK.
@@ -325,6 +340,11 @@ Tech lead: ${lead?.name ?? "nÃ£o definido"}
 ${identityLine}
 ${collaborationLine}
 
+Regra de idioma:
+- Toda resposta visível ao usuário final deve ser em português do Brasil.
+- A comunicação interna entre agentes pode usar inglês quando for mais eficiente.
+- Se houver delegação, a tarefa pode ser passada em linguagem técnica, mas a resposta final ao usuário continua em pt-BR.
+
 Membros do time:
 ${members || "- nenhum agente contratado ainda"}
 
@@ -362,6 +382,11 @@ Regras:
 - Antes de pedir ajuda, tente delegar ao agente mais apropriado do time.
 - Se não houver agente adequado, peça contratação com [HIRE_AGENT].
 - Mantenha as mensagens curtas, objetivas e específicas ao papel de cada agente.
+
+Regra de idioma:
+- Toda resposta visível ao usuário final deve ser em português do Brasil.
+- A comunicação interna entre agentes pode usar inglês quando for mais eficiente.
+- Se houver delegação, a tarefa pode ser passada em linguagem técnica, mas a resposta final ao usuário continua em pt-BR.
 `.trim()
   }
 
@@ -792,6 +817,9 @@ Regras:
 
       const fromAgent = targetTeam.agents.find((agent) => agent.id === event.fromAgentId)
       const toAgent = targetAgent
+      const sourceSession = event.sourceSessionId
+        ? sessionStore.listSessions().find((session) => session.session?.id === event.sourceSessionId)
+        : sessionStore.getSession(event.fromAgentId)
 
       const handoffMessage = [
         `Você recebeu uma tarefa de ${fromAgent?.name ?? event.fromAgentId} para ${toAgent?.name ?? event.toAgentId}.`,
@@ -800,12 +828,28 @@ Regras:
         event.files?.length ? `Arquivos relacionados: ${event.files.join(", ")}` : "",
         "",
         "Responda de forma objetiva e, se precisar de outro agente, use [DELEGATE].",
+        "A resposta final visível ao usuário deve ser sempre em português do Brasil.",
       ].filter(Boolean).join("\n")
 
       this.emit("vibe:agent:handoff", {
         ...event,
         sessionId: targetSession.session.id,
       })
+
+      if (sourceSession && sourceSession.session.id !== targetSession.session.id) {
+        this.delegationOriginsBySessionId.set(targetSession.session.id, {
+          sourceAgentId: sourceSession.agentId,
+          sourceSessionId: sourceSession.session.id,
+          sourceAgentName: fromAgent?.name ?? sourceSession.agentId,
+          targetAgentId: targetAgent.id,
+          targetAgentName: targetAgent.name,
+          teamId: targetTeam.id,
+          teamName: targetTeam.name,
+          task: event.task,
+          files: event.files,
+          branchName: event.branchName,
+        })
+      }
 
       await this.sendMessageToSession(
         targetSession.session.id,
@@ -943,6 +987,7 @@ Regras:
                 })
               }
             }
+            void this.notifyDelegationOrigin(sessionID, "done", this.getVisibleSessionText(sessionID))
             this.commandOutputBuffers.delete(sessionID)
           }
 
@@ -976,6 +1021,11 @@ Regras:
           sessionId: sessionID,
           error
         })
+        void this.notifyDelegationOrigin(
+          sessionID,
+          "error",
+          error instanceof Error ? error.message : String(error)
+        )
         if (sessionID) {
           this.consumedDelegationSessions.delete(sessionID)
         }
@@ -1083,6 +1133,7 @@ Regras:
         if (managedSession) {
           sessionStore.removeSession(managedSession.agentId)
           this.sessionEventIterators.delete(managedSession.agentId)
+          this.delegationOriginsBySessionId.delete(info.id)
         }
         break
       }
@@ -1154,6 +1205,89 @@ Regras:
     }
 
     return undefined
+  }
+
+  private getVisibleSessionText(sessionId: string): string {
+    const rawText = this.sessionTextBuffers.get(sessionId) || this.commandOutputBuffers.get(sessionId) || ""
+    return stripCommandMarkupFromText(rawText).trim()
+  }
+
+  private buildDelegationReturnMessage(
+    origin: DelegationOrigin,
+    sourceAgentName: string,
+    targetAgentName: string,
+    status: "done" | "error",
+    detail?: string
+  ): string {
+    const trimmedDetail = detail?.trim() || ""
+    const summaryText = trimmedDetail.length > 600
+      ? `${trimmedDetail.slice(0, 600).trimEnd()}...`
+      : trimmedDetail
+    const summaryLine = summaryText
+      ? `Resumo: ${summaryText}`
+      : status === "error"
+      ? "A tarefa delegada não pôde ser concluída."
+      : "A tarefa delegada foi concluída com sucesso."
+
+    return [
+      `Atualização da delegação para ${sourceAgentName}:`,
+      `O agente ${targetAgentName} encerrou a tarefa ${status === "error" ? "com erro" : "com sucesso"}.`,
+      `Tarefa: ${origin.task}`,
+      origin.teamName ? `Time: ${origin.teamName}` : "",
+      origin.branchName ? `Branch: ${origin.branchName}` : "",
+      origin.files?.length ? `Arquivos: ${origin.files.join(", ")}` : "",
+      summaryLine,
+      "",
+      "Responda ao usuário final em português do Brasil, de forma objetiva, informando o que foi concluído e o que ainda falta.",
+    ].filter(Boolean).join("\n")
+  }
+
+  private async notifyDelegationOrigin(
+    targetSessionId: string,
+    status: "done" | "error",
+    detail?: string
+  ): Promise<void> {
+    const origin = this.delegationOriginsBySessionId.get(targetSessionId)
+    if (!origin) {
+      return
+    }
+
+    this.delegationOriginsBySessionId.delete(targetSessionId)
+
+    const sourceSession = origin.sourceSessionId
+      ? sessionStore.listSessions().find((session) => session.session?.id === origin.sourceSessionId)
+      : sessionStore.getSession(origin.sourceAgentId)
+
+    if (!sourceSession) {
+      return
+    }
+
+    if (sourceSession.session.id === targetSessionId) {
+      return
+    }
+
+    const sourceAgentName = origin.sourceAgentName || origin.sourceAgentId
+    const targetAgentName = origin.targetAgentName || origin.targetAgentId
+    const visibleDetail = detail?.trim() || this.getVisibleSessionText(targetSessionId)
+    const message = this.buildDelegationReturnMessage(
+      origin,
+      sourceAgentName,
+      targetAgentName,
+      status,
+      visibleDetail
+    )
+
+    await this.sendMessageToSession(
+      sourceSession.session.id,
+      message,
+      sourceSession.systemPrompt,
+      sourceSession.agentSlug,
+      sourceSession.workspaceDirectory,
+      undefined,
+      sourceSession.teamId,
+      sourceSession.role,
+      sourceSession.agentId
+    )
   }
 
   private extractToolInvocationData(part: Record<string, unknown>, toolState: Record<string, unknown> | undefined): ToolInvocationData {
@@ -1244,6 +1378,7 @@ Regras:
       fromAgentName: fromAgent?.name,
       toAgentId: targetAgent.id,
       toAgentName: targetAgent.name,
+      sourceSessionId: managedSession.session.id,
       teamId: team.id,
       teamName: team.name,
       task,
@@ -1311,6 +1446,7 @@ Regras:
       fromAgentName: fromAgent?.name,
       toAgentId: targetAgent.id,
       toAgentName: targetAgent.name,
+      sourceSessionId: managedSession.session.id,
       teamId: team.id,
       teamName: team.name,
       task,

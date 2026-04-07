@@ -1,5 +1,18 @@
 export type BlockStatus = 'idle' | 'running' | 'streaming' | 'success' | 'error' | 'cancelled';
 
+export interface TodoItem {
+  content: string;
+  priority?: string;
+  status?: string;
+}
+
+export interface TodoListState {
+  agentId: string;
+  updatedAt: number;
+  source?: string;
+  items: TodoItem[];
+}
+
 export type BlockType =
   | 'user-message'
   | 'assistant-message'

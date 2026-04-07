@@ -18,6 +18,7 @@ import type {
   ToolResultBlock,
   SubAgentBlock,
   UserMessageBlock,
+  TodoItem,
 } from '../types/block.types';
 import {
   AgentEventAdapter,
@@ -125,6 +126,7 @@ type PipelineUpdateEvent = {
     path?: string;
     filePath?: string;
   } | string;
+  todos?: Array<Record<string, unknown>>;
 };
 
 type ActiveAgentContext = {
@@ -208,6 +210,51 @@ function isTerminalToolName(toolName?: string): boolean {
   return normalized.includes('bash') || normalized.includes('shell') || normalized.includes('terminal');
 }
 
+function isTodoLikeObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseTodoItemsFromText(text?: string): TodoItem[] | null {
+  if (!text?.trim()) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+
+  const rawItems = Array.isArray(parsed)
+    ? parsed
+    : isTodoLikeObject(parsed) && Array.isArray(parsed.todos)
+      ? parsed.todos
+      : null;
+
+  if (!rawItems) {
+    return null;
+  }
+
+  const items = rawItems
+    .map((entry) => {
+      if (!isTodoLikeObject(entry)) return null;
+
+      const content = [entry.content, entry.description, entry.title]
+        .find((value) => typeof value === 'string' && value.trim());
+      if (!content || typeof content !== 'string') return null;
+
+      return {
+        content,
+        priority: typeof entry.priority === 'string' ? entry.priority : undefined,
+        status: typeof entry.status === 'string' ? entry.status : undefined,
+      } satisfies TodoItem;
+    })
+    .filter((item): item is TodoItem => Boolean(item));
+
+  return items.length > 0 ? items : null;
+}
+
 function getFilePath(file: PipelineUpdateEvent['file']): string | null {
   if (!file) return null;
   if (typeof file === 'string') return file;
@@ -239,13 +286,22 @@ function isSimpleGreeting(text: string): boolean {
   ].includes(normalized);
 }
 
+function buildUserFacingLanguageRule(): string {
+  return [
+    'Regra de idioma:',
+    '- Toda resposta visível ao usuário final deve ser em português do Brasil.',
+    '- A comunicação interna entre agentes pode usar inglês quando for mais eficiente.',
+    '- Se houver delegação, a tarefa pode ser passada em linguagem técnica, mas a resposta final ao usuário continua em pt-BR.',
+  ].join('\n');
+}
+
 function buildCeoMessage(
   text: string,
   projects: Array<{ name: string; teamId: string }>,
   workspace?: { teams?: Array<{ id: string; projectPath?: string }> } | null
 ): string {
   if (projects.length === 0 || isSimpleGreeting(text)) {
-    return text;
+    return `${buildUserFacingLanguageRule()}\n\n${text}`;
   }
 
   const projectList = projects
@@ -259,6 +315,7 @@ function buildCeoMessage(
   return `Você é o CEO Global e conhece todos os projetos existentes.
 Não execute comandos, não inspecione arquivos e não analise projetos a menos que o usuário peça isso explicitamente.
 Se a mensagem for apenas uma saudação, responda de forma breve e natural.
+${buildUserFacingLanguageRule()}
 
 Projetos disponíveis:
 ${projectList}
@@ -380,6 +437,8 @@ export function useOpencodeTranscriptBridge() {
   const createTurn = useChatStore((state) => state.createTurn);
   const replaceTranscript = useChatStore((state) => state.replaceTranscript);
   const clearChat = useChatStore((state) => state.clearChat);
+  const removeBlock = useChatStore((state) => state.removeBlock);
+  const setAgentTodos = useChatStore((state) => state.setAgentTodos);
   
   // Obter sessão ativa do contexto
   const { activeSessionId } = useActiveSession();
@@ -1402,6 +1461,17 @@ export function useOpencodeTranscriptBridge() {
       }
 
       const resultId = resultMap.get(key);
+      const parsedTodos = event.state === 'completed' ? parseTodoItemsFromText(event.output) : null;
+
+      if (parsedTodos) {
+        setAgentTodos(event.agentId, parsedTodos, event.tool || event.title);
+        if (resultId) {
+          removeBlock(resultId);
+          resultMap.delete(key);
+        }
+        return;
+      }
+
       const resultText = event.output
         ? event.output
         : event.state === 'error'
@@ -1432,7 +1502,7 @@ export function useOpencodeTranscriptBridge() {
         });
       }
     }
-  }, [appendVisibleSubAgentResult, emit, ensureTerminalBlock, ensureTurn, finalizeVisibleSubAgent, isRelevantSessionEvent]);
+  }, [appendVisibleSubAgentResult, emit, ensureTerminalBlock, ensureTurn, finalizeVisibleSubAgent, isRelevantSessionEvent, removeBlock, setAgentTodos]);
 
   const handleActivity = useCallback((event: AgentActivityEvent) => {
     if (!event.agentId) return;
@@ -1611,9 +1681,33 @@ export function useOpencodeTranscriptBridge() {
   }, [activeAgentTeam, activeContext?.agent, createTurn, emit]);
 
   const handlePipelineUpdate = useCallback((event: PipelineUpdateEvent) => {
-    if (event.type !== 'file.edited' || !event.agentId || event.agentId !== activeAgentIdRef.current) return;
+    if (!event.agentId || event.agentId !== activeAgentIdRef.current) return;
     if (!isRelevantSessionEvent(event.sessionId)) return;
     recordChatBridgeEvent(`incoming:pipeline:${event.type}`);
+
+    if (event.type === 'todo.updated') {
+      const items = Array.isArray(event.todos)
+        ? event.todos
+            .map((item) => {
+              if (!item || typeof item !== 'object') return null;
+              const content = [item.content, item.description, item.title]
+                .find((value) => typeof value === 'string' && value.trim());
+              if (!content || typeof content !== 'string') return null;
+
+              return {
+                content,
+                priority: typeof item.priority === 'string' ? item.priority : undefined,
+                status: typeof item.status === 'string' ? item.status : undefined,
+              } satisfies TodoItem;
+            })
+            .filter((item): item is TodoItem => Boolean(item))
+        : [];
+
+      setAgentTodos(event.agentId, items, event.type);
+      return;
+    }
+
+    if (event.type !== 'file.edited') return;
 
     const filePath = getFilePath(event.file);
     if (!filePath) return;
@@ -1656,7 +1750,7 @@ export function useOpencodeTranscriptBridge() {
         files: [...existing.files, { path: filePath, action: 'modified' }],
       } as Partial<FileChangesBlock>,
     });
-  }, [emit, ensureTurn, isRelevantSessionEvent]);
+  }, [emit, ensureTurn, isRelevantSessionEvent, setAgentTodos]);
 
   const handleStatus = useCallback((event: AgentStatusEvent) => {
     if (!event.agentId) return;
