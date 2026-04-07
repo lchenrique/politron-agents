@@ -649,6 +649,15 @@ export function registerHandlers(): void {
 
     const parts = [{ type: "text" as const, text: message }]
 
+    // DEBUG: Log what we're about to send
+    console.log('[vibe:session:prompt] Sending to SDK:', {
+      hasAgent: !!finalAgentSlug,
+      finalAgentSlug,
+      systemPromptLength: finalSystemPrompt?.length,
+      resolvedCatalogSlug,
+      resolvedSystemPromptPath,
+    })
+
     // Only pass `agent` to the SDK when we have a valid, resolved SDK agent name.
     // Otherwise let the SDK use its default behavior with just the system prompt.
     const promptBody: {
@@ -661,13 +670,24 @@ export function registerHandlers(): void {
       system: finalSystemPrompt,
     }
 
-    if (finalAgentSlug) {
+    // IMPORTANT: Only pass agent if it's a REAL SDK agent (CEO, Studio Producer, etc)
+    // For custom agents (Tech Lead, HR Global, etc.), we NEVER pass agent field
+    // because the SDK doesn't know them and will throw "Agent not found" error.
+    const sdkKnownAgents = ['CEO', 'Studio Producer', 'Frontend Developer', 'Backend Architect', 'UI Designer', 'DevOps Automator', 'Reality Checker']
+    if (finalAgentSlug && sdkKnownAgents.includes(finalAgentSlug)) {
       promptBody.agent = finalAgentSlug
     }
 
     if (model) {
       promptBody.model = model
     }
+
+    // DEBUG: Log exact body being sent
+    console.log('[vibe:session:prompt] Exact promptBody:', {
+      hasAgent: !!promptBody.agent,
+      agent: promptBody.agent,
+      systemLength: promptBody.system?.length,
+    })
 
     const result = await client.session.promptAsync({
       body: promptBody,

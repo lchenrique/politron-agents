@@ -138,36 +138,57 @@ export function loadAgentTemplates(agentsDir: string = OPENCODE_PROJECT_AGENTS_D
 export const AGENCY_AGENTS_VENDOR_ROOT = '.vendor/agency-agents'
 export const OPENCODE_PROJECT_AGENTS_DIR = '.opencode/agents'
 
+function resolveProjectRoot(startDir: string = __dirname): string {
+  const markers = ['.git', 'AGENTS.md', '.opencode']
+  let current = startDir
+
+  for (let i = 0; i < 10; i++) {
+    if (markers.some((marker) => fs.existsSync(path.join(current, marker)))) {
+      return current
+    }
+
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+
+  return process.cwd()
+}
+
+function toAbsoluteProjectPath(relativePath: string): string {
+  return path.resolve(resolveProjectRoot(), relativePath)
+}
+
 export const GLOBAL_CEO_PROMPT = {
   slug: 'ceo',
   sourcePath: 'specialized/agents-orchestrator.md',
-  targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/ceo.md`,
+  targetPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/ceo.md`),
 }
 
 export const AGENCY_AGENT_SYNC_MAP: Record<string, { sourcePath: string; targetPath: string }> = {
   'tech-lead': {
     sourcePath: 'project-management/project-management-studio-producer.md',
-    targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/tech-lead.md`,
+    targetPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/tech-lead.md`),
   },
   'frontend-dev': {
     sourcePath: 'engineering/engineering-frontend-developer.md',
-    targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/frontend-developer.md`,
+    targetPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/frontend-developer.md`),
   },
   'backend-dev': {
     sourcePath: 'engineering/engineering-backend-architect.md',
-    targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/backend-architect.md`,
+    targetPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/backend-architect.md`),
   },
   'qa-tester': {
     sourcePath: 'testing/testing-reality-checker.md',
-    targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/reality-checker.md`,
+    targetPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/reality-checker.md`),
   },
   'devops-eng': {
     sourcePath: 'engineering/engineering-devops-automator.md',
-    targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/devops-automator.md`,
+    targetPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/devops-automator.md`),
   },
   'ux-designer': {
     sourcePath: 'design/design-ui-designer.md',
-    targetPath: `${OPENCODE_PROJECT_AGENTS_DIR}/ui-designer.md`,
+    targetPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/ui-designer.md`),
   },
 }
 

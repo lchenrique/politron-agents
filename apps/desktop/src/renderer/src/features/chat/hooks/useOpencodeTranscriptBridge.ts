@@ -229,6 +229,17 @@ ${projectList}
 ${text}`;
 }
 
+function unwrapCeoMessage(text: string): string {
+  const separator = '\n---\n';
+  const separatorIndex = text.lastIndexOf(separator);
+
+  if (separatorIndex === -1) {
+    return text;
+  }
+
+  return text.slice(separatorIndex + separator.length).trim();
+}
+
 export function useOpencodeTranscriptBridge() {
   const workspace = useAtomValue(workspaceAtom);
   const projects = useAtomValue(projectsAtom);
@@ -368,8 +379,12 @@ export function useOpencodeTranscriptBridge() {
       return;
     }
 
+    const hadPreviousSessionContext = !!lastSessionContextKeyRef.current;
     lastSessionContextKeyRef.current = sessionContextKey;
-    clearChat();
+
+    if (hadPreviousSessionContext) {
+      clearChat();
+    }
   }, [activeContext, activeSessionId, clearChat, sessionContextKey]);
 
   // Quando a sessão ativa muda, carregar histórico e assinar eventos
@@ -396,6 +411,9 @@ export function useOpencodeTranscriptBridge() {
             const textContent = extractTextFromParts(msg.parts);
             
             if (role === 'user' && textContent) {
+              const normalizedUserText = activeContext?.isCeo
+                ? unwrapCeoMessage(textContent)
+                : textContent;
               // Mensagem de usuário
               const turnId = createId('turn-user');
               const blockId = createId('user-historic');
@@ -405,7 +423,7 @@ export function useOpencodeTranscriptBridge() {
                 type: 'user-message',
                 status: 'success',
                 timestamp: msg.info?.createdAt || Date.now(),
-                content: textContent,
+                content: normalizedUserText,
               };
               createTurn(turnId);
               emit({ type: 'block-added', turnId, data: userBlock });
@@ -1019,8 +1037,6 @@ export function useOpencodeTranscriptBridge() {
       return;
     }
     
-    const agentName = context.agent.name;
-    const agentCatalogSlug = context.agent.catalogSlug;
     recordChatBridgeEvent('outgoing:sendMessage');
 
     // Create separate turns: user turn and agent turn
@@ -1075,15 +1091,59 @@ export function useOpencodeTranscriptBridge() {
 
     try {
       const messageToSend = context.isCeo ? buildCeoMessage(text, projects, workspace) : text;
+      let ensuredActiveSessionId = activeSessionId;
 
       // Se temos uma sessão ativa, usar session.prompt diretamente
       if (activeSessionId) {
+        if (context.isGlobal) {
+          const ensureRole = context.isCeo ? 'global-ceo' : 'global-agent';
+          const ensureResult = await window.vibeAPI.ceo.ensure({
+            agentId: context.agent.id,
+            role: ensureRole,
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            systemPromptPath: context.agent.systemPromptPath,
+            workspaceDirectory: '',
+          });
+          const refreshedSessionId = ensureResult.session?.id;
+
+          if (refreshedSessionId) {
+            ensuredActiveSessionId = refreshedSessionId;
+
+            if (activeContextKey) {
+              useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
+              useSessionStore.getState().selectSession(activeContextKey, refreshedSessionId);
+            }
+          }
+        } else {
+          const ensureResult = await window.vibeAPI.agent.ensure({
+            agentId: context.agent.id,
+            teamId: context.team?.id,
+            role: context.agent.role,
+            agentSlug: context.agent.catalogSlug?.toLowerCase(),
+            workspaceDirectory: context.team!.projectPath,
+          });
+          const refreshedSessionId = ensureResult.session?.id;
+
+          if (refreshedSessionId) {
+            ensuredActiveSessionId = refreshedSessionId;
+
+            if (activeContextKey) {
+              useSessionStore.getState().addSession(ensureResult.session, activeContextKey);
+              useSessionStore.getState().selectSession(activeContextKey, refreshedSessionId);
+            }
+          }
+        }
+
+        if (!ensuredActiveSessionId) {
+          throw new Error('Agent session was not created correctly.');
+        }
+
         // Subscribe to events first
-        await window.vibeAPI.session.subscribe(activeSessionId);
+        await window.vibeAPI.session.subscribe(ensuredActiveSessionId);
 
         // Send message to specific session
         await window.vibeAPI.session.prompt({
-          sessionId: activeSessionId,
+          sessionId: ensuredActiveSessionId,
           message: messageToSend,
           agentId: context.agent.id,
           teamId: context.team?.id,
@@ -1175,7 +1235,7 @@ export function useOpencodeTranscriptBridge() {
         error,
       });
     }
-  }, [activeContext, activeContextKey, activeSessionId, createTurn, emit, handleError]);
+  }, [activeContext, activeContextKey, activeSessionId, createTurn, emit, handleError, projects, workspace]);
 
   const header = useMemo(() => {
     if (!activeContext) {

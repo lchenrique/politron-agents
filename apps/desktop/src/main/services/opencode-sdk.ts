@@ -138,7 +138,7 @@ class OpenCodeSdkService extends EventEmitter {
     return content.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
   }
 
-  private getPromptResolutionPaths(workspaceDirectory: string, systemPromptPath?: string): string[] {
+  private getPromptResolutionPaths(workspaceDirectory?: string, systemPromptPath?: string): string[] {
     if (!systemPromptPath) {
       return []
     }
@@ -146,8 +146,8 @@ class OpenCodeSdkService extends EventEmitter {
     const candidates = new Set<string>()
     const normalizedPromptPath = normalize(systemPromptPath)
     const promptFileName = basename(normalizedPromptPath)
-    const effectiveWorkspace = workspaceDirectory || this.resolveWorkspaceDirectory()
-    const rootDir = this.resolveWorkspaceDirectory()
+    const rootDir = this.resolveWorkspaceDirectory() || process.cwd()
+    const effectiveWorkspace = workspaceDirectory || rootDir
 
     if (systemPromptPath === resolve(systemPromptPath)) {
       candidates.add(systemPromptPath)
@@ -172,7 +172,7 @@ class OpenCodeSdkService extends EventEmitter {
   }
 
   private resolveSystemPrompt(
-    workspaceDirectory: string,
+    workspaceDirectory: string | undefined,
     systemPrompt?: string,
     systemPromptPath?: string
   ): string | undefined {
@@ -249,56 +249,14 @@ class OpenCodeSdkService extends EventEmitter {
     systemPromptPath?: string,
     agentSlug?: string
   ): Promise<string | undefined> {
-    const availableAgents = await this.getAvailableAgentMap()
-    const candidates: string[] = []
-
-    if (agentSlug) {
-      candidates.push(agentSlug)
-      const aliasedSlug = AGENT_SLUG_ALIASES[agentSlug]
-      if (aliasedSlug) {
-        candidates.push(aliasedSlug)
-      }
-    }
-
-    if (systemPromptPath) {
-      const normalizedPath = systemPromptPath.replace(/\\/g, "/")
-      const fileSlug = basename(normalizedPath, ".md")
-      candidates.push(fileSlug)
-      const aliasedFileSlug = AGENT_SLUG_ALIASES[fileSlug]
-      if (aliasedFileSlug) {
-        candidates.push(aliasedFileSlug)
-      }
-
-      for (const absolutePromptPath of this.getPromptResolutionPaths(workspaceDirectory, systemPromptPath)) {
-        if (!existsSync(absolutePromptPath)) {
-          continue
-        }
-
-        const fileContent = readFileSync(absolutePromptPath, "utf8")
-        const match = fileContent.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/m)
-        const frontmatterBlock = match?.[1]
-        const nameLine = frontmatterBlock?.match(/(?:^|\r?\n)name:\s*(.+)\s*$/m)
-        const rawName = nameLine?.[1]?.trim().replace(/^['"]|['"]$/g, "")
-        if (rawName) {
-          candidates.push(rawName)
-        }
-        break
-      }
-    }
-
-    for (const candidate of candidates) {
-      for (const key of this.toAgentLookupKeys(candidate)) {
-        const resolved = availableAgents.get(key)
-        if (resolved) {
-          return resolved
-        }
-      }
-    }
-
-    // Do NOT fall back to returning the raw candidate if it wasn't found in the SDK.
-    // Returning undefined lets the caller skip the `agent` field entirely, letting the
-    // system prompt alone define identity - which is the correct behavior for custom
-    // agents like "Tech Lead" or "HR Global" that exist only as local prompt files.
+    // IMPORTANT: For custom agents defined in .opencode/agents (Tech Lead, HR Global, etc.)
+    // we NEVER want to pass `agent` to the SDK because:
+    // 1. The SDK doesn't recognize custom agent names
+    // 2. Only the system prompt file defines the agent's identity
+    // 3. Passing a bogus agent name causes "Agent not found" errors
+    // 
+    // So we ALWAYS return undefined for custom agents, letting the system prompt
+    // alone define identity. This is the correct behavior for Politron's architecture.
     return undefined
   }
 
@@ -309,7 +267,9 @@ class OpenCodeSdkService extends EventEmitter {
     agentSlug?: string
   ): Promise<ResolvedAgentConfig> {
     const resolvedSystemPrompt = this.resolveSystemPrompt(workspaceDirectory, systemPrompt, systemPromptPath)
-    const resolvedAgentName = await this.resolveOpenCodeAgentName(workspaceDirectory, systemPromptPath, agentSlug)
+    // For custom agents in .opencode/agents, we never resolve an SDK agent name -
+    // the system prompt alone defines identity. Skip resolution entirely.
+    const resolvedAgentName = undefined
 
     if (resolvedSystemPrompt || resolvedAgentName) {
       return {
@@ -318,12 +278,7 @@ class OpenCodeSdkService extends EventEmitter {
       }
     }
 
-    if (agentSlug) {
-      return {
-        agentSlug
-      }
-    }
-
+    // No resolution at all - return empty so caller skips agent field entirely
     return {}
   }
 
@@ -423,13 +378,25 @@ class OpenCodeSdkService extends EventEmitter {
         agentSlug || existingSessionAfterDirectoryCheck.agentSlug
       )
 
-      existingSessionAfterDirectoryCheck.workspaceDirectory = effectiveWorkspaceDir
-      existingSessionAfterDirectoryCheck.agentSlug = resolvedExistingConfig.agentSlug
-      existingSessionAfterDirectoryCheck.systemPrompt = resolvedExistingConfig.systemPrompt
-      existingSessionAfterDirectoryCheck.systemPromptPath =
-        systemPromptPath || existingSessionAfterDirectoryCheck.systemPromptPath
+      const existingPromptPath = existingSessionAfterDirectoryCheck.systemPromptPath
+      const promptIdentityChanged =
+        !!systemPromptPath &&
+        !!existingPromptPath &&
+        normalize(systemPromptPath) !== normalize(existingPromptPath)
 
-      return existingSessionAfterDirectoryCheck
+      // Never reuse an in-memory session if its prompt identity no longer resolves.
+      // This prevents agents like Tech Lead from sticking to an old persona/session.
+      if (promptIdentityChanged || (!resolvedExistingConfig.systemPrompt && !!systemPromptPath)) {
+        sessionStore.removeSession(agentId)
+      } else {
+        existingSessionAfterDirectoryCheck.workspaceDirectory = effectiveWorkspaceDir
+        existingSessionAfterDirectoryCheck.agentSlug = resolvedExistingConfig.agentSlug
+        existingSessionAfterDirectoryCheck.systemPrompt = resolvedExistingConfig.systemPrompt
+        existingSessionAfterDirectoryCheck.systemPromptPath =
+          systemPromptPath || existingSessionAfterDirectoryCheck.systemPromptPath
+
+        return existingSessionAfterDirectoryCheck
+      }
     }
 
     const existingPromise = this.sessionCreationPromises.get(agentId)
@@ -515,14 +482,42 @@ class OpenCodeSdkService extends EventEmitter {
 
     const finalSystemPrompt = systemPrompt
 
+    // DEBUG: Log what we're sending
+    console.log('[sendMessageToSession] Sending to SDK:', {
+      sessionId,
+      hasAgent: !!agentSlug,
+      agentSlug,
+      systemPromptLength: finalSystemPrompt?.length,
+    })
+
+    // Only pass `agent` to the SDK when we have a valid SDK agent name.
+    // For custom agents (Tech Lead, HR Global, etc.), the system prompt alone
+    // defines identity so we skip the agent field entirely.
+    const promptBody: {
+      parts: typeof parts
+      system: string
+      agent?: string
+      model?: typeof model
+    } = {
+      parts,
+      system: finalSystemPrompt,
+    }
+
+    // IMPORTANT: Only pass agent if it's a REAL SDK agent (CEO, Studio Producer, etc)
+    // For custom agents (Tech Lead, HR Global, etc.), we NEVER pass agent field
+    // because the SDK doesn't know them and will throw "Agent not found" error.
+    const sdkKnownAgents = ['CEO', 'Studio Producer', 'Frontend Developer', 'Backend Architect', 'UI Designer', 'DevOps Automator', 'Reality Checker']
+    if (agentSlug && sdkKnownAgents.includes(agentSlug)) {
+      promptBody.agent = agentSlug
+    }
+
+    if (model) {
+      promptBody.model = model
+    }
+
     try {
       const result = await this.client.session.promptAsync({
-        body: {
-          parts,
-          system: finalSystemPrompt,
-          agent: agentSlug,
-          model: model
-        },
+        body: promptBody,
         path: {
           id: sessionId
         },

@@ -39,16 +39,19 @@ export interface SessionContextInput {
   teamId?: string | null;
 }
 
+const SESSION_CONTEXT_VERSION = "v2";
+const SESSION_STORE_KEY = "politron-sdk-sessions-v2";
+
 export function buildSessionContextKey(input: SessionContextInput): string | null {
   if (!input.agentId) {
     return null;
   }
 
   if (input.isGlobal) {
-    return `global:${input.agentId}`;
+    return `${SESSION_CONTEXT_VERSION}:global:${input.agentId}`;
   }
 
-  return `project:${input.teamId ?? 'global'}:${input.agentId}`;
+  return `${SESSION_CONTEXT_VERSION}:project:${input.teamId ?? 'global'}:${input.agentId}`;
 }
 
 interface SessionState {
@@ -212,7 +215,7 @@ export const useSessionStore = create<SessionState>()(
       },
     }),
     {
-      name: 'politron-sdk-sessions',
+      name: SESSION_STORE_KEY,
       partialize: (state) => ({
         activeSessionIdByContext: state.activeSessionIdByContext,
         sessionIdsByContext: state.sessionIdsByContext,
