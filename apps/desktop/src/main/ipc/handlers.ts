@@ -670,12 +670,13 @@ export function registerHandlers(): void {
       system: finalSystemPrompt,
     }
 
-    // IMPORTANT: Only pass agent if it's a REAL SDK agent (CEO, Studio Producer, etc)
-    // For custom agents (Tech Lead, HR Global, etc.), we NEVER pass agent field
-    // because the SDK doesn't know them and will throw "Agent not found" error.
+    // If the agent doesn't exist in the SDK, we fallback to 'general' 
+    // to prevent the SDK from defaulting to Sisyphus with its strong persona.
     const sdkKnownAgents = ['CEO', 'Studio Producer', 'Frontend Developer', 'Backend Architect', 'UI Designer', 'DevOps Automator', 'Reality Checker']
     if (finalAgentSlug && sdkKnownAgents.includes(finalAgentSlug)) {
       promptBody.agent = finalAgentSlug
+    } else {
+      promptBody.agent = 'general'
     }
 
     if (model) {

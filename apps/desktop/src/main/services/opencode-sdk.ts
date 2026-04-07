@@ -249,14 +249,40 @@ class OpenCodeSdkService extends EventEmitter {
     systemPromptPath?: string,
     agentSlug?: string
   ): Promise<string | undefined> {
-    // IMPORTANT: For custom agents defined in .opencode/agents (Tech Lead, HR Global, etc.)
-    // we NEVER want to pass `agent` to the SDK because:
-    // 1. The SDK doesn't recognize custom agent names
-    // 2. Only the system prompt file defines the agent's identity
-    // 3. Passing a bogus agent name causes "Agent not found" errors
-    // 
-    // So we ALWAYS return undefined for custom agents, letting the system prompt
-    // alone define identity. This is the correct behavior for Politron's architecture.
+    const availableAgents = await this.getAvailableAgentMap()
+
+    // 1. Try resolving by catalog slug or ID
+    if (agentSlug) {
+      const match = availableAgents.get(agentSlug.toLowerCase())
+      if (match) return match
+      
+      // Also try variations
+      const noHyphens = agentSlug.replace(/-/g, ' ').toLowerCase()
+      const matchNoHyphens = availableAgents.get(noHyphens)
+      if (matchNoHyphens) return matchNoHyphens
+    }
+
+    // 2. Try resolving by system prompt file frontmatter name
+    if (systemPromptPath) {
+      const resolutionPaths = this.getPromptResolutionPaths(workspaceDirectory, systemPromptPath)
+      for (const p of resolutionPaths) {
+        if (existsSync(p)) {
+          const content = readFileSync(p, 'utf8')
+          const match = content.match(/^name:\s*(.+)$/m)
+          if (match && match[1]) {
+            const parsedName = match[1].trim().replace(/^['"]|['"]$/g, '')
+            // Check if this parsed name exists in available agents
+            const mapMatch = availableAgents.get(parsedName.toLowerCase())
+            if (mapMatch) return mapMatch
+            
+            // If we can't find it in the map, return the parsed name anyway
+            // The SDK will load it dynamically if it's in the workspace .opencode/agents
+            return parsedName
+          }
+        }
+      }
+    }
+
     return undefined
   }
 
@@ -267,18 +293,21 @@ class OpenCodeSdkService extends EventEmitter {
     agentSlug?: string
   ): Promise<ResolvedAgentConfig> {
     const resolvedSystemPrompt = this.resolveSystemPrompt(workspaceDirectory, systemPrompt, systemPromptPath)
-    // For custom agents in .opencode/agents, we never resolve an SDK agent name -
-    // the system prompt alone defines identity. Skip resolution entirely.
-    const resolvedAgentName = undefined
+    
+    // Resolve the ACTUAL SDK agent name (e.g. 'Tech Lead' instead of 'tech-lead')
+    const resolvedAgentName = await this.resolveOpenCodeAgentName(
+      workspaceDirectory,
+      systemPromptPath,
+      agentSlug
+    )
 
     if (resolvedSystemPrompt || resolvedAgentName) {
       return {
         systemPrompt: resolvedSystemPrompt,
-        agentSlug: resolvedAgentName,
+        agentSlug: resolvedAgentName || agentSlug,
       }
     }
 
-    // No resolution at all - return empty so caller skips agent field entirely
     return {}
   }
 
@@ -463,7 +492,7 @@ class OpenCodeSdkService extends EventEmitter {
     await this.sendMessageToSession(
       managedSession.session.id,
       message,
-      managedSession.agentSlug ? undefined : managedSession.systemPrompt,
+      managedSession.systemPrompt,
       managedSession.agentSlug,
       managedSession.workspaceDirectory,
       model
@@ -503,12 +532,13 @@ class OpenCodeSdkService extends EventEmitter {
       system: finalSystemPrompt,
     }
 
-    // IMPORTANT: Only pass agent if it's a REAL SDK agent (CEO, Studio Producer, etc)
-    // For custom agents (Tech Lead, HR Global, etc.), we NEVER pass agent field
-    // because the SDK doesn't know them and will throw "Agent not found" error.
+    // If the agent doesn't exist in the SDK, we fallback to 'general' 
+    // to prevent the SDK from defaulting to Sisyphus with its strong persona.
     const sdkKnownAgents = ['CEO', 'Studio Producer', 'Frontend Developer', 'Backend Architect', 'UI Designer', 'DevOps Automator', 'Reality Checker']
     if (agentSlug && sdkKnownAgents.includes(agentSlug)) {
       promptBody.agent = agentSlug
+    } else {
+      promptBody.agent = 'general'
     }
 
     if (model) {

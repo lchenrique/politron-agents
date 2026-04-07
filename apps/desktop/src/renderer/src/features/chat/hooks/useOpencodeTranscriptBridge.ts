@@ -382,9 +382,10 @@ export function useOpencodeTranscriptBridge() {
     const hadPreviousSessionContext = !!lastSessionContextKeyRef.current;
     lastSessionContextKeyRef.current = sessionContextKey;
 
-    if (hadPreviousSessionContext) {
-      clearChat();
-    }
+    // Removemos a chamada para clearChat() aqui.
+    // O clearChat não deve ser feito quando o activeSessionId muda
+    // porque o backend pode atualizar o sessionId automaticamente.
+    // O clearChat só é feito ao mudar de agente (abaixo) ou ao selecionar do Modal.
   }, [activeContext, activeSessionId, clearChat, sessionContextKey]);
 
   // Quando a sessão ativa muda, carregar histórico e assinar eventos
@@ -404,6 +405,12 @@ export function useOpencodeTranscriptBridge() {
         }
         
         if (messages && messages.length > 0) {
+          // Evitar duplicação: se a UI já tem mensagens (devido a restore local ou mensagens recém-enviadas),
+          // não vamos inserir as mensagens históricas por cima, assumindo que as mensagens locais estão corretas.
+          if (useChatStore.getState().turnIds.length > 0) {
+            return;
+          }
+
           // Processar mensagens históricas e adicionar ao chat
           for (const msg of messages) {
             // Verificar a estrutura real da mensagem

@@ -1,6 +1,7 @@
 import React, { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { MessageSquare, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useSessionStore, buildSessionContextKey } from '../../store/sessionStore';
+import { useChatStore } from '../../store/chatStore';
 import { cn } from "@/lib/utils";
 import { useAtomValue } from 'jotai';
 import { activeAgentAtom, activeAgentTeamAtom, globalAgentsAtom } from '@/hooks/atoms/workspace';
@@ -51,6 +52,7 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
   const addSession = useSessionStore((state) => state.addSession);
   const removeSession = useSessionStore((state) => state.removeSession);
   const selectSession = useSessionStore((state) => state.selectSession);
+  const clearChat = useChatStore((state) => state.clearChat);
 
   const globalAgents = useAtomValue(globalAgentsAtom);
   const activeAgent = useAtomValue(activeAgentAtom);
@@ -109,6 +111,8 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
       );
       if (newSession?.id) {
         addSession(newSession, contextKey);
+        selectSession(contextKey, newSession.id);
+        clearChat();
         onClose();
       }
     } catch (error) {
@@ -116,7 +120,7 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
     } finally {
       setLoading(false);
     }
-  }, [addSession, contextKey, onClose, sessionDirectory]);
+  }, [addSession, contextKey, onClose, sessionDirectory, selectSession, clearChat]);
 
   const handleDeleteSession = useCallback((sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -134,9 +138,10 @@ export const SessionModal = memo(function SessionModal({ open, onClose }: Sessio
   }, [contextKey, removeSession]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
+    clearChat();
     selectSession(contextKey, sessionId);
     onClose();
-  }, [contextKey, selectSession, onClose]);
+  }, [contextKey, selectSession, onClose, clearChat]);
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
