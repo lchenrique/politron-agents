@@ -21,6 +21,41 @@ function payloadToArray(value: string | string[] | undefined): string[] {
   return Array.isArray(value) ? value : [value]
 }
 
+function getPayloadValue(payload: CeoCommand["payload"], key: string): string | string[] | undefined {
+  const normalizedKey = key.toLowerCase()
+  return (
+    payload[key] ??
+    payload[normalizedKey] ??
+    payload[key.charAt(0).toUpperCase() + key.slice(1)] ??
+    payload[key.toUpperCase()] ??
+    payload[key.replace(/(^|-)([a-z])/g, (_, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`)] ??
+    payload[normalizedKey.replace(/(^|-)([a-z])/g, (_, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`)]
+  )
+}
+
+function normalizeLookupValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-")
+}
+
+function matchesAgentIdentity(agent: Agent, value: string): boolean {
+  const normalizedValue = normalizeLookupValue(value)
+  const normalizedName = normalizeLookupValue(agent.name)
+  const normalizedSlug = normalizeLookupValue(agent.catalogSlug || "")
+  const normalizedRole = normalizeLookupValue(agent.role)
+
+  return (
+    normalizedName === normalizedValue ||
+    normalizedSlug === normalizedValue ||
+    normalizedRole === normalizedValue ||
+    normalizedName.includes(normalizedValue) ||
+    normalizedSlug.includes(normalizedValue) ||
+    normalizedValue.includes(normalizedSlug)
+  )
+}
+
 interface CommandExecutionContext {
   agentId?: string
   teamId?: string
@@ -53,9 +88,9 @@ export class CeoCommandExecutor extends EventEmitter {
   }
 
   private async handleCreateTeam(command: CeoCommand): Promise<void> {
-    const templateId = command.payload.templateId as string
-    const name = command.payload.name as string
-    const projectPath = command.payload.projectPath as string
+    const templateId = getPayloadValue(command.payload, "templateId") as string
+    const name = getPayloadValue(command.payload, "name") as string
+    const projectPath = getPayloadValue(command.payload, "projectPath") as string
 
     if (!templateId || !name || !projectPath) {
       this.emit("error", { command, message: "Missing required fields: templateId, name, projectPath" })
@@ -106,14 +141,17 @@ export class CeoCommandExecutor extends EventEmitter {
   }
 
   private async handleDelegate(command: CeoCommand, context: CommandExecutionContext = {}): Promise<void> {
-    const teamName = command.payload.team as string
-    const task = command.payload.task as string
-    const files = payloadToArray(command.payload.files)
-    const targetAgentId = firstPayloadValue(command.payload.agentId)
-    const targetAgentName = firstPayloadValue(command.payload.to) ?? firstPayloadValue(command.payload.target) ?? firstPayloadValue(command.payload.agent)
-    const targetAgentSlug = firstPayloadValue(command.payload.agentSlug)
-    const targetRole = firstPayloadValue(command.payload.role)
-    const autoHire = firstPayloadValue(command.payload.autoHire) === "true"
+    const teamName = getPayloadValue(command.payload, "team") as string
+    const task = getPayloadValue(command.payload, "task") as string
+    const files = payloadToArray(getPayloadValue(command.payload, "files"))
+    const targetAgentId = firstPayloadValue(getPayloadValue(command.payload, "agentId"))
+    const targetAgentName =
+      firstPayloadValue(getPayloadValue(command.payload, "to")) ??
+      firstPayloadValue(getPayloadValue(command.payload, "target")) ??
+      firstPayloadValue(getPayloadValue(command.payload, "agent"))
+    const targetAgentSlug = firstPayloadValue(getPayloadValue(command.payload, "agentSlug"))
+    const targetRole = firstPayloadValue(getPayloadValue(command.payload, "role"))
+    const autoHire = firstPayloadValue(getPayloadValue(command.payload, "autoHire")) === "true"
 
     if (!task) {
       this.emit("error", { command, message: "Missing required field: task" })
@@ -138,17 +176,17 @@ export class CeoCommandExecutor extends EventEmitter {
       }
 
       if (targetAgentSlug) {
-        const bySlug = team.agents.find((agent) => agent.catalogSlug === targetAgentSlug || agent.role === targetAgentSlug)
+        const bySlug = team.agents.find((agent) => matchesAgentIdentity(agent, targetAgentSlug))
         if (bySlug) return bySlug
       }
 
       if (targetRole) {
-        const byRole = team.agents.find((agent) => agent.role === targetRole)
+        const byRole = team.agents.find((agent) => matchesAgentIdentity(agent, targetRole))
         if (byRole) return byRole
       }
 
       if (targetAgentName) {
-        const byName = team.agents.find((agent) => agent.name.toLowerCase() === targetAgentName.toLowerCase())
+        const byName = team.agents.find((agent) => matchesAgentIdentity(agent, targetAgentName))
         if (byName) return byName
       }
 
@@ -197,12 +235,17 @@ export class CeoCommandExecutor extends EventEmitter {
         description: task,
         files,
         dependsOn: [],
-        branchName: firstPayloadValue(command.payload.branchName),
+        branchName: firstPayloadValue(getPayloadValue(command.payload, "branchName")),
       })
 
-      this.emit("task:delegated", { team, task: pipelineTask })
-      return
-    }
+      this.emit("task:delegated", {
+        team,
+        task: pipelineTask,
+        fromAgentId: context.agentId || team.techLeadAgentId || fallbackAgentId,
+      fromAgentName: context.agentId ? team.agents.find((agent) => agent.id === context.agentId)?.name : undefined,
+    })
+    return
+  }
 
     const pipelineTask = pipelineExecutor.addTask({
       teamId: team.id,
@@ -210,10 +253,15 @@ export class CeoCommandExecutor extends EventEmitter {
       description: task,
       files,
       dependsOn: [],
-      branchName: firstPayloadValue(command.payload.branchName),
+      branchName: firstPayloadValue(getPayloadValue(command.payload, "branchName")),
     })
 
-    this.emit("task:delegated", { team, task: pipelineTask })
+    this.emit("task:delegated", {
+      team,
+      task: pipelineTask,
+      fromAgentId: context.agentId || team.techLeadAgentId || targetAgent.id,
+      fromAgentName: context.agentId ? team.agents.find((agent) => agent.id === context.agentId)?.name : undefined,
+    })
     this.emit("agent:handoff", {
       team,
       fromAgentId: context.agentId || targetAgentId || team.techLeadAgentId || targetAgent.id,
@@ -224,14 +272,14 @@ export class CeoCommandExecutor extends EventEmitter {
       teamName: team.name,
       task,
       files,
-      branchName: firstPayloadValue(command.payload.branchName),
+      branchName: firstPayloadValue(getPayloadValue(command.payload, "branchName")),
     })
   }
 
   private async handleHireAgent(command: CeoCommand): Promise<void> {
-    const teamName = command.payload.team as string
-    const role = command.payload.role as string
-    const agentSlug = command.payload.agentSlug as string
+    const teamName = getPayloadValue(command.payload, "team") as string
+    const role = getPayloadValue(command.payload, "role") as string
+    const agentSlug = getPayloadValue(command.payload, "agentSlug") as string
 
     if (!teamName || !role) {
       this.emit("error", { command, message: "Missing required fields: team, role" })
@@ -269,7 +317,7 @@ export class CeoCommandExecutor extends EventEmitter {
   }
 
   private async handlePauseTeam(command: CeoCommand): Promise<void> {
-    const teamName = command.payload.team as string
+    const teamName = getPayloadValue(command.payload, "team") as string
 
     if (!teamName) {
       this.emit("error", { command, message: "Missing required field: team" })
@@ -287,7 +335,7 @@ export class CeoCommandExecutor extends EventEmitter {
   }
 
   private async handleResumeTeam(command: CeoCommand): Promise<void> {
-    const teamName = command.payload.team as string
+    const teamName = getPayloadValue(command.payload, "team") as string
 
     if (!teamName) {
       this.emit("error", { command, message: "Missing required field: team" })
@@ -305,7 +353,7 @@ export class CeoCommandExecutor extends EventEmitter {
   }
 
   private async handleAskHuman(command: CeoCommand): Promise<void> {
-    const question = command.payload.question as string
+    const question = getPayloadValue(command.payload, "question") as string
 
     if (!question) {
       this.emit("error", { command, message: "Missing required field: question" })

@@ -185,6 +185,7 @@ const api = {
   onAgentStatus: (callback: EventCallback) => onChannel('vibe:agent:status', callback),
   onAgentDone: (callback: EventCallback) => onChannel('vibe:agent:done', callback),
   onAgentError: (callback: EventCallback) => onChannel('vibe:agent:error', callback),
+  onAgentHandoff: (callback: EventCallback) => onChannel('vibe:agent:handoff', callback),
   onCeoAskHuman: (callback: EventCallback) => onChannel('vibe:ceo:ask-human', callback),
   onPipelineUpdate: (callback: EventCallback) => onChannel('vibe:pipeline:update', callback),
 
@@ -201,6 +202,7 @@ const api = {
   onTaskCompleted: (callback: EventCallback) => onChannel('vibe:task:completed', callback),
   onTaskFailed: (callback: EventCallback) => onChannel('vibe:task:failed', callback),
   onTaskBlocked: (callback: EventCallback) => onChannel('vibe:task:blocked', callback),
+  onTaskDelegated: (callback: EventCallback) => onChannel('vibe:task:delegated', callback),
   onPipelineStatusChanged: (callback: EventCallback) => onChannel('vibe:pipeline:status-changed', callback),
 
   onWorktreeCreated: (callback: EventCallback) => onChannel('vibe:worktree:created', callback),

@@ -65,6 +65,7 @@ type AgentActivityEvent = {
 type AgentHandoffEvent = {
   teamId?: string;
   teamName?: string;
+  sessionId?: string;
   fromAgentId: string;
   fromAgentName?: string;
   toAgentId: string;
@@ -72,6 +73,24 @@ type AgentHandoffEvent = {
   task: string;
   files?: string[];
   branchName?: string;
+};
+
+type TaskDelegatedEvent = {
+  team: {
+    id: string;
+    name: string;
+  };
+  task: {
+    id: string;
+    teamId: string;
+    agentId: string;
+    description: string;
+    files: string[];
+    status: string;
+    branchName?: string;
+  };
+  fromAgentId?: string;
+  fromAgentName?: string;
 };
 
 type AgentStatusEvent = {
@@ -276,6 +295,68 @@ function isOnlyHandoffPlaceholderSnapshot(snapshot: TranscriptSnapshot | null | 
   return isHandoffPlaceholderBlock(snapshot.blocks[snapshot.blockIds[0]]);
 }
 
+function stripCommandMarkupFromTranscript(text: string): string {
+  if (!text.trim()) {
+    return text;
+  }
+
+  const markers = [
+    text.search(/\[(CREATE_TEAM|DELEGATE|HIRE_AGENT|PAUSE_TEAM|RESUME_TEAM|ASK_HUMAN)\]/i),
+    text.search(/<invoke\b/i),
+    text.search(/<task\b/i),
+    text.search(/<parameter\b/i),
+    text.search(/<\/?minimax:tool_call\b/i),
+  ].filter((index): index is number => index >= 0);
+
+  if (markers.length === 0) {
+    return text;
+  }
+
+  const firstMarker = Math.min(...markers);
+  return text.slice(0, firstMarker).trimEnd();
+}
+
+const TRANSCRIPT_STORAGE_PREFIX = 'politron-chat-transcript-v1';
+
+function getTranscriptStorageKey(contextKey: string): string {
+  return `${TRANSCRIPT_STORAGE_PREFIX}:${contextKey}`;
+}
+
+function loadPersistedTranscript(contextKey: string): TranscriptSnapshot | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getTranscriptStorageKey(contextKey));
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as TranscriptSnapshot;
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.warn('[useOpencodeTranscriptBridge] Failed to load persisted transcript:', error);
+    return null;
+  }
+}
+
+function savePersistedTranscript(contextKey: string, snapshot: TranscriptSnapshot): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(getTranscriptStorageKey(contextKey), JSON.stringify(snapshot));
+  } catch (error) {
+    console.warn('[useOpencodeTranscriptBridge] Failed to persist transcript:', error);
+  }
+}
+
 export function useOpencodeTranscriptBridge() {
   const workspace = useAtomValue(workspaceAtom);
   const projects = useAtomValue(projectsAtom);
@@ -360,6 +441,7 @@ export function useOpencodeTranscriptBridge() {
   const sessionContextKey = activeSessionId && activeContextKey
     ? `${activeSessionId}:${activeContextKey}`
     : null;
+  const transcriptStateKey = sessionContextKey ?? activeContextKey;
   const lastSessionContextKeyRef = useRef<string | null>(null);
 
   // emit precisa estar antes do useEffect que usa ele
@@ -675,9 +757,16 @@ export function useOpencodeTranscriptBridge() {
 
   useEffect(() => {
     const previousAgentId = previousAgentIdRef.current;
+    const agentChanged = previousAgentId !== activeAgentId;
 
     if (previousAgentId) {
-      transcriptCacheRef.current.set(previousAgentId, useChatStore.getState().getSnapshot());
+      const previousSnapshot = useChatStore.getState().getSnapshot();
+      if (previousChatContextKeyRef.current) {
+        transcriptCacheRef.current.set(previousChatContextKeyRef.current, previousSnapshot);
+      }
+      if (previousChatContextKeyRef.current) {
+        savePersistedTranscript(previousChatContextKeyRef.current, previousSnapshot);
+      }
     }
 
     const runtime = runtimeRef.current;
@@ -689,14 +778,75 @@ export function useOpencodeTranscriptBridge() {
     runtime.lastFlushedTextByAgent.clear();
     runtime.thinkingSettledByAgent.clear();
 
-    if (activeAgentId && transcriptCacheRef.current.has(activeAgentId)) {
-      replaceTranscript(transcriptCacheRef.current.get(activeAgentId)!);
-    } else {
+    if (activeAgentId) {
+      const cachedSnapshot =
+        (transcriptStateKey ? transcriptCacheRef.current.get(transcriptStateKey) : null) ||
+        (transcriptStateKey ? loadPersistedTranscript(transcriptStateKey) : null);
+
+      if (cachedSnapshot) {
+      if (transcriptStateKey) {
+        transcriptCacheRef.current.set(transcriptStateKey, cachedSnapshot);
+      }
+      replaceTranscript(cachedSnapshot);
+      } else if (agentChanged) {
+        clearChat();
+      }
+    } else if (agentChanged) {
       clearChat();
     }
 
     previousAgentIdRef.current = activeAgentId;
-  }, [activeAgentId, clearChat, replaceTranscript]);
+  }, [activeAgentId, activeContextKey, clearChat, replaceTranscript, sessionContextKey, transcriptStateKey]);
+
+  useEffect(() => {
+    if (!activeContextKey || !activeAgentId) {
+      return;
+    }
+
+    let persistHandle: number | null = null;
+
+    const persistCurrentTranscript = () => {
+      const snapshot = useChatStore.getState().getSnapshot();
+      if (transcriptStateKey) {
+        transcriptCacheRef.current.set(transcriptStateKey, snapshot);
+        savePersistedTranscript(transcriptStateKey, snapshot);
+      }
+    };
+
+    const schedulePersist = () => {
+      if (persistHandle) {
+        window.clearTimeout(persistHandle);
+      }
+
+      persistHandle = window.setTimeout(() => {
+        persistCurrentTranscript();
+        persistHandle = null;
+      }, 150);
+    };
+
+    const unsubscribe = useChatStore.subscribe((state, previousState) => {
+      const transcriptChanged =
+        state.blocks !== previousState.blocks ||
+        state.blockIds !== previousState.blockIds ||
+        state.turns !== previousState.turns ||
+        state.turnIds !== previousState.turnIds;
+
+      if (transcriptChanged) {
+        schedulePersist();
+      }
+    });
+
+    schedulePersist();
+
+    return () => {
+      if (persistHandle) {
+        window.clearTimeout(persistHandle);
+      }
+
+      persistCurrentTranscript();
+      unsubscribe();
+    };
+  }, [activeAgentId, activeContextKey]);
 
   // Clear the current SDK session whenever the active chat context changes.
   // This avoids reusing a project session when the user switches to the CEO, and vice versa.
@@ -766,16 +916,15 @@ export function useOpencodeTranscriptBridge() {
             // Verificar a estrutura real da mensagem
             const role = msg.info?.role;
             const textContent = extractTextFromParts(msg.parts);
+            const visibleText = isCeoContext ? unwrapCeoMessage(textContent) : textContent;
+            const sanitizedVisibleText = stripCommandMarkupFromTranscript(visibleText);
             
             if (hasPlaceholder && !skippedHandoffPrompt && role === 'user') {
               skippedHandoffPrompt = true;
               continue;
             }
             
-            if (role === 'user' && textContent) {
-              const normalizedUserText = isCeoContext
-                ? unwrapCeoMessage(textContent)
-                : textContent;
+            if (role === 'user' && sanitizedVisibleText) {
               skippedHandoffPrompt = true;
               // Mensagem de usuário
               const turnId = createId('turn-user');
@@ -786,11 +935,11 @@ export function useOpencodeTranscriptBridge() {
                 type: 'user-message',
                 status: 'success',
                 timestamp: msg.info?.createdAt || Date.now(),
-                content: normalizedUserText,
+                content: sanitizedVisibleText,
               };
               createTurn(turnId);
               emit({ type: 'block-added', turnId, data: userBlock });
-            } else if (role === 'assistant' && textContent) {
+            } else if (role === 'assistant' && sanitizedVisibleText) {
               // Mensagem de assistant
               const turnId = createId('turn-asst');
               const blockId = createId('asst-historic');
@@ -800,7 +949,7 @@ export function useOpencodeTranscriptBridge() {
                 type: 'assistant-message',
                 status: 'success',
                 timestamp: msg.info?.createdAt || Date.now(),
-                content: textContent,
+                content: sanitizedVisibleText,
               };
               createTurn(turnId);
               emit({ type: 'block-added', turnId, data: assistantBlock });
@@ -1091,7 +1240,7 @@ export function useOpencodeTranscriptBridge() {
     const isActiveAgent = event.agentId === activeAgentIdRef.current;
     const isVisibleSubAgent = visibleSubAgentBlocksByAgentRef.current.has(event.agentId);
     if (!isActiveAgent && !isVisibleSubAgent) return;
-    if (!isRelevantSessionEvent(event.sessionId)) return;
+    if (!isRelevantSessionEvent(event.sessionId) && !isVisibleSubAgent) return;
     recordChatBridgeEvent('incoming:chunk');
     let nextText = event.message?.content?.text;
     if (!nextText) return;
@@ -1124,7 +1273,7 @@ export function useOpencodeTranscriptBridge() {
     const isActiveAgent = event.agentId === activeAgentIdRef.current;
     const isVisibleSubAgent = visibleSubAgentBlocksByAgentRef.current.has(event.agentId);
     if (!isActiveAgent && !isVisibleSubAgent) return;
-    if (!isRelevantSessionEvent(event.sessionId)) return;
+    if (!isRelevantSessionEvent(event.sessionId) && !isVisibleSubAgent) return;
     recordChatBridgeEvent('incoming:reasoning');
 
     if (isVisibleSubAgent && !isActiveAgent) {
@@ -1148,7 +1297,7 @@ export function useOpencodeTranscriptBridge() {
     const isActiveAgent = event.agentId === activeAgentIdRef.current;
     const isVisibleSubAgent = visibleSubAgentBlocksByAgentRef.current.has(event.agentId);
     if (!isActiveAgent && !isVisibleSubAgent) return;
-    if (!isRelevantSessionEvent(event.sessionId)) return;
+    if (!isRelevantSessionEvent(event.sessionId) && !isVisibleSubAgent) return;
     recordChatBridgeEvent(`incoming:tool:${event.state ?? 'unknown'}`);
 
     if (isVisibleSubAgent && !isActiveAgent) {
@@ -1267,7 +1416,7 @@ export function useOpencodeTranscriptBridge() {
     const isActiveAgent = event.agentId === activeAgentIdRef.current;
     const isVisibleSubAgent = visibleSubAgentBlocksByAgentRef.current.has(event.agentId);
     if (!isActiveAgent && !isVisibleSubAgent) return;
-    if (!isRelevantSessionEvent(event.sessionId)) return;
+    if (!isRelevantSessionEvent(event.sessionId) && !isVisibleSubAgent) return;
     recordChatBridgeEvent(`incoming:activity:${event.activity}`);
     if (!isTerminalToolName(event.toolName || event.title)) return;
 
@@ -1298,6 +1447,32 @@ export function useOpencodeTranscriptBridge() {
   const handleAgentHandoff = useCallback((event: AgentHandoffEvent) => {
     if (!event.toAgentId) return;
     recordChatBridgeEvent('incoming:agent-handoff');
+
+    const targetContextKey = event.teamId
+      ? buildSessionContextKey({
+          agentId: event.toAgentId,
+          isGlobal: false,
+          teamId: event.teamId,
+        })
+      : null;
+    const targetSessionContextKey = event.sessionId && targetContextKey
+      ? `${event.sessionId}:${targetContextKey}`
+      : targetContextKey;
+
+    if (event.sessionId && targetContextKey) {
+      useSessionStore.getState().addSession(
+        {
+          id: event.sessionId,
+          title: event.toAgentName || event.toAgentId,
+          time: {
+            created: Date.now(),
+            updated: Date.now(),
+          },
+        },
+        targetContextKey
+      );
+      useSessionStore.getState().selectSession(targetContextKey, event.sessionId);
+    }
 
     const turnId = createId('turn-subagent');
     const blockId = createId('sub-agent');
@@ -1332,7 +1507,9 @@ export function useOpencodeTranscriptBridge() {
     emit({ type: 'block-added', turnId, data: block });
     emit({ type: 'streaming-start' });
 
-    const existingSnapshot = transcriptCacheRef.current.get(event.toAgentId);
+    const existingSnapshot = targetSessionContextKey
+      ? transcriptCacheRef.current.get(targetSessionContextKey)
+      : transcriptCacheRef.current.get(event.toAgentId);
     const nextSnapshot: TranscriptSnapshot = {
       blocks: {
         ...(existingSnapshot?.blocks ?? {}),
@@ -1355,8 +1532,52 @@ export function useOpencodeTranscriptBridge() {
         : [...(existingSnapshot?.turnIds ?? []), turnId],
     };
 
-    transcriptCacheRef.current.set(event.toAgentId, nextSnapshot);
+    if (targetSessionContextKey) {
+      transcriptCacheRef.current.set(targetSessionContextKey, nextSnapshot);
+    }
   }, [createTurn, emit]);
+
+  const handleTaskDelegated = useCallback((event: TaskDelegatedEvent) => {
+    const sourceAgentId = event.fromAgentId || activeAgentIdRef.current;
+    if (!sourceAgentId || sourceAgentId !== activeAgentIdRef.current) {
+      return;
+    }
+    if (activeAgentTeam?.id && activeAgentTeam.id !== event.team.id) {
+      return;
+    }
+    if (!event.task?.description) {
+      return;
+    }
+
+    recordChatBridgeEvent('incoming:task-delegated');
+
+    const turnId = createId('turn-delegation');
+    createTurn(turnId);
+
+    const sourceAgent = activeContext?.agent;
+    const targetAgentName = activeAgentTeam?.agents.find((agent) => agent.id === event.task.agentId)?.name;
+    const assistantBlockId = ensureAssistantBlock(sourceAgentId);
+    const delegationText = [
+      `${targetAgentName || event.task.agentId}:`,
+      event.task.description,
+      event.task.files?.length ? `Arquivos: ${event.task.files.join(', ')}` : '',
+      event.task.branchName ? `Branch: ${event.task.branchName}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    emit({
+      type: 'block-updated',
+      blockId: assistantBlockId,
+      data: {
+        content: delegationText,
+        status: 'success',
+      } as Partial<AssistantMessageBlock>,
+    });
+
+    emit({ type: 'streaming-start' });
+    emit({ type: 'streaming-end' });
+  }, [activeAgentTeam, activeContext?.agent, createTurn, emit]);
 
   const handlePipelineUpdate = useCallback((event: PipelineUpdateEvent) => {
     if (event.type !== 'file.edited' || !event.agentId || event.agentId !== activeAgentIdRef.current) return;
@@ -1411,7 +1632,7 @@ export function useOpencodeTranscriptBridge() {
     const isActiveAgent = event.agentId === activeAgentIdRef.current;
     const isVisibleSubAgent = visibleSubAgentBlocksByAgentRef.current.has(event.agentId);
     if (!isActiveAgent && !isVisibleSubAgent) return;
-    if (!isRelevantSessionEvent(event.sessionId)) return;
+    if (!isRelevantSessionEvent(event.sessionId) && !isVisibleSubAgent) return;
     recordChatBridgeEvent(`incoming:status:${event.status}`);
 
     if (isVisibleSubAgent && !isActiveAgent) {
@@ -1447,7 +1668,7 @@ export function useOpencodeTranscriptBridge() {
     const isActiveAgent = event.agentId === activeAgentIdRef.current;
     const isVisibleSubAgent = visibleSubAgentBlocksByAgentRef.current.has(event.agentId);
     if (!isActiveAgent && !isVisibleSubAgent) return;
-    if (!isRelevantSessionEvent(event.sessionId)) return;
+    if (!isRelevantSessionEvent(event.sessionId) && !isVisibleSubAgent) return;
     recordChatBridgeEvent('incoming:done');
 
     if (isVisibleSubAgent && !isActiveAgent) {
@@ -1535,6 +1756,7 @@ export function useOpencodeTranscriptBridge() {
       onAgentTool?: (cb: (data: AgentToolEvent) => void) => () => void;
       onAgentActivity?: (cb: (data: AgentActivityEvent) => void) => () => void;
       onAgentHandoff?: (cb: (data: AgentHandoffEvent) => void) => () => void;
+      onTaskDelegated?: (cb: (data: TaskDelegatedEvent) => void) => () => void;
     };
 
     const unsubscribers = ([
@@ -1543,6 +1765,7 @@ export function useOpencodeTranscriptBridge() {
       maybeExtendedApi.onAgentTool?.(handleTool),
       maybeExtendedApi.onAgentActivity?.(handleActivity),
       maybeExtendedApi.onAgentHandoff?.(handleAgentHandoff),
+      maybeExtendedApi.onTaskDelegated?.(handleTaskDelegated),
       window.vibeAPI.onAgentStatus(handleStatus),
       window.vibeAPI.onAgentDone(handleDone),
       window.vibeAPI.onAgentError(handleError),
@@ -1554,7 +1777,7 @@ export function useOpencodeTranscriptBridge() {
         unsubscribe();
       }
     };
-  }, [handleActivity, handleAgentHandoff, handleChunk, handleDone, handleError, handlePipelineUpdate, handleReasoning, handleStatus, handleTool]);
+  }, [handleActivity, handleAgentHandoff, handleChunk, handleDone, handleError, handlePipelineUpdate, handleReasoning, handleStatus, handleTaskDelegated, handleTool]);
 
 
   const sendMessage = useCallback(async (text: string, options?: { model?: { modelID: string, providerID: string } }) => {

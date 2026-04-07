@@ -99,7 +99,8 @@ interface Window {
  onTaskCompleted: (callback: (data: any) => void) => void;
  onTaskFailed: (callback: (data: any) => void) => void;
  onTaskBlocked: (callback: (data: any) => void) => void;
- onPipelineStatusChanged: (callback: (data: any) => void) => void;
+ onTaskDelegated: (callback: (data: any) => void) => void;
+  onPipelineStatusChanged: (callback: (data: any) => void) => void;
  onWorktreeCreated: (callback: (data: any) => void) => void;
  onWorktreeRemoved: (callback: (data: any) => void) => void;
  onWorktreeError: (callback: (data: any) => void) => void;

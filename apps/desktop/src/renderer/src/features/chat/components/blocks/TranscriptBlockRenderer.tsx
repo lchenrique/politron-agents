@@ -22,6 +22,7 @@ import { ToolCallCard } from './ToolCallCard';
 import { ToolResultCard } from './ToolResultCard';
 import { FileChangesCard } from './FileChangesCard';
 import { ApprovalCard } from './ApprovalCard';
+import { DelegationCard } from './DelegationCard';
 import { SubAgentCard } from './SubAgentCard';
 
 // Heavy components - lazy loaded for code splitting
@@ -88,6 +89,10 @@ export const TranscriptBlockRenderer = memo(({ blockId }: TranscriptBlockRendere
     // === APPROVAL ===
     case 'approval':
       return <ApprovalCard blockId={block.id} />;
+
+    // === DELEGATION ===
+    case 'delegation':
+      return <DelegationCard blockId={block.id} />;
 
     // === SUB-AGENT ===
     case 'sub-agent':

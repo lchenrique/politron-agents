@@ -10,6 +10,7 @@ export type BlockType =
   | 'diff'
   | 'file-changes'
   | 'approval'
+  | 'delegation'
   | 'sub-agent';
 
 export interface BaseBlock {
@@ -75,6 +76,20 @@ export interface ApprovalBlock extends BaseBlock {
   isApproved?: boolean;
 }
 
+export interface DelegationBlock extends BaseBlock {
+  type: 'delegation';
+  teamId?: string;
+  teamName?: string;
+  fromAgentId?: string;
+  fromAgentName?: string;
+  toAgentId?: string;
+  toAgentName?: string;
+  branchName?: string;
+  task: string;
+  files?: string[];
+  statusMessage?: string;
+}
+
 export interface SubAgentBlock extends BaseBlock {
   type: 'sub-agent';
   agentId?: string;
@@ -99,4 +114,5 @@ export type Block =
   | DiffBlock
   | FileChangesBlock
   | ApprovalBlock
+  | DelegationBlock
   | SubAgentBlock;

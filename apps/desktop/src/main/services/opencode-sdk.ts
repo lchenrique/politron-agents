@@ -64,6 +64,7 @@ interface ResolvedAgentConfig {
 
 interface AgentHandoffEvent {
   team: Team
+  sessionId?: string
   fromAgentId: string
   fromAgentName?: string
   toAgentId: string
@@ -79,6 +80,30 @@ interface AgentHandoffEvent {
   }
 }
 
+type ToolInvocationData = Record<string, unknown>
+
+function stripCommandMarkupFromText(text: string): string {
+  if (!text.trim()) {
+    return text
+  }
+
+  const commandStartMatch = text.match(/\[(CREATE_TEAM|DELEGATE|HIRE_AGENT|PAUSE_TEAM|RESUME_TEAM|ASK_HUMAN)\]/i)
+  const invokeStartIndex = text.search(/<invoke\b/i)
+  const taskStartIndex = text.search(/<task\b/i)
+  const parameterStartIndex = text.search(/<parameter\b/i)
+
+  const candidateIndexes = [commandStartMatch?.index, invokeStartIndex, taskStartIndex, parameterStartIndex].filter(
+    (value): value is number => typeof value === "number" && value >= 0
+  )
+
+  if (candidateIndexes.length === 0) {
+    return text
+  }
+
+  const firstMarkerIndex = Math.min(...candidateIndexes)
+  return text.slice(0, firstMarkerIndex).trimEnd()
+}
+
 // Agent slug aliases for backward compatibility with legacy project agent names.
 // Only map to the SAME persona type - never redirect to an unrelated identity.
 const AGENT_SLUG_ALIASES: Record<string, string> = {
@@ -87,6 +112,42 @@ const AGENT_SLUG_ALIASES: Record<string, string> = {
   "qa-tester": "reality-checker",
   "devops-eng": "devops-automator",
   "ux-designer": "ui-designer",
+}
+
+function normalizeAgentLookupValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_]+/g, "-")
+}
+
+function matchesTeamAgentIdentity(agent: { name: string; catalogSlug?: string; role?: string }, value: string): boolean {
+  const lookup = normalizeAgentLookupValue(value)
+  const name = normalizeAgentLookupValue(agent.name)
+  const slug = normalizeAgentLookupValue(agent.catalogSlug || "")
+  const role = normalizeAgentLookupValue(agent.role || "")
+
+  return (
+    name === lookup ||
+    slug === lookup ||
+    role === lookup ||
+    name.includes(lookup) ||
+    slug.includes(lookup) ||
+    lookup.includes(slug)
+  )
+}
+
+// Local workspace personas sometimes need to be mounted on top of a native SDK
+// agent name. This keeps the workspace identity intact while avoiding
+// "Agent not found" errors from the SDK registry.
+const SDK_AGENT_NAME_BY_LOCAL_SLUG: Record<string, string> = {
+  "tech-lead": "Software Architect",
+}
+
+const SKILL_TO_TEAM_AGENT_HINT: Record<string, string> = {
+  "frontend-design": "frontend-developer",
 }
 
 class OpenCodeSdkService extends EventEmitter {
@@ -102,6 +163,7 @@ class OpenCodeSdkService extends EventEmitter {
   private assistantMessageIds: Set<string> = new Set()
   private sessionCreationPromises: Map<string, Promise<ManagedSession>> = new Map()
   private availableAgentsPromise: Promise<Map<string, string>> | null = null
+  private consumedDelegationSessions: Set<string> = new Set()
 
   /**
    * Invalidate the cached agent map so the next lookup refetches from SDK.
@@ -118,6 +180,10 @@ class OpenCodeSdkService extends EventEmitter {
     ceoCommandExecutor.on("agent:handoff", (event: AgentHandoffEvent) => {
       this.emit("vibe:agent:handoff", event)
       void this.handleAgentHandoff(event)
+    })
+
+    ceoCommandExecutor.on("task:delegated", (event) => {
+      this.emit("vibe:task:delegated", event)
     })
   }
 
@@ -268,6 +334,7 @@ Protocolos de colaboraÃ§Ã£o:
 - Sempre que citar outro agente, use o nome e/ou slug exatos do time para evitar ambiguidade.
 - Quando o usuÃ¡rio perguntar "quem Ã© vocÃª?" ou algo equivalente, responda mencionando seu papel e o nome do time.
 - Quando responder sobre outros agentes, use a visÃ£o do time atual e deixe claro quem Ã© o tech lead, quem estÃ¡ disponÃ­vel e quem jÃ¡ foi contratado.
+- Nunca use 'call_omo_agent' para acionar colegas do time; use apenas o protocolo local de [DELEGATE] e [HIRE_AGENT].
 - Sempre trate os colegas como membros do mesmo time, nunca como agentes genÃ©ricos soltos.
 `.trim()
   }
@@ -348,10 +415,23 @@ Regras:
     systemPromptPath?: string,
     agentSlug?: string
   ): Promise<string | undefined> {
+    if (agentSlug) {
+      const directLocalMapping = SDK_AGENT_NAME_BY_LOCAL_SLUG[agentSlug.toLowerCase()]
+      if (directLocalMapping) {
+        return directLocalMapping
+      }
+    }
+
     const availableAgents = await this.getAvailableAgentMap()
 
     // 1. Try resolving by catalog slug or ID
     if (agentSlug) {
+      const mappedAlias = AGENT_SLUG_ALIASES[agentSlug.toLowerCase()]
+      if (mappedAlias) {
+        const aliasMatch = availableAgents.get(mappedAlias.toLowerCase())
+        if (aliasMatch) return aliasMatch
+      }
+
       const match = availableAgents.get(agentSlug.toLowerCase())
       if (match) return match
       
@@ -370,6 +450,9 @@ Regras:
           const match = content.match(/^name:\s*(.+)$/m)
           if (match && match[1]) {
             const parsedName = match[1].trim().replace(/^['"]|['"]$/g, '')
+            if (parsedName.toLowerCase() === "tech lead") {
+              return "Software Architect"
+            }
             // Check if this parsed name exists in available agents
             const mapMatch = availableAgents.get(parsedName.toLowerCase())
             if (mapMatch) return mapMatch
@@ -638,13 +721,11 @@ Regras:
       system: finalSystemPrompt,
     }
 
-    // If the agent doesn't exist in the SDK, we fallback to 'general' 
-    // to prevent the SDK from defaulting to Sisyphus with its strong persona.
-    const sdkKnownAgents = ['CEO', 'Studio Producer', 'Frontend Developer', 'Backend Architect', 'UI Designer', 'DevOps Automator', 'Reality Checker']
-    if (agentSlug && sdkKnownAgents.includes(agentSlug)) {
+    // Prefer the exact resolved agent name from the workspace prompt.
+    // Falling back to `general` here was pushing team agents into a generic persona
+    // that could still emit unrelated external tool calls like `call_omo_agent`.
+    if (agentSlug?.trim()) {
       promptBody.agent = agentSlug
-    } else {
-      promptBody.agent = 'general'
     }
 
     if (model) {
@@ -720,6 +801,11 @@ Regras:
         "",
         "Responda de forma objetiva e, se precisar de outro agente, use [DELEGATE].",
       ].filter(Boolean).join("\n")
+
+      this.emit("vibe:agent:handoff", {
+        ...event,
+        sessionId: targetSession.session.id,
+      })
 
       await this.sendMessageToSession(
         targetSession.session.id,
@@ -842,7 +928,11 @@ Regras:
           const buffer = this.commandOutputBuffers.get(sessionID)
           if (buffer) {
             const parsed = parseCeoOutput(buffer)
-            for (const command of parsed.commands) {
+            const commands = this.consumedDelegationSessions.has(sessionID)
+              ? parsed.commands.filter((command) => command.type !== "DELEGATE")
+              : parsed.commands
+
+            for (const command of commands) {
               ceoCommandExecutor.execute(command, { agentId: managedSession.agentId, teamId: managedSession.teamId }).catch((err) => {
                 console.error("[OpenCodeSdkService] CEO command execution error:", err)
               })
@@ -857,6 +947,7 @@ Regras:
           }
 
           this.sessionTextBuffers.delete(sessionID)
+          this.consumedDelegationSessions.delete(sessionID)
         }
         break
       }
@@ -885,6 +976,9 @@ Regras:
           sessionId: sessionID,
           error
         })
+        if (sessionID) {
+          this.consumedDelegationSessions.delete(sessionID)
+        }
         break
       }
 
@@ -929,6 +1023,17 @@ Regras:
           if (managedSession) {
             const toolState = part.state
             const normalizedToolState = toolState as unknown as Record<string, unknown>
+
+            if (this.tryHandleCallOmoAgent(managedSession, part as unknown as Record<string, unknown>, normalizedToolState)) {
+              break
+            }
+
+            if ((part.tool || "").toLowerCase() === "skill" && toolState.status === "completed") {
+              if (this.tryHandleSkillInvocation(managedSession, part as unknown as Record<string, unknown>, normalizedToolState)) {
+                break
+              }
+            }
+
             this.emit("vibe:agent:tool", {
               agentId: managedSession.agentId,
               sessionId: sessionID,
@@ -1051,6 +1156,188 @@ Regras:
     return undefined
   }
 
+  private extractToolInvocationData(part: Record<string, unknown>, toolState: Record<string, unknown> | undefined): ToolInvocationData {
+    const candidates = [
+      (part as { input?: unknown }).input,
+      toolState?.input,
+      toolState?.metadata && typeof toolState.metadata === "object" ? (toolState.metadata as Record<string, unknown>).input : undefined,
+    ]
+
+    const merged: ToolInvocationData = {}
+
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== "object") {
+        continue
+      }
+
+      for (const [key, value] of Object.entries(candidate as Record<string, unknown>)) {
+        if (merged[key] === undefined) {
+          merged[key] = value
+        }
+      }
+    }
+
+    return merged
+  }
+
+  private getStringField(data: ToolInvocationData, ...keys: string[]): string | undefined {
+    for (const key of keys) {
+      const value = data[key]
+      if (typeof value === "string" && value.trim()) {
+        return value.trim()
+      }
+    }
+    return undefined
+  }
+
+  private resolveTeamAgentByIdentity(team: Team, value?: string): { id: string; name: string; catalogSlug?: string } | undefined {
+    if (!value) {
+      return undefined
+    }
+
+    return team.agents.find((agent) => matchesTeamAgentIdentity(agent, value))
+  }
+
+  private tryHandleCallOmoAgent(
+    managedSession: ManagedSession,
+    part: Record<string, unknown>,
+    toolState: Record<string, unknown> | undefined
+  ): boolean {
+    const teamId = managedSession.teamId
+    if (!teamId) {
+      return false
+    }
+
+    const team = teamStore.getTeam(teamId)
+    if (!team) {
+      return false
+    }
+
+    const invocation = this.extractToolInvocationData(part, toolState)
+    const targetHint = this.getStringField(
+      invocation,
+      "subagent_type",
+      "agent",
+      "agentSlug",
+      "agent_type",
+      "role",
+      "to",
+      "target"
+    )
+    const task = this.getStringField(invocation, "prompt", "description", "task", "message")
+
+    if (!targetHint || !task) {
+      return false
+    }
+
+    const targetAgent = this.resolveTeamAgentByIdentity(team, targetHint)
+    if (!targetAgent) {
+      return false
+    }
+
+    const fromAgent = team.agents.find((agent) => agent.id === managedSession.agentId)
+    this.consumedDelegationSessions.add(managedSession.session.id)
+
+    const handoffEvent: AgentHandoffEvent = {
+      team,
+      fromAgentId: managedSession.agentId,
+      fromAgentName: fromAgent?.name,
+      toAgentId: targetAgent.id,
+      toAgentName: targetAgent.name,
+      teamId: team.id,
+      teamName: team.name,
+      task,
+      files: Array.isArray(invocation.files)
+        ? invocation.files.filter((file): file is string => typeof file === "string" && file.trim()).map((file) => file.trim())
+        : undefined,
+      branchName: this.getStringField(invocation, "branchName", "branch", "target_branch"),
+      model: undefined,
+    }
+
+    this.emit("vibe:task:delegated", {
+      team,
+      task: {
+        id: crypto.randomUUID(),
+        teamId: team.id,
+        agentId: targetAgent.id,
+        description: task,
+        files: handoffEvent.files || [],
+        status: "queued",
+        branchName: handoffEvent.branchName,
+      },
+      fromAgentId: managedSession.agentId,
+      fromAgentName: fromAgent?.name,
+    })
+
+    void this.handleAgentHandoff(handoffEvent)
+    return true
+  }
+
+  private tryHandleSkillInvocation(
+    managedSession: ManagedSession,
+    part: Record<string, unknown>,
+    toolState: Record<string, unknown> | undefined
+  ): boolean {
+    const teamId = managedSession.teamId
+    if (!teamId) {
+      return false
+    }
+
+    const team = teamStore.getTeam(teamId)
+    if (!team) {
+      return false
+    }
+
+    const invocation = this.extractToolInvocationData(part, toolState)
+    const skillName = (this.getStringField(invocation, "name", "skill", "slug") || "").toLowerCase()
+    const mappedTargetHint =
+      SKILL_TO_TEAM_AGENT_HINT[skillName] ||
+      (skillName.includes("frontend") ? "frontend-developer" : undefined)
+    const task = this.getStringField(invocation, "user_message", "prompt", "description", "message")
+
+    if (!mappedTargetHint || !task) {
+      return false
+    }
+
+    const targetAgent = this.resolveTeamAgentByIdentity(team, mappedTargetHint)
+    if (!targetAgent) {
+      return false
+    }
+
+    const fromAgent = team.agents.find((agent) => agent.id === managedSession.agentId)
+    const handoffEvent: AgentHandoffEvent = {
+      team,
+      fromAgentId: managedSession.agentId,
+      fromAgentName: fromAgent?.name,
+      toAgentId: targetAgent.id,
+      toAgentName: targetAgent.name,
+      teamId: team.id,
+      teamName: team.name,
+      task,
+      files: [],
+      branchName: this.getStringField(invocation, "branchName", "branch", "target_branch"),
+      model: undefined,
+    }
+
+    this.emit("vibe:task:delegated", {
+      team,
+      task: {
+        id: crypto.randomUUID(),
+        teamId: team.id,
+        agentId: targetAgent.id,
+        description: task,
+        files: [],
+        status: "queued",
+        branchName: handoffEvent.branchName,
+      },
+      fromAgentId: managedSession.agentId,
+      fromAgentName: fromAgent?.name,
+    })
+
+    void this.handleAgentHandoff(handoffEvent)
+    return true
+  }
+
   private publishSessionText(sessionId: string, text: string, replace: boolean): void {
     const managedSession = this.findManagedSessionBySessionId(sessionId)
     if (!managedSession || !text) {
@@ -1059,6 +1346,7 @@ Regras:
     
     const currentText = this.sessionTextBuffers.get(sessionId) || ""
     const nextText = replace ? text : currentText + text
+    const visibleText = stripCommandMarkupFromText(nextText)
 
     this.sessionTextBuffers.set(sessionId, nextText)
 
@@ -1067,7 +1355,7 @@ Regras:
       sessionId,
       message: {
         content: {
-          text: nextText
+          text: visibleText
         }
       }
     })

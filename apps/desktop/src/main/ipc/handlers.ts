@@ -206,6 +206,7 @@ Protocolos de colaboração:
 - Quando o usuário perguntar "quem é você?" ou algo equivalente, responda mencionando seu papel e o nome do time.
 - Quando responder sobre outros agentes, use a visão do time atual e deixe claro quem é o tech lead, quem está disponível e quem já foi contratado.
 - Sempre trate os colegas como membros do mesmo time, nunca como agentes genéricos soltos.
+- Nunca use 'call_omo_agent' para acionar colegas do time; use apenas o protocolo local de [DELEGATE] e [HIRE_AGENT].
 `.trim()
 }
 
@@ -726,13 +727,11 @@ export function registerHandlers(): void {
       system: finalSystemPrompt,
     }
 
-    // If the agent doesn't exist in the SDK, we fallback to 'general' 
-    // to prevent the SDK from defaulting to Sisyphus with its strong persona.
-    const sdkKnownAgents = ['CEO', 'Studio Producer', 'Frontend Developer', 'Backend Architect', 'UI Designer', 'DevOps Automator', 'Reality Checker']
-    if (finalAgentSlug && sdkKnownAgents.includes(finalAgentSlug)) {
+    // Prefer the exact resolved agent name from the workspace prompt.
+    // Falling back to `general` here could place the session into a generic
+    // persona that still emits unrelated platform tools like `call_omo_agent`.
+    if (finalAgentSlug?.trim()) {
       promptBody.agent = finalAgentSlug
-    } else {
-      promptBody.agent = 'general'
     }
 
     if (model) {
@@ -801,6 +800,10 @@ export function registerHandlers(): void {
 
   openCodeSdkService.on('vibe:agent:handoff', (...args) => {
     forwardEventToRenderer('vibe:agent:handoff', ...args)
+  })
+
+  openCodeSdkService.on('vibe:task:delegated', (...args) => {
+    forwardEventToRenderer('vibe:task:delegated', ...args)
   })
 
   openCodeSdkService.on('vibe:ceo:ask-human', (...args) => {
