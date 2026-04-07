@@ -9,6 +9,7 @@ import { sessionStore, type AgentRole, type ManagedSession } from "./session-sto
 import { teamStore } from "./team-store"
 import { parseCeoOutput } from "./ceo-output-parser"
 import { ceoCommandExecutor } from "./ceo-command-executor"
+import type { Team } from "../types/team"
 
 type SdkStatus = "idle" | "retry" | "busy"
 
@@ -61,6 +62,23 @@ interface ResolvedAgentConfig {
   systemPrompt?: string
 }
 
+interface AgentHandoffEvent {
+  team: Team
+  fromAgentId: string
+  fromAgentName?: string
+  toAgentId: string
+  toAgentName?: string
+  teamId?: string
+  teamName?: string
+  task: string
+  files?: string[]
+  branchName?: string
+  model?: {
+    modelID: string
+    providerID: string
+  }
+}
+
 // Agent slug aliases for backward compatibility with legacy project agent names.
 // Only map to the SAME persona type - never redirect to an unrelated identity.
 const AGENT_SLUG_ALIASES: Record<string, string> = {
@@ -96,6 +114,11 @@ class OpenCodeSdkService extends EventEmitter {
   constructor() {
     super()
     this.setMaxListeners(100)
+
+    ceoCommandExecutor.on("agent:handoff", (event: AgentHandoffEvent) => {
+      this.emit("vibe:agent:handoff", event)
+      void this.handleAgentHandoff(event)
+    })
   }
 
   async initialize(): Promise<void> {
@@ -197,6 +220,82 @@ class OpenCodeSdkService extends EventEmitter {
       `[OpenCodeSdkService] Prompt file not found for "${systemPromptPath}" in workspace "${workspaceDirectory}"`
     )
     return undefined
+  }
+
+  private buildTeamContextPrompt(teamId?: string, agentId?: string, role?: AgentRole): string | undefined {
+    if (!teamId) {
+      return undefined
+    }
+
+    const team = teamStore.getTeam(teamId)
+    if (!team) {
+      return undefined
+    }
+
+    const lead = team.agents.find((agent) => agent.id === team.techLeadAgentId)
+    const currentAgent = team.agents.find((agent) => agent.id === agentId)
+    const members = team.agents.map((agent) => {
+      const marker = agent.id === agentId ? " <- vocÃª" : ""
+      const leadMarker = agent.isTeamLead ? " (tech lead)" : ""
+      const files = agent.currentFiles?.length ? ` | arquivos: ${agent.currentFiles.join(", ")}` : ""
+      return `- ${agent.name} [${agent.catalogSlug}]${leadMarker} | status: ${agent.status}${files}${marker}`
+    }).join("\n")
+
+    const isTechLead = role === "tech-lead" || lead?.id === agentId || currentAgent?.isTeamLead
+    const identityLine = isTechLead
+      ? `VocÃª Ã© o Tech Lead deste time e deve se apresentar como responsÃ¡vel tÃ©cnico por ${team.name}.`
+      : `VocÃª Ã© ${currentAgent?.name ?? "um agente do time"} e faz parte do time ${team.name}.`
+    const collaborationLine = lead
+      ? `Seu tech lead Ã© ${lead.name}. Quando precisar coordenar ou pedir decisÃ£o, alinhe com ele.`
+      : `Ainda nÃ£o existe tech lead definido para este time; ajude a organizar o trabalho e sinalize a necessidade de um responsÃ¡vel tÃ©cnico.`
+
+    return `
+
+[Contexto do Time]
+Time: ${team.name}
+Projeto: ${team.projectName ?? team.projectPath}
+Pasta: ${team.projectPath}
+Tech lead: ${lead?.name ?? "nÃ£o definido"}
+${identityLine}
+${collaborationLine}
+
+Membros do time:
+${members || "- nenhum agente contratado ainda"}
+
+Protocolos de colaboraÃ§Ã£o:
+- VocÃª pode delegar tarefas para outro agente do mesmo time usando [DELEGATE] com team, to, task e opcionalmente files.
+- Se o agente correto nÃ£o existir, vocÃª pode solicitar contrataÃ§Ã£o usando [HIRE_AGENT] com team, role e agentSlug.
+- Sempre que citar outro agente, use o nome e/ou slug exatos do time para evitar ambiguidade.
+- Quando o usuÃ¡rio perguntar "quem Ã© vocÃª?" ou algo equivalente, responda mencionando seu papel e o nome do time.
+- Quando responder sobre outros agentes, use a visÃ£o do time atual e deixe claro quem Ã© o tech lead, quem estÃ¡ disponÃ­vel e quem jÃ¡ foi contratado.
+- Sempre trate os colegas como membros do mesmo time, nunca como agentes genÃ©ricos soltos.
+`.trim()
+  }
+
+  private buildWorkspaceContextPrompt(): string | undefined {
+    const teams = teamStore.listTeams()
+    if (teams.length === 0) {
+      return undefined
+    }
+
+    const teamsSummary = teams.map((team) => {
+      const lead = team.agents.find((agent) => agent.id === team.techLeadAgentId)
+      const memberNames = team.agents.map((agent) => `${agent.name} (${agent.catalogSlug})`).join(", ")
+      return `- ${team.name} | tech lead: ${lead?.name ?? "não definido"} | membros: ${memberNames || "nenhum"}`
+    }).join("\n")
+
+    return `
+
+[Visão do Workspace]
+Você faz parte de um workspace com múltiplos times.
+Times ativos:
+${teamsSummary}
+
+Regras:
+- Antes de pedir ajuda, tente delegar ao agente mais apropriado do time.
+- Se não houver agente adequado, peça contratação com [HIRE_AGENT].
+- Mantenha as mensagens curtas, objetivas e específicas ao papel de cada agente.
+`.trim()
   }
 
   private toAgentLookupKeys(value: string): string[] {
@@ -495,11 +594,14 @@ class OpenCodeSdkService extends EventEmitter {
       managedSession.systemPrompt,
       managedSession.agentSlug,
       managedSession.workspaceDirectory,
-      model
+      model,
+      managedSession.teamId,
+      managedSession.role,
+      managedSession.agentId
     )
   }
 
-  private async sendMessageToSession(sessionId: string, content: string, systemPrompt?: string, agentSlug?: string, workspaceDirectory?: string, model?: { modelID: string, providerID: string }): Promise<void> {
+  private async sendMessageToSession(sessionId: string, content: string, systemPrompt?: string, agentSlug?: string, workspaceDirectory?: string, model?: { modelID: string, providerID: string }, teamId?: string, role?: AgentRole, agentId?: string): Promise<void> {
     if (!this.client) {
       throw new Error("SDK client not initialized")
     }
@@ -509,7 +611,11 @@ class OpenCodeSdkService extends EventEmitter {
       text: content
     }]
 
-    const finalSystemPrompt = systemPrompt
+    const collaborationPrompt =
+      this.buildTeamContextPrompt(teamId, agentId, role) ||
+      (role === "global-ceo" || role === "global-agent" ? this.buildWorkspaceContextPrompt() : undefined)
+
+    const finalSystemPrompt = [systemPrompt, collaborationPrompt].filter(Boolean).join("\n\n")
 
     // DEBUG: Log what we're sending
     console.log('[sendMessageToSession] Sending to SDK:', {
@@ -576,6 +682,62 @@ class OpenCodeSdkService extends EventEmitter {
         agentSlug
       })
       throw error
+    }
+  }
+
+  private async handleAgentHandoff(event: AgentHandoffEvent): Promise<void> {
+    try {
+      const targetTeam = teamStore.getTeam(event.team.id)
+      if (!targetTeam) {
+        throw new Error(`Target team not found: ${event.team.id}`)
+      }
+
+      const targetAgent = targetTeam.agents.find((agent) => agent.id === event.toAgentId)
+      if (!targetAgent) {
+        throw new Error(`Target agent not found in team: ${event.toAgentId}`)
+      }
+
+      let targetSession = sessionStore.getSession(event.toAgentId)
+      if (!targetSession) {
+        targetSession = await this.ensureSession({
+          agentId: targetAgent.id,
+          teamId: targetTeam.id,
+          role: targetAgent.isTeamLead || targetAgent.role === "tech-lead" ? "tech-lead" : "team-agent",
+          agentSlug: targetAgent.catalogSlug,
+          workspaceDirectory: targetTeam.projectPath,
+          systemPromptPath: targetAgent.systemPromptPath,
+        })
+      }
+
+      const fromAgent = targetTeam.agents.find((agent) => agent.id === event.fromAgentId)
+      const toAgent = targetAgent
+
+      const handoffMessage = [
+        `Você recebeu uma tarefa de ${fromAgent?.name ?? event.fromAgentId} para ${toAgent?.name ?? event.toAgentId}.`,
+        `Time: ${targetTeam.name}`,
+        `Tarefa: ${event.task}`,
+        event.files?.length ? `Arquivos relacionados: ${event.files.join(", ")}` : "",
+        "",
+        "Responda de forma objetiva e, se precisar de outro agente, use [DELEGATE].",
+      ].filter(Boolean).join("\n")
+
+      await this.sendMessageToSession(
+        targetSession.session.id,
+        handoffMessage,
+        targetSession.systemPrompt,
+        targetSession.agentSlug,
+        targetSession.workspaceDirectory,
+        event.model,
+        targetSession.teamId,
+        targetSession.role,
+        targetSession.agentId
+      )
+    } catch (error) {
+      console.error("[OpenCodeSdkService] Failed to route agent handoff:", error)
+      this.emit("vibe:agent:error", {
+        agentId: event.toAgentId,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 

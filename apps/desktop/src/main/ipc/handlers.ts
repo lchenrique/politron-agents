@@ -11,7 +11,7 @@ import { pipelineExecutor } from '../services/pipeline-executor'
 import { gitWorktreeService } from '../services/git-worktree'
 import { fileLockManager } from '../services/file-lock'
 import { AGENT_CATALOG, GLOBAL_CEO_PROMPT, TEAM_TEMPLATES, getAgentBySlug, getTemplateById, loadAgentTemplates } from '../services/agent-catalog'
-import type { Agent } from '../types/team'
+import type { Agent, Team } from '../types/team'
 
 function forwardEventToRenderer(channel: string, ...args: unknown[]): void {
   const windows = BrowserWindow.getAllWindows()
@@ -154,6 +154,59 @@ function resolveFallbackPromptPath(input: { role?: string; agentSlug?: string })
   const fallbackSlug = resolveFallbackCatalogSlug(input)
   if (!fallbackSlug) return undefined
   return getAgentBySlug(fallbackSlug)?.systemPromptPath || `.opencode/agents/${fallbackSlug}.md`
+}
+
+function buildTeamContextPrompt(teamId?: string, agentId?: string, role?: string): string | undefined {
+  if (!teamId) {
+    return undefined
+  }
+
+  const team = teamStore.getTeam(teamId) as Team | undefined
+  if (!team) {
+    return undefined
+  }
+
+  const lead = team.agents.find((agent) => agent.id === team.techLeadAgentId)
+  const currentAgent = team.agents.find((agent) => agent.id === agentId)
+  const isTechLead = role === 'tech-lead' || lead?.id === agentId || currentAgent?.isTeamLead
+  const members = team.agents
+    .map((agent) => {
+      const marker = agent.id === agentId ? ' <- você' : ''
+      const leadMarker = agent.isTeamLead ? ' (tech lead)' : ''
+      const files = agent.currentFiles?.length ? ` | arquivos: ${agent.currentFiles.join(', ')}` : ''
+      return `- ${agent.name} [${agent.catalogSlug}]${leadMarker} | status: ${agent.status}${files}${marker}`
+    })
+    .join('\n')
+
+  const identityLine = isTechLead
+    ? `Você é o Tech Lead deste time e deve se apresentar como responsável técnico por ${team.name}.`
+    : `Você é ${currentAgent?.name ?? 'um agente do time'} e faz parte do time ${team.name}.`
+
+  const collaborationLine = lead
+    ? `Seu tech lead é ${lead.name}. Quando precisar coordenar ou pedir decisão, alinhe com ele.`
+    : 'Ainda não existe tech lead definido para este time; ajude a organizar o trabalho e sinalize a necessidade de um responsável técnico.'
+
+  return `
+
+[Contexto do Time]
+Time: ${team.name}
+Projeto: ${team.projectName ?? team.projectPath}
+Pasta: ${team.projectPath}
+Tech lead: ${lead?.name ?? 'não definido'}
+${identityLine}
+${collaborationLine}
+
+Membros do time:
+${members || '- nenhum agente contratado ainda'}
+
+Protocolos de colaboração:
+- Você pode delegar tarefas para outro agente do mesmo time usando [DELEGATE] com team, to, task e opcionalmente files.
+- Se o agente correto não existir, você pode solicitar contratação usando [HIRE_AGENT] com team, role e agentSlug.
+- Sempre que citar outro agente, use o nome e/ou slug exatos do time para evitar ambiguidade.
+- Quando o usuário perguntar "quem é você?" ou algo equivalente, responda mencionando seu papel e o nome do time.
+- Quando responder sobre outros agentes, use a visão do time atual e deixe claro quem é o tech lead, quem está disponível e quem já foi contratado.
+- Sempre trate os colegas como membros do mesmo time, nunca como agentes genéricos soltos.
+`.trim()
 }
 
 function stripFrontmatter(content: string): string {
@@ -620,10 +673,13 @@ export function registerHandlers(): void {
       systemPromptPath: resolvedSystemPromptPath,
       agentSlug: resolvedCatalogSlug,
     })
+    const teamContextPrompt = buildTeamContextPrompt(teamId, agentId, role)
 
     // Use the exact SDK agent name when we can resolve it, but always reinforce
     // identity with the local prompt file from `.opencode/agents`.
-    const finalSystemPrompt = forcedSystemPrompt || resolvedPromptConfig.systemPrompt || systemPrompt
+    const finalSystemPrompt = [forcedSystemPrompt || resolvedPromptConfig.systemPrompt || systemPrompt, teamContextPrompt]
+      .filter(Boolean)
+      .join('\n\n')
     const finalAgentSlug = resolvedPromptConfig.agentSlug
 
     // Never silently fall back to default SDK persona.
@@ -741,6 +797,10 @@ export function registerHandlers(): void {
 
   openCodeSdkService.on('vibe:agent:error', (...args) => {
     forwardEventToRenderer('vibe:agent:error', ...args)
+  })
+
+  openCodeSdkService.on('vibe:agent:handoff', (...args) => {
+    forwardEventToRenderer('vibe:agent:handoff', ...args)
   })
 
   openCodeSdkService.on('vibe:ceo:ask-human', (...args) => {

@@ -38,7 +38,7 @@ export interface ThinkingBlock extends BaseBlock {
 export interface ToolCallBlock extends BaseBlock {
   type: 'tool-call';
   toolName: string;
-  args?: Record<string, any>;
+  args?: Record<string, unknown>;
 }
 
 export interface ToolResultBlock extends BaseBlock {
@@ -77,6 +77,13 @@ export interface ApprovalBlock extends BaseBlock {
 
 export interface SubAgentBlock extends BaseBlock {
   type: 'sub-agent';
+  agentId?: string;
+  teamId?: string;
+  teamName?: string;
+  fromAgentName?: string;
+  branchName?: string;
+  isHandoffPlaceholder?: boolean;
+  handoffMessage?: string;
   agentName: string;
   task: string;
   result?: string;

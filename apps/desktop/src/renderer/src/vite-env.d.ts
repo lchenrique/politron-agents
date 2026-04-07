@@ -80,6 +80,7 @@ interface Window {
  onAgentReasoning: (callback: (data: any) => void) => void;
  onAgentTool: (callback: (data: any) => void) => void;
  onAgentActivity: (callback: (data: any) => void) => void;
+ onAgentHandoff: (callback: (data: unknown) => void) => void;
  onAgentStatus: (callback: (data: any) => void) => void;
  onAgentDone: (callback: (data: any) => void) => void;
  onAgentError: (callback: (data: any) => void) => void;

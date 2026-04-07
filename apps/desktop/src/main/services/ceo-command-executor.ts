@@ -5,14 +5,35 @@ import { pipelineExecutor } from "./pipeline-executor"
 import { getTemplateById, getAgentBySlug } from "./agent-catalog"
 import type { Agent, Team } from "../types/team"
 
+function firstPayloadValue(value: string | string[] | undefined): string | undefined {
+  if (value == null) {
+    return undefined
+  }
+
+  return Array.isArray(value) ? value[0] : value
+}
+
+function payloadToArray(value: string | string[] | undefined): string[] {
+  if (value == null) {
+    return []
+  }
+
+  return Array.isArray(value) ? value : [value]
+}
+
+interface CommandExecutionContext {
+  agentId?: string
+  teamId?: string
+}
+
 export class CeoCommandExecutor extends EventEmitter {
-  async execute(command: CeoCommand): Promise<void> {
+  async execute(command: CeoCommand, context: CommandExecutionContext = {}): Promise<void> {
     switch (command.type) {
       case "CREATE_TEAM":
         await this.handleCreateTeam(command)
         break
       case "DELEGATE":
-        await this.handleDelegate(command)
+        await this.handleDelegate(command, context)
         break
       case "HIRE_AGENT":
         await this.handleHireAgent(command)
@@ -84,36 +105,127 @@ export class CeoCommandExecutor extends EventEmitter {
     this.emit("team:created", team)
   }
 
-  private async handleDelegate(command: CeoCommand): Promise<void> {
+  private async handleDelegate(command: CeoCommand, context: CommandExecutionContext = {}): Promise<void> {
     const teamName = command.payload.team as string
     const task = command.payload.task as string
+    const files = payloadToArray(command.payload.files)
+    const targetAgentId = firstPayloadValue(command.payload.agentId)
+    const targetAgentName = firstPayloadValue(command.payload.to) ?? firstPayloadValue(command.payload.target) ?? firstPayloadValue(command.payload.agent)
+    const targetAgentSlug = firstPayloadValue(command.payload.agentSlug)
+    const targetRole = firstPayloadValue(command.payload.role)
+    const autoHire = firstPayloadValue(command.payload.autoHire) === "true"
 
-    if (!teamName || !task) {
-      this.emit("error", { command, message: "Missing required fields: team, task" })
+    if (!task) {
+      this.emit("error", { command, message: "Missing required field: task" })
       return
     }
 
-    const team = this.findTeamByName(teamName)
+    const team = teamName
+      ? this.findTeamByName(teamName)
+      : context.teamId
+      ? teamStore.getTeam(context.teamId)
+      : undefined
+
     if (!team) {
-      this.emit("error", { command, message: `Team not found: ${teamName}` })
+      this.emit("error", { command, message: `Team not found: ${teamName || context.teamId || "unknown"}` })
       return
     }
 
-    const agentId = team.techLeadAgentId || team.agents[0]?.id
-    if (!agentId) {
-      this.emit("error", { command, message: `No agents available in team: ${teamName}` })
+    const resolveTargetAgent = (): Agent | undefined => {
+      if (targetAgentId) {
+        const byId = team.agents.find((agent) => agent.id === targetAgentId)
+        if (byId) return byId
+      }
+
+      if (targetAgentSlug) {
+        const bySlug = team.agents.find((agent) => agent.catalogSlug === targetAgentSlug || agent.role === targetAgentSlug)
+        if (bySlug) return bySlug
+      }
+
+      if (targetRole) {
+        const byRole = team.agents.find((agent) => agent.role === targetRole)
+        if (byRole) return byRole
+      }
+
+      if (targetAgentName) {
+        const byName = team.agents.find((agent) => agent.name.toLowerCase() === targetAgentName.toLowerCase())
+        if (byName) return byName
+      }
+
+      return undefined
+    }
+
+    const hireMissingAgent = (): Agent | undefined => {
+      const slugToUse = targetAgentSlug || targetRole || targetAgentName
+      if (!slugToUse) {
+        return undefined
+      }
+
+      const agentEntry = getAgentBySlug(slugToUse)
+      if (!agentEntry) {
+        return undefined
+      }
+
+      const agent: Agent = {
+        id: crypto.randomUUID(),
+        name: agentEntry.name,
+        role: agentEntry.role,
+        catalogSlug: agentEntry.slug,
+        systemPromptPath: agentEntry.systemPromptPath || "",
+        status: "idle",
+        color: agentEntry.color,
+        currentFiles: [],
+        hiredAt: new Date().toISOString(),
+      }
+
+      teamStore.addAgentToTeam(team.id, agent)
+      return agent
+    }
+
+    const targetAgent = resolveTargetAgent() ?? (autoHire ? hireMissingAgent() : undefined)
+
+    if (!targetAgent) {
+      const fallbackAgentId = team.techLeadAgentId || team.agents[0]?.id
+      if (!fallbackAgentId) {
+        this.emit("error", { command, message: `No agents available in team: ${teamName}` })
+        return
+      }
+
+      const pipelineTask = pipelineExecutor.addTask({
+        teamId: team.id,
+        agentId: fallbackAgentId,
+        description: task,
+        files,
+        dependsOn: [],
+        branchName: firstPayloadValue(command.payload.branchName),
+      })
+
+      this.emit("task:delegated", { team, task: pipelineTask })
       return
     }
 
     const pipelineTask = pipelineExecutor.addTask({
       teamId: team.id,
-      agentId,
+      agentId: targetAgent.id,
       description: task,
-      files: [],
+      files,
       dependsOn: [],
+      branchName: firstPayloadValue(command.payload.branchName),
     })
 
     this.emit("task:delegated", { team, task: pipelineTask })
+    this.emit("agent:handoff", {
+      team,
+      fromAgentId: context.agentId || targetAgentId || team.techLeadAgentId || targetAgent.id,
+      fromAgentName: context.agentId ? team.agents.find((agent) => agent.id === context.agentId)?.name : undefined,
+      toAgentId: targetAgent.id,
+      toAgentName: targetAgent.name,
+      teamId: team.id,
+      teamName: team.name,
+      task,
+      files,
+      branchName: firstPayloadValue(command.payload.branchName),
+    })
   }
 
   private async handleHireAgent(command: CeoCommand): Promise<void> {
