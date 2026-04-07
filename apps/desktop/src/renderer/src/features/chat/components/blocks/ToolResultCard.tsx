@@ -4,13 +4,13 @@ import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
 import { ToolResultBlock } from '../../types/block.types';
 import { useBlock, useIsBlockExpanded, useChatStore } from '../../store/chatStore';
-import { ChevronDown, CheckCircle2, XCircle, Loader2, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
 import type { Components } from 'react-markdown';
 
 const markdownComponents: Components = {
   pre: ({ children }) => (
-    <pre className="my-0 overflow-x-auto rounded-xl border border-border/60 bg-background/60 p-4 text-sm shadow-inner">
+    <pre className="my-0 overflow-x-auto rounded-xl border border-border bg-muted/30 p-4 text-sm shadow-inner font-mono">
       {children}
     </pre>
   ),
@@ -20,7 +20,7 @@ const markdownComponents: Components = {
     if (!isBlockCode) {
       return (
         <code
-          className="rounded-md border border-border/30 bg-muted/70 px-1.5 py-0.5 font-mono text-[0.92em] text-primary"
+          className="rounded-md border border-border/30 bg-muted px-1.5 py-0.5 font-mono text-[0.92em] text-foreground"
           {...props}
         >
           {children}
@@ -109,7 +109,6 @@ export const ToolResultCard = memo(({ blockId }: ToolResultCardProps) => {
   const block = useBlock(blockId) as ToolResultBlock | undefined;
   const isExpanded = useIsBlockExpanded(blockId);
   const toggleBlockExpanded = useChatStore((state) => state.toggleBlockExpanded);
-  const isRunning = block?.status === 'running' || block?.status === 'streaming';
   const preview = useMemo(() => {
     if (!block?.result) return '';
     const maxLen = 150;
@@ -127,7 +126,7 @@ export const ToolResultCard = memo(({ blockId }: ToolResultCardProps) => {
     if (parsed.kind === 'file') {
       return (
         <div className="space-y-3">
-          <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 text-xs text-muted-foreground/70">
+          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground/70">
             <div className="font-mono truncate text-foreground/80">{parsed.filePath}</div>
             <div className="mt-1 uppercase tracking-wider">{parsed.language}</div>
           </div>
@@ -140,7 +139,7 @@ export const ToolResultCard = memo(({ blockId }: ToolResultCardProps) => {
 
     if (parsed.kind === 'markdown') {
       return (
-        <div className="prose prose-invert max-w-none prose-pre:my-0 prose-pre:bg-transparent">
+        <div className="prose prose-sm max-w-none prose-pre:my-0 prose-pre:bg-transparent">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
             {parsed.content}
           </ReactMarkdown>
@@ -148,67 +147,52 @@ export const ToolResultCard = memo(({ blockId }: ToolResultCardProps) => {
       );
     }
 
-    return <pre className="whitespace-pre-wrap break-all">{parsed.content}</pre>;
+    return <pre className="whitespace-pre-wrap break-all leading-relaxed">{parsed.content}</pre>;
   };
 
   return (
-    <div className="flex w-full group py-2">
-      <div className="flex-1 ml-12 rounded-xl overflow-hidden border border-border/60 bg-secondary/20">
+    <div className="flex w-full group py-1 animate-fade-in">
+      <div className="flex-1 ml-12 rounded-lg bg-muted/10 border border-border overflow-hidden transition-all shadow-xs">
         {/* Header - always clickable if result is long */}
         <div
           className={clsx(
-            'flex items-start gap-3 px-4 py-3',
-            isLongResult ? 'cursor-pointer hover:bg-secondary/30' : ''
+            'flex items-center gap-3 px-4 py-2 bg-muted/20 border-b border-border',
+            isLongResult ? 'cursor-pointer hover:bg-muted/30' : ''
           )}
           onClick={() => isLongResult && toggleBlockExpanded(blockId)}
         >
-          {/* Status icon */}
-          <div className="shrink-0 mt-0.5">
-            {isRunning ? (
-              <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
-            ) : block.status === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            ) : block.status === 'error' ? (
-              <XCircle className="w-4 h-4 text-red-500" />
+          {/* Status icon/label */}
+          <div className="flex items-center gap-2 flex-1">
+             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">result</span>
+             <div className="h-px bg-border/40 flex-1"></div>
+             <span className="font-mono text-[11px] text-muted-foreground">{block.toolName}</span>
+          </div>
+
+          {isLongResult && (
+            <div className="text-muted-foreground/60">
+               {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="px-4 py-3">
+          <div className="font-mono text-[13px] text-foreground/90 leading-relaxed overflow-hidden">
+            {isLongResult && !isExpanded ? (
+              renderContent(previewResult)
             ) : (
-              <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
+              renderContent(parsedResult)
             )}
           </div>
 
-          {/* Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-xs text-muted-foreground/60">
-                {block.toolName}
-              </span>
-              <span className="text-xs text-muted-foreground/40">result</span>
-            </div>
-
-            <div className="font-mono text-sm text-foreground/80">
-              {isLongResult && !isExpanded ? (
-                renderContent(previewResult)
-              ) : (
-                renderContent(parsedResult)
-              )}
-            </div>
-
-            {/* Expand indicator */}
-            {isLongResult && (
-              <div className="flex items-center gap-1 mt-2 text-xs text-primary">
-                {isExpanded ? (
-                  <>
-                    <ChevronUp className="w-3 h-3" />
-                    <span>Show less</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-3 h-3" />
-                    <span>Show more ({block.result.length} chars)</span>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          {isLongResult && !isExpanded && (
+            <button 
+              onClick={() => toggleBlockExpanded(blockId)}
+              className="mt-2 text-[11px] font-bold text-muted-foreground hover:text-foreground uppercase tracking-wider transition-colors"
+            >
+              Ver resultado completo ({block.result.length} chars)
+            </button>
+          )}
         </div>
       </div>
     </div>

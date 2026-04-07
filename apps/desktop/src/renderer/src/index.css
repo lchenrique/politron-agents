@@ -1299,3 +1299,44 @@
 .markdown-body .hljs-deletion {
   color: hsl(0 84% 60%);
 }
+
+/* Agent Loader Squares */
+.agent-loader {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 2px;
+  width: 14px;
+  height: 14px;
+}
+
+.agent-loader .square {
+  background: currentColor;
+  border-radius: 1px;
+  animation: square-blink 1.2s infinite ease-in-out;
+  opacity: 0.2;
+}
+
+@keyframes square-blink {
+  0%, 100% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.agent-loader .square:nth-child(1) { animation-delay: 0s; }
+.agent-loader .square:nth-child(2) { animation-delay: 0.1s; }
+.agent-loader .square:nth-child(3) { animation-delay: 0.2s; }
+.agent-loader .square:nth-child(4) { animation-delay: 0.3s; }
+.agent-loader .square:nth-child(5) { animation-delay: 0.4s; }
+.agent-loader .square:nth-child(6) { animation-delay: 0.5s; }
+.agent-loader .square:nth-child(7) { animation-delay: 0.6s; }
+.agent-loader .square:nth-child(8) { animation-delay: 0.7s; }
+.agent-loader .square:nth-child(9) { animation-delay: 0.8s; }
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+.animate-cursor-blink {
+  animation: cursor-blink 1s step-end infinite;
+}

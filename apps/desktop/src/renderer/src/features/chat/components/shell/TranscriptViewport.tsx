@@ -12,7 +12,7 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useTurnIds, useAutoScroll, useChatStore, useBlockIds } from '../../store/chatStore';
+import { useTurnIds, useAutoScroll, useChatStore, useBlockIds, useIsStreaming } from '../../store/chatStore';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { TranscriptTurn } from '../turn/TranscriptTurn';
 import { recordChatRender } from '../../perf/chatPerf';
@@ -30,7 +30,38 @@ export function TranscriptViewport() {
   const isNearBottomRef = useRef(true);
   const isScrollingRef = useRef(false);
   const scrollRafRef = useRef<number | null>(null);
+  const scrollEndRafRef = useRef<number | null>(null);
   const useVirtualizedList = turnIds.length > 8;
+  const isStreaming = useIsStreaming();
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (scrollEndRafRef.current !== null) {
+      window.cancelAnimationFrame(scrollEndRafRef.current);
+      scrollEndRafRef.current = null;
+    }
+
+    isScrollingRef.current = true;
+
+    // Use a single animation frame to ensure the DOM has updated
+    // behavior 'auto' is much more reliable for sticky scrolling during high-frequency updates
+    scrollEndRafRef.current = window.requestAnimationFrame(() => {
+      const target = scrollRef.current;
+      if (!target) return;
+
+      target.scrollTo({
+        top: target.scrollHeight,
+        behavior
+      });
+
+      // Reset the scrolling flag after a small delay
+      window.setTimeout(() => {
+        isScrollingRef.current = false;
+      }, 50);
+    });
+  }, []);
 
   // TanStack Virtualizer
   const rowVirtualizer = useVirtualizer({
@@ -43,43 +74,47 @@ export function TranscriptViewport() {
   // Autoscroll effect when new blocks are added
   useEffect(() => {
     if (autoScroll && blockIds.length > previousBlockCount.current) {
-      isScrollingRef.current = true;
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
-      // Reset flag after scroll completes
-      setTimeout(() => {
-        isScrollingRef.current = false;
-      }, 50);
+      scrollToBottom('auto');
     }
     previousBlockCount.current = blockIds.length;
-  }, [autoScroll, blockIds.length]);
+  }, [autoScroll, blockIds.length, scrollToBottom]);
+
+  // Persistent autoscroll during streaming
+  useEffect(() => {
+    let interval: number | null = null;
+    if (autoScroll && isStreaming) {
+      // During active streaming, we force a scroll check every 100ms
+      // This is a safety net for when ResizeObserver might miss sub-pixel changes
+      interval = window.setInterval(() => {
+        scrollToBottom('auto');
+      }, 100);
+    }
+    return () => {
+      if (interval) window.clearInterval(interval);
+    };
+  }, [autoScroll, isStreaming, scrollToBottom]);
 
   // ResizeObserver to keep scroll at bottom during active streaming when content grows vertically
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
+    // We observe the container that holds the content
     const contentEl = el.firstElementChild;
     if (!contentEl) return;
 
     const observer = new ResizeObserver(() => {
       if (autoScroll) {
-        isScrollingRef.current = true;
-        el.scrollTop = el.scrollHeight;
-        setTimeout(() => {
-          isScrollingRef.current = false;
-        }, 50);
+        scrollToBottom('auto');
       }
     });
 
     observer.observe(contentEl);
 
     return () => observer.disconnect();
-  }, [autoScroll]);
+  }, [autoScroll, scrollToBottom]);
 
   // Detect scroll position to show/hide ScrollToBottomButton
-  // IMPORTANT: Don't update state if we're programmatically scrolling
   const handleScroll = useCallback(() => {
     if (isScrollingRef.current) return;
     if (scrollRafRef.current !== null) return;
@@ -91,16 +126,24 @@ export function TranscriptViewport() {
       if (!el) return;
 
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const nearBottom = distanceFromBottom < 150;
+      // Increased buffer for detection
+      const nearBottom = distanceFromBottom < 200;
 
       if (isNearBottomRef.current !== nearBottom) {
         isNearBottomRef.current = nearBottom;
         setIsNearBottom(nearBottom);
       }
 
+      // Automatically disable autoScroll if user explicitly scrolls up
       if (!nearBottom && autoScroll) {
         setAutoScroll(false);
         setUserScrolledUp(true);
+      }
+      
+      // Automatically RE-ENABLE autoScroll if user scrolls back to bottom manually
+      if (nearBottom && !autoScroll) {
+        setAutoScroll(true);
+        setUserScrolledUp(false);
       }
     });
   }, [autoScroll, setAutoScroll, setUserScrolledUp]);
@@ -111,19 +154,16 @@ export function TranscriptViewport() {
     setUserScrolledUp(false);
     isNearBottomRef.current = true;
     setIsNearBottom(true);
-    if (scrollRef.current) {
-      isScrollingRef.current = true;
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      setTimeout(() => {
-        isScrollingRef.current = false;
-      }, 50);
-    }
-  }, [setAutoScroll, setUserScrolledUp]);
+    scrollToBottom('smooth');
+  }, [scrollToBottom, setAutoScroll, setUserScrolledUp]);
 
   useEffect(() => {
     return () => {
       if (scrollRafRef.current !== null) {
         window.cancelAnimationFrame(scrollRafRef.current);
+      }
+      if (scrollEndRafRef.current !== null) {
+        window.cancelAnimationFrame(scrollEndRafRef.current);
       }
     };
   }, []);

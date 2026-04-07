@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { ToolCallBlock } from '../../types/block.types';
 import { useBlock, useIsBlockExpanded, useChatStore } from '../../store/chatStore';
-import { ChevronDown, ChevronRight, Loader2, Wrench } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 
 interface ToolCallCardProps {
@@ -19,65 +19,49 @@ export const ToolCallCard = memo(({ blockId }: ToolCallCardProps) => {
   const hasArgs = block.args && Object.keys(block.args).length > 0;
 
   return (
-    <div className="flex w-full group py-2">
-      <div className="flex-1 ml-12 rounded-xl overflow-hidden border border-border/80 bg-secondary/40 transition-colors">
+    <div className="flex w-full group py-1 animate-fade-in">
+      <div className="flex-1 ml-12 rounded-lg bg-card border border-border shadow-xs overflow-hidden transition-all hover:bg-muted/10">
         {/* Header */}
         <button
           onClick={() => toggleBlockExpanded(blockId)}
-          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/30 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors"
         >
-          {/* Expand/Collapse icon */}
-          <div className="shrink-0 text-muted-foreground">
-            {isExpanded ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-          </div>
+          <div className="flex items-center gap-3">
+            {/* Status icon */}
+            <div className="shrink-0">
+              {isRunning ? (
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse outline outline-2 outline-amber-500/20" />
+              ) : block.status === 'success' ? (
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              ) : (
+                <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/40" />
+              )}
+            </div>
 
-          {/* Tool icon and status */}
-          <div className="shrink-0">
-            {isRunning ? (
-              <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
-            ) : (
-              <Wrench className="w-5 h-5 text-muted-foreground" />
-            )}
-          </div>
-
-          {/* Tool name and args preview */}
-          <div className="flex-1 min-w-0">
-            <div className="font-mono text-sm text-foreground/90 font-medium">
+            {/* Tool name */}
+            <div className="font-mono text-[13px] text-foreground font-medium tracking-tight">
               {block.toolName}
             </div>
-            {!isExpanded && hasArgs && (
-              <div className="text-xs text-muted-foreground truncate mt-0.5">
-                {Object.keys(block.args || {}).join(', ')}
-              </div>
-            )}
           </div>
 
-          {/* Status badge */}
-          <div
-            className={clsx(
-              'px-2 py-1 rounded text-xs font-medium',
-              isRunning
-                ? 'bg-amber-500/10 text-amber-400'
-                : block.status === 'success'
-                ? 'bg-emerald-500/10 text-emerald-400'
-                : block.status === 'error'
-                ? 'bg-red-500/10 text-red-400'
-                : 'bg-muted text-muted-foreground'
-            )}
-          >
-            {isRunning ? 'Running' : block.status}
+          <div className="flex items-center gap-3">
+            <span className={clsx(
+              "text-[10px] font-bold uppercase tracking-wider",
+              isRunning ? "text-amber-600" : block.status === 'success' ? "text-emerald-600" : "text-muted-foreground/60"
+            )}>
+              {isRunning ? 'running' : block.status}
+            </span>
+            <div className="text-muted-foreground/40">
+               {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            </div>
           </div>
         </button>
 
         {/* Expanded args view */}
         {isExpanded && hasArgs && (
-          <div className="px-4 pb-4 border-t border-border/50 mt-0">
-            <div className="font-mono text-xs text-muted-foreground bg-background/50 rounded-lg p-3 mt-3 overflow-x-auto">
-              <pre className="whitespace-pre-wrap break-all">
+          <div className="px-4 pb-4 border-t border-border bg-muted/5">
+            <div className="font-mono text-xs text-muted-foreground mt-3 bg-muted/20 rounded-md p-3 overflow-x-auto border border-border/40">
+              <pre className="whitespace-pre-wrap break-all leading-relaxed">
                 {JSON.stringify(block.args, null, 2)}
               </pre>
             </div>

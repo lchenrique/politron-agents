@@ -300,6 +300,19 @@ function stripCommandMarkupFromTranscript(text: string): string {
     return text;
   }
 
+  // Pre-emptive stripping of partial markers to avoid UI flicker/leaks
+  // Matches partial tags like <inv, <task, <para, [DELE etc.
+  const partialMarkers = [
+    /<[itp][\w:]*$/i,           // <i, <in, <inv..., <t, <ta, <tas..., <p, <pa, <par...
+    /<minimax:[\w:]*$/i,        // <minimax:too...
+    /\[[CDHPRA][\w_]*$/i        // [DELE..., [HIRE..., [ASK...
+  ];
+
+  let cleanText = text;
+  for (const regex of partialMarkers) {
+    cleanText = cleanText.replace(regex, '');
+  }
+
   const markers = [
     text.search(/\[(CREATE_TEAM|DELEGATE|HIRE_AGENT|PAUSE_TEAM|RESUME_TEAM|ASK_HUMAN)\]/i),
     text.search(/<invoke\b/i),
@@ -309,7 +322,7 @@ function stripCommandMarkupFromTranscript(text: string): string {
   ].filter((index): index is number => index >= 0);
 
   if (markers.length === 0) {
-    return text;
+    return cleanText.trimEnd();
   }
 
   const firstMarker = Math.min(...markers);
@@ -1283,6 +1296,9 @@ export function useOpencodeTranscriptBridge() {
       return;
     }
 
+    // Ensure previous text is flushed before showing reasoning/thinking
+    flushBufferedText(event.agentId);
+
     const blockId = ensureThinkingBlock(event.agentId);
     emit({
       type: 'block-updated',
@@ -1312,6 +1328,11 @@ export function useOpencodeTranscriptBridge() {
     }
 
     const runtime = runtimeRef.current;
+    
+    // Ensure pre-text is flushed before any tool block is created/updated (Rule 01)
+    if (event.state === 'running' || event.state === 'pending') {
+      flushBufferedText(event.agentId);
+    }
     const turnId = ensureTurn(event.agentId);
     const status = event.state === 'error'
       ? 'error'
@@ -1433,6 +1454,8 @@ export function useOpencodeTranscriptBridge() {
 
     if (event.activity !== 'idle') {
       runtimeRef.current.needsNewAssistantBlock.set(event.agentId, true);
+      // Flush before starting activity
+      flushBufferedText(event.agentId);
     }
 
     const blockId = ensureTerminalBlock(event.agentId, event.title || event.toolName || 'terminal');
@@ -1449,6 +1472,11 @@ export function useOpencodeTranscriptBridge() {
   const handleAgentHandoff = useCallback((event: AgentHandoffEvent) => {
     if (!event.toAgentId) return;
     recordChatBridgeEvent('incoming:agent-handoff');
+
+    const sourceAgentId = activeAgentIdRef.current;
+    if (sourceAgentId) {
+      flushBufferedText(sourceAgentId);
+    }
 
     const targetContextKey = event.teamId
       ? buildSessionContextKey({
@@ -1552,6 +1580,7 @@ export function useOpencodeTranscriptBridge() {
     }
 
     recordChatBridgeEvent('incoming:task-delegated');
+    flushBufferedText(sourceAgentId);
 
     const turnId = createId('turn-delegation');
     createTurn(turnId);
