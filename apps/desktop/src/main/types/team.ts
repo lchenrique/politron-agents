@@ -2,7 +2,15 @@ export type AgentStatus = "idle" | "running" | "waiting" | "blocked" | "done" | 
 
 export type PipelineStatus = "idle" | "running" | "paused" | "done" | "failed"
 
-export type TaskStatus = "pending" | "running" | "done" | "failed" | "blocked"
+export type TaskStatus =
+  | "backlog"
+  | "triage"
+  | "ready"
+  | "in_progress"
+  | "blocked"
+  | "in_review"
+  | "done"
+  | "cancelled"
 
 export type TeamStatus = "active" | "paused"
 
@@ -57,7 +65,16 @@ export interface PipelineTask {
   id: string
   teamId: string
   agentId: string
+  title: string
   description: string
+  requesterAgentId?: string
+  requesterAgentName?: string
+  createdByAgentId?: string
+  createdByAgentName?: string
+  responsibleAgentRole?: string
+  priority?: string
+  context?: string
+  acceptanceCriteria?: string[]
   files: string[]
   status: TaskStatus
   dependsOn: string[]
@@ -65,6 +82,18 @@ export interface PipelineTask {
   startedAt?: string
   finishedAt?: string
   error?: string
+  result?: string
+  observations?: string
+  blockedReason?: string
+  artifacts?: string[]
+  history?: Array<{
+    id: string
+    timestamp: string
+    status: TaskStatus
+    actorAgentId?: string
+    actorAgentName?: string
+    note?: string
+  }>
 }
 
 export interface TeamTemplate {

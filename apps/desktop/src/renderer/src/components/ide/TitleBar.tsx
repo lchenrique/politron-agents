@@ -1,16 +1,14 @@
 import type { CSSProperties } from "react";
-import { Minus, Square, Terminal, X, MessageSquare, Layout } from "lucide-react";
+import { Minus, Square, Terminal, X } from "lucide-react";
 import { ThemeSelector } from "./ThemeSelector";
 
 interface TitleBarProps {
     terminalOpen: boolean;
-    activeTab: "chat" | "board";
-    onTabChange: (tab: "chat" | "board") => void;
     onToggleTerminal: () => void;
     className?: string;
 }
 
-const TitleBar = ({ terminalOpen, activeTab, onTabChange, onToggleTerminal, className }: TitleBarProps) => {
+const TitleBar = ({ terminalOpen, onToggleTerminal, className }: TitleBarProps) => {
     const isWindows = window.vibeAPI.platform === "win32";
 
 

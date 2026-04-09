@@ -8,7 +8,8 @@ export const workspaceAtom: WritableAtom<Workspace | null, [Workspace | null], v
 export const activeTeamIdAtom: WritableAtom<string | null, [string | null], void> = atom(null)
 export const activeProjectIdAtom: WritableAtom<string | null, [string | null], void> = atom(null)
 export const activeAgentTabIdAtom: WritableAtom<string | null, [string | null], void> = atom(null)
-export const sidebarViewAtom: WritableAtom<'root' | 'project', ['root' | 'project'], void> = atom('root')
+export const sidebarViewAtom: WritableAtom<'root' | 'project' | 'settings', ['root' | 'project' | 'settings'], void> = atom('root')
+export const settingsSectionAtom: WritableAtom<'defaults' | 'providers' | 'mcp' | 'permissions' | 'tools' | 'advanced', ['defaults' | 'providers' | 'mcp' | 'permissions' | 'tools' | 'advanced'], void> = atom('defaults')
 export const activeViewGroupIdAtom: WritableAtom<'projects' | 'office' | 'tasks', ['projects' | 'office' | 'tasks'], void> = atom('projects')
 
 export const teamsAtom = atom(
@@ -26,6 +27,15 @@ export const activeTeamAtom = atom(
 
 export const projectsAtom = atom(
     (get) => get(workspaceAtom)?.projects ?? []
+)
+
+export const activeProjectViewAtom = atom(
+    (get) => {
+        const workspace = get(workspaceAtom)
+        const activeProjectId = get(activeProjectIdAtom)
+        if (!workspace || !activeProjectId) return "chat" as const
+        return workspace.projectViews?.[activeProjectId] ?? "chat"
+    }
 )
 
 export const globalAgentsAtom = atom<Agent[]>(

@@ -74,6 +74,8 @@ interface TeamCreateFromTemplateInput {
   projectPath?: string
 }
 
+type PipelineTaskStatus = "backlog" | "triage" | "ready" | "in_progress" | "blocked" | "in_review" | "done" | "cancelled"
+
 const api = {
   windowControls: {
     minimize: () => ipcRenderer.invoke('vibe:window:minimize'),
@@ -150,6 +152,8 @@ const api = {
       ipcRenderer.invoke('vibe:pipeline:addTask', input),
     start: (taskId: string) => 
       ipcRenderer.invoke('vibe:pipeline:start', taskId),
+    updateTaskStatus: (input: { taskId: string; status: PipelineTaskStatus; note?: string; actorAgentId?: string; actorAgentName?: string; blockedReason?: string; result?: string; observations?: string }) =>
+      ipcRenderer.invoke('vibe:pipeline:updateTaskStatus', input),
     getStatus: (teamId: string) => 
       ipcRenderer.invoke('vibe:pipeline:getStatus', teamId),
     getTasks: (teamId: string) => 
@@ -186,6 +190,7 @@ const api = {
   onAgentDone: (callback: EventCallback) => onChannel('vibe:agent:done', callback),
   onAgentError: (callback: EventCallback) => onChannel('vibe:agent:error', callback),
   onAgentHandoff: (callback: EventCallback) => onChannel('vibe:agent:handoff', callback),
+  onCommunicationUpdate: (callback: EventCallback) => onChannel('vibe:communication:update', callback),
   onCeoAskHuman: (callback: EventCallback) => onChannel('vibe:ceo:ask-human', callback),
   onPipelineUpdate: (callback: EventCallback) => onChannel('vibe:pipeline:update', callback),
 
@@ -202,6 +207,7 @@ const api = {
   onTaskCompleted: (callback: EventCallback) => onChannel('vibe:task:completed', callback),
   onTaskFailed: (callback: EventCallback) => onChannel('vibe:task:failed', callback),
   onTaskBlocked: (callback: EventCallback) => onChannel('vibe:task:blocked', callback),
+  onTaskUpdated: (callback: EventCallback) => onChannel('vibe:task:updated', callback),
   onTaskDelegated: (callback: EventCallback) => onChannel('vibe:task:delegated', callback),
   onPipelineStatusChanged: (callback: EventCallback) => onChannel('vibe:pipeline:status-changed', callback),
 
@@ -257,8 +263,49 @@ const api = {
 
   opencode: {
     listModels: (): Promise<Array<{ id: string; providerID: string; name: string }>> =>
-      ipcRenderer.invoke('vibe:opencode:listModels')
+      ipcRenderer.invoke('vibe:opencode:listModels'),
+    getConfigDiagnostics: (input?: { projectPath?: string }) =>
+      ipcRenderer.invoke('vibe:opencode:getConfigDiagnostics', input),
+    getConfigEditorData: (input?: { scope?: "global" | "project"; projectPath?: string }) =>
+      ipcRenderer.invoke('vibe:opencode:getConfigEditorData', input),
+    saveConfigEditorData: (input: {
+      scope: "global" | "project";
+      projectPath?: string;
+      defaults: {
+        username?: string;
+        logLevel?: string;
+        model?: string;
+        small_model?: string;
+        default_agent?: string;
+        share?: string;
+        autoupdate?: boolean | "notify";
+        snapshot?: boolean;
+      };
+      providers: Array<{
+        id: string;
+        name?: string;
+        api?: string;
+        active: boolean;
+        options: {
+          apiKey?: string;
+          baseURL?: string;
+          enterpriseUrl?: string;
+          setCacheKey?: boolean;
+          timeout?: number;
+          chunkTimeout?: number;
+        };
+      }>;
+      mcpJson: string;
+      permissionsJson: string;
+      toolsJson: string;
+    }) =>
+      ipcRenderer.invoke('vibe:opencode:saveConfigEditorData', input),
   }
+  ,
+  workspace: {
+    clearBoard: (input?: { scope?: "project" | "all"; teamId?: string }) =>
+      ipcRenderer.invoke('vibe:workspace:clearBoard', input),
+  },
 }
 
 contextBridge.exposeInMainWorld('vibeAPI', api)

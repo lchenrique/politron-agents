@@ -24,9 +24,14 @@ export const ToolCallCard = memo(({ blockId }: ToolCallCardProps) => {
         {/* Header */}
         <button
           onClick={() => toggleBlockExpanded(blockId)}
-          className="w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors"
+          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-colors"
         >
-          <div className="flex items-center gap-3">
+          {/* Chevron */}
+          <div className="text-muted-foreground/60 shrink-0">
+             {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          </div>
+
+          <div className="flex items-center gap-3 flex-1 overflow-hidden">
             {/* Status icon */}
             <div className="shrink-0">
               {isRunning ? (
@@ -39,21 +44,18 @@ export const ToolCallCard = memo(({ blockId }: ToolCallCardProps) => {
             </div>
 
             {/* Tool name */}
-            <div className="font-mono text-[13px] text-foreground font-medium tracking-tight">
+            <div className="font-mono text-[13px] text-foreground font-medium tracking-tight truncate">
               {block.toolName}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center shrink-0">
             <span className={clsx(
               "text-[10px] font-bold uppercase tracking-wider",
               isRunning ? "text-amber-600" : block.status === 'success' ? "text-emerald-600" : "text-muted-foreground/60"
             )}>
               {isRunning ? 'running' : block.status}
             </span>
-            <div className="text-muted-foreground/40">
-               {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-            </div>
           </div>
         </button>
 

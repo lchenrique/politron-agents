@@ -2,7 +2,14 @@ import { EventEmitter } from "events"
 import type { CeoCommand } from "../types/ceo"
 import { teamStore } from "./team-store"
 import { pipelineExecutor } from "./pipeline-executor"
-import { getTemplateById, getAgentBySlug } from "./agent-catalog"
+import {
+  getTemplateById,
+  getAgentByIdentity,
+  getAgentBySlug,
+  getGlobalAgentByIdentity,
+  getMarketplaceAgentByIdentity,
+  listMarketplaceAgentIdentities,
+} from "./agent-catalog"
 import type { Agent, Team } from "../types/team"
 
 function firstPayloadValue(value: string | string[] | undefined): string | undefined {
@@ -23,20 +30,55 @@ function payloadToArray(value: string | string[] | undefined): string[] {
 
 function getPayloadValue(payload: CeoCommand["payload"], key: string): string | string[] | undefined {
   const normalizedKey = key.toLowerCase()
+  const aliasesByKey: Record<string, string[]> = {
+    team: ["time", "equipe", "projeto"],
+    task: ["tarefa", "pedido", "demanda"],
+    to: ["para", "destino"],
+    target: ["alvo"],
+    agent: ["agente"],
+    justification: ["justificativa", "motivo", "razao", "razão"],
+    role: ["papel", "cargo", "funcao", "função"],
+    desiredrole: ["papeldesejado", "cargodesejado", "desired_role"],
+    requestedrole: ["papelsolicitado", "cargosolicitado", "requested_role"],
+    branchname: ["branch", "ramo"],
+    successcriteria: ["criteriosdesucesso", "critériosdesucesso"],
+    priority: ["prioridade"],
+    context: ["contexto"],
+    files: ["arquivos"],
+  }
+  const aliases = aliasesByKey[normalizedKey] ?? []
+
   return (
     payload[key] ??
     payload[normalizedKey] ??
     payload[key.charAt(0).toUpperCase() + key.slice(1)] ??
     payload[key.toUpperCase()] ??
     payload[key.replace(/(^|-)([a-z])/g, (_, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`)] ??
-    payload[normalizedKey.replace(/(^|-)([a-z])/g, (_, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`)]
+    payload[normalizedKey.replace(/(^|-)([a-z])/g, (_, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`)] ??
+    aliases.flatMap((alias) => [
+      payload[alias],
+      payload[alias.toLowerCase()],
+      payload[alias.toUpperCase()],
+      payload[alias.charAt(0).toUpperCase() + alias.slice(1)],
+    ]).find((value) => value != null)
   )
+}
+
+function isTruthyFlag(value: string | string[] | undefined): boolean {
+  const raw = firstPayloadValue(value)
+  if (!raw) {
+    return false
+  }
+
+  return ["true", "1", "yes", "sim"].includes(raw.trim().toLowerCase())
 }
 
 function normalizeLookupValue(value: string): string {
   return value
     .trim()
     .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[_\s]+/g, "-")
 }
 
@@ -59,6 +101,12 @@ function matchesAgentIdentity(agent: Agent, value: string): boolean {
 interface CommandExecutionContext {
   agentId?: string
   teamId?: string
+  role?: "global-ceo" | "global-agent" | "tech-lead" | "team-agent"
+  agentSlug?: string
+}
+
+function buildMarketplaceSupportMessage(): string {
+  return `Supported marketplace agents: ${listMarketplaceAgentIdentities().join(", ")}`
 }
 
 export class CeoCommandExecutor extends EventEmitter {
@@ -71,7 +119,7 @@ export class CeoCommandExecutor extends EventEmitter {
         await this.handleDelegate(command, context)
         break
       case "HIRE_AGENT":
-        await this.handleHireAgent(command)
+        await this.handleHireAgent(command, context)
         break
       case "PAUSE_TEAM":
         await this.handlePauseTeam(command)
@@ -142,7 +190,7 @@ export class CeoCommandExecutor extends EventEmitter {
 
   private async handleDelegate(command: CeoCommand, context: CommandExecutionContext = {}): Promise<void> {
     const teamName = getPayloadValue(command.payload, "team") as string
-    const task = getPayloadValue(command.payload, "task") as string
+    const requestedTask = firstPayloadValue(getPayloadValue(command.payload, "task"))
     const files = payloadToArray(getPayloadValue(command.payload, "files"))
     const targetAgentId = firstPayloadValue(getPayloadValue(command.payload, "agentId"))
     const targetAgentName =
@@ -152,22 +200,21 @@ export class CeoCommandExecutor extends EventEmitter {
     const targetAgentSlug = firstPayloadValue(getPayloadValue(command.payload, "agentSlug"))
     const targetRole = firstPayloadValue(getPayloadValue(command.payload, "role"))
     const autoHire = firstPayloadValue(getPayloadValue(command.payload, "autoHire")) === "true"
+    const branchName = firstPayloadValue(getPayloadValue(command.payload, "branchName"))
 
-    if (!task) {
-      this.emit("error", { command, message: "Missing required field: task" })
-      return
-    }
-
-    const team = teamName
-      ? this.findTeamByName(teamName)
-      : context.teamId
-      ? teamStore.getTeam(context.teamId)
-      : undefined
+    const namedTeam = teamName ? this.findTeamByName(teamName) : undefined
+    const globalTargetFromTeamField = !namedTeam && teamName ? getGlobalAgentByIdentity(teamName) : undefined
+    const contextualTeam = context.teamId ? teamStore.getTeam(context.teamId) : undefined
+    const team = namedTeam ?? (globalTargetFromTeamField ? contextualTeam : undefined) ?? contextualTeam
 
     if (!team) {
       this.emit("error", { command, message: `Team not found: ${teamName || context.teamId || "unknown"}` })
       return
     }
+
+    const fromAgentName = context.agentId
+      ? team.agents.find((agent) => agent.id === context.agentId)?.name
+      : undefined
 
     const resolveTargetAgent = (): Agent | undefined => {
       if (targetAgentId) {
@@ -193,13 +240,22 @@ export class CeoCommandExecutor extends EventEmitter {
       return undefined
     }
 
+    const resolveGlobalTarget = () => {
+      const targetHint = targetAgentSlug || targetRole || targetAgentName || globalTargetFromTeamField?.name
+      if (!targetHint) {
+        return undefined
+      }
+
+      return getGlobalAgentByIdentity(targetHint)
+    }
+
     const hireMissingAgent = (): Agent | undefined => {
       const slugToUse = targetAgentSlug || targetRole || targetAgentName
       if (!slugToUse) {
         return undefined
       }
 
-      const agentEntry = getAgentBySlug(slugToUse)
+      const agentEntry = getAgentBySlug(slugToUse) ?? getAgentByIdentity(slugToUse)
       if (!agentEntry) {
         return undefined
       }
@@ -221,67 +277,192 @@ export class CeoCommandExecutor extends EventEmitter {
     }
 
     const targetAgent = resolveTargetAgent() ?? (autoHire ? hireMissingAgent() : undefined)
+    const globalTarget = targetAgent ? undefined : resolveGlobalTarget()
+
+    // Direct flow flag: bypass hierarchical check for direct user → agent communication
+    const isDirectFlow = isTruthyFlag(firstPayloadValue(getPayloadValue(command.payload, "directFlow")))
+
+    const isStaffingRequest =
+      Boolean(globalTarget) &&
+      (globalTarget.slug === "hr-global" || /rh global/i.test(globalTarget.name))
+    const staffingRole =
+      firstPayloadValue(getPayloadValue(command.payload, "desiredRole")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "role")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "position")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "profile")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "requestedRole"))
+    const staffingJustification =
+      firstPayloadValue(getPayloadValue(command.payload, "justification")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "reason")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "context")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "why"))
+    const staffingAgentIdentity =
+      firstPayloadValue(getPayloadValue(command.payload, "agentSlug")) ||
+      staffingRole
+    const staffingAgent = staffingAgentIdentity
+      ? getMarketplaceAgentByIdentity(staffingAgentIdentity)
+      : undefined
+    const synthesizedStaffingTask =
+      staffingAgent && team
+        ? `Avaliar e viabilizar contratação/alocação de ${staffingAgent.name} para o time ${team.name}`
+        : staffingRole && team
+        ? `Avaliar e viabilizar contratação/alocação de ${staffingRole} para o time ${team.name}`
+        : team
+        ? `Avaliar reforço de capacidade para o time ${team.name}`
+        : "Avaliar necessidade de contratação ou alocação para o time"
+    const task = requestedTask?.trim() || (isStaffingRequest ? synthesizedStaffingTask : "")
+
+    if (!task) {
+      this.emit("error", { command, message: "Missing required field: task" })
+      return
+    }
+
+    if (globalTarget) {
+      if (isStaffingRequest && staffingAgentIdentity && !staffingAgent) {
+        this.emit("error", {
+          command,
+          message: `Unsupported marketplace agent requested for staffing: ${staffingAgentIdentity}. ${buildMarketplaceSupportMessage()}`,
+        })
+        return
+      }
+
+      const normalizedTask = task.trim().toLowerCase()
+      const looksLikeEmptyStaffingRequest =
+        isStaffingRequest &&
+        !staffingRole &&
+        !staffingJustification &&
+        (normalizedTask === "hire_agent" ||
+          normalizedTask === "contratar" ||
+          normalizedTask === "contratar agente" ||
+          normalizedTask === "hiring" ||
+          normalizedTask === "staffing")
+
+      if (looksLikeEmptyStaffingRequest) {
+        this.emit("error", {
+          command,
+          message: "Missing required staffing fields: desiredRole and justification",
+        })
+        return
+      }
+
+      this.emit("task:delegated", {
+        team,
+        task: {
+          id: crypto.randomUUID(),
+          teamId: team.id,
+          agentId: globalTarget.id,
+          description: task,
+          files,
+          status: "queued",
+          branchName,
+        },
+        fromAgentId: context.agentId || team.techLeadAgentId || globalTarget.id,
+        fromAgentName,
+      })
+
+      this.emit("agent:handoff", {
+        team,
+        fromAgentId: context.agentId || team.techLeadAgentId || globalTarget.id,
+        fromAgentName,
+        toAgentId: globalTarget.id,
+        toAgentName: globalTarget.name,
+        toAgentSlug: globalTarget.slug,
+        toAgentPromptPath: globalTarget.systemPromptPath,
+        targetScope: "global",
+        teamId: team.id,
+        teamName: team.name,
+        task,
+        payload: command.payload,
+        files,
+        branchName,
+      })
+      return
+    }
 
     if (!targetAgent) {
       const fallbackAgentId = team.techLeadAgentId || team.agents[0]?.id
       if (!fallbackAgentId) {
-        this.emit("error", { command, message: `No agents available in team: ${teamName}` })
+        this.emit("error", { command, message: `No agents available in team: ${team.name}` })
         return
       }
 
-      const pipelineTask = pipelineExecutor.addTask({
+      const pipelineTask = pipelineExecutor.ensureTask({
         teamId: team.id,
         agentId: fallbackAgentId,
         description: task,
         files,
         dependsOn: [],
-        branchName: firstPayloadValue(getPayloadValue(command.payload, "branchName")),
-      })
+        branchName,
+      }).task
 
       this.emit("task:delegated", {
         team,
         task: pipelineTask,
         fromAgentId: context.agentId || team.techLeadAgentId || fallbackAgentId,
-      fromAgentName: context.agentId ? team.agents.find((agent) => agent.id === context.agentId)?.name : undefined,
-    })
-    return
-  }
+        fromAgentName,
+      })
+      return
+    }
 
-    const pipelineTask = pipelineExecutor.addTask({
-      teamId: team.id,
-      agentId: targetAgent.id,
-      description: task,
-      files,
-      dependsOn: [],
-      branchName: firstPayloadValue(getPayloadValue(command.payload, "branchName")),
-    })
+    // In direct flow, never queue for board - send handoff directly to the executor
+    // In hierarchical flow, only queue if target is NOT a Tech Lead
+    const shouldQueueBoardIssue = isDirectFlow
+      ? false
+      : !(targetAgent.isTeamLead || targetAgent.role === "tech-lead")
 
-    this.emit("task:delegated", {
-      team,
-      task: pipelineTask,
-      fromAgentId: context.agentId || team.techLeadAgentId || targetAgent.id,
-      fromAgentName: context.agentId ? team.agents.find((agent) => agent.id === context.agentId)?.name : undefined,
-    })
+    if (shouldQueueBoardIssue) {
+      const pipelineTask = pipelineExecutor.ensureTask({
+        teamId: team.id,
+        agentId: targetAgent.id,
+        description: task,
+        files,
+        dependsOn: [],
+        branchName,
+      }).task
+
+      this.emit("task:delegated", {
+        team,
+        task: pipelineTask,
+        fromAgentId: context.agentId || team.techLeadAgentId || targetAgent.id,
+        fromAgentName,
+      })
+    }
+
+    // Always emit handoff for team agents - in direct flow it's immediate,
+    // in hierarchical flow it depends on the routing decision
     this.emit("agent:handoff", {
       team,
-      fromAgentId: context.agentId || targetAgentId || team.techLeadAgentId || targetAgent.id,
-      fromAgentName: context.agentId ? team.agents.find((agent) => agent.id === context.agentId)?.name : undefined,
+      fromAgentId: context.agentId || team.techLeadAgentId || targetAgent.id,
+      fromAgentName,
       toAgentId: targetAgent.id,
       toAgentName: targetAgent.name,
+      targetScope: "team",
       teamId: team.id,
       teamName: team.name,
       task,
+      payload: { ...command.payload, directFlow: isDirectFlow ? "true" : undefined },
       files,
-      branchName: firstPayloadValue(getPayloadValue(command.payload, "branchName")),
+      branchName,
     })
   }
 
-  private async handleHireAgent(command: CeoCommand): Promise<void> {
-    const teamName = getPayloadValue(command.payload, "team") as string
-    const role = getPayloadValue(command.payload, "role") as string
-    const agentSlug = getPayloadValue(command.payload, "agentSlug") as string
+  private async handleHireAgent(command: CeoCommand, context: CommandExecutionContext = {}): Promise<void> {
+    const canHireDirectly = context.role === "global-ceo" || context.agentSlug === "hr-global"
+    if (!canHireDirectly) {
+      this.emit("error", {
+        command,
+        message: "Direct hiring is restricted to CEO Global or HR Global. Tech leads must request staffing through RH.",
+      })
+      return
+    }
 
-    if (!teamName || !role) {
+    const teamName = getPayloadValue(command.payload, "team") as string
+    const requestedRole =
+      firstPayloadValue(getPayloadValue(command.payload, "role")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "desiredRole"))
+    const agentSlug = firstPayloadValue(getPayloadValue(command.payload, "agentSlug"))
+
+    if (!teamName || !requestedRole) {
       this.emit("error", { command, message: "Missing required fields: team, role" })
       return
     }
@@ -292,28 +473,102 @@ export class CeoCommandExecutor extends EventEmitter {
       return
     }
 
-    const slugToUse = agentSlug || role
-    const agentEntry = getAgentBySlug(slugToUse)
+    const resolvedRoleAgent = getMarketplaceAgentByIdentity(requestedRole)
+    const resolvedSlugAgent = agentSlug ? getMarketplaceAgentByIdentity(agentSlug) : undefined
 
-    if (!agentEntry) {
-      this.emit("error", { command, message: `Agent not found: ${slugToUse}` })
+    if (!resolvedRoleAgent) {
+      this.emit("error", {
+        command,
+        message: `Unsupported marketplace agent requested for hire: ${requestedRole}. ${buildMarketplaceSupportMessage()}`,
+      })
+      return
+    }
+
+    if (agentSlug && !resolvedSlugAgent) {
+      this.emit("error", {
+        command,
+        message: `Unsupported marketplace agent slug requested for hire: ${agentSlug}. ${buildMarketplaceSupportMessage()}`,
+      })
+      return
+    }
+
+    if (resolvedSlugAgent && resolvedSlugAgent.slug !== resolvedRoleAgent.slug) {
+      this.emit("error", {
+        command,
+        message: `Role/agentSlug mismatch for hire request: role=${requestedRole}, agentSlug=${agentSlug}. Use the exact marketplace identity for the same agent.`,
+      })
       return
     }
 
     const agent: Agent = {
       id: crypto.randomUUID(),
-      name: agentEntry.name,
-      role: agentEntry.role,
-      catalogSlug: agentEntry.slug,
-      systemPromptPath: agentEntry.systemPromptPath || "",
+      name: resolvedRoleAgent.name,
+      role: resolvedRoleAgent.role,
+      catalogSlug: resolvedRoleAgent.slug,
+      systemPromptPath: resolvedRoleAgent.systemPromptPath || "",
       status: "idle",
-      color: agentEntry.color,
+      color: resolvedRoleAgent.color,
       currentFiles: [],
       hiredAt: new Date().toISOString(),
     }
 
     teamStore.addAgentToTeam(team.id, agent)
     this.emit("agent:hired", { team, agent })
+
+    const initialTask =
+      firstPayloadValue(getPayloadValue(command.payload, "task")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "initialTask")) ||
+      firstPayloadValue(getPayloadValue(command.payload, "workItem"))
+    if (!initialTask) {
+      return
+    }
+
+    const title =
+      firstPayloadValue(getPayloadValue(command.payload, "title")) ||
+      initialTask.slice(0, 90)
+    const acceptanceCriteriaRaw = getPayloadValue(command.payload, "successCriteria")
+    const acceptanceCriteria = payloadToArray(acceptanceCriteriaRaw)
+    const files = payloadToArray(getPayloadValue(command.payload, "files"))
+    const requesterAgentId = firstPayloadValue(getPayloadValue(command.payload, "requesterAgentId"))
+    const requesterAgentName = firstPayloadValue(getPayloadValue(command.payload, "requesterAgentName"))
+    const createdByAgentId = context.agentId
+    const createdByAgentName =
+      firstPayloadValue(getPayloadValue(command.payload, "createdByAgentName")) ||
+      (context.agentSlug === "hr-global" ? "RH Global" : context.agentSlug)
+    const branchName = firstPayloadValue(getPayloadValue(command.payload, "branchName"))
+    const priority = firstPayloadValue(getPayloadValue(command.payload, "priority"))
+    const contextText = firstPayloadValue(getPayloadValue(command.payload, "context"))
+    const observations = firstPayloadValue(getPayloadValue(command.payload, "observations"))
+    const autoStart = !isTruthyFlag(getPayloadValue(command.payload, "deferBoardDispatch"))
+
+    const pipelineTask = pipelineExecutor.ensureTask({
+      teamId: team.id,
+      agentId: agent.id,
+      title,
+      description: initialTask,
+      requesterAgentId,
+      requesterAgentName,
+      createdByAgentId,
+      createdByAgentName,
+      responsibleAgentRole: agent.role,
+      priority,
+      context: contextText,
+      acceptanceCriteria,
+      files,
+      dependsOn: [],
+      branchName,
+      status: "ready",
+      observations,
+      artifacts: [],
+    }).task
+
+    this.emit("task:delegated", {
+      team,
+      task: pipelineTask,
+      fromAgentId: requesterAgentId ?? createdByAgentId ?? agent.id,
+      fromAgentName: requesterAgentName ?? createdByAgentName,
+      autoStart,
+    })
   }
 
   private async handlePauseTeam(command: CeoCommand): Promise<void> {
@@ -365,7 +620,24 @@ export class CeoCommandExecutor extends EventEmitter {
 
   private findTeamByName(name: string): Team | undefined {
     const teams = teamStore.listTeams()
-    return teams.find((t) => t.name.toLowerCase() === name.toLowerCase())
+    const normalizedInput = normalizeLookupValue(name)
+
+    return teams.find((team) => {
+      const candidates = [
+        team.name,
+        team.projectName || "",
+        team.projectPath || "",
+        team.projectPath ? team.projectPath.split(/[\\/]/).filter(Boolean).pop() || "" : "",
+      ]
+        .map((value) => normalizeLookupValue(value))
+        .filter(Boolean)
+
+      return candidates.some((candidate) =>
+        candidate === normalizedInput ||
+        candidate.includes(normalizedInput) ||
+        normalizedInput.includes(candidate)
+      )
+    })
   }
 }
 

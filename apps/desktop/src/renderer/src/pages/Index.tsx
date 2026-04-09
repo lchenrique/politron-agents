@@ -1,14 +1,19 @@
 import { useState, useEffect, memo, useMemo, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import TitleBar from "@/components/ide/TitleBar";
 import AppSidebar from "@/components/ide/AppSidebar";
 import { AgentChatShell } from "@/features/chat/components/shell/AgentChatShell";
 import { ActiveSessionProvider } from "@/features/chat/context/ActiveSessionContext";
+import { useOpencodeTranscriptBridge } from "@/features/chat/hooks/useOpencodeTranscriptBridge";
 import TerminalPanel from "@/components/ide/TerminalPanel";
 import AddProjectModal from "@/components/ide/AddProjectModal";
 import HireAgentModal, { AgentModalMode } from "@/components/ide/HireAgentModal";
+import PipelineKanban from "@/components/ide/PipelineKanban";
+import SettingsScreen from "@/components/ide/SettingsScreen";
 import {
   WorkspaceProvider,
   useWorkspaceActiveTeam,
+  useWorkspaceActiveProjectView,
   useWorkspaceTeams,
   useWorkspaceAddAgentToTeam,
   useWorkspaceAddProject,
@@ -20,19 +25,23 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { Card } from "@/components/ui/card";
 
 const IDELayout = memo(() => {
+  const location = useLocation();
+  const chatBridge = useOpencodeTranscriptBridge();
   const activeTeam = useWorkspaceActiveTeam();
   const teams = useWorkspaceTeams();
   const addProject = useWorkspaceAddProject();
   const addAgentToTeam = useWorkspaceAddAgentToTeam();
   const createTeamWithAgent = useWorkspaceCreateTeamWithAgent();
   const onCeoHireRequest = useWorkspaceRegisterCeoHireRequest();
+  const activeProjectView = useWorkspaceActiveProjectView();
   const [terminalOpen, setTerminalOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<"chat" | "board">("chat");
   const [showAddProject, setShowAddProject] = useState(false);
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [marketplaceMode, setMarketplaceMode] = useState<AgentModalMode>("add-to-project");
+  const showSettings = location.pathname === "/settings";
 
   const showTerminal = terminalOpen;
 
@@ -75,8 +84,6 @@ const IDELayout = memo(() => {
     <div className="w-full h-dvh flex flex-col text-foreground overflow-hidden font-sans">
       <TitleBar
         terminalOpen={terminalOpen}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
         onToggleTerminal={() => setTerminalOpen(!terminalOpen)}
         className="glass-surface border-b border-border/10"
       />
@@ -96,22 +103,32 @@ const IDELayout = memo(() => {
             />
           </ResizablePanel>
 
-          <ResizableHandle withHandle className="bg-transparent hover:bg-primary/20 transition-colors" />
+          <ResizableHandle className="bg-transparent w-2 hover:bg-primary/20 transition-colors" />
 
           {/* MAIN CHAT CONTENT */}
           <ResizablePanel defaultSize={54} className="h-full">
-            <div className="h-full overflow-hidden p-3 pt-1">
-              <div className="h-full rounded-3xl overflow-hidden shadow-2xl relative">
-                <ActiveSessionProvider>
-                  <AgentChatShell />
-                </ActiveSessionProvider>
+            {showSettings ? (
+              <SettingsScreen />
+            ) : (
+              <div className="h-full overflow-hidden p-3 pt-1">
+                <Card className="h-full rounded-3xl overflow-hidden shadow-2xl relative">
+                  {activeProjectView === "board" ? (
+                    <PipelineKanban fullView />
+                  ) : (
+                    <AgentChatShell
+                      activeAgent={chatBridge.activeAgent}
+                      header={chatBridge.header}
+                      sendMessage={chatBridge.sendMessage}
+                    />
+                  )}
+                </Card>
               </div>
-            </div>
+            )}
           </ResizablePanel>
 
           {showTerminal && (
             <>
-              <ResizableHandle withHandle className="bg-transparent hover:bg-primary/20 transition-colors" />
+              <ResizableHandle className="bg-transparent w-2 hover:bg-primary/20 transition-colors" />
 
               {/* TERMINAL PANEL */}
               <ResizablePanel
@@ -151,7 +168,9 @@ IDELayout.displayName = "IDELayout";
 
 const Index = () => (
   <WorkspaceProvider>
-    <IDELayout />
+    <ActiveSessionProvider>
+      <IDELayout />
+    </ActiveSessionProvider>
   </WorkspaceProvider>
 );
 

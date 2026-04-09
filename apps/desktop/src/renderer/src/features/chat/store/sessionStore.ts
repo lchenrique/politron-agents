@@ -65,6 +65,7 @@ interface SessionState {
   getActiveSession: (contextKey?: string | null) => SdkSession | null;
   getActiveSessionId: (contextKey?: string | null) => string | null;
   clearSessions: () => void;
+  clearAllSessionState: () => void;
 }
 
 function findMostRecentSession(sessions: SdkSession[]): string | null {
@@ -94,11 +95,12 @@ export const useSessionStore = create<SessionState>()(
             return { sessions };
           }
 
+          const fetchedIds = sessions.map((session) => session.id);
           const knownIds = state.sessionIdsByContext[key] ?? [];
-          const filteredSessions =
-            knownIds.length > 0
-              ? sessions.filter((session) => knownIds.includes(session.id))
-              : [];
+          const allowedIds = knownIds.length > 0 ? new Set([...knownIds, ...fetchedIds]) : null;
+          const filteredSessions = allowedIds
+            ? sessions.filter((session) => allowedIds.has(session.id))
+            : sessions;
           const mostRecentId = findMostRecentSession(filteredSessions);
 
           const currentActiveId = state.activeSessionIdByContext[key] ?? null;
@@ -112,6 +114,10 @@ export const useSessionStore = create<SessionState>()(
             activeSessionIdByContext: {
               ...state.activeSessionIdByContext,
               [key]: nextActiveId,
+            },
+            sessionIdsByContext: {
+              ...state.sessionIdsByContext,
+              [key]: filteredSessions.map((session) => session.id),
             },
           };
         });
@@ -212,6 +218,14 @@ export const useSessionStore = create<SessionState>()(
 
       clearSessions: () => {
         set({ sessions: [] });
+      },
+
+      clearAllSessionState: () => {
+        set({
+          sessions: [],
+          activeSessionIdByContext: {},
+          sessionIdsByContext: {},
+        });
       },
     }),
     {

@@ -106,9 +106,15 @@ export interface DelegationBlock extends BaseBlock {
 export interface SubAgentBlock extends BaseBlock {
   type: 'sub-agent';
   agentId?: string;
+  requestId?: string;
+  rootRequestId?: string;
   teamId?: string;
   teamName?: string;
   fromAgentName?: string;
+  requesterAgentId?: string;
+  requesterAgentName?: string;
+  currentAgentId?: string;
+  currentAgentName?: string;
   branchName?: string;
   isHandoffPlaceholder?: boolean;
   handoffMessage?: string;

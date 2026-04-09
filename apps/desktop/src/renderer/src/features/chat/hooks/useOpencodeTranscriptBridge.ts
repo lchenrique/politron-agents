@@ -64,6 +64,8 @@ type AgentActivityEvent = {
 };
 
 type AgentHandoffEvent = {
+  requestId?: string;
+  rootRequestId?: string;
   teamId?: string;
   teamName?: string;
   sessionId?: string;
@@ -74,6 +76,53 @@ type AgentHandoffEvent = {
   task: string;
   files?: string[];
   branchName?: string;
+};
+
+type CommunicationParticipant = {
+  agentId: string;
+  agentName?: string;
+  role: 'requester' | 'executor' | 'intermediary';
+};
+
+type CommunicationHistoryEntry = {
+  id: string;
+  timestamp: string;
+  kind: 'handoff' | 'response' | 'status';
+  agentId: string;
+  agentName?: string;
+  targetAgentId?: string;
+  targetAgentName?: string;
+  status: 'requested' | 'in_progress' | 'awaiting_info' | 'completed' | 'failed' | 'refused';
+  detail?: string;
+};
+
+type CommunicationResponse = {
+  fromAgentId: string;
+  fromAgentName?: string;
+  toAgentId: string;
+  toAgentName?: string;
+  status: 'requested' | 'in_progress' | 'awaiting_info' | 'completed' | 'failed' | 'refused';
+  detail?: string;
+  timestamp: string;
+};
+
+type CommunicationUpdateEvent = {
+  requestId: string;
+  rootRequestId: string;
+  requesterAgentId: string;
+  requesterAgentName?: string;
+  currentAgentId: string;
+  currentAgentName?: string;
+  teamId?: string;
+  teamName?: string;
+  task: string;
+  files?: string[];
+  branchName?: string;
+  status: 'requested' | 'in_progress' | 'awaiting_info' | 'completed' | 'failed' | 'refused';
+  participants: CommunicationParticipant[];
+  history: CommunicationHistoryEntry[];
+  latestResponse?: CommunicationResponse;
+  finalResponse?: CommunicationResponse;
 };
 
 type TaskDelegatedEvent = {
@@ -248,7 +297,7 @@ function parseTodoItemsFromText(text?: string): TodoItem[] | null {
         content,
         priority: typeof entry.priority === 'string' ? entry.priority : undefined,
         status: typeof entry.status === 'string' ? entry.status : undefined,
-      } satisfies TodoItem;
+      } as TodoItem;
     })
     .filter((item): item is TodoItem => Boolean(item));
 
@@ -357,6 +406,43 @@ function stripCommandMarkupFromTranscript(text: string): string {
     return text;
   }
 
+  const trimDanglingMarkdownSuffix = (value: string): string => {
+    return value
+      .replace(/\s*(\*\*|__|`)+\s*$/g, '')
+      .replace(/\s*[*_`]+\s*$/g, '')
+      .trimEnd();
+  };
+
+  const stripLeakedReasoning = (value: string): string => {
+    const headingMatches = [
+      value.search(/\bContexto\b/i),
+      value.search(/\bStatus atual\b/i),
+      value.search(/\bDecis[aã]o\s*\/\s*prioridade\b/i),
+      value.search(/\bPr[oó]ximo passo\b/i),
+      value.search(/\bBloqueios\b/i),
+    ].filter((index): index is number => index >= 0);
+
+    const leakMatches = [
+      value.search(/\bPasso conclu[ií]do\b/i),
+      value.search(/\bThe user wants us\b/i),
+      value.search(/\bWe need to respond\b/i),
+      value.search(/\bThus we need to\b/i),
+      value.search(/\*\*[A-Z][^*]+\*\*/),
+    ].filter((index): index is number => index >= 0);
+
+    if (headingMatches.length === 0 || leakMatches.length === 0) {
+      return value;
+    }
+
+    const firstLeak = Math.min(...leakMatches);
+    const firstHeadingAfterLeak = headingMatches.find((index) => index > firstLeak);
+    if (firstHeadingAfterLeak == null) {
+      return value;
+    }
+
+    return value.slice(firstHeadingAfterLeak).trimStart();
+  };
+
   // Pre-emptive stripping of partial markers to avoid UI flicker/leaks
   // Matches partial tags like <inv, <task, <para, [DELE etc.
   const partialMarkers = [
@@ -379,17 +465,39 @@ function stripCommandMarkupFromTranscript(text: string): string {
   ].filter((index): index is number => index >= 0);
 
   if (markers.length === 0) {
-    return cleanText.trimEnd();
+    return trimDanglingMarkdownSuffix(stripLeakedReasoning(cleanText));
   }
 
   const firstMarker = Math.min(...markers);
-  return text.slice(0, firstMarker).trimEnd();
+  return trimDanglingMarkdownSuffix(stripLeakedReasoning(text.slice(0, firstMarker)));
 }
 
 const TRANSCRIPT_STORAGE_PREFIX = 'politron-chat-transcript-v1';
 
 function getTranscriptStorageKey(contextKey: string): string {
   return `${TRANSCRIPT_STORAGE_PREFIX}:${contextKey}`;
+}
+
+export function clearAllPersistedTranscripts(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key && key.startsWith(TRANSCRIPT_STORAGE_PREFIX)) {
+        keys.push(key);
+      }
+    }
+
+    for (const key of keys) {
+      window.localStorage.removeItem(key);
+    }
+  } catch (error) {
+    console.warn('[useOpencodeTranscriptBridge] Failed to clear persisted transcripts:', error);
+  }
 }
 
 function loadPersistedTranscript(contextKey: string): TranscriptSnapshot | null {
@@ -476,6 +584,28 @@ export function useOpencodeTranscriptBridge() {
   const inFlightQueueContextByAgentRef = useRef<Map<string, string>>(new Map());
   const handleErrorRef = useRef<((event: AgentErrorEvent) => void) | null>(null);
   const visibleSubAgentBlocksByAgentRef = useRef<Map<string, { blockId: string; turnId: string }>>(new Map());
+  const visibleSubAgentBlocksByRequestRef = useRef<Map<string, { blockId: string; turnId: string }>>(new Map());
+
+  const buildCommunicationBlockId = useCallback((requestId?: string) => {
+    return requestId ? `sub-agent-${requestId}` : createId('sub-agent');
+  }, []);
+
+  const buildCommunicationTurnId = useCallback((requestId?: string) => {
+    return requestId ? `turn-subagent-${requestId}` : createId('turn-subagent');
+  }, []);
+
+  const buildContextKeyForAgent = useCallback((agentId?: string | null, teamId?: string | null) => {
+    if (!agentId) {
+      return null;
+    }
+
+    const isGlobalAgent = globalAgents.some((agent) => agent.id === agentId);
+    return buildSessionContextKey({
+      agentId,
+      isGlobal: isGlobalAgent,
+      teamId: isGlobalAgent ? null : teamId ?? null,
+    });
+  }, [globalAgents]);
 
   const activeContext = useMemo<ActiveAgentContext | null>(() => {
     if (!activeAgentTabId || !activeAgent) {
@@ -602,6 +732,68 @@ export function useOpencodeTranscriptBridge() {
       visibleSubAgentBlocksByAgentRef.current.delete(agentId);
     }
   }, [emit]);
+
+  const mapCommunicationStatusToBlockStatus = useCallback((status: CommunicationUpdateEvent['status']): BlockStatus => {
+    if (status === 'completed') return 'success';
+    if (status === 'failed' || status === 'refused') return 'error';
+    return 'running';
+  }, []);
+
+  const handleCommunicationUpdate = useCallback((event: CommunicationUpdateEvent) => {
+    if (!event?.requestId) {
+      return;
+    }
+    if (event.requesterAgentId !== activeAgentIdRef.current) {
+      return;
+    }
+
+    const tracked = visibleSubAgentBlocksByRequestRef.current.get(event.requestId);
+    if (!tracked) {
+      return;
+    }
+
+    const latestDetail = event.latestResponse?.detail?.trim();
+    const statusLabel =
+      event.status === 'completed'
+        ? 'Concluído'
+        : event.status === 'failed'
+        ? 'Falhou'
+        : event.status === 'refused'
+        ? 'Recusado'
+        : event.status === 'awaiting_info'
+        ? 'Aguardando informação'
+        : 'Em andamento';
+    const result = [
+      `${event.requesterAgentName || event.requesterAgentId} solicitou ${event.currentAgentName || event.currentAgentId}.`,
+      `Status: ${statusLabel}.`,
+      latestDetail ? `Atualização: ${latestDetail}` : '',
+    ].filter(Boolean).join(' ');
+    emit({
+      type: 'block-updated',
+      blockId: tracked.blockId,
+      data: {
+        status: mapCommunicationStatusToBlockStatus(event.status),
+        requestId: event.requestId,
+        rootRequestId: event.rootRequestId,
+        requesterAgentId: event.requesterAgentId,
+        requesterAgentName: event.requesterAgentName,
+        currentAgentId: event.currentAgentId,
+        currentAgentName: event.currentAgentName,
+        result,
+        isHandoffPlaceholder: false,
+      } as Partial<SubAgentBlock>,
+    });
+
+    if (event.status === 'completed' || event.status === 'failed' || event.status === 'refused') {
+      const sourceAgentId = activeAgentIdRef.current;
+      const sourceTurnId = sourceAgentId ? runtimeRef.current.currentTurnByAgent.get(sourceAgentId) : null;
+      if (!sourceTurnId || tracked.turnId !== sourceTurnId) {
+        emit({ type: 'turn-completed', turnId: tracked.turnId });
+      }
+      emit({ type: 'streaming-end' });
+      visibleSubAgentBlocksByRequestRef.current.delete(event.requestId);
+    }
+  }, [emit, mapCommunicationStatusToBlockStatus]);
 
   const executeQueuedRequest = useCallback(async (request: QueuedSendRequest) => {
     const { context, text, options } = request;
@@ -922,16 +1114,10 @@ export function useOpencodeTranscriptBridge() {
     };
   }, [activeAgentId, activeContextKey]);
 
-  // Clear the current SDK session whenever the active chat context changes.
-  // This avoids reusing a project session when the user switches to the CEO, and vice versa.
   useEffect(() => {
     if (!activeContextKey) {
       previousChatContextKeyRef.current = null;
       return;
-    }
-
-    if (previousChatContextKeyRef.current !== activeContextKey) {
-      useSessionStore.getState().clearSessions();
     }
 
     previousChatContextKeyRef.current = activeContextKey;
@@ -1147,6 +1333,7 @@ export function useOpencodeTranscriptBridge() {
       if (!bufferedText) return;
 
       recordChatBridgeEvent('flush:text');
+      const sanitizedBufferedText = stripCommandMarkupFromTranscript(bufferedText);
 
       // Verificar se precisamos criar um NOVO assistant block (texto após tools)
       const needsNewBlock = runtime.needsNewAssistantBlock.get(agentId);
@@ -1187,10 +1374,10 @@ export function useOpencodeTranscriptBridge() {
         runtime.thinkingSettledByAgent.add(agentId);
       }
 
-      if (bufferedText === previousTotalFlushed) return;
+      if (sanitizedBufferedText === previousTotalFlushed) return;
 
       // O texto que deve aparecer neste bloco específico é apenas após o offset
-      const blockBufferedText = bufferedText.slice(offsetInTurn);
+      const blockBufferedText = sanitizedBufferedText.slice(offsetInTurn);
       const blockPreviousFlushed = previousTotalFlushed.slice(offsetInTurn);
 
       if (blockPreviousFlushed && blockBufferedText.startsWith(blockPreviousFlushed)) {
@@ -1213,7 +1400,7 @@ export function useOpencodeTranscriptBridge() {
         });
       }
 
-      runtime.lastFlushedTextByAgent.set(agentId, bufferedText);
+      runtime.lastFlushedTextByAgent.set(agentId, sanitizedBufferedText);
     });
   }, [emit, ensureAssistantBlock]);
 
@@ -1548,13 +1735,7 @@ export function useOpencodeTranscriptBridge() {
       flushBufferedText(sourceAgentId);
     }
 
-    const targetContextKey = event.teamId
-      ? buildSessionContextKey({
-          agentId: event.toAgentId,
-          isGlobal: false,
-          teamId: event.teamId,
-        })
-      : null;
+    const targetContextKey = buildContextKeyForAgent(event.toAgentId, event.teamId);
     const targetSessionContextKey = event.sessionId && targetContextKey
       ? `${event.sessionId}:${targetContextKey}`
       : targetContextKey;
@@ -1574,9 +1755,11 @@ export function useOpencodeTranscriptBridge() {
       useSessionStore.getState().selectSession(targetContextKey, event.sessionId);
     }
 
-    const turnId = createId('turn-subagent');
-    const blockId = createId('sub-agent');
-    createTurn(turnId);
+    const turnId = activeAgentIdRef.current ? ensureTurn(activeAgentIdRef.current) : buildCommunicationTurnId(event.requestId);
+    const blockId = buildCommunicationBlockId(event.requestId);
+    if (!activeAgentIdRef.current) {
+      createTurn(turnId);
+    }
 
     visibleSubAgentBlocksByAgentRef.current.set(event.toAgentId, { blockId, turnId });
 
@@ -1587,22 +1770,29 @@ export function useOpencodeTranscriptBridge() {
       status: 'running',
       timestamp: Date.now(),
       agentId: event.toAgentId,
+      requestId: event.requestId,
+      rootRequestId: event.rootRequestId,
       teamId: event.teamId,
       teamName: event.teamName,
       fromAgentName: event.fromAgentName,
+      requesterAgentId: activeAgentIdRef.current || event.fromAgentId,
+      requesterAgentName: event.fromAgentName,
+      currentAgentId: event.toAgentId,
+      currentAgentName: event.toAgentName || event.toAgentId,
       branchName: event.branchName,
       isHandoffPlaceholder: true,
       handoffMessage: event.task,
       agentName: event.toAgentName || event.toAgentId,
       task: event.task,
       result: [
-        `Transferido por: ${event.fromAgentName || event.fromAgentId}`,
-        `Equipe: ${event.teamName || event.teamId || 'time'}`,
-        event.branchName ? `Branch: ${event.branchName}` : '',
-        '',
-        'Aguardando primeira atualização do sub-agente...',
-      ].filter(Boolean).join('\n'),
+        `Solicitação encaminhada para ${event.toAgentName || event.toAgentId}.`,
+        'Aguardando retorno.',
+      ].join(' '),
     };
+
+    if (event.requestId) {
+      visibleSubAgentBlocksByRequestRef.current.set(event.requestId, { blockId, turnId });
+    }
 
     emit({ type: 'block-added', turnId, data: block });
     emit({ type: 'streaming-start' });
@@ -1634,8 +1824,9 @@ export function useOpencodeTranscriptBridge() {
 
     if (targetSessionContextKey) {
       transcriptCacheRef.current.set(targetSessionContextKey, nextSnapshot);
+      savePersistedTranscript(targetSessionContextKey, nextSnapshot);
     }
-  }, [createTurn, emit]);
+  }, [buildContextKeyForAgent, createTurn, emit]);
 
   const handleTaskDelegated = useCallback((event: TaskDelegatedEvent) => {
     const sourceAgentId = event.fromAgentId || activeAgentIdRef.current;
@@ -1698,7 +1889,7 @@ export function useOpencodeTranscriptBridge() {
                 content,
                 priority: typeof item.priority === 'string' ? item.priority : undefined,
                 status: typeof item.status === 'string' ? item.status : undefined,
-              } satisfies TodoItem;
+              } as TodoItem;
             })
             .filter((item): item is TodoItem => Boolean(item))
         : [];
@@ -1881,6 +2072,7 @@ export function useOpencodeTranscriptBridge() {
       onAgentTool?: (cb: (data: AgentToolEvent) => void) => () => void;
       onAgentActivity?: (cb: (data: AgentActivityEvent) => void) => () => void;
       onAgentHandoff?: (cb: (data: AgentHandoffEvent) => void) => () => void;
+      onCommunicationUpdate?: (cb: (data: CommunicationUpdateEvent) => void) => () => void;
       onTaskDelegated?: (cb: (data: TaskDelegatedEvent) => void) => () => void;
     };
 
@@ -1890,6 +2082,7 @@ export function useOpencodeTranscriptBridge() {
       maybeExtendedApi.onAgentTool?.(handleTool),
       maybeExtendedApi.onAgentActivity?.(handleActivity),
       maybeExtendedApi.onAgentHandoff?.(handleAgentHandoff),
+      maybeExtendedApi.onCommunicationUpdate?.(handleCommunicationUpdate),
       maybeExtendedApi.onTaskDelegated?.(handleTaskDelegated),
       window.vibeAPI.onAgentStatus(handleStatus),
       window.vibeAPI.onAgentDone(handleDone),
@@ -1902,7 +2095,7 @@ export function useOpencodeTranscriptBridge() {
         unsubscribe();
       }
     };
-  }, [handleActivity, handleAgentHandoff, handleChunk, handleDone, handleError, handlePipelineUpdate, handleReasoning, handleStatus, handleTaskDelegated, handleTool]);
+  }, [handleActivity, handleAgentHandoff, handleChunk, handleCommunicationUpdate, handleDone, handleError, handlePipelineUpdate, handleReasoning, handleStatus, handleTaskDelegated, handleTool]);
 
 
   const sendMessage = useCallback(async (text: string, options?: { model?: { modelID: string, providerID: string } }) => {

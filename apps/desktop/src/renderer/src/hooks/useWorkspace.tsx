@@ -10,12 +10,14 @@ import {
 } from "@/types/workspace";
 import {
   activeAgentTabIdAtom,
+  activeProjectViewAtom,
   activeProjectIdAtom,
   activeTeamAtom,
   activeTeamIdAtom,
   globalAgentsAtom,
   globalCeoAgentAtom,
   projectsAtom,
+  settingsSectionAtom,
   sidebarViewAtom,
   teamsAtom,
   workspaceAtom,
@@ -41,6 +43,9 @@ export const useWorkspaceDeleteProject = () => {
           activeProjectId: null,
           activeTeamId: null,
           activeAgentTabId: null,
+          projectViews: Object.fromEntries(
+            Object.entries(workspace.projectViews).filter(([key]) => key !== projectId)
+          ),
         });
         setActiveProjectId(null);
         setActiveTeamId(null);
@@ -103,14 +108,35 @@ interface BackendPipelineTask {
   id: string;
   teamId: string;
   agentId: string;
+  title?: string;
   description: string;
+  requesterAgentId?: string;
+  requesterAgentName?: string;
+  createdByAgentId?: string;
+  createdByAgentName?: string;
+  responsibleAgentRole?: string;
+  priority?: string;
+  context?: string;
+  acceptanceCriteria?: string[];
   files: string[];
-  status: "pending" | "running" | "done" | "failed" | "blocked";
+  status: "backlog" | "triage" | "ready" | "in_progress" | "blocked" | "in_review" | "done" | "cancelled";
   dependsOn: string[];
   branchName?: string;
   startedAt?: string;
   finishedAt?: string;
   error?: string;
+  result?: string;
+  observations?: string;
+  blockedReason?: string;
+  artifacts?: string[];
+  history?: Array<{
+    id: string;
+    timestamp: string;
+    status: "backlog" | "triage" | "ready" | "in_progress" | "blocked" | "in_review" | "done" | "cancelled";
+    actorAgentId?: string;
+    actorAgentName?: string;
+    note?: string;
+  }>;
 }
 
 function mapBackendAgentToFrontend(backend: BackendAgent): Agent {
@@ -139,10 +165,28 @@ function mapBackendPipelineToFrontend(backend: BackendPipelineTask[]): PipelineT
     teamId: task.teamId,
     agentId: task.agentId,
     agentInitials: task.agentId.slice(0, 2).toUpperCase(),
+    title: task.title || task.description,
     description: task.description,
+    requesterAgentId: task.requesterAgentId,
+    requesterAgentName: task.requesterAgentName,
+    createdByAgentId: task.createdByAgentId,
+    createdByAgentName: task.createdByAgentName,
+    responsibleAgentRole: task.responsibleAgentRole,
+    priority: task.priority,
+    context: task.context,
+    acceptanceCriteria: task.acceptanceCriteria || [],
     files: task.files,
     dependsOn: task.dependsOn,
     status: task.status,
+    branchName: task.branchName,
+    startedAt: task.startedAt,
+    finishedAt: task.finishedAt,
+    error: task.error,
+    result: task.result,
+    observations: task.observations,
+    blockedReason: task.blockedReason,
+    artifacts: task.artifacts || [],
+    history: task.history,
   }));
 }
 
@@ -211,6 +255,7 @@ function createEmptyWorkspace(): Workspace {
     activeProjectId: null,
     activeTeamId: null,
     activeAgentTabId: null,
+    projectViews: {},
   };
 }
 
@@ -230,12 +275,26 @@ export const useWorkspaceGlobalCeoAgent = () =>
 
 export const useWorkspaceActiveProjectId = () => useAtomValue(activeProjectIdAtom);
 
+export const useWorkspaceActiveProjectView = () => useAtomValue(activeProjectViewAtom);
+
 export const useWorkspaceActiveAgentTabId = () => {
   const workspace = useAtomValue(workspaceAtom);
   return workspace?.activeAgentTabId ?? null;
 };
 
 export const useWorkspaceSidebarView = () => useAtomValue(sidebarViewAtom);
+
+export const useWorkspaceSettingsSection = () => useAtomValue(settingsSectionAtom);
+
+export const useWorkspaceSetSidebarView = () => {
+  const setSidebarView = useSetAtom(sidebarViewAtom);
+  return useCallback(
+    (view: "root" | "project" | "settings") => {
+      setSidebarView(view);
+    },
+    [setSidebarView]
+  );
+};
 
 export const useWorkspaceActiveTeam = () => useAtomValue(activeTeamAtom);
 
@@ -263,6 +322,25 @@ const setActiveAgentTabAtom = atom(null, (get, set, id: string | null) => {
   set(workspaceAtom, { ...workspace, activeAgentTabId: id });
   set(activeAgentTabIdAtom, id);
 });
+
+const setActiveProjectViewAtom = atom(
+  null,
+  (get, set, payload: { projectId?: string | null; view: "chat" | "board" }) => {
+    const workspace = get(workspaceAtom);
+    if (!workspace) return;
+
+    const projectId = payload.projectId ?? workspace.activeProjectId;
+    if (!projectId) return;
+
+    set(workspaceAtom, {
+      ...workspace,
+      projectViews: {
+        ...workspace.projectViews,
+        [projectId]: payload.view,
+      },
+    });
+  }
+);
 
 const addProjectAtom = atom(
   null,
@@ -341,6 +419,26 @@ export const useWorkspaceSetActiveAgentTab = () => {
       setActiveAgentTab(id);
     },
     [setActiveAgentTab]
+  );
+};
+
+export const useWorkspaceSetActiveProjectView = () => {
+  const setActiveProjectView = useSetAtom(setActiveProjectViewAtom);
+  return useCallback(
+    (view: "chat" | "board", projectId?: string | null) => {
+      setActiveProjectView({ view, projectId });
+    },
+    [setActiveProjectView]
+  );
+};
+
+export const useWorkspaceSetSettingsSection = () => {
+  const setSettingsSection = useSetAtom(settingsSectionAtom);
+  return useCallback(
+    (section: "defaults" | "providers" | "mcp" | "permissions" | "tools" | "advanced") => {
+      setSettingsSection(section);
+    },
+    [setSettingsSection]
   );
 };
 
@@ -436,11 +534,16 @@ export const useWorkspaceEnterProject = () => {
       const team = workspace.teams.find((item) => item.id === project.teamId);
 
       const nextAgentTabId = team?.techLeadAgentId || team?.agents[0]?.id || workspace.globalCeoAgent.id;
+      const nextProjectViews = {
+        ...workspace.projectViews,
+        [id]: workspace.projectViews[id] ?? "chat",
+      };
       setWorkspace({
         ...workspace,
         activeProjectId: id,
         activeTeamId: project.teamId,
         activeAgentTabId: nextAgentTabId,
+        projectViews: nextProjectViews,
       });
       setActiveProjectId(id);
       setActiveTeamId(project.teamId);
@@ -494,6 +597,12 @@ function buildWorkspaceFromBackendTeams(backendTeams: BackendTeam[], previousWor
     previousActiveProjectId && projects.some((project) => project.id === previousActiveProjectId)
       ? previousActiveProjectId
       : null;
+
+  workspace.projectViews = Object.fromEntries(
+    Object.entries(previousWorkspace?.projectViews ?? {}).filter(([projectId]) =>
+      projects.some((project) => project.id === projectId)
+    )
+  ) as Record<string, "chat" | "board">;
 
   const previousAgentStillExists =
     previousActiveAgentTabId &&

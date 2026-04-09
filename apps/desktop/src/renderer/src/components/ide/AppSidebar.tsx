@@ -1,20 +1,26 @@
 import React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
+  LayoutGrid,
   MessageSquare,
   Plus,
   Settings,
   ShoppingBag,
-  Target,
   Trash2,
 } from "lucide-react";
 import {
   useWorkspaceActiveAgentTabId,
   useWorkspaceActiveProjectId,
+  useWorkspaceActiveProjectView,
   useWorkspaceBackToRoot,
   useWorkspaceDeleteProject,
   useWorkspaceEnterProject,
+  useWorkspaceSettingsSection,
   useWorkspaceSetActiveAgentTab,
+  useWorkspaceSetActiveProjectView,
+  useWorkspaceSetSidebarView,
+  useWorkspaceSetSettingsSection,
   useWorkspaceSidebarView,
   useWorkspaceState,
 } from "@/hooks/useWorkspace";
@@ -29,6 +35,17 @@ interface NavItemProps {
   color?: string;
   className?: string;
 }
+
+type SettingsSection = "defaults" | "providers" | "mcp" | "permissions" | "tools" | "advanced";
+
+const settingsSectionItems: Array<{ id: SettingsSection; label: string; note: string }> = [
+  { id: "defaults", label: "Geral", note: "Modelo, usuário e comportamento" },
+  { id: "providers", label: "Providers", note: "API keys, endpoints e modelos" },
+  { id: "mcp", label: "MCP", note: "Servidores locais e remotos" },
+  { id: "permissions", label: "Permissões", note: "Regras e aprovações" },
+  { id: "tools", label: "Tools", note: "Flags e ajustes finos" },
+  { id: "advanced", label: "Avançado", note: "Arquivos e warnings" },
+];
 
 const NavItem = ({ icon, label, active, onClick, badge, color, className }: NavItemProps) => {
   return (
@@ -58,14 +75,32 @@ const NavItem = ({ icon, label, active, onClick, badge, color, className }: NavI
   );
 };
 
-const SectionHeader = ({ label, onAction }: { label: string; onAction?: () => void }) => (
+const SectionHeader = ({
+  label,
+  onAction,
+  actionIcon,
+  actionTitle,
+  rightSlot,
+}: {
+  label: string;
+  onAction?: () => void;
+  actionIcon?: React.ReactNode;
+  actionTitle?: string;
+  rightSlot?: React.ReactNode;
+}) => (
   <div className="flex items-center justify-between px-3 mr-1 mt-6 mb-2">
     <span className="text-[10px] font-bold text-foreground/70 uppercase tracking-widest">{label}</span>
-    {onAction && (
-      <button onClick={onAction} className="text-foreground/50 hover:text-primary transition-colors p-1 -mr-1">
-        <Plus size={14} />
+    {rightSlot ? (
+      rightSlot
+    ) : onAction ? (
+      <button
+        onClick={onAction}
+        className="text-foreground/50 hover:text-primary transition-colors p-1 -mr-1"
+        title={actionTitle}
+      >
+        {actionIcon ?? <Plus size={14} />}
       </button>
-    )}
+    ) : null}
   </div>
 );
 
@@ -76,23 +111,66 @@ export const AppSidebar = ({
   onAddProject: () => void;
   onOpenMarketplaceAddToProject?: () => void;
 }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const workspace = useWorkspaceState();
   const sidebarView = useWorkspaceSidebarView();
   const activeAgentTabId = useWorkspaceActiveAgentTabId();
   const activeProjectId = useWorkspaceActiveProjectId();
+  const activeProjectView = useWorkspaceActiveProjectView();
   const enterProject = useWorkspaceEnterProject();
   const backToRoot = useWorkspaceBackToRoot();
+  const settingsSection = useWorkspaceSettingsSection();
   const setActiveAgentTab = useWorkspaceSetActiveAgentTab();
+  const setActiveProjectView = useWorkspaceSetActiveProjectView();
+  const setSidebarView = useWorkspaceSetSidebarView();
+  const setSettingsSection = useWorkspaceSetSettingsSection();
   const deleteProject = useWorkspaceDeleteProject();
 
-  const activeProject = workspace.projects.find((project) => project.id === activeProjectId) ?? null;
   const activeTeam = workspace.teams.find((team) => team.id === workspace.activeTeamId) ?? null;
+  const isSettingsRoute = location.pathname === "/settings";
+  const isSettingsView = isSettingsRoute || sidebarView === "settings";
 
   return (
     <div className="w-full h-full flex flex-col z-20">
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden pl-3 pr-0 py-3 custom-scrollbar">
-        {sidebarView === "root" ? (
+        {isSettingsView ? (
+          <>
+            <button
+              onClick={() => {
+                backToRoot();
+                navigate("/");
+              }}
+              className="flex items-center gap-2 mb-4 px-2 text-muted-foreground hover:text-primary group"
+            >
+              <ChevronLeft size={16} className="group-hover:-translate-x-0.5" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Voltar ao início</span>
+            </button>
+
+            <SectionHeader label="Configurações" />
+            <div className="space-y-1">
+              {settingsSectionItems.map((item) => (
+                <NavItem
+                  key={item.id}
+                  icon={<Settings size={18} />}
+                  label={item.label}
+                  active={settingsSection === item.id}
+                  onClick={() => setSettingsSection(item.id)}
+                />
+              ))}
+            </div>
+
+            <SectionHeader label="Contexto" />
+            <div className="px-3 py-3 rounded-lg border border-border/50 bg-background/40">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Modo</div>
+              <div className="mt-1 text-sm font-medium text-foreground">Configurações do OpenCode</div>
+              <div className="mt-2 text-[10px] text-muted-foreground">
+                A página principal mostra o editor da seção selecionada.
+              </div>
+            </div>
+          </>
+        ) : sidebarView === "root" ? (
           <>
             <SectionHeader label="Global" />
             <div className="space-y-1">
@@ -102,7 +180,9 @@ export const AppSidebar = ({
                   icon={<MessageSquare size={18} />}
                   label={agent.name}
                   active={activeAgentTabId === agent.id}
-                  onClick={() => setActiveAgentTab(agent.id)}
+                  onClick={() => {
+                    setActiveAgentTab(agent.id);
+                  }}
                   badge="Online"
                 />
               ))}
@@ -143,7 +223,16 @@ export const AppSidebar = ({
 
             <SectionHeader label="Sistema" />
             <div className="space-y-1">
-              <NavItem icon={<Settings size={18} />} label="Configurações" onClick={() => { }} />
+              <NavItem
+                icon={<Settings size={18} />}
+                label="Configurações"
+                active={isSettingsRoute}
+                onClick={() => {
+                  setSidebarView("settings");
+                  setSettingsSection("defaults");
+                  navigate("/settings");
+                }}
+              />
             </div>
           </>
         ) : (
@@ -156,19 +245,28 @@ export const AppSidebar = ({
               <span className="text-[10px] font-bold uppercase tracking-wider">Voltar ao Início</span>
             </button>
 
-            {activeProject && (
+            {activeTeam && (
               <div className="px-3 mb-6 bg-primary/5 p-3 rounded-lg border border-primary/10">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-2.5 h-2.5 rounded-full shadow-xs" style={{ backgroundColor: activeProject.color }} />
-                  <h2 className="text-xs font-bold text-foreground truncate">{activeProject.name}</h2>
-                </div>
-                {activeTeam?.projectPath && (
-                  <div className="text-[10px] text-muted-foreground truncate font-mono bg-foreground/10 px-2 py-1 rounded" title={activeTeam.projectPath}>
-                    {activeTeam.projectPath}
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-2.5 h-2.5 rounded-full shadow-xs" style={{ backgroundColor: activeTeam.color }} />
+                  <div className="min-w-0">
+                    <h2 className="text-xs font-bold text-foreground truncate">{activeTeam.name}</h2>
                   </div>
-                )}
+                </div>
+                <div className="mt-2 text-[10px] text-muted-foreground truncate font-mono bg-foreground/10 px-2 py-1 rounded" title={activeTeam.projectPath}>
+                  {activeTeam.projectPath}
+                </div>
               </div>
             )}
+
+            <div className="space-y-2 mb-4">
+              <NavItem
+                icon={<LayoutGrid size={18} />}
+                label="Board"
+                active={activeProjectView === "board"}
+                onClick={() => setActiveProjectView("board", activeProjectId)}
+              />
+            </div>
 
             <SectionHeader label="Global" />
             <div className="space-y-1 mb-4">
@@ -177,8 +275,11 @@ export const AppSidebar = ({
                   key={agent.id}
                   icon={<MessageSquare size={18} />}
                   label={agent.name}
-                  active={activeAgentTabId === agent.id}
-                  onClick={() => setActiveAgentTab(agent.id)}
+                  active={activeProjectView === "chat" && activeAgentTabId === agent.id}
+                  onClick={() => {
+                    setActiveProjectView("chat", activeProjectId);
+                    setActiveAgentTab(agent.id);
+                  }}
                   badge="Online"
                 />
               ))}
@@ -198,8 +299,11 @@ export const AppSidebar = ({
                     </div>
                   }
                   label={agent.name}
-                  active={activeAgentTabId === agent.id}
-                  onClick={() => setActiveAgentTab(agent.id)}
+                  active={activeProjectView === "chat" && activeAgentTabId === agent.id}
+                  onClick={() => {
+                    setActiveProjectView("chat", activeProjectId);
+                    setActiveAgentTab(agent.id);
+                  }}
                   badge={agent.status === "running" ? "Ativo" : undefined}
                 />
               ))}

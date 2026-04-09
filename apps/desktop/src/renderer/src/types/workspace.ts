@@ -24,10 +24,35 @@ export interface PipelineTask {
  teamId: string;
  agentId: string;
  agentInitials: string;
+ title?: string;
  description: string;
+ requesterAgentId?: string;
+ requesterAgentName?: string;
+ createdByAgentId?: string;
+ createdByAgentName?: string;
+ responsibleAgentRole?: string;
+ priority?: string;
+ context?: string;
+ acceptanceCriteria?: string[];
  files: string[];
  dependsOn: string[];
- status: "pending" | "running" | "done" | "failed" | "blocked" | "waiting";
+ status: "backlog" | "triage" | "ready" | "in_progress" | "blocked" | "in_review" | "done" | "cancelled";
+ branchName?: string;
+ startedAt?: string;
+ finishedAt?: string;
+ error?: string;
+ result?: string;
+ observations?: string;
+ blockedReason?: string;
+ artifacts?: string[];
+ history?: Array<{
+   id: string;
+   timestamp: string;
+   status: "backlog" | "triage" | "ready" | "in_progress" | "blocked" | "in_review" | "done" | "cancelled";
+   actorAgentId?: string;
+   actorAgentName?: string;
+   note?: string;
+ }>;
 }
 
 export interface Team {
@@ -57,6 +82,7 @@ export interface Workspace {
  activeProjectId: string | null;
  activeTeamId: string | null;
  activeAgentTabId: string | null;
+ projectViews: Record<string, "chat" | "board">;
 }
 
 export const AGENT_CATALOG: { name: string; role: string; initials: string; color: string; bgColor: string; borderColor: string }[] = [

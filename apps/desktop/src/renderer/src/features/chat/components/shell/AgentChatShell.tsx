@@ -16,19 +16,27 @@ import { PromptInput } from "../input/PromptInput";
 import { SessionModal } from "./SessionModal";
 import { TranscriptViewport } from "./TranscriptViewport";
 import { TaskTodosPanel } from "./TaskTodosPanel";
-import { useOpencodeTranscriptBridge } from "../../hooks/useOpencodeTranscriptBridge";
 import { useChatStore } from "../../store/chatStore";
 import { recordChatRender } from "../../perf/chatPerf";
 import { useActiveSession } from "../../context/ActiveSessionContext";
 import { useSessionStore } from "../../store/sessionStore";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
-export const AgentChatShell = memo(function AgentChatShell() {
+type AgentChatShellProps = {
+  activeAgent: { id: string } | null;
+  header: {
+    title: string;
+    subtitle: string;
+  };
+  sendMessage: (text: string, options?: { model?: { modelID: string; providerID: string } }) => Promise<void>;
+};
+
+export const AgentChatShell = memo(function AgentChatShell({ activeAgent, header, sendMessage }: AgentChatShellProps) {
   recordChatRender("AgentChatShell");
   const clearChat = useChatStore((state) => state.clearChat);
   const addSession = useSessionStore((state) => state.addSession);
   const selectSession = useSessionStore((state) => state.selectSession);
   const { contextKey } = useActiveSession();
-  const { activeAgent, header, sendMessage } = useOpencodeTranscriptBridge();
   const [modalOpen, setModalOpen] = useState(false);
   const [creatingNewChat, setCreatingNewChat] = useState(false);
   const projects = useAtomValue(projectsAtom);
@@ -72,8 +80,8 @@ export const AgentChatShell = memo(function AgentChatShell() {
   ]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background font-sans text-foreground">
-      <header className="flex items-center justify-between border-b border-border bg-secondary/10 px-5 py-3">
+    <div className="flex h-full w-full flex-col  overflow-hidden bg-card font-sans text-foreground">
+      <CardHeader className="flex flex-row w-full border-b border-border bg-secondary/10 px-5 py-3 justify-between" >
         <div className="flex items-center gap-3">
           <Button
             onClick={() => setModalOpen(true)}
@@ -109,9 +117,9 @@ export const AgentChatShell = memo(function AgentChatShell() {
             Novo Chat
           </Button>
         </div>
-      </header>
+      </CardHeader>
 
-      <div className="relative flex-1 overflow-hidden">
+      <CardContent className="relative flex-1 overflow-hidden">
         {!hasActiveAgent ? (
           hasProjects ? (
             <WelcomeScreen hasProjectSelected={hasProjectSelected} />
@@ -121,7 +129,7 @@ export const AgentChatShell = memo(function AgentChatShell() {
         ) : (
           <TranscriptViewport />
         )}
-      </div>
+      </CardContent>
 
       {hasActiveAgent && (
         <div className="flex flex-col items-center bg-linear-to-t from-background via-background to-transparent p-4 py-6">

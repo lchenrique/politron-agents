@@ -19,6 +19,11 @@ const THEMES = [
     { id: "tangerine", label: "Tangerine" },
     { id: "t3chat", label: "T3Chat" },
     { id: "cyberpunk", label: "Cyberpunk" },
+    { id: "terminal-muted", label: "Terminal Muted" },
+    { id: "omegon", label: "Omegon" },
+    { id: "msn", label: "MSN" },
+    { id: "zen", label: "Zen" },
+    { id: "melancholik", label: "Melancholik" },
 ];
 
 

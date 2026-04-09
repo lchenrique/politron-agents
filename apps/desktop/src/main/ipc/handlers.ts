@@ -182,9 +182,11 @@ function buildTeamContextPrompt(teamId?: string, agentId?: string, role?: string
     ? `Você é o Tech Lead deste time e deve se apresentar como responsável técnico por ${team.name}.`
     : `Você é ${currentAgent?.name ?? 'um agente do time'} e faz parte do time ${team.name}.`
 
-  const collaborationLine = lead
-    ? `Seu tech lead é ${lead.name}. Quando precisar coordenar ou pedir decisão, alinhe com ele.`
-    : 'Ainda não existe tech lead definido para este time; ajude a organizar o trabalho e sinalize a necessidade de um responsável técnico.'
+  const collaborationLine = isTechLead
+    ? 'Quando identificar falta de capacidade ou de perfil no time, primeiro tente mover a execução com os agentes já existentes. Só acione o RH Global se houver falta real de perfil ou capacidade sustentada. Você não pode contratar diretamente. Quando a demanda estiver clara, aja com autonomia e coloque o time em movimento sem pedir confirmação desnecessária.'
+    : lead
+      ? `Seu tech lead é ${lead.name}. Quando precisar coordenar ou pedir decisão, alinhe com ele.`
+      : 'Ainda não existe tech lead definido para este time; ajude a organizar o trabalho e sinalize a necessidade de um responsável técnico.'
 
   return `
 
@@ -201,15 +203,21 @@ ${members || '- nenhum agente contratado ainda'}
 
 Protocolos de colaboração:
 - Você pode delegar tarefas para outro agente do mesmo time usando [DELEGATE] com team, to, task e opcionalmente files.
-- Se o agente correto não existir, você pode solicitar contratação usando [HIRE_AGENT] com team, role e agentSlug.
+- Se a demanda estiver clara, não peça confirmação para passos normais do fluxo: delegue, registre e avance.
+- Para operar o board, prefira as ferramentas 'tasks_ensure', 'tasks_list', 'tasks_get', 'tasks_update', 'tasks_start', 'tasks_complete', 'tasks_remove' e 'tasks_dedupe'.
+- Antes de criar uma nova issue no board, use 'tasks_list' ou 'tasks_ensure' para evitar duplicatas.
+- Só volte ao usuário com pergunta quando faltar informação indispensável, houver risco destrutivo ou existir um trade-off material.
+- Quando precisar acionar outro agente, emita um comando executável real; não apenas descreva a intenção em texto.
+- Tech leads e agentes de time não podem contratar diretamente.
+- Quando faltar um perfil no time, use [DELEGATE] para acionar o RH Global com o time, o perfil desejado e a justificativa, mas apenas depois de avaliar se o time atual realmente não consegue absorver a demanda.
 - Sempre que citar outro agente, use o nome e/ou slug exatos do time para evitar ambiguidade.
 - Quando o usuário perguntar "quem é você?" ou algo equivalente, responda mencionando seu papel e o nome do time.
 - Quando responder sobre outros agentes, use a visão do time atual e deixe claro quem é o tech lead, quem está disponível e quem já foi contratado.
+- Apenas CEO Global ou RH Global podem usar [HIRE_AGENT].
 - Sempre trate os colegas como membros do mesmo time, nunca como agentes genéricos soltos.
-- Nunca use 'call_omo_agent' para acionar colegas do time; use apenas o protocolo local de [DELEGATE] e [HIRE_AGENT].
+- Nunca use 'call_omo_agent' para acionar colegas do time; use apenas o protocolo local de [DELEGATE].
 `.trim()
 }
-
 function stripFrontmatter(content: string): string {
   return content.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
 }
@@ -440,6 +448,14 @@ export function registerHandlers(): void {
 
   ipcMain.handle('vibe:task:fail', async (_, { taskId, error }) => {
     return pipelineExecutor.failTask(taskId, error)
+  })
+
+  ipcMain.handle('vibe:pipeline:updateTaskStatus', async (_, input) => {
+    const task = pipelineExecutor.updateTaskStatus(input.taskId, input.status, input)
+    if (!task) {
+      return { success: false, error: 'Unable to update task status' }
+    }
+    return { success: true, task }
   })
 
   ipcMain.handle('vibe:worktree:create', async (_, input) => {
@@ -806,6 +822,10 @@ export function registerHandlers(): void {
     forwardEventToRenderer('vibe:task:delegated', ...args)
   })
 
+  openCodeSdkService.on('vibe:communication:update', (...args) => {
+    forwardEventToRenderer('vibe:communication:update', ...args)
+  })
+
   openCodeSdkService.on('vibe:ceo:ask-human', (...args) => {
     forwardEventToRenderer('vibe:ceo:ask-human', ...args)
   })
@@ -868,6 +888,10 @@ export function registerHandlers(): void {
     forwardEventToRenderer('vibe:task:blocked', ...args)
   })
 
+  pipelineExecutor.on('task:updated', (...args) => {
+    forwardEventToRenderer('vibe:task:updated', ...args)
+  })
+
   pipelineExecutor.on('pipeline:status-changed', (...args) => {
     forwardEventToRenderer('vibe:pipeline:status-changed', ...args)
   })
@@ -912,6 +936,89 @@ export function registerHandlers(): void {
     } catch (error) {
       console.error('[handlers] listModels error:', error)
       return []
+    }
+  })
+
+  ipcMain.handle('vibe:opencode:getConfigDiagnostics', async (_event, input?: { projectPath?: string }) => {
+    try {
+      return await openCodeSdkService.getConfigDiagnostics(input)
+    } catch (error) {
+      console.error('[handlers] getConfigDiagnostics error:', error)
+      return {
+        sdkReady: false,
+        providers: [],
+        models: [],
+        sources: [],
+        env: {},
+        mergedSummary: {
+          disabled_providers: [],
+          enabled_providers: [],
+          providerCount: 0,
+          mcpCount: 0,
+          commandCount: 0,
+          toolCount: 0,
+          skillsPaths: 0,
+          skillsUrls: 0,
+          watcherIgnoreCount: 0,
+        },
+      warnings: [error instanceof Error ? error.message : String(error)],
+      }
+    }
+  })
+
+  ipcMain.handle('vibe:opencode:getConfigEditorData', async (_event, input?: { scope?: "global" | "project"; projectPath?: string }) => {
+    try {
+      return await openCodeSdkService.getConfigEditorData(input)
+    } catch (error) {
+      console.error('[handlers] getConfigEditorData error:', error)
+      return {
+        scope: input?.scope ?? (input?.projectPath ? "project" : "global"),
+        targetPath: "",
+        exists: false,
+        defaults: {},
+        providers: [],
+        models: [],
+        mcpJson: "",
+        permissionsJson: "",
+        toolsJson: "",
+        warnings: [error instanceof Error ? error.message : String(error)],
+      }
+    }
+  })
+
+  ipcMain.handle('vibe:opencode:saveConfigEditorData', async (_event, input: { scope: "global" | "project"; projectPath?: string; defaults: any; providers: any[]; mcpJson: string; permissionsJson: string; toolsJson: string }) => {
+    try {
+      return await openCodeSdkService.saveConfigEditorData(input)
+    } catch (error) {
+      console.error('[handlers] saveConfigEditorData error:', error)
+      return {
+        success: false,
+        targetPath: "",
+        warnings: [error instanceof Error ? error.message : String(error)],
+      }
+    }
+  })
+
+  ipcMain.handle('vibe:workspace:clearBoard', async (_event, input?: { scope?: "project" | "all"; teamId?: string }) => {
+    try {
+      if (input?.scope === "project") {
+        if (!input.teamId) {
+          throw new Error("teamId is required for project board reset")
+        }
+
+        const deleted = pipelineExecutor.clearTasksByTeam(input.teamId)
+        return { success: true, deleted }
+      }
+
+      const deleted = pipelineExecutor.clearAllTasks()
+      return { success: true, deleted }
+    } catch (error) {
+      console.error('[handlers] clearBoard error:', error)
+      return {
+        success: false,
+        deleted: 0,
+        error: error instanceof Error ? error.message : String(error),
+      }
     }
   })
 

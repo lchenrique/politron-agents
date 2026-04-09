@@ -58,12 +58,13 @@ interface Window {
  agentTemplate: {
  list: () => Promise<any[]>;
  };
- pipeline: {
- addTask: (input: { teamId: string; agentId: string; description: string; files: string[]; dependsOn: string[]; branchName?: string }) => Promise<any>;
- start: (taskId: string) => Promise<any>;
- getStatus: (teamId: string) => Promise<any>;
- getTasks: (teamId: string) => Promise<any[]>;
- };
+  pipeline: {
+    addTask: (input: { teamId: string; agentId: string; description: string; files: string[]; dependsOn: string[]; branchName?: string }) => Promise<any>;
+    start: (taskId: string) => Promise<any>;
+    updateTaskStatus: (input: { taskId: string; status: "backlog" | "triage" | "ready" | "in_progress" | "blocked" | "in_review" | "done" | "cancelled"; note?: string; actorAgentId?: string; actorAgentName?: string; blockedReason?: string; result?: string; observations?: string }) => Promise<any>;
+    getStatus: (teamId: string) => Promise<any>;
+    getTasks: (teamId: string) => Promise<any[]>;
+  };
  worktree: {
  create: (input: { basePath: string; teamSlug: string; agentSlug: string; branchName: string; agentId: string; teamId: string }) => Promise<any>;
  remove: (worktreePath: string) => Promise<any>;
@@ -81,6 +82,7 @@ interface Window {
  onAgentTool: (callback: (data: any) => void) => void;
  onAgentActivity: (callback: (data: any) => void) => void;
  onAgentHandoff: (callback: (data: unknown) => void) => void;
+ onCommunicationUpdate: (callback: (data: unknown) => void) => void;
  onAgentStatus: (callback: (data: any) => void) => void;
  onAgentDone: (callback: (data: any) => void) => void;
  onAgentError: (callback: (data: any) => void) => void;
@@ -96,10 +98,11 @@ interface Window {
  onTeamResumed: (callback: (data: any) => void) => void;
  onTaskAdded: (callback: (data: any) => void) => void;
  onTaskStarted: (callback: (data: any) => void) => void;
- onTaskCompleted: (callback: (data: any) => void) => void;
- onTaskFailed: (callback: (data: any) => void) => void;
- onTaskBlocked: (callback: (data: any) => void) => void;
- onTaskDelegated: (callback: (data: any) => void) => void;
+  onTaskCompleted: (callback: (data: any) => void) => void;
+  onTaskFailed: (callback: (data: any) => void) => void;
+  onTaskBlocked: (callback: (data: any) => void) => void;
+  onTaskUpdated: (callback: (data: any) => void) => void;
+  onTaskDelegated: (callback: (data: any) => void) => void;
   onPipelineStatusChanged: (callback: (data: any) => void) => void;
  onWorktreeCreated: (callback: (data: any) => void) => void;
  onWorktreeRemoved: (callback: (data: any) => void) => void;
@@ -126,6 +129,117 @@ interface Window {
       model?: { modelID: string; providerID: string };
     }) => Promise<{ success: boolean }>;
     subscribe: (sessionId: string) => Promise<void>;
+  };
+  opencode: {
+    listModels: () => Promise<Array<{ id: string; providerID: string; name: string }>>;
+    getConfigDiagnostics: (input?: { projectPath?: string }) => Promise<{
+      sdkReady: boolean;
+      providers: Array<{
+        id: string;
+        name?: string;
+        api?: string;
+        modelCount: number;
+        models: Array<{ id: string; name: string; family?: string; status?: string }>;
+        optionKeys: string[];
+        env: string[];
+        hasHeaders: boolean;
+      }>;
+      models: Array<{ id: string; providerID: string; name: string }>;
+      sources: Array<{ scope: "global" | "project" | "custom"; label: string; path: string; exists: boolean }>;
+      env: {
+        OPENCODE_CONFIG?: string;
+        OPENCODE_CONFIG_DIR?: string;
+        OPENCODE_TUI_CONFIG?: string;
+      };
+      mergedSummary: {
+        username?: string;
+        logLevel?: string;
+        model?: string;
+        small_model?: string;
+        default_agent?: string;
+        share?: string;
+        autoupdate?: boolean | "notify";
+        snapshot?: boolean;
+        disabled_providers: string[];
+        enabled_providers: string[];
+        providerCount: number;
+        mcpCount: number;
+        commandCount: number;
+        toolCount: number;
+        skillsPaths: number;
+        skillsUrls: number;
+        watcherIgnoreCount: number;
+      };
+      warnings: string[];
+    }>;
+    getConfigEditorData: (input?: { scope?: "global" | "project"; projectPath?: string }) => Promise<{
+      scope: "global" | "project";
+      targetPath: string;
+      exists: boolean;
+      defaults: {
+        username?: string;
+        logLevel?: string;
+        model?: string;
+        small_model?: string;
+        default_agent?: string;
+        share?: string;
+        autoupdate?: boolean | "notify";
+        snapshot?: boolean;
+      };
+      providers: Array<{
+        id: string;
+        name?: string;
+        api?: string;
+        active: boolean;
+        options: {
+          apiKey?: string;
+          baseURL?: string;
+          enterpriseUrl?: string;
+          setCacheKey?: boolean;
+          timeout?: number;
+          chunkTimeout?: number;
+        };
+      }>;
+      models: Array<{ id: string; providerID: string; name: string }>;
+      mcpJson: string;
+      permissionsJson: string;
+      toolsJson: string;
+      warnings: string[];
+    }>;
+    saveConfigEditorData: (input: {
+      scope: "global" | "project";
+      projectPath?: string;
+      defaults: {
+        username?: string;
+        logLevel?: string;
+        model?: string;
+        small_model?: string;
+        default_agent?: string;
+        share?: string;
+        autoupdate?: boolean | "notify";
+        snapshot?: boolean;
+      };
+      providers: Array<{
+        id: string;
+        name?: string;
+        api?: string;
+        active: boolean;
+        options: {
+          apiKey?: string;
+          baseURL?: string;
+          enterpriseUrl?: string;
+          setCacheKey?: boolean;
+          timeout?: number;
+          chunkTimeout?: number;
+        };
+      }>;
+      mcpJson: string;
+      permissionsJson: string;
+      toolsJson: string;
+    }) => Promise<{ success: true; targetPath: string; warnings: string[] }>;
+  };
+  workspace: {
+    clearBoard: (input?: { scope?: "project" | "all"; teamId?: string }) => Promise<{ success: boolean; deleted: number; error?: string }>;
   };
   };
 }

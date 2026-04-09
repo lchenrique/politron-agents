@@ -20,9 +20,10 @@ const statusClasses: Record<string, string> = {
 
 interface TeamsSidebarProps {
   onHireAgent: () => void;
+  onTabChange?: (tab: "chat" | "board") => void;
 }
 
-const TeamsSidebar = ({ onHireAgent }: TeamsSidebarProps) => {
+const TeamsSidebar = ({ onHireAgent, onTabChange }: TeamsSidebarProps) => {
   const teams = useWorkspaceTeams();
   const activeTeam = useWorkspaceActiveTeam();
   const activeAgentTabId = useWorkspaceActiveAgentTabId();
@@ -39,7 +40,10 @@ const TeamsSidebar = ({ onHireAgent }: TeamsSidebarProps) => {
           {globalAgents.map((agent) => (
             <div
               key={agent.id}
-              onClick={() => setActiveAgentTab(agent.id)}
+              onClick={() => {
+                onTabChange?.("chat");
+                setActiveAgentTab(agent.id);
+              }}
               className={`flex items-center gap-3 rounded-xl p-2.5 cursor-pointer border ${
                 activeAgentTabId === agent.id
                   ? "bg-ide-indigo/10 border-ide-indigo/40 ring-1 ring-ide-indigo/20"
@@ -94,6 +98,7 @@ const TeamsSidebar = ({ onHireAgent }: TeamsSidebarProps) => {
                   <div
                     key={agent.id}
                     onClick={() => {
+                      onTabChange?.("chat");
                       setActiveAgentTab(agent.id);
                       setActiveProject(team.id);
                     }}

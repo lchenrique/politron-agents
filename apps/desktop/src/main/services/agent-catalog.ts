@@ -24,6 +24,28 @@ export interface AgentTemplateEntry {
   systemPromptPath: string
 }
 
+export interface GlobalAgentDefinition {
+  id: string
+  slug: string
+  name: string
+  role: "global-ceo" | "global-agent"
+  systemPromptPath: string
+}
+
+export type OpenCodeAgentScope = "global" | "marketplace"
+
+export interface OpenCodeAgentDefinition {
+  slug: string
+  name: string
+  description: string
+  mode: string
+  color: string
+  initials: string
+  role: string
+  systemPromptPath: string
+  scope: OpenCodeAgentScope
+}
+
 /**
  * Parse YAML frontmatter from markdown content
  */
@@ -165,6 +187,66 @@ export const GLOBAL_CEO_PROMPT = {
   targetPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/ceo.md`),
 }
 
+export const GLOBAL_AGENT_DEFINITIONS: GlobalAgentDefinition[] = [
+  {
+    id: 'ceo-global',
+    slug: 'ceo',
+    name: 'CEO Global',
+    role: 'global-ceo',
+    systemPromptPath: GLOBAL_CEO_PROMPT.targetPath,
+  },
+  {
+    id: 'hr-global',
+    slug: 'hr-global',
+    name: 'RH Global',
+    role: 'global-agent',
+    systemPromptPath: toAbsoluteProjectPath(`${OPENCODE_PROJECT_AGENTS_DIR}/hr-global.md`),
+  },
+]
+
+const ABSOLUTE_OPENCODE_PROJECT_AGENTS_DIR = toAbsoluteProjectPath(OPENCODE_PROJECT_AGENTS_DIR)
+
+export const OPENCODE_AGENT_TEMPLATES: AgentTemplateEntry[] = loadAgentTemplates(
+  ABSOLUTE_OPENCODE_PROJECT_AGENTS_DIR
+)
+
+const GLOBAL_AGENT_SLUGS = new Set(GLOBAL_AGENT_DEFINITIONS.map((agent) => agent.slug))
+
+export const OPENCODE_AGENT_REGISTRY: Record<string, OpenCodeAgentDefinition> = Object.fromEntries(
+  OPENCODE_AGENT_TEMPLATES.map((template) => [
+    template.slug,
+    {
+      ...template,
+      scope: GLOBAL_AGENT_SLUGS.has(template.slug) ? "global" : "marketplace",
+    } satisfies OpenCodeAgentDefinition,
+  ])
+)
+
+export const OPENCODE_MARKETPLACE_AGENTS: OpenCodeAgentDefinition[] = Object.values(
+  OPENCODE_AGENT_REGISTRY
+).filter((agent) => agent.scope === "marketplace")
+
+function normalizeAgentIdentity(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[_\s/]+/g, "-")
+}
+
+const MARKETPLACE_AGENT_IDENTITY_ALIASES: Record<string, string> = {
+  "frontend-dev": "frontend-developer",
+  "backend-dev": "backend-architect",
+  "qa-tester": "reality-checker",
+  "qa-engineer": "reality-checker",
+  "devops-eng": "devops-automator",
+  "ux-designer": "ui-designer",
+  "uiux-designer": "ui-designer",
+  "ui-ux-designer": "ui-designer",
+}
+
 export const AGENCY_AGENT_SYNC_MAP: Record<string, { sourcePath: string; targetPath: string }> = {
   'tech-lead': {
     sourcePath: 'project-management/project-management-studio-producer.md',
@@ -303,6 +385,61 @@ export function getAgentBySlug(slug: string): AgentCatalogEntry | undefined {
   return AGENT_CATALOG.find((agent) => agent.slug === normalizedSlug)
 }
 
+export function getAgentByIdentity(value: string): AgentCatalogEntry | undefined {
+  const normalized = value.trim().toLowerCase().replace(/[_\s/]+/g, '-')
+  return AGENT_CATALOG.find((agent) => {
+    const normalizedSlug = agent.slug.toLowerCase().replace(/[_\s/]+/g, '-')
+    const normalizedName = agent.name.toLowerCase().replace(/[_\s/]+/g, '-')
+    const normalizedRole = agent.role.toLowerCase().replace(/[_\s/]+/g, '-')
+
+    return (
+      normalizedSlug === normalized ||
+      normalizedName === normalized ||
+      normalizedRole === normalized ||
+      normalizedName.includes(normalized) ||
+      normalized.includes(normalizedSlug) ||
+      normalized.includes(normalizedRole)
+    )
+  })
+}
+
 export function getTemplateById(id: string): TeamTemplate | undefined {
   return TEAM_TEMPLATES.find((template) => template.id === id)
+}
+
+export function getGlobalAgentByIdentity(value: string): GlobalAgentDefinition | undefined {
+  const normalized = value.trim().toLowerCase().replace(/[_\s]+/g, '-')
+  return GLOBAL_AGENT_DEFINITIONS.find((agent) => {
+    const normalizedName = agent.name.toLowerCase().replace(/[_\s]+/g, '-')
+    return (
+      agent.id === normalized ||
+      agent.slug === normalized ||
+      normalizedName === normalized ||
+      normalizedName.includes(normalized) ||
+      normalized.includes(agent.slug)
+    )
+  })
+}
+
+export function getMarketplaceAgentByIdentity(value: string): OpenCodeAgentDefinition | undefined {
+  const normalized = normalizeAgentIdentity(value)
+  const canonical = MARKETPLACE_AGENT_IDENTITY_ALIASES[normalized] ?? normalized
+
+  return OPENCODE_MARKETPLACE_AGENTS.find((agent) => {
+    const normalizedSlug = normalizeAgentIdentity(agent.slug)
+    const normalizedName = normalizeAgentIdentity(agent.name)
+    const normalizedRole = normalizeAgentIdentity(agent.role)
+
+    return (
+      normalizedSlug === canonical ||
+      normalizedName === canonical ||
+      normalizedRole === canonical ||
+      normalizedName.includes(canonical) ||
+      canonical.includes(normalizedSlug)
+    )
+  })
+}
+
+export function listMarketplaceAgentIdentities(): string[] {
+  return OPENCODE_MARKETPLACE_AGENTS.map((agent) => `${agent.name} [${agent.slug}]`)
 }
