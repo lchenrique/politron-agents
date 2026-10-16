@@ -9,6 +9,7 @@ export function registerV9Ipc(service: WorkspaceService) {
   })
   invoke('snapshot', () => service.snapshot())
   invoke('saveAgent', (input) => service.saveAgent(input))
+  invoke('saveProject', (input) => service.saveProject(input))
   invoke('saveConversation', (input) => service.saveConversation(input))
   invoke('history', (id) => service.history(id))
   invoke('send', (id, text, model) => service.send(id, text, model))
@@ -26,6 +27,6 @@ export function registerV9Ipc(service: WorkspaceService) {
   service.on('workspace-event', send)
   return () => {
     service.off('workspace-event', send)
-    for (const channel of ['snapshot', 'saveAgent', 'saveConversation', 'history', 'send', 'stop', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'saveAgent', 'saveProject', 'saveConversation', 'history', 'send', 'stop', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

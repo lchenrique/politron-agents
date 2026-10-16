@@ -4,8 +4,14 @@ export interface Agent {
   runtime: 'codex'; model: string; color: string; avatar: string
   canWrite: boolean; computerUse: boolean; revision: number; createdAt: string
 }
+export const ASSISTANT_ID = 'app-assistant'
+export interface Project {
+  id: string; name: string; directory: string | null; instructions: string
+  defaultAgentIds: string[]; revision: number; archived: boolean; createdAt: string
+}
 export interface Conversation {
   id: string; kind: 'direct' | 'group'; name: string; agentIds: string[]
+  projectId: string | null; titleAuto: boolean
   directory: string | null; revision: number; archived: boolean; createdAt: string
 }
 export interface Message {
@@ -26,7 +32,7 @@ export interface Delegation {
   error: string; createdAt: string; updatedAt: string
 }
 export interface Model { id: string; name: string; isDefault: boolean }
-export interface Snapshot { agents: Agent[]; conversations: Conversation[]; messages: Message[]; runs: Run[] }
+export interface Snapshot { assistant: Agent; agents: Agent[]; projects: Project[]; conversations: Conversation[]; messages: Message[]; runs: Run[] }
 export interface BrowserFrame {
   key: string; conversationId: string; agentId: string; url: string; title: string
   image: string; width: number; height: number; x: number | null; y: number | null
@@ -39,6 +45,7 @@ export type WorkspaceEvent =
 export interface WorkspaceAPI {
   snapshot(): Promise<Snapshot>
   saveAgent(input: Partial<Agent>): Promise<Agent>
+  saveProject(input: Partial<Project>): Promise<Project>
   saveConversation(input: Partial<Conversation>): Promise<Conversation>
   history(conversationId: string): Promise<Message[]>
   send(conversationId: string, text: string, model?: string): Promise<void>

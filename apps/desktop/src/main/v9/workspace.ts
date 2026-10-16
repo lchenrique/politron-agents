@@ -1,9 +1,9 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { basename, extname, isAbsolute, relative, resolve, sep, join } from 'node:path'
 import { app, dialog, shell } from 'electron'
 import { EventEmitter } from 'node:events'
-import type { Agent, Conversation, Delegation, Message, Run, WorkspaceEvent } from '../../shared/v9'
+import { ASSISTANT_ID, type Agent, type Conversation, type Delegation, type Message, type Project, type Run, type WorkspaceEvent } from '../../shared/v9'
 import { BrowserService } from './browser'
 import { WorkspaceQueue, recipients } from './routing'
 import { CodexRuntime, type DynamicTool } from './codex'
@@ -35,6 +35,7 @@ export class WorkspaceService extends EventEmitter {
   }
   snapshot() { return this.store.snapshot() }
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.emitEvent({ type: 'changed' }); return agent }
+  saveProject(input: Partial<Project>) { const project = this.store.saveProject(input); this.emitEvent({ type: 'changed' }); return project }
   saveConversation(input: Partial<Conversation>) { const conversation = this.store.saveConversation(input); this.emitEvent({ type: 'changed' }); return conversation }
   history(id: string) { this.store.conversation(id); return this.store.history(id) }
   private emitEvent(event: WorkspaceEvent) { this.emit('workspace-event', event) }
@@ -47,11 +48,12 @@ export class WorkspaceService extends EventEmitter {
     if (!input) return
     const conversation = this.store.conversation(conversationId)
     if (conversation.archived) throw new Error('Esta conversa está arquivada.')
-    const agents = conversation.agentIds.map(id => this.store.agent(id))
+    const agents = (conversation.agentIds.length ? conversation.agentIds : [ASSISTANT_ID]).map(id => this.store.agent(id))
     if (model && !(await this.models()).some(item => item.id === model)) throw new Error('O modelo selecionado não está disponível no Codex.')
     const selected = recipients(input, agents)
     if (!selected.length) throw new Error('Não há agentes para responder nesta conversa.')
     const userMessage = this.addMessage(conversationId, null, 'user', input, 'completed', null)
+    if (conversation.titleAuto) { this.store.autoTitle(conversationId, input); this.emitEvent({ type: 'changed' }) }
     const tasks: Promise<void>[] = []
     for (const agent of selected) {
       const runAgent = model ? { ...agent, model } : agent
@@ -119,8 +121,10 @@ export class WorkspaceService extends EventEmitter {
     this.contexts.set(run.id, context)
     try {
       const directory = await this.resolveDirectory(conversation, run)
-      const bindingKey = `${conversation.id}:${agent.id}:r${agent.revision}:m${agent.model}:c${conversation.revision}`
-      const threadId = await this.runtime.thread(agent, directory, this.tools(context), this.store.binding(bindingKey))
+      const projectInstructions = conversation.projectId ? this.store.project(conversation.projectId).instructions : ''
+      const projectContext = createHash('sha256').update(projectInstructions).digest('hex').slice(0, 16)
+      const bindingKey = `${conversation.id}:${agent.id}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${projectContext}`
+      const threadId = await this.runtime.thread(agent, directory, this.tools(context), this.store.binding(bindingKey), projectInstructions)
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
       const result = await this.runtime.request('turn/start', { threadId, input: [{ type: 'text', text: run.input }], ...(agent.model ? { model: agent.model } : {}) }, 600000)

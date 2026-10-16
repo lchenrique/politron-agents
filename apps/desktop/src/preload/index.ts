@@ -314,6 +314,7 @@ contextBridge.exposeInMainWorld('vibeAPI', api)
 const workspaceAPI: WorkspaceAPI = {
   snapshot: () => ipcRenderer.invoke('v9:snapshot'),
   saveAgent: (input) => ipcRenderer.invoke('v9:saveAgent', input),
+  saveProject: (input) => ipcRenderer.invoke('v9:saveProject', input),
   saveConversation: (input) => ipcRenderer.invoke('v9:saveConversation', input),
   history: (id) => ipcRenderer.invoke('v9:history', id),
   send: (id, value, model) => ipcRenderer.invoke('v9:send', id, value, model),
