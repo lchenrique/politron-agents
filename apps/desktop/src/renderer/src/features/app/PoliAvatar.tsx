@@ -35,7 +35,7 @@ export function PoliAvatar({ agent, size = 36, state = 'idle', expression }: {
   } as CSSProperties
   return (
     <span className="poli-avatar inline-flex shrink-0 items-center justify-center" style={style} data-animate={animate} data-shape={shape} data-state={state}>
-      <svg viewBox="0 0 240 210" className="size-full overflow-visible" role="img" aria-label={`${agent.name || 'Poli'} — ${face}`}>
+      <svg viewBox="28 0 185 200" className="size-full overflow-visible" role="img" aria-label={`${agent.name || 'Poli'} — ${face}`}>
         <defs>
           <radialGradient id={gradientId} cx="30%" cy="20%" r="85%">
             <stop offset="0" stopColor={mix(color, 255, .46)} />
