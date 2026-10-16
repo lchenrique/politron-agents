@@ -11,6 +11,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/main", "src/preload"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src/main", "src/preload", "src/shared", "electron.vite.config.ts"]
 }
