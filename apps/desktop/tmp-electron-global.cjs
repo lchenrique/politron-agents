@@ -1,1 +1,0 @@
-﻿console.log("globals", typeof process._linkedBinding, typeof globalThis.require); try { console.log("binding keys", Object.keys(process._linkedBinding("electron_common_features")||{})); } catch (e) { console.error("binding err", e.message); }
