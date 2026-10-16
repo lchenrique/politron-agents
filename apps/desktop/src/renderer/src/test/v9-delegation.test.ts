@@ -12,6 +12,7 @@ import type { Agent, Conversation, Delegation, Message, Run } from '../../../sha
 
 class FakeRuntime extends EventEmitter {
   started = 0
+  startedTurns = 0
   fail = false
   hold = false
   directories: string[] = []
@@ -20,9 +21,10 @@ class FakeRuntime extends EventEmitter {
     this.agents.push(agent); this.directories.push(directory); this.started++
     return `thread-${this.started}`
   }
-  async request(_method: string) {
-    const threadId = `thread-${this.started}`
-    const turnId = `turn-${this.started}`
+  async request(_method: string, params?: { threadId?: string }) {
+    const threadId = params?.threadId || `thread-${this.started}`
+    const turnId = `turn-${threadId.split('-').at(-1)}`
+    this.startedTurns++
     if (!this.hold) setTimeout(() => {
       if (!this.fail) this.emit('event', { method: 'item/agentMessage/delta', params: { threadId, turnId, delta: 'Resultado do agente destinatário.' } })
       this.emit('event', { method: 'turn/completed', params: { threadId, turn: { id: turnId, status: this.fail ? 'failed' : 'completed', ...(this.fail ? { error: { message: 'Falha simulada do destinatário.' } } : {}) } } })
@@ -117,7 +119,7 @@ describe('delegação entre conversas V9', () => {
     const { service, context, recipient, controller } = setup(runtime)
     const first = (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Primeiro pedido' }, 'tool-first')
     const second = (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Segundo pedido' }, 'tool-second')
-    while (runtime.started < 2) await new Promise(resolve => setTimeout(resolve, 5))
+    while (runtime.startedTurns < 2) await new Promise(resolve => setTimeout(resolve, 5))
     const firstDelegation = service.store.delegationByKey('run-root:tool-first')!
     const firstResult = service.cancelDelegation(firstDelegation.id)
     await expect(first).rejects.toThrow()

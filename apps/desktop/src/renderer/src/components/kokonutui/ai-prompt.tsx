@@ -66,8 +66,9 @@ export interface PromptModel {
 
 interface AIPromptProps {
   models?: PromptModel[];
-  /** Name of the model selected at first. */
+  /** Name of the initially selected model; changes keep the composer in sync. */
   defaultModel?: string;
+  onModelChange?: (model: string) => void;
   placeholder?: string;
   /** One line above the box, e.g. a promo. Pass "" to hide the header. */
   headerText?: string;
@@ -744,6 +745,7 @@ function EffortMenu({
 export default function AI_Prompt({
   models = DEFAULT_MODELS,
   defaultModel = "Claude Opus 5.5",
+  onModelChange,
   placeholder = "Ask anything. Type / for commands",
   headerText = "Claude Fable 5.1 is free this weekend",
   headerAction = "Try it",
@@ -783,9 +785,18 @@ export default function AI_Prompt({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  useEffect(() => {
+    if (!models.some((model) => model.name === defaultModel) || selectedModel === defaultModel) return;
+    const next = models.find((model) => model.name === defaultModel);
+    if (!next) return;
+    setEffort(carryEffort(currentModel, next, effort));
+    setSelectedModel(defaultModel);
+  }, [defaultModel, models]);
+
   const pickModel = (next: PromptModel) => {
     setEffort(carryEffort(currentModel, next, effort));
     setSelectedModel(next.name);
+    onModelChange?.(next.name);
   };
 
   const addFiles = (files: FileList | File[]) => {
@@ -942,7 +953,7 @@ export default function AI_Prompt({
   const hasTray = attachments.length > 0 || command !== null;
 
   return (
-    <div className={cn("w-full max-w-lg py-4", className)}>
+    <div className={cn("mx-auto w-full max-w-3xl py-4", className)}>
       <div className="rounded-[22px] bg-black/[0.04] p-1 dark:bg-white/[0.04]">
         {headerText && (
           <PromoHeader

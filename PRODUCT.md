@@ -98,6 +98,8 @@ O usuário começa uma conversa com o Assistente padrão ou escolhe um bot. Proj
 
 A aparência do Politron foi trabalhada pelo usuário e é um ativo a preservar. ChatGPT/Codex são referências de familiaridade da interação; não são autorização para substituir o design atual por uma cópia visual. OpenDots deixou de ser a base deste projeto.
 
+“Pits” é o nome provisório escolhido pelo usuário para o mascote, sem renomear o aplicativo Politron nesta rodada. A animação do mascote é opcional e posterior; priorizar movimento leve em SVG/CSS, respeitar movimento reduzido e não comprometer o desempenho do chat.
+
 ## Evidence on Hand
 
 Na inspeção do OpenMausBot instalado e aberto em 16/10/2026, selecionar Lyra na lista de bots abriu a tela de conversa direta com sua identidade, descrição, modelo e campo “Mensagem para Lyra”. O perfil abriu em painel separado. A lateral expõe novas conversas e históricos por bot, além dos grupos. O código instalado separa bot e thread e permite enviar ao thread principal do bot quando um thread específico não é informado. No Politron atual, clicar no agente ainda abre o formulário de edição, e a criação de conversa começa em modo grupo. Essa divergência foi identificada, mas a correção da interface ainda não foi implementada.
