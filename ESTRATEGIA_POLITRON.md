@@ -186,10 +186,10 @@ Atualizar a cada fase: data, commit, o que foi provado (testes, integração rea
 | --- | --- | --- | --- | --- |
 | 0 Limpeza | em validação | commits `9fdb67a` a `0b78d2b` | `npm ci` concluído; `npm run typecheck` passou; `npm test` passou (18 aprovados, 1 integração pulada); `npm run test:codex` passou (19 aprovados); `npm run build` passou; `npm run dev` compilou main/preload e registrou janela mostrada | Captura de tela não obtida: a sessão não expõe janela nativa nem navegador pelo Computer Use. `npm run lint` falhou com 26 erros e 7 avisos. O teste real emite aviso EPERM ao tentar remover diretório temporário, apesar de passar. Build emite avisos de PostCSS e diretivas `use client`. |
 | 1 Navegação | concluída | `a708084` | `npm test`: 24 aprovados, 1 integração Codex ignorada; typecheck e build aprovados; Electron aberto com captura visual validada em temas escuro, claro e colorido; centralização do composer medida em 0 px de desvio; configurações e retorno à conversa verificados | Avisos existentes do Vite/PostCSS e diretivas `use client` no build. |
-| 2 Workspaces | pendente | | | |
-| 3 Diff | pendente | | | |
-| 4 Aprovações | pendente | | | |
-| 5 Claude | pendente | | | |
+| 2 Workspaces | concluída em 16/10/2026 | `091a6d4` | Migração 3→4 com backup e recusa de esquema futuro; worktrees Git por projeto/branch; fila serial por workspace e paralela entre workspaces; terminal resolve a pasta pelo `workspaceId`; testes do store, worktree, fila e resolução/arquivamento do workspace; Electron abriu com a árvore Projeto → Workspace visível | Build conserva avisos de dependências, PostCSS e diretivas `use client`. |
+| 3 Diff | concluída em 16/10/2026 | `091a6d4` | `FileChange` persistido e idempotente; cartões no chat e diff do workspace contra `HEAD`; cobertura para criar/editar/falhar/sem mudança/repetir/dois agentes/arquivo grande/binário/reiniciar | Diff de binário é identificado, sem conteúdo textual. |
+| 4 Aprovações | concluída em 16/10/2026 | `091a6d4` | Modos perguntar/automático; cartão inline; aprovar, negar, cancelar e reiniciar com pendência interrompida; avisos fora da conversa e estado de fila; 3 testes de aprovação aprovados | Notificação do Windows depende de suporte do sistema. |
+| 5 Claude | concluída em 16/10/2026 | `091a6d4` | `AgentRuntime` compartilhado; Codex e Claude; Claude Agent SDK com ferramentas MCP do app e ferramentas nativas de escrita/shell bloqueadas; credencial cifrada via `safeStorage`; runtime/modelo/esforço e perfis; sessões retomadas pelo ID; teste simulado de runtime misto, diff e delegação Claude→Codex | Integração real condicionada a `POLITRON_RUN_CLAUDE_INTEGRATION=1` não executada nesta rodada; nenhuma chave Anthropic foi configurada. |
 | 6 Discord | pendente | | | |
 | 7 Equipe | pendente | | | |
 | 8 Chief | pendente | | | |
