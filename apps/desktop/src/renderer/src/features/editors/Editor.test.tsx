@@ -35,3 +35,18 @@ describe('criação simples de conversa', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: 'group', name: 'Revisão', agentIds: ['a', 'b'] })))
   })
 })
+
+describe('editor de agentes com Poli Studio', () => {
+  it('envia configurações personalizadas junto com o agente', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<Editor kind="agent" agents={[]} models={[]} initial={agent('poli-1', 'Poli')} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)
+    expect(screen.getByText('Poli Studio')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher cor #4098eb' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Animação' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Ativar animações' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'poli-1', color: '#4098eb', pitsAnimate: false, pitsShape: 'round',
+    })))
+  })
+})

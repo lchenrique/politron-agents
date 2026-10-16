@@ -1,0 +1,19 @@
+.poli-avatar svg { display: block; }
+.poli-avatar__shape { transform-box: fill-box; transform-origin: center; }
+.poli-avatar[data-shape="flat"] .poli-avatar__shape { transform: scale(1.08, .88); }
+.poli-avatar[data-shape="long"] .poli-avatar__shape { transform: scale(.88, 1.08); }
+.poli-avatar__eyes { transform-box: fill-box; transform-origin: center; }
+.poli-avatar[data-animate="true"] .poli-avatar__float { animation: poli-avatar-float var(--poli-speed, 3s) ease-in-out infinite; }
+.poli-avatar[data-animate="true"] .poli-avatar__eyes { animation: poli-avatar-blink 4.6s ease-in-out infinite; }
+.poli-avatar[data-animate="true"] .poli-avatar__aura { animation: poli-avatar-pulse 2.4s ease-in-out infinite; }
+.poli-avatar[data-animate="true"] .poli-avatar__thought { animation: poli-avatar-think 1.5s ease-in-out infinite; }
+@keyframes poli-avatar-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(var(--poli-amplitude, -9px)); } }
+@keyframes poli-avatar-blink { 0%, 43%, 47%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.08); } }
+@keyframes poli-avatar-pulse { 0%, 100% { opacity: .12; } 50% { opacity: .28; } }
+@keyframes poli-avatar-think { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .poli-avatar .poli-avatar__float,
+  .poli-avatar .poli-avatar__eyes,
+  .poli-avatar .poli-avatar__aura,
+  .poli-avatar .poli-avatar__thought { animation: none !important; }
+}

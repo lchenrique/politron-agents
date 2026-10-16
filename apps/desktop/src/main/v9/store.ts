@@ -234,7 +234,17 @@ export class WorkspaceStore {
     if (approvalMode !== 'ask' && approvalMode !== 'automatic') throw new Error('Modo de aprovação inválido.')
     const effort = input.effort ?? previous?.effort ?? 'medium'
     if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço do agente inválido.')
-    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : '#6366f1', avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round', canWrite: input.canWrite === true, computerUse: input.computerUse === true, approvalMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
+    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : '#6366f1', avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round',
+      pitsEyeColor: /^#[\da-f]{6}$/i.test(input.pitsEyeColor || '') ? input.pitsEyeColor : previous?.pitsEyeColor || '#ffffff',
+      pitsCheekColor: /^#[\da-f]{6}$/i.test(input.pitsCheekColor || '') ? input.pitsCheekColor : previous?.pitsCheekColor || '#f5a5d1',
+      pitsEyeSize: typeof input.pitsEyeSize === 'number' && Number.isFinite(input.pitsEyeSize) ? Math.max(4, Math.min(15, input.pitsEyeSize)) : previous?.pitsEyeSize ?? 8,
+      pitsEyeSpacing: typeof input.pitsEyeSpacing === 'number' && Number.isFinite(input.pitsEyeSpacing) ? Math.max(16, Math.min(42, input.pitsEyeSpacing)) : previous?.pitsEyeSpacing ?? 26,
+      pitsSpeed: typeof input.pitsSpeed === 'number' && Number.isFinite(input.pitsSpeed) ? Math.max(1, Math.min(6, input.pitsSpeed)) : previous?.pitsSpeed ?? 3,
+      pitsAmplitude: typeof input.pitsAmplitude === 'number' && Number.isFinite(input.pitsAmplitude) ? Math.max(0, Math.min(24, input.pitsAmplitude)) : previous?.pitsAmplitude ?? 9,
+      pitsAura: input.pitsAura ?? previous?.pitsAura ?? true,
+      pitsBlush: input.pitsBlush ?? previous?.pitsBlush ?? true,
+      pitsAnimate: input.pitsAnimate ?? previous?.pitsAnimate ?? true,
+      canWrite: input.canWrite === true, computerUse: input.computerUse === true, approvalMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_agents', value); return value
   }
   private userAgents(ids: string[]): void {

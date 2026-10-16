@@ -3,6 +3,7 @@ import { FolderOpen, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Model, Workspace } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
+import { PoliCustomizer } from '../app/PoliCustomizer'
 import { aliasFor, errorText } from '../app/appShellShared'
 
 export type EditorKind = 'agent' | 'conversation' | 'workspace'
@@ -21,8 +22,12 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
   const [model, setModel] = useState((initial as Agent | undefined)?.model || '')
   const [runtime, setRuntime] = useState((initial as Agent | undefined)?.runtime || 'codex')
   const [effort, setEffort] = useState((initial as Agent | undefined)?.effort || 'medium')
-  const [color, setColor] = useState((initial as Agent | undefined)?.color || '#7565e8')
+  const [color, setColor] = useState((initial as Agent | undefined)?.color || '#786bea')
   const [pitsShape, setPitsShape] = useState((initial as Agent | undefined)?.pitsShape || 'round')
+  const [pits, setPits] = useState<Partial<Agent>>(() => {
+    const agent = initial as Agent | undefined
+    return { pitsEyeColor: agent?.pitsEyeColor, pitsEyeSize: agent?.pitsEyeSize, pitsEyeSpacing: agent?.pitsEyeSpacing, pitsCheekColor: agent?.pitsCheekColor, pitsBlush: agent?.pitsBlush, pitsAura: agent?.pitsAura, pitsAnimate: agent?.pitsAnimate, pitsSpeed: agent?.pitsSpeed, pitsAmplitude: agent?.pitsAmplitude }
+  })
   const [avatar, setAvatar] = useState((initial as Agent | undefined)?.avatar || '')
   const [canWrite, setCanWrite] = useState((initial as Agent | undefined)?.canWrite || false)
   const [computerUse, setComputerUse] = useState((initial as Agent | undefined)?.computerUse || false)
@@ -43,7 +48,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
   const submit = async () => {
     setSaving(true); setProblem('')
     try {
-      if (kind === 'agent') await onSave({ ...(initial ? { id: initial.id } : {}), name, alias: alias || aliasFor(name), description, instructions, model, effort, color, avatar, pitsShape, canWrite, computerUse, approvalMode, runtime })
+      if (kind === 'agent') await onSave({ ...(initial ? { id: initial.id } : {}), name, alias: alias || aliasFor(name), description, instructions, model, effort, color, avatar, pitsShape, ...pits, canWrite, computerUse, approvalMode, runtime })
       else if (kind === 'workspace') await onSave({ ...(initial ? { id: initial.id } : {}), name, instructions, defaultAgentIds: selectedAgents, path: directory || null })
       else {
         const isGroup = selectedAgents.length > 1 || (originalConversation?.kind === 'group' && selectedAgents.length > 0)
@@ -54,10 +59,11 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
     } catch (error) { setProblem(errorText(error)) } finally { setSaving(false) }
   }
   const toggleAgent = (id: string) => setSelectedAgents(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
+  const previewAgent: Agent = { id: (initial as Agent | undefined)?.id || '', name, alias, description, instructions, model, runtime, color, avatar, pitsShape, ...pits, canWrite, computerUse, approvalMode, revision: 0, createdAt: '' }
   return <div className={`fixed inset-0 z-50 flex bg-black/45 ${kind === 'agent' ? 'justify-end' : 'items-center justify-center p-4'}`} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <section role="dialog" aria-modal="true" aria-labelledby="workspace-editor-title" className={`flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl ${kind === 'agent' ? 'h-full max-h-screen max-w-md rounded-l-2xl border-y-0 border-r-0' : 'max-w-lg rounded-2xl'}`}>
+    <section role="dialog" aria-modal="true" aria-labelledby="workspace-editor-title" className={`flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl ${kind === 'agent' ? 'h-full max-h-screen max-w-[840px] rounded-l-2xl border-y-0 border-r-0' : 'max-w-lg rounded-2xl'}`}>
       <header className="flex items-center justify-between border-b border-border/70 px-5 py-4">
-        {kind === 'agent' && <Avatar agent={{ id: (initial as Agent | undefined)?.id || '', name, alias, description, instructions, model, runtime, color, avatar, pitsShape, canWrite, computerUse, approvalMode, revision: 0, createdAt: '' }} size="md" />}
+        {kind === 'agent' && <Avatar agent={previewAgent} size="md" />}
         <div className="min-w-0 flex-1"><h2 id="workspace-editor-title" className="font-semibold">{kind === 'agent' ? editing ? 'Personalizar Pits' : 'Adicionar agente' : kind === 'workspace' ? editing ? 'Editar workspace' : 'Novo workspace' : editing ? 'Editar conversa' : 'Nova conversa'}</h2><p className="mt-1 text-xs text-muted-foreground">{kind === 'agent' ? 'Rosto, formato e cor deste agente.' : kind === 'workspace' ? 'Comece pelo nome. Pasta e equipe podem ser definidas depois.' : contextWorkspace ? `Conversa dentro de ${contextWorkspace.name}.` : 'Escolha quem participa. Sem agentes, a conversa fica com o Assistente.'}</p></div>
         <Button variant="ghost" size="icon" aria-label="Fechar" onClick={onClose}><X /></Button>
       </header>
@@ -66,9 +72,8 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
         {kind === 'agent' ? <>
           <label className="block space-y-1.5 text-sm">Especialidade<input value={description} onChange={event => setDescription(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-3" placeholder="Ex.: Pesquisa, código, revisão" /></label>
           <label className="block space-y-1.5 text-sm">Instruções<textarea value={instructions} onChange={event => setInstructions(event.target.value)} rows={4} className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2" placeholder="Descreva como ele deve trabalhar e responder." /></label>
-          <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={() => uploadRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"><Avatar agent={{ id: (initial as Agent | undefined)?.id || '', name, alias, description, instructions, model, runtime, color, avatar, pitsShape, canWrite, computerUse, approvalMode, revision: 0, createdAt: '' }} size="md" /> {avatar ? 'Trocar avatar' : 'Enviar imagem'}</button><input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => chooseAvatar(event.target.files?.[0])} /><span className="text-xs text-muted-foreground">PNG, JPG ou WebP até 1,4 MB</span></div>
-          <fieldset className="space-y-2"><legend className="text-sm font-medium">Formato do Pits</legend><div className="grid grid-cols-3 gap-2">{([{ value: 'round', label: 'Redondinho' }, { value: 'flat', label: 'Achatadinho' }, { value: 'long', label: 'Compridinho' }] as const).map(option => <button key={option.value} type="button" aria-pressed={pitsShape === option.value} onClick={() => setPitsShape(option.value)} className={`flex flex-col items-center gap-1.5 rounded-lg border p-2 text-xs transition-colors ${pitsShape === option.value ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:bg-accent/50'}`}><Avatar agent={{ id: (initial as Agent | undefined)?.id || '', name, alias, description, instructions, model, runtime, color, avatar: '', pitsShape: option.value, canWrite, computerUse, approvalMode, revision: 0, createdAt: '' }} size="md" /><span>{option.label}</span></button>)}</div></fieldset>
-          <label className="flex items-center gap-3 text-sm">Cor do Pits<input aria-label="Cor do Pits" type="color" value={color} onChange={event => setColor(event.target.value)} className="size-9 cursor-pointer rounded-lg border border-border bg-background p-1" /><span className="text-xs text-muted-foreground">Personaliza o rosto do agente</span></label>
+          <PoliCustomizer agent={previewAgent} onChange={patch => { if (patch.color) setColor(patch.color); if (patch.pitsShape) setPitsShape(patch.pitsShape); setPits(current => ({ ...current, ...patch })) }} />
+          <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={() => uploadRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"><Avatar agent={previewAgent} size="md" /> {avatar ? "Trocar imagem enviada" : "Usar imagem prÃ³pria"}</button><input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => chooseAvatar(event.target.files?.[0])} />{avatar && <button type="button" className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent" onClick={() => setAvatar("")}>Voltar ao Poli</button>}<span className="text-xs text-muted-foreground">Opcional Â· PNG, JPG ou WebP atÃ© 1,4 MB</span></div>
           <details className="rounded-lg border border-border/70 px-3 py-2"><summary className="cursor-pointer text-sm font-medium">Mais opções</summary><div className="mt-3 space-y-4">
             <label className="block space-y-1.5 text-sm">Menção<input value={alias} onChange={event => setAlias(aliasFor(event.target.value))} className="h-10 w-full rounded-lg border border-input bg-background px-3" placeholder="revisora" /></label>
             <label className="block space-y-1.5 text-sm">Perfil rápido<select value="" onChange={event => { const profile = event.target.value; if (profile === 'codex-balanced' || profile === 'codex-focused') { setRuntime('codex'); setModel(''); setEffort(profile === 'codex-focused' ? 'high' : 'medium') } else if (profile.startsWith('claude-')) { setRuntime('claude'); const desired = profile === 'claude-opus' ? /opus/i : /sonnet/i; setModel(models.find(item => item.runtime === 'claude' && desired.test(item.name))?.id.replace(/^claude:/, '') || ''); setEffort(profile === 'claude-opus' ? 'high' : 'medium') } }} className="h-10 w-full rounded-lg border border-input bg-background px-3"><option value="">Escolha uma base…</option><option value="codex-balanced">Codex equilibrado</option><option value="codex-focused">Codex focado</option><option value="claude-sonnet">Claude Sonnet equilibrado</option><option value="claude-opus">Claude Opus avançado</option></select></label>

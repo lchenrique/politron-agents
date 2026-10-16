@@ -3,7 +3,8 @@ export interface Agent {
   id: string; name: string; alias: string; description: string; instructions: string
   runtime: 'codex' | 'claude'; model: string; color: string; avatar: string
   pitsShape?: 'round' | 'flat' | 'long'
-  pitsCheekColor?: string; pitsAura?: boolean; pitsAnimate?: boolean; pitsEyeSize?: number; pitsEyeSpacing?: number
+  pitsCheekColor?: string; pitsEyeColor?: string; pitsAura?: boolean; pitsBlush?: boolean; pitsAnimate?: boolean
+  pitsEyeSize?: number; pitsEyeSpacing?: number; pitsSpeed?: number; pitsAmplitude?: number
   canWrite: boolean; computerUse: boolean; approvalMode: 'ask' | 'automatic'; revision: number; createdAt: string
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
