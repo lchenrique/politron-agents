@@ -40,3 +40,27 @@ describe('contatos de agentes na barra lateral', () => {
     expect(screen.getByLabelText('Workspace precisa de atenção')).toBeInTheDocument()
   })
 })
+
+describe('colapso e exclusão da barra lateral', () => {
+  it('recolhe e expande conversas do workspace', () => {
+    const conversation: Conversation = { id: 'thread-1', kind: 'direct', name: 'Conversa no workspace', agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
+    renderSidebar({ snapshot: { ...snapshot, conversations: [conversation] } })
+    expect(screen.getByText('Conversa no workspace')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: `Recolher ${workspace.name}` }))
+    expect(screen.queryByText('Conversa no workspace')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: `Expandir ${workspace.name}` }))
+    expect(screen.getByText('Conversa no workspace')).toBeInTheDocument()
+  })
+  it('pede confirmação antes de excluir conversa e respeita cancelamento', () => {
+    const conversation: Conversation = { id: 'thread-delete', kind: 'direct', name: 'Apagar teste', agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
+    const onDeleteConversation = vi.fn()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    renderSidebar({ snapshot: { ...snapshot, conversations: [conversation] }, onDeleteConversation })
+    const deleteButton = screen.getByRole('button', { name: 'Excluir conversa Apagar teste' })
+    fireEvent.click(deleteButton)
+    expect(onDeleteConversation).not.toHaveBeenCalled()
+    fireEvent.click(deleteButton)
+    expect(onDeleteConversation).toHaveBeenCalledExactlyOnceWith(conversation.id)
+    confirm.mockRestore()
+  })
+})
