@@ -1,24 +1,22 @@
-import { Suspense, lazy, memo, useMemo, useCallback } from 'react';
+import { Suspense, lazy, memo, useCallback, useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, FileDiff, Plus } from 'lucide-react';
-import { useBlock, useChatStore, useIsBlockExpanded } from '../../store/chatStore';
-import { DiffBlock } from '../../types/block.types';
+import type { DiffBlock } from './types';
 
 const DiffViewer = lazy(() => import('./DiffViewer'));
 
 interface DiffCardProps {
-  blockId: string;
+  block: DiffBlock;
+  defaultExpanded?: boolean;
 }
 
-export const DiffCard = memo(({ blockId }: DiffCardProps) => {
-  const block = useBlock(blockId) as DiffBlock | undefined;
-  const isExpanded = useIsBlockExpanded(blockId);
-  const toggleBlockExpanded = useChatStore((state) => state.toggleBlockExpanded);
-  
-  const stats = useMemo(() => {
-    if (!block || block.type !== 'diff') {
-      return { originalLines: 0, modifiedLines: 0, added: 0 };
-    }
+// NOTA (Fase 0 da limpeza): este componente vinha do chat legado e lia o bloco
+// de um store global de transcript que foi removido. Por ora ele recebe o
+// bloco direto por prop e controla a expansão localmente; a Fase 3
+// ("Diff no chat") é quem vai ligá-lo ao registro real de FileChange.
+export const DiffCard = memo(({ block, defaultExpanded = false }: DiffCardProps) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
+  const stats = useMemo(() => {
     const originalLines = (block.originalContent || '').split('\n').length;
     const modifiedLines = (block.modifiedContent || '').split('\n').length;
     const added = modifiedLines - originalLines;
@@ -26,10 +24,8 @@ export const DiffCard = memo(({ blockId }: DiffCardProps) => {
   }, [block]);
 
   const handleToggle = useCallback(() => {
-    toggleBlockExpanded(blockId);
-  }, [blockId, toggleBlockExpanded]);
-
-  if (!block || block.type !== 'diff') return null;
+    setIsExpanded((current) => !current);
+  }, []);
 
   return (
     <div className="flex w-full group py-1 animate-fade-in text-foreground">

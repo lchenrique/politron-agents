@@ -7,22 +7,19 @@
  * - Visual icons for file actions
  */
 
-import React, { memo, useMemo } from 'react';
-import { FileChangesBlock } from '../../types/block.types';
-import { useBlock, useIsBlockExpanded, useChatStore } from '../../store/chatStore';
+import { memo, useMemo, useState } from 'react';
+import type { FileChangesBlock } from './types';
 import { ChevronDown, ChevronUp, FilePlus, FileEdit, FileMinus, FolderOpen } from 'lucide-react';
-import clsx from 'clsx';
 
 interface FileChangesCardProps {
-  blockId: string;
+  block: FileChangesBlock;
+  defaultExpanded?: boolean;
 }
 
-export const FileChangesCard = memo(({ blockId }: FileChangesCardProps) => {
-  const block = useBlock(blockId) as FileChangesBlock | undefined;
-  const isExpanded = useIsBlockExpanded(blockId);
-  const toggleBlockExpanded = useChatStore((state) => state.toggleBlockExpanded);
-
-  if (!block || block.type !== 'file-changes') return null;
+// NOTA (Fase 0 da limpeza): ver NOTA equivalente em DiffCard.tsx — recebe o
+// bloco por prop em vez do store de transcript legado removido nesta fase.
+export const FileChangesCard = memo(({ block, defaultExpanded = false }: FileChangesCardProps) => {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   const stats = useMemo(() => ({
     created: block.files.filter((f) => f.action === 'created').length,
@@ -35,7 +32,7 @@ export const FileChangesCard = memo(({ blockId }: FileChangesCardProps) => {
       <div className="flex-1 ml-12 rounded-xl overflow-hidden border border-zinc-800/80 bg-zinc-900/40">
         {/* Header */}
         <button
-          onClick={() => toggleBlockExpanded(blockId)}
+          onClick={() => setIsExpanded((current) => !current)}
           className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-zinc-800/30 transition-colors"
         >
           <div className="shrink-0 text-zinc-400">
