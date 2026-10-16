@@ -1945,6 +1945,39 @@
   animation: pits-float 4s ease-in-out infinite;
 }
 
+.agent-avatar svg { overflow: visible; }
+.agent-avatar__features { transform-box: fill-box; transform-origin: center; transition: transform 220ms cubic-bezier(.2,.8,.2,1); }
+.agent-avatar[data-shape="flat"] .agent-avatar__features { transform: scale(1.14,.86); }
+.agent-avatar[data-shape="long"] .agent-avatar__features { transform: scale(.86,1.14); }
+.agent-avatar__body {
+  transform-box: fill-box;
+  transform-origin: center 58%;
+  transition: filter 180ms ease, opacity 180ms ease;
+}
+.agent-avatar__eyes, .agent-avatar__pupils {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 180ms ease;
+}
+.agent-avatar[data-state="working"] .agent-avatar__body { animation: agent-avatar-focus 460ms cubic-bezier(.2,.8,.2,1) 1; }
+.agent-avatar[data-state="working"] .agent-avatar__pupils { transform: translateY(-1px); }
+.agent-avatar[data-state="waiting"] .agent-avatar__eyes { transform: translateY(1px) scaleY(.9); }
+.agent-presence { display: inline-flex; width: 14px; height: 8px; flex: 0 0 14px; align-items: center; justify-content: center; gap: 2px; }
+.agent-presence i { display: block; width: 4px; height: 4px; border-radius: 9999px; background: hsl(var(--muted-foreground) / .45); }
+.agent-presence[data-state="waiting"] i { width: 6px; height: 6px; background: #f59e0b; }
+.agent-presence[data-state="working"] i { background: #10b981; animation: agent-working-dot 780ms ease-in-out infinite alternate; }
+.agent-presence[data-state="working"] i:nth-child(2) { animation-delay: 130ms; }
+.agent-presence[data-state="working"] i:nth-child(3) { animation-delay: 260ms; }
+@keyframes agent-avatar-focus {
+  0% { transform: translateY(0) scale(1); }
+  48% { transform: translateY(-1px) scale(1.045); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes agent-working-dot { from { opacity: .55; transform: translateY(0); } to { opacity: 1; transform: translateY(-2px); } }
+
 @media (prefers-reduced-motion: reduce) {
   .pits-mark { animation: none; }
+  .agent-avatar__features, .agent-avatar__body, .agent-avatar__eyes, .agent-avatar__pupils, .agent-avatar__fallback { transition: none; }
+  .agent-avatar[data-state="working"] .agent-avatar__body { animation: none; }
+  .agent-presence[data-state="working"] i { animation: none; }
 }

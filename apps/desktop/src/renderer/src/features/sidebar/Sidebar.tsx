@@ -1,8 +1,8 @@
-import { Archive, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Plus, Settings2, Sparkles, Users } from 'lucide-react'
+import { Archive, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Sparkles, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { Agent, Conversation, Project, Snapshot } from '../../../../shared/v9'
-import { Avatar } from '../app/Avatar'
+import { AgentPresence, Avatar } from '../app/Avatar'
 import { PitsMark } from '../app/PitsMark'
 import { errorText } from '../app/appShellShared'
 import type { EditorKind } from '../editors/Editor'
@@ -54,7 +54,8 @@ export function Sidebar({ snapshot, selected, unreadCounts, agentStates, onSelec
       const directConversations = snapshot.conversations.filter(item => !item.archived && item.kind === 'direct' && item.agentIds.length === 1 && item.agentIds[0] === agent.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       return <div key={agent.id}>
         <div className="group flex items-center gap-1 rounded-lg hover:bg-accent/50">
-          <button onClick={() => void onOpenAgent(agent)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Avatar agent={agent} /><span aria-label={agentStates[agent.id] === 'waiting' ? 'Aguardando' : agentStates[agent.id] === 'working' ? 'Trabalhando' : 'Ocioso'} className={`size-2 shrink-0 rounded-full ${agentStates[agent.id] === 'waiting' ? 'bg-amber-500' : agentStates[agent.id] === 'working' ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} /><span className="min-w-0 flex-1 truncate text-xs font-medium">{agent.name}</span><span className="text-[10px] text-muted-foreground">@{agent.alias}</span></button>
+          <button onClick={() => void onOpenAgent(agent)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Avatar agent={agent} state={agentStates[agent.id] || 'idle'} /><AgentPresence state={agentStates[agent.id] || 'idle'} /><span className="min-w-0 flex-1 truncate text-xs font-medium">{agent.name}</span><span className="text-[10px] text-muted-foreground">@{agent.alias}</span></button>
+          <Button variant="ghost" size="icon" className="size-7 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Editar agente ${agent.name}`} title={`Editar ${agent.name}`} onClick={() => onOpenEditor({ kind: 'agent', initial: agent })}><Pencil className="size-3.5" /></Button>
           <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-7 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Ações de ${agent.name}`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => void onOpenAgent(agent, true)}><MessageSquarePlus className="mr-2 size-4" />Nova conversa</DropdownMenuItem><DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'agent', initial: agent })}><Settings2 className="mr-2 size-4" />Editar perfil</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
         </div>
         {directConversations.slice(0, 3).map(conversation => <button key={conversation.id} onClick={() => onSelectConversation(conversation.id)} className={`ml-5 block w-[calc(100%-1.25rem)] truncate rounded-md px-2 py-1 text-left text-[11px] ${conversation.id === selected?.id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`} title={conversation.name}>{conversation.name}</button>)}

@@ -13,7 +13,7 @@ export function MessageItem({ message, agent, relatedConversation, onOpenRelated
 }) {
   const human = message.role === 'user'
   return <article className={`flex gap-3 ${human ? 'justify-end' : 'justify-start'}`}>
-    {!human && <Avatar agent={agent} />}
+    {!human && <Avatar agent={agent} state={message.status === 'waiting' ? 'waiting' : ['running', 'queued'].includes(message.status) ? 'working' : 'idle'} />}
     <div className={`min-w-0 max-w-[85%] ${human ? 'rounded-2xl bg-accent px-4 py-3' : 'pt-0.5'}`}>
       <div className={`mb-1.5 flex items-center gap-2 text-xs font-medium ${human ? 'justify-end text-muted-foreground' : 'text-foreground'}`}>
         {human ? 'Você' : agent?.name || message.author}

@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { FolderOpen, Globe, Plus, Settings2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Model, Project } from '../../../../shared/v9'
-import { Avatar } from '../app/Avatar'
+import { Avatar, type AgentAvatarState } from '../app/Avatar'
 
-export function ChatHeader({ selected, selectedAgents, agents, selectedProject, models, modelName, onModelChange, onParticipantsChange, onOpenComputerUse, onEditConversation }: {
+export function ChatHeader({ selected, selectedAgents, agents, agentStates = {}, selectedProject, models, modelName, onModelChange, onParticipantsChange, onOpenComputerUse, onEditConversation }: {
   selected: Conversation
   selectedAgents: Agent[]
   agents: Agent[]
+  agentStates?: Record<string, AgentAvatarState>
   selectedProject: Project | undefined
   models: Model[]
   modelName: string
@@ -21,7 +22,7 @@ export function ChatHeader({ selected, selectedAgents, agents, selectedProject, 
 
   return <header className="flex min-h-[58px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/50 px-5 py-2">
     <div className="flex min-w-0 flex-1 items-center gap-3">
-      <div className="flex -space-x-2">{selectedAgents.slice(0, 4).map(agent => <span key={agent.id} className="rounded-full bg-background p-0.5"><Avatar agent={agent} /></span>)}</div>
+      <div className="flex -space-x-2">{selectedAgents.slice(0, 4).map(agent => <span key={agent.id} className="rounded-full bg-background p-0.5"><Avatar agent={agent} state={agentStates[agent.id]} /></span>)}</div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{selected.name}</div>
         <div className="flex flex-wrap items-center gap-1.5 pt-1">

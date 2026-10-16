@@ -91,6 +91,7 @@ export default function AppShell() {
             selected={selected}
             selectedAgents={selectedAgents}
             agents={snapshot.agents}
+            agentStates={agentStates}
             selectedProject={selectedProject}
             models={models}
             modelName={selectedModelName}

@@ -2,6 +2,7 @@ export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'interr
 export interface Agent {
   id: string; name: string; alias: string; description: string; instructions: string
   runtime: 'codex' | 'claude'; model: string; color: string; avatar: string
+  pitsShape?: 'round' | 'flat' | 'long'
   canWrite: boolean; computerUse: boolean; approvalMode: 'ask' | 'automatic'; revision: number; createdAt: string
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }

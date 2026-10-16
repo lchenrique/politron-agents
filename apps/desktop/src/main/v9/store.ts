@@ -16,7 +16,7 @@ function normalizeConversation(value: Conversation): Conversation {
 }
 export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>
 const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: false, computerUse: false, approvalMode: 'ask' }
-function normalizeAgent(value: Agent): Agent { return { ...value, approvalMode: value.approvalMode === 'automatic' ? 'automatic' : 'ask' } }
+function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long'].includes(value.pitsShape || '') ? value.pitsShape : 'round', approvalMode: value.approvalMode === 'automatic' ? 'automatic' : 'ask' } }
 
 export function requiredText(value: unknown, label: string, limit = 10000): string {
   if (typeof value !== 'string' || !value.trim() || value.length > limit) throw new Error(`${label}: informe um texto válido de até ${limit} caracteres.`)
@@ -217,7 +217,7 @@ export class WorkspaceStore {
     if (approvalMode !== 'ask' && approvalMode !== 'automatic') throw new Error('Modo de aprovação inválido.')
     const effort = input.effort ?? previous?.effort ?? 'medium'
     if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço do agente inválido.')
-    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : '#6366f1', avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', canWrite: input.canWrite === true, computerUse: input.computerUse === true, approvalMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
+    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : '#6366f1', avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round', canWrite: input.canWrite === true, computerUse: input.computerUse === true, approvalMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_agents', value); return value
   }
   saveProject(input: Partial<Project> & { workspacePath?: string | null }): Project {
