@@ -4,7 +4,7 @@
 
 O Politron é um aplicativo desktop pessoal para trabalhar com agentes de IA em conversas individuais e grupos livres associados a uma pasta de projeto. O usuário cria os agentes e define suas instruções e permissões. Não exija CEO, tech lead, cargos ou ordem empresarial.
 
-A experiência principal é conversar imediatamente, como no OpenMausBot e nas conversas de projeto desejadas pelo usuário. O usuário deve poder falar com o Assistente padrão, inclusive em um projeto, sem cadastrar bot ou criar grupo. Clicar em um bot abre sua conversa; editar seu perfil é uma ação separada. Projetos podem organizar várias conversas e uma equipe com um ou mais bots; com um participante, somente ele executa. Criar grupo, nomear conversa ou escolher pasta não são pré-requisitos para começar a conversar. Edições reais de arquivo devem mostrar diff no chat, com autor e estado. A estratégia proposta está em `ESTRATEGIA_CHAT_V9.md`; não trate sua implementação como concluída.
+A experiência principal é conversar imediatamente, como no OpenMausBot e nas conversas de projeto desejadas pelo usuário. O usuário deve poder falar com o Assistente padrão, inclusive em um projeto, sem cadastrar bot ou criar grupo. Clicar em um bot abre sua conversa; editar seu perfil é uma ação separada. Projetos podem organizar várias conversas e uma equipe com um ou mais bots; com um participante, somente ele executa. Criar grupo, nomear conversa ou escolher pasta não são pré-requisitos para começar a conversar. Edições reais de arquivo devem mostrar diff no chat, com autor e estado. A fonte de verdade da estratégia e do plano de execução está em `ESTRATEGIA_POLITRON.md`; o histórico anterior (`docs/arquivo/ESTRATEGIA_CHAT_V9.md`, `docs/arquivo/PLANO_V9.md`) continua valendo como contexto de produto onde não for contrariado por ela. Não trate nenhuma fase como concluída sem verificação real.
 
 O design, os 14 temas, as fontes por tema, o acabamento e os painéis já existentes são ativos do produto. Preserve-os ao acrescentar recursos. A Kokonut UI pode substituir partes específicas do chat, integrada aos tokens e temas atuais.
 
@@ -35,4 +35,4 @@ O usuário também quer promover opcionalmente um bot a Chief. Essa capacidade p
 
 - Grave texto em UTF-8 e use acentuação correta em português.
 - Nunca comece uma frase ou parágrafo com travessão.
-- Não apresente funcionalidades planejadas como concluídas. Registre validações reais e limites conhecidos em `PRODUCT.md` e `PLANO_V9.md`.
+- Não apresente funcionalidades planejadas como concluídas. Registre validações reais e limites conhecidos em `PRODUCT.md` e na seção 7 de `ESTRATEGIA_POLITRON.md`.

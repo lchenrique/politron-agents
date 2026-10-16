@@ -18,7 +18,7 @@ O usuário principal é o próprio criador do projeto, que precisa trabalhar dia
 
 Oferecer uma experiência de conversas familiar a quem usa ChatGPT Desktop e Codex Desktop, acrescentando agentes personalizados e grupos em que esses agentes trabalham e colaboram de verdade. Um grupo pode representar o time de um projeto e ter uma pasta de trabalho associada.
 
-Correção de direção confirmada pelo usuário em 16/10/2026: o funcionamento do OpenMausBot é a referência principal, incluindo conversar diretamente com um bot ao selecioná-lo. O usuário também quer conversar dentro de um projeto sem cadastrar bot ou criar grupo, organizar várias conversas no projeto, usar uma equipe com um ou mais bots e ver diffs das alterações de arquivo no chat. A estratégia proposta para combinar esses fluxos está em [ESTRATEGIA_CHAT_V9.md](<D:/projetos pessoais/politron/ESTRATEGIA_CHAT_V9.md>).
+Correção de direção confirmada pelo usuário em 16/10/2026: o funcionamento do OpenMausBot é a referência principal, incluindo conversar diretamente com um bot ao selecioná-lo. O usuário também quer conversar dentro de um projeto sem cadastrar bot ou criar grupo, organizar várias conversas no projeto, usar uma equipe com um ou mais bots e ver diffs das alterações de arquivo no chat. A estratégia vigente que combina esses fluxos está em [ESTRATEGIA_POLITRON.md](<D:/projetos pessoais/politron/ESTRATEGIA_POLITRON.md>); a proposta original que a originou segue arquivada em [docs/arquivo/ESTRATEGIA_CHAT_V9.md](<D:/projetos pessoais/politron/docs/arquivo/ESTRATEGIA_CHAT_V9.md>).
 
 ## Positioning
 
@@ -56,7 +56,7 @@ O usuário começa uma conversa com o Assistente padrão ou escolhe um bot. Proj
 
 - Um projeto organiza contexto e várias conversas independentes; a equipe pode ter zero, um ou vários bots.
 - Com um participante escolhido, somente ele responde. Com vários, os participantes ficam visíveis e a conversa admite colaboração.
-- A proposta de organização usa equipe padrão do projeto e participantes por conversa, conforme `ESTRATEGIA_CHAT_V9.md`; alterações na equipe padrão não devem mudar silenciosamente conversas em andamento.
+- A proposta de organização usa equipe padrão do projeto e participantes por conversa, conforme `docs/arquivo/ESTRATEGIA_CHAT_V9.md` (incorporado em `ESTRATEGIA_POLITRON.md`); alterações na equipe padrão não devem mudar silenciosamente conversas em andamento.
 - Cada edição real de arquivo deve apresentar um cartão de diff no chat, com caminho, autor, estado, adições/remoções e trechos alterados.
 - O diff é evidência produzida pela ferramenta e persistida com a execução. Diferenciar mudança aplicada, falha e resultado indeterminado; texto do modelo não comprova escrita.
 - Assistente padrão e projetos com múltiplas conversas têm uma implementação inicial no incremento isolado `v9/assistente-projetos`, com validação automatizada descrita abaixo. Isso não certifica execução com Codex real nem revisão visual da interface. Diff V9 no chat continua pendente; há componentes legados reutilizáveis para visualização.
@@ -102,7 +102,7 @@ A aparência do Politron foi trabalhada pelo usuário e é um ativo a preservar.
 
 Na inspeção do OpenMausBot instalado e aberto em 16/10/2026, selecionar Lyra na lista de bots abriu a tela de conversa direta com sua identidade, descrição, modelo e campo “Mensagem para Lyra”. O perfil abriu em painel separado. A lateral expõe novas conversas e históricos por bot, além dos grupos. O código instalado separa bot e thread e permite enviar ao thread principal do bot quando um thread específico não é informado. No Politron atual, clicar no agente ainda abre o formulário de edição, e a criação de conversa começa em modo grupo. Essa divergência foi identificada, mas a correção da interface ainda não foi implementada.
 
-Há código de chat, sessões, temas, SQLite, terminal e integrações de agentes. A inspeção encontrou um módulo de grupos ainda desacoplado da execução e da tela principal, além de regras antigas de hierarquia. O plano de execução e as evidências específicas estão em [PLANO_V9.md](<D:/projetos pessoais/politron/PLANO_V9.md>).
+Há código de chat, sessões, temas, SQLite, terminal e integrações de agentes. A inspeção encontrou um módulo de grupos ainda desacoplado da execução e da tela principal, além de regras antigas de hierarquia. O plano de execução vigente está em [ESTRATEGIA_POLITRON.md](<D:/projetos pessoais/politron/ESTRATEGIA_POLITRON.md>); o histórico de evidências anterior está arquivado em [docs/arquivo/PLANO_V9.md](<D:/projetos pessoais/politron/docs/arquivo/PLANO_V9.md>).
 
 Em 16/10/2026 começou a implementação da primeira fatia integrada. Em perfis temporários do Electron, foram confirmados: resposta e streaming reais do Codex; envio sem menção a todos os participantes de um grupo; delegação de um agente para outro com retorno visível; navegação e clique reais pelo Playwright em uma sessão de navegador isolada, com o agente identificado por um cursor próprio. A interface Electron abriu com a ponte IPC e o tema preservado.
 
