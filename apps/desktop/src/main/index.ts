@@ -5,7 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerTerminalHandlers } from './ipc/terminal'
 import { registerWindowControlHandlers } from './ipc/window-controls'
 import { createAppWindow, destroyAppWindow } from './windows/manager'
-import { WorkspaceService } from './v9/workspace'
+import { AppService } from './v9/workspace'
 import { registerV9Ipc } from './v9/ipc'
 
 process.on('uncaughtException', (error) => {
@@ -25,7 +25,7 @@ if (process.platform === 'win32') {
 
 // Global reference to main window
 let mainWindow: BrowserWindow | null = null
-let v9Workspace: WorkspaceService | null = null
+let appService: AppService | null = null
 
 // Disable GPU acceleration for Windows sandbox compatibility
 app.disableHardwareAcceleration()
@@ -150,8 +150,8 @@ app.whenReady().then(async () => {
   console.log('[Main] app.whenReady() resolved')
   electronApp.setAppUserModelId('com.politron.desktop')
 
-  v9Workspace = new WorkspaceService(app.getPath('userData'))
-  registerV9Ipc(v9Workspace)
+  appService = new AppService(app.getPath('userData'))
+  registerV9Ipc(appService)
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -181,6 +181,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   destroyAppWindow()
-  v9Workspace?.dispose()
-  v9Workspace = null
+  appService?.dispose()
+  appService = null
 })

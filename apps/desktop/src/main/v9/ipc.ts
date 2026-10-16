@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
-import type { WorkspaceService } from './workspace'
+import type { AppService } from './workspace'
 
-export function registerV9Ipc(service: WorkspaceService) {
+export function registerV9Ipc(service: AppService) {
   const invoke = (channel: string, handler: (...args: any[]) => unknown) => ipcMain.handle(`v9:${channel}`, (event, ...args) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
     if (!owner || owner.isDestroyed()) throw new Error('Janela do Politron indisponível.')

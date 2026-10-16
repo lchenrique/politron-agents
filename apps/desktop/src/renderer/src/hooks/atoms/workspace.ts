@@ -1,16 +1,21 @@
-import { atom, type WritableAtom } from 'jotai'
+import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 import type { Agent, Team, Workspace } from '@/types/workspace'
 
 export const themeAtom = atomWithStorage<string>('vibe-ide-theme', 'default')
 
-export const workspaceAtom: WritableAtom<Workspace | null, [Workspace | null], void> = atom(null)
-export const activeTeamIdAtom: WritableAtom<string | null, [string | null], void> = atom(null)
-export const activeProjectIdAtom: WritableAtom<string | null, [string | null], void> = atom(null)
-export const activeAgentTabIdAtom: WritableAtom<string | null, [string | null], void> = atom(null)
-export const sidebarViewAtom: WritableAtom<'root' | 'project' | 'settings', ['root' | 'project' | 'settings'], void> = atom('root')
-export const settingsSectionAtom: WritableAtom<'defaults' | 'providers' | 'mcp' | 'permissions' | 'tools' | 'advanced', ['defaults' | 'providers' | 'mcp' | 'permissions' | 'tools' | 'advanced'], void> = atom('defaults')
-export const activeViewGroupIdAtom: WritableAtom<'projects' | 'office' | 'tasks', ['projects' | 'office' | 'tasks'], void> = atom('projects')
+// NOTA (Fase 0 da limpeza): estas eram declaradas com uma anotação separada
+// `WritableAtom<T, [T], void>`, incompatível com a versão instalada do
+// jotai (o typecheck novo desta fase acusava "Property 'write' is missing").
+// Usar o genérico direto em atom<T>(...) mantém o mesmo tipo exposto
+// (átomo gravável) sem mudar nenhum comportamento.
+export const workspaceAtom = atom<Workspace | null>(null)
+export const activeTeamIdAtom = atom<string | null>(null)
+export const activeProjectIdAtom = atom<string | null>(null)
+export const activeAgentTabIdAtom = atom<string | null>(null)
+export const sidebarViewAtom = atom<'root' | 'project' | 'settings'>('root')
+export const settingsSectionAtom = atom<'defaults' | 'providers' | 'mcp' | 'permissions' | 'tools' | 'advanced'>('defaults')
+export const activeViewGroupIdAtom = atom<'projects' | 'office' | 'tasks'>('projects')
 
 export const teamsAtom = atom(
     (get) => get(workspaceAtom)?.teams ?? []

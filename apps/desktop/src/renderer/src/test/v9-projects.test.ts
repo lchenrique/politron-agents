@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {} }))
 
-import { WorkspaceService } from '../../../main/v9/workspace'
+import { AppService } from '../../../main/v9/workspace'
 import { WorkspaceStore } from '../../../main/v9/store'
 import { ASSISTANT_ID, type Agent } from '../../../shared/v9'
 
@@ -42,10 +42,10 @@ class FakeRuntime extends EventEmitter {
 }
 
 const dirs: string[] = []
-const services: WorkspaceService[] = []
+const services: AppService[] = []
 const tempDirectory = () => { const path = mkdtempSync(join(tmpdir(), 'politron-v9-projects-')); dirs.push(path); return path }
-const open = (directory: string, runtime = new FakeRuntime()) => { const service = new WorkspaceService(directory, runtime as any); services.push(service); return { service, runtime } }
-const close = (service: WorkspaceService) => { service.dispose(); services.splice(services.indexOf(service), 1) }
+const open = (directory: string, runtime = new FakeRuntime()) => { const service = new AppService(directory, runtime as any); services.push(service); return { service, runtime } }
+const close = (service: AppService) => { service.dispose(); services.splice(services.indexOf(service), 1) }
 afterEach(() => {
   for (const service of services.splice(0)) { try { service.dispose() } catch { /* already closed */ } }
   for (const path of dirs.splice(0)) { try { rmSync(path, { recursive: true, force: true, maxRetries: 4, retryDelay: 250 }) } catch { /* Windows may hold the file briefly */ } }

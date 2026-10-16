@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {} }))
 
-import { WorkspaceService } from '../../../main/v9/workspace'
+import { AppService } from '../../../main/v9/workspace'
 import { WorkspaceStore } from '../../../main/v9/store'
 import type { Agent, Conversation, Delegation, Message, Run } from '../../../shared/v9'
 
@@ -41,13 +41,13 @@ class FakeRuntime extends EventEmitter {
 }
 
 const dirs: string[] = []
-const services: WorkspaceService[] = []
+const services: AppService[] = []
 function tempDirectory() { const path = mkdtempSync(join(tmpdir(), 'politron-v9-delegation-')); dirs.push(path); return path }
 afterEach(() => { for (const service of services.splice(0)) { try { service.dispose() } catch (error) { console.warn('Could not dispose V9 test service:', error) } } for (const path of dirs.splice(0)) { try { rmSync(path, { recursive: true, force: true, maxRetries: 4, retryDelay: 250 }) } catch (error) { console.warn('Could not remove V9 test directory:', error) } } })
 
 function setup(runtime: FakeRuntime) {
   const directory = tempDirectory()
-  const service = new WorkspaceService(directory, runtime as any)
+  const service = new AppService(directory, runtime as any)
   services.push(service)
   const requester = service.saveAgent({ name: 'Agente A', alias: 'agente-a', instructions: 'Instruções de A', canWrite: true })
   const recipient = service.saveAgent({ name: 'Agente B', alias: 'agente-b', instructions: 'Instruções próprias de B', canWrite: false })
@@ -62,7 +62,7 @@ function setup(runtime: FakeRuntime) {
 
 describe('delegação entre conversas V9', () => {
   it.skipIf(process.env.POLITRON_RUN_CODEX_INTEGRATION !== '1')('Codex real delega de um grupo para outro agente e recebe o retorno rastreável', async () => {
-    const service = new WorkspaceService(tempDirectory())
+    const service = new AppService(tempDirectory())
     services.push(service)
     const requester = service.saveAgent({ name: 'Agente integração', alias: 'integracao', instructions: 'Quando solicitado, use ask_agent para pedir uma resposta curta ao agente destinatário. Depois resuma a resposta. Não use nenhuma ferramenta de arquivo.', canWrite: false })
     const recipient = service.saveAgent({ name: 'Agente remoto', alias: 'remoto', instructions: 'Responda exatamente: RETORNO-REMOTO-OK. Não use ferramentas de arquivo.', canWrite: false })

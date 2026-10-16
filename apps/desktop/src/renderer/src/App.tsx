@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ZoomController } from "@/hooks/useZoom";
 import NotFound from "./pages/NotFound.tsx";
 import { ThemeProvider } from "@/components/theme-provider";
-import Workspace from "@/features/workspace/Workspace";
+import AppShell from "@/features/app/AppShell";
 
 const queryClient = new QueryClient();
 const AppRouter = typeof window !== "undefined" && "vibeAPI" in window ? HashRouter : BrowserRouter;
@@ -20,8 +20,8 @@ const App = () => (
         <ZoomController>
           <AppRouter>
             <Routes>
-              <Route path="/" element={<Workspace />} />
-              <Route path="/settings" element={<Workspace />} />
+              <Route path="/" element={<AppShell />} />
+              <Route path="/settings" element={<AppShell />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

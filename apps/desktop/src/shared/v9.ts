@@ -42,7 +42,7 @@ export type WorkspaceEvent =
   | { type: 'changed' }
   | { type: 'message'; message: Message }
   | { type: 'browser'; frame: BrowserFrame }
-export interface WorkspaceAPI {
+export interface AppAPI {
   snapshot(): Promise<Snapshot>
   saveAgent(input: Partial<Agent>): Promise<Agent>
   saveProject(input: Partial<Project>): Promise<Project>

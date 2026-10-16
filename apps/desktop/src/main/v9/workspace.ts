@@ -12,7 +12,7 @@ import { canonicalDirectory, WorkspaceStore } from './store'
 type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; flushTimer?: ReturnType<typeof setTimeout> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
 
-export class WorkspaceService extends EventEmitter {
+export class AppService extends EventEmitter {
   readonly store: WorkspaceStore
   readonly runtime: CodexRuntime
   readonly browser = new BrowserService()

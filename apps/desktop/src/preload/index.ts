@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import type { WorkspaceAPI, WorkspaceEvent } from '../shared/v9'
+import type { AppAPI, WorkspaceEvent } from '../shared/v9'
 
 type EventCallback = (data: any) => void
 
@@ -35,7 +35,7 @@ const api = {
 
 contextBridge.exposeInMainWorld('vibeAPI', api)
 
-const workspaceAPI: WorkspaceAPI = {
+const appAPI: AppAPI = {
   snapshot: () => ipcRenderer.invoke('v9:snapshot'),
   saveAgent: (input) => ipcRenderer.invoke('v9:saveAgent', input),
   saveProject: (input) => ipcRenderer.invoke('v9:saveProject', input),
@@ -56,4 +56,4 @@ const workspaceAPI: WorkspaceAPI = {
     return () => ipcRenderer.removeListener('v9:event', listener)
   }
 }
-contextBridge.exposeInMainWorld('workspaceAPI', workspaceAPI)
+contextBridge.exposeInMainWorld('appAPI', appAPI)

@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import type { WorkspaceAPI } from '../../shared/v9'
+import type { AppAPI } from '../../shared/v9'
 
 declare global {
 interface Window {
@@ -20,6 +20,6 @@ interface Window {
  onExit: (callback: (data: { exitCode: number; signal?: number }) => void) => () => void;
  };
  };
-  workspaceAPI: WorkspaceAPI;
+  appAPI: AppAPI;
 }
 }

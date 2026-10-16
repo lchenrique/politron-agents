@@ -20,7 +20,7 @@ const DIFF_OPTIONS = {
   overflow: 'wrap',
   disableBackground: false,
   disableLineNumbers: false,
-} satisfies FileDiffOptions<undefined>;
+} satisfies FileDiffOptions<undefined, undefined>;
 
 const DiffViewerComponent = memo(({ filePath, originalContent, modifiedContent }: DiffViewerProps) => {
   const hasChanges = originalContent !== modifiedContent;
