@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, FolderPlus, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import TitleBar from '@/components/ide/TitleBar'
-import { ASSISTANT_ID, type Agent, type BrowserFrame, type Conversation, type Message, type Model, type Project, type Snapshot } from '../../../../shared/v9'
+import { ASSISTANT_ID, type Agent, type BrowserFrame, type Conversation, type Message, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import { Sidebar } from '../sidebar/Sidebar'
 import { ChatHeader } from '../chat/ChatHeader'
 import { MessageList } from '../chat/MessageList'
@@ -24,7 +24,7 @@ export default function AppShell() {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem('politron-unread-counts') || '{}') as Record<string, number> } catch { return {} }
   })
-  const [editor, setEditor] = useState<{ kind: EditorKind; initial?: Agent | Conversation | Project; projectId?: string | null } | null>(null)
+  const [editor, setEditor] = useState<{ kind: EditorKind; initial?: Agent | Conversation | Workspace; workspaceId?: string | null } | null>(null)
   const [notice, setNotice] = useState('')
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [computerOpen, setComputerOpen] = useState(false)
@@ -37,7 +37,7 @@ export default function AppShell() {
   const selected = snapshot.conversations.find(item => item.id === selectedId) || snapshot.conversations.find(item => !item.archived)
   const selectedAgents = useMemo(() => !selected ? [] : selected.agentIds.length ? selected.agentIds.map(id => snapshot.agents.find(agent => agent.id === id)).filter((agent): agent is Agent => !!agent) : [snapshot.assistant], [selected, snapshot.agents, snapshot.assistant])
   const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
-  const selectedProject = selected?.projectId ? snapshot.projects.find(project => project.id === selected.projectId) : undefined
+  const selectedWorkspace = selected ? snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined
   const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(data); setSelectedId(current => data.conversations.some(item => item.id === current) ? current : data.conversations.find(item => !item.archived)?.id || '') } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => { void refresh(); void window.appAPI.models().then(data => { setModels(data); setSelectedModelName(current => current || data.find(item => item.isDefault)?.name || data[0]?.name || '') }).catch(error => setNotice(`Não foi possível carregar os modelos do Codex: ${errorText(error)}`)); const off = window.appAPI.onEvent(event => { if (event.type === 'message') { setMessages(current => { const at = current.findIndex(item => item.id === event.message.id); if (at < 0) return [...current, event.message]; const next = [...current]; next[at] = event.message; return next }); const previousStatus = eventStatuses.current.get(event.message.id); if (previousStatus !== event.message.status) { eventStatuses.current.set(event.message.id, event.message.status); void refresh() } if (event.message.role !== 'user' && event.message.conversationId !== selectedIdRef.current && !seenIncomingIds.current.has(event.message.id)) { seenIncomingIds.current.add(event.message.id); setUnreadCounts(current => ({ ...current, [event.message.conversationId]: (current[event.message.conversationId] || 0) + 1 })) } } else if (event.type === 'fileChange') setSnapshot(current => ({ ...current, fileChanges: [...current.fileChanges.filter(item => item.id !== event.fileChange.id), event.fileChange] })); else if (event.type === 'approval') setSnapshot(current => ({ ...current, approvals: [...current.approvals.filter(item => item.id !== event.approval.id), event.approval] })); else if (event.type === 'changed') void refresh(); else if (event.type === 'browser') setBrowserFrames(current => { const at = current.findIndex(frame => frame.key === event.frame.key); if (at < 0) return [...current, event.frame]; const next = [...current]; next[at] = event.frame; return next }) }); return off }, [refresh])
   useEffect(() => { let live = true; if (!selected) { setMessages([]); return } window.appAPI.history(selected.id).then(data => { if (live) setMessages(data) }).catch(error => setNotice(errorText(error))); return () => { live = false } }, [selected?.id])
@@ -47,10 +47,13 @@ export default function AppShell() {
   useEffect(() => { if (!selected?.workspaceId) { setWorkspaceDiff(''); return } window.appAPI.workspaceDiff(selected.workspaceId).then(setWorkspaceDiff).catch(error => setNotice(errorText(error))) }, [selected?.workspaceId, snapshot.workspaces, snapshot.fileChanges])
   useEffect(() => { const timeout = window.setTimeout(() => setNotice(''), 6000); return () => window.clearTimeout(timeout) }, [notice])
   const saveAgent = async (data: EditorData) => { const agent = await window.appAPI.saveAgent(data as Partial<Agent>); await refresh(); if (!data.id) setNotice(`${agent.name} já pode participar de uma conversa.`) }
-  const saveConversation = async (data: EditorData) => { const conversation = await window.appAPI.saveConversation(data as Partial<Conversation>); await refresh(); setSelectedId(conversation.id) }
+  const saveConversation = async (data: EditorData) => { const conversation = await window.appAPI.saveConversation(data as Partial<Conversation> & { workspacePath?: string | null }); await refresh(); setSelectedId(conversation.id) }
   const updateParticipants = async (agentIds: string[]) => { if (!selected) return; try { await window.appAPI.saveConversation({ id: selected.id, agentIds, kind: agentIds.length > 1 ? 'group' : 'direct' }); await refresh() } catch (error) { setNotice(errorText(error)) } }
-  const saveProject = async (data: EditorData) => { const project = await window.appAPI.saveProject(data as Partial<Project> & { workspacePath?: string | null }); await refresh(); if (!data.id) await startConversation(project.id) }
-  const startConversation = async (projectId: string | null, workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ projectId, workspaceId }); await refresh(); setSelectedId(conversation.id) } catch (error) { setNotice(errorText(error)) } }
+  const saveWorkspace = async (data: EditorData) => { const workspace = await window.appAPI.saveWorkspace(data as Partial<Workspace> & { path?: string | null }); await refresh(); if (!data.id) await startConversation(workspace.id) }
+  const startConversation = async (workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ workspaceId }); await refresh(); setSelectedId(conversation.id) } catch (error) { setNotice(errorText(error)) } }
+  const deleteWorkspace = async (id: string) => { try { await window.appAPI.deleteWorkspace(id); await refresh() } catch (error) { setNotice(errorText(error)) } }
+  const deleteConversation = async (id: string) => { try { await window.appAPI.deleteConversation(id); if (selectedId === id) setSelectedId(''); await refresh() } catch (error) { setNotice(errorText(error)) } }
+  const deleteAgent = async (id: string) => { try { await window.appAPI.deleteAgent(id); await refresh() } catch (error) { setNotice(errorText(error)) } }
   const openAgent = async (agent: Agent, newConversation = false) => {
     const previous = snapshot.conversations.filter(item => !item.archived && item.kind === 'direct' && item.agentIds.length === 1 && item.agentIds[0] === agent.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
     if (previous && !newConversation) { setSelectedId(previous.id); return }
@@ -83,6 +86,9 @@ export default function AppShell() {
         onOpenAgent={openAgent}
         onOpenEditor={setEditor}
         onOpenSettings={() => setSettingsOpen(true)}
+        onDeleteWorkspace={deleteWorkspace}
+        onDeleteConversation={deleteConversation}
+        onDeleteAgent={deleteAgent}
         onNotice={setNotice}
       />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -92,7 +98,7 @@ export default function AppShell() {
             selectedAgents={selectedAgents}
             agents={snapshot.agents}
             agentStates={agentStates}
-            selectedProject={selectedProject}
+            selectedWorkspace={selectedWorkspace}
             models={models}
             modelName={selectedModelName}
             onModelChange={setSelectedModelName}
@@ -119,7 +125,7 @@ export default function AppShell() {
               onStop={() => void window.appAPI.stop(selected.id)}
             />
           </div>
-        </> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><span className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Bot className="size-6" /></span><h1 className="text-xl font-semibold">Seu espaço de trabalho</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em projetos e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-5 flex justify-center gap-2"><Button onClick={() => void startConversation(null)}><MessageSquarePlus className="size-4" /> Nova conversa</Button><Button variant="outline" onClick={() => setEditor({ kind: 'project' })}><FolderPlus className="size-4" /> Novo projeto</Button></div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
+        </> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><span className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Bot className="size-6" /></span><h1 className="text-xl font-semibold">Seu espaço de trabalho</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em workspaces e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-5 flex justify-center gap-2"><Button onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button><Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo workspace</Button></div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
       </main>
       {terminalOpen && <SidePanel
         computerOpen={computerOpen}
@@ -133,6 +139,6 @@ export default function AppShell() {
       />}
     </div>
     {notice && <div role="status" className="fixed bottom-5 right-5 z-[60] max-w-md rounded-xl border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-xl">{notice}</div>}
-    {editor && <Editor kind={editor.kind} initial={editor.initial} projectId={editor.projectId} defaultAgentIds={editor.projectId ? snapshot.projects.find(project => project.id === editor.projectId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'project' ? saveProject : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
+    {editor && <Editor kind={editor.kind} initial={editor.initial} workspaceId={editor.workspaceId} defaultAgentIds={editor.workspaceId ? snapshot.workspaces.find(workspace => workspace.id === editor.workspaceId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'workspace' ? saveWorkspace : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
   </div>
 }

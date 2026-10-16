@@ -63,7 +63,7 @@ export class GitWorkspaceService {
     return [tracked, ...additions].filter(Boolean).join('\n')
   }
 
-  async createWorktree(input: { sourcePath: string; projectName: string; projectId?: string; branch: string; baseBranch?: string }): Promise<CreatedGitWorktree> {
+  async createWorktree(input: { sourcePath: string; workspaceName: string; workspaceId?: string; branch: string; baseBranch?: string }): Promise<CreatedGitWorktree> {
     const source = resolve(input.sourcePath)
     const sourceRoot = resolve(await runGit(source, ['rev-parse', '--show-toplevel']))
     const branch = input.branch.trim()
@@ -77,13 +77,13 @@ export class GitWorkspaceService {
 
     await fs.mkdir(this.root, { recursive: true })
     const realRoot = await fs.realpath(this.root)
-    const projectName = safeSegment(input.projectName || basename(sourceRoot))
-    const project = input.projectId ? `${projectName}-${safeSegment(input.projectId).slice(0, 8)}` : projectName
+    const workspaceName = safeSegment(input.workspaceName || basename(sourceRoot))
+    const group = input.workspaceId ? `${workspaceName}-${safeSegment(input.workspaceId).slice(0, 8)}` : workspaceName
     const branchPart = safeSegment(branch.replace(/\//g, '-'))
-    const projectRoot = resolve(realRoot, project)
+    const projectRoot = resolve(realRoot, group)
     await fs.mkdir(projectRoot, { recursive: true })
     const realProjectRoot = await fs.realpath(projectRoot)
-    if (!isWithin(realRoot, realProjectRoot) || realProjectRoot === realRoot) throw new Error('O diretório do projeto está fora da pasta permitida.')
+    if (!isWithin(realRoot, realProjectRoot) || realProjectRoot === realRoot) throw new Error('O diretório do workspace está fora da pasta permitida.')
     const target = resolve(realProjectRoot, branchPart)
     if (!isWithin(realRoot, target) || target === realRoot) throw new Error('O destino do worktree está fora da pasta permitida.')
     try {

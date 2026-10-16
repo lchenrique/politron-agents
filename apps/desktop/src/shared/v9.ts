@@ -3,22 +3,20 @@ export interface Agent {
   id: string; name: string; alias: string; description: string; instructions: string
   runtime: 'codex' | 'claude'; model: string; color: string; avatar: string
   pitsShape?: 'round' | 'flat' | 'long'
+  pitsCheekColor?: string; pitsAura?: boolean; pitsAnimate?: boolean; pitsEyeSize?: number; pitsEyeSpacing?: number
   canWrite: boolean; computerUse: boolean; approvalMode: 'ask' | 'automatic'; revision: number; createdAt: string
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 export const ASSISTANT_ID = 'app-assistant'
 export interface Workspace {
-  id: string; projectId: string | null; kind: 'local' | 'worktree'; path: string
-  branch: string | null; baseBranch: string | null; changes: number
+  id: string; name: string; kind: 'local' | 'worktree' | 'free'; path: string
+  branch: string | null; baseBranch: string | null; parentWorkspaceId: string | null
+  instructions: string; defaultAgentIds: string[]; changes: number
   archived: boolean; createdAt: string
-}
-export interface Project {
-  id: string; name: string; defaultWorkspaceId: string | null; instructions: string
-  defaultAgentIds: string[]; revision: number; archived: boolean; createdAt: string
 }
 export interface Conversation {
   id: string; kind: 'direct' | 'group'; name: string; agentIds: string[]
-  projectId: string | null; workspaceId: string; titleAuto: boolean
+  workspaceId: string; titleAuto: boolean
   revision: number; archived: boolean; createdAt: string
 }
 export interface Message {
@@ -49,7 +47,7 @@ export interface Delegation {
   error: string; createdAt: string; updatedAt: string
 }
 export interface Model { id: string; name: string; runtime: 'codex' | 'claude'; isDefault: boolean }
-export interface Snapshot { assistant: Agent; agents: Agent[]; projects: Project[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[] }
+export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[] }
 export interface BrowserFrame {
   key: string; conversationId: string; agentId: string; url: string; title: string
   image: string; width: number; height: number; x: number | null; y: number | null
@@ -65,11 +63,13 @@ export interface AppAPI {
   snapshot(): Promise<Snapshot>
   saveAgent(input: Partial<Agent>): Promise<Agent>
   saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>>): Promise<Agent>
-  saveProject(input: Partial<Project>): Promise<Project>
-  saveConversation(input: Partial<Conversation>): Promise<Conversation>
-  createLocalWorkspace(input: { projectId: string | null; path: string }): Promise<Workspace>
-  createWorktree(input: { projectId: string; sourceWorkspaceId: string; branch: string; baseBranch?: string }): Promise<Workspace>
+  saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }): Promise<Conversation>
+  saveWorkspace(input: Partial<Workspace> & { path?: string | null }): Promise<Workspace>
+  createWorktree(input: { sourceWorkspaceId: string; branch: string; baseBranch?: string }): Promise<Workspace>
   archiveWorkspace(workspaceId: string, preserveDirtyWorktree?: boolean): Promise<void>
+  deleteWorkspace(workspaceId: string): Promise<void>
+  deleteConversation(conversationId: string): Promise<void>
+  deleteAgent(agentId: string): Promise<void>
   workspaceDiff(workspaceId: string): Promise<string>
   respondApproval(approvalId: string, approved: boolean): Promise<void>
   setVisibleConversation(conversationId: string | null): Promise<void>

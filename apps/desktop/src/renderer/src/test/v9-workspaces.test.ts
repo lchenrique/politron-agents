@@ -75,7 +75,7 @@ class ParallelWriteRuntime extends FakeRuntime {
 
 const dirs: string[] = []
 const services: AppService[] = []
-const tempDirectory = () => { const path = mkdtempSync(join(tmpdir(), 'politron-v9-projects-')); dirs.push(path); return path }
+const tempDirectory = () => { const path = mkdtempSync(join(tmpdir(), 'politron-v9-workspaces-')); dirs.push(path); return path }
 const open = (directory: string, runtime = new FakeRuntime()) => { const service = new AppService(directory, runtime as any); services.push(service); return { service, runtime } }
 const close = (service: AppService) => { service.dispose(); services.splice(services.indexOf(service), 1) }
 afterEach(() => {
@@ -83,7 +83,7 @@ afterEach(() => {
   for (const path of dirs.splice(0)) { try { rmSync(path, { recursive: true, force: true, maxRetries: 4, retryDelay: 250 }) } catch { /* Windows may hold the file briefly */ } }
 })
 
-describe('Assistente padrão e conversas por projeto V9', () => {
+describe('Assistente padrão e conversas por workspace V9', () => {
   it('duas conversas escrevem em paralelo em worktrees diferentes sem cruzar arquivos', async () => {
     const { service, runtime } = open(tempDirectory(), new ParallelWriteRuntime())
     const sourcePath = tempDirectory()
@@ -93,13 +93,12 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     writeFileSync(join(sourcePath, 'README.md'), 'base\n')
     execFileSync('git', ['add', 'README.md'], { cwd: sourcePath, windowsHide: true })
     execFileSync('git', ['commit', '-m', 'initial'], { cwd: sourcePath, windowsHide: true })
-    const project = service.saveProject({ name: 'Concorrência', workspacePath: sourcePath })
-    const source = service.store.workspace(project.defaultWorkspaceId!)
-    const firstWorkspace = await service.createWorktree({ projectId: project.id, sourceWorkspaceId: source.id, branch: 'fase-2/primeira' })
-    const secondWorkspace = await service.createWorktree({ projectId: project.id, sourceWorkspaceId: source.id, branch: 'fase-2/segunda' })
+    const source = await service.saveWorkspace({ name: 'Concorrência', path: sourcePath })
+    const firstWorkspace = await service.createWorktree({ sourceWorkspaceId: source.id, branch: 'fase-2/primeira' })
+    const secondWorkspace = await service.createWorktree({ sourceWorkspaceId: source.id, branch: 'fase-2/segunda' })
     const agent = service.saveAgent({ name: 'Escritora', alias: 'escritora', instructions: 'Escreva.', canWrite: true, approvalMode: 'automatic' })
-    const first = service.store.saveConversation({ name: 'Primeira frente', kind: 'direct', projectId: project.id, workspaceId: firstWorkspace.id, agentIds: [agent.id] })
-    const second = service.store.saveConversation({ name: 'Segunda frente', kind: 'direct', projectId: project.id, workspaceId: secondWorkspace.id, agentIds: [agent.id] })
+    const first = service.store.saveConversation({ name: 'Primeira frente', kind: 'direct', workspaceId: firstWorkspace.id, agentIds: [agent.id] })
+    const second = service.store.saveConversation({ name: 'Segunda frente', kind: 'direct', workspaceId: secondWorkspace.id, agentIds: [agent.id] })
 
     await Promise.all([service.send(first.id, 'primeira'), service.send(second.id, 'segunda')])
 
@@ -161,13 +160,13 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     expect(reopened.store.fileChanges()).toHaveLength(7)
   })
 
-  it('inicia e continua uma conversa do Assistente em um projeto sem bot nem grupo cadastrados', async () => {
+  it('inicia e continua uma conversa do Assistente em um workspace sem bot nem grupo cadastrados', async () => {
     const { service, runtime } = open(tempDirectory())
     expect(service.snapshot().agents).toEqual([])
-    const project = service.saveProject({ name: 'Site' })
-    expect(project).toMatchObject({ name: 'Site', defaultWorkspaceId: null, defaultAgentIds: [] })
-    const conversation = service.saveConversation({ projectId: project.id })
-    expect(conversation).toMatchObject({ projectId: project.id, agentIds: [], kind: 'direct', name: 'Nova conversa', titleAuto: true })
+    const workspace = await service.saveWorkspace({ name: 'Site' })
+    expect(workspace).toMatchObject({ name: 'Site', kind: 'free', defaultAgentIds: [] })
+    const conversation = service.saveConversation({ workspaceId: workspace.id })
+    expect(conversation).toMatchObject({ workspaceId: workspace.id, agentIds: [], kind: 'direct', name: 'Nova conversa', titleAuto: true })
 
     await service.send(conversation.id, 'Primeira pergunta')
     await service.send(conversation.id, 'Segunda pergunta')
@@ -184,19 +183,19 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     expect(service.store.runs().every(run => run.agentId === ASSISTANT_ID && run.status === 'completed')).toBe(true)
   })
 
-  it('funciona também fora de projetos, sem pasta, bot ou grupo', async () => {
+  it('funciona também fora de workspaces nomeados, sem pasta, bot ou grupo', async () => {
     const { service } = open(tempDirectory())
     const conversation = service.saveConversation({})
-    expect(conversation).toMatchObject({ projectId: null, agentIds: [], workspaceId: expect.any(String) })
+    expect(conversation).toMatchObject({ agentIds: [], workspaceId: expect.any(String) })
     await service.send(conversation.id, 'Olá')
     expect(service.history(conversation.id)[1]).toMatchObject({ role: 'assistant', status: 'completed', agentId: ASSISTANT_ID })
   })
 
-  it('mantém duas conversas do mesmo projeto com sessões e históricos independentes e as retoma', async () => {
+  it('mantém duas conversas do mesmo workspace com sessões e históricos independentes e as retoma', async () => {
     const { service, runtime } = open(tempDirectory())
-    const project = service.saveProject({ name: 'App', instructions: 'Use sempre TypeScript.' })
-    const first = service.saveConversation({ projectId: project.id, name: 'Planejamento' })
-    const second = service.saveConversation({ projectId: project.id, name: 'Login' })
+    const workspace = await service.saveWorkspace({ name: 'App', instructions: 'Use sempre TypeScript.' })
+    const first = service.saveConversation({ workspaceId: workspace.id, name: 'Planejamento' })
+    const second = service.saveConversation({ workspaceId: workspace.id, name: 'Login' })
 
     await service.send(first.id, 'assunto-A-1')
     await service.send(second.id, 'assunto-B-1')
@@ -216,15 +215,15 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     expect(sessionsOf('assunto-B').size).toBe(1)
     expect(sessionA).not.toBe(sessionB)
     expect(runtime.threads.every(thread => thread.projectInstructions === 'Use sempre TypeScript.')).toBe(true)
-    expect(service.snapshot().conversations.filter(item => item.projectId === project.id).map(item => item.name).sort()).toEqual(['Login', 'Planejamento'])
+    expect(service.snapshot().conversations.filter(item => item.workspaceId === workspace.id).map(item => item.name).sort()).toEqual(['Login', 'Planejamento'])
   })
 
-  it('persiste projetos, conversas, histórico e sessões ao reiniciar e retoma a mesma sessão', async () => {
+  it('persiste workspaces, conversas, histórico e sessões ao reiniciar e retoma a mesma sessão', async () => {
     const directory = tempDirectory()
     const first = open(directory)
-    const project = first.service.saveProject({ name: 'Persistente' })
-    const a = first.service.saveConversation({ projectId: project.id, name: 'A' })
-    const b = first.service.saveConversation({ projectId: project.id, name: 'B' })
+    const workspace = await first.service.saveWorkspace({ name: 'Persistente' })
+    const a = first.service.saveConversation({ workspaceId: workspace.id, name: 'A' })
+    const b = first.service.saveConversation({ workspaceId: workspace.id, name: 'B' })
     await first.service.send(a.id, 'antes-A')
     await first.service.send(b.id, 'antes-B')
     const sessionA = first.runtime.turns.find(turn => turn.text === 'antes-A')!.threadId
@@ -233,8 +232,8 @@ describe('Assistente padrão e conversas por projeto V9', () => {
 
     const second = open(directory)
     const snapshot = second.service.snapshot()
-    expect(snapshot.projects.map(item => item.name)).toEqual(['Persistente'])
-    expect(snapshot.conversations.map(item => [item.name, item.projectId])).toEqual([['A', project.id], ['B', project.id]])
+    expect(snapshot.workspaces.map(item => item.name)).toEqual(['Persistente'])
+    expect(snapshot.conversations.map(item => [item.name, item.workspaceId])).toEqual([['A', workspace.id], ['B', workspace.id]])
     expect(second.service.history(a.id).map(message => message.text.includes('antes-A') || message.role === 'user')).toEqual([true, true])
     await second.service.send(a.id, 'depois-A')
     await second.service.send(b.id, 'depois-B')
@@ -243,32 +242,26 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     expect(second.service.history(a.id).filter(message => message.role === 'user').map(message => message.text)).toEqual(['antes-A', 'depois-A'])
   })
 
-  it('herda pasta e equipe padrão do projeto sem alterar conversas existentes quando o projeto muda', () => {
+  it('herda pasta e equipe padrão do workspace sem alterar conversas existentes quando o workspace muda', async () => {
     const { service } = open(tempDirectory())
     const folder = tempDirectory()
     const agent = service.saveAgent({ name: 'Revisora', alias: 'revisora', instructions: 'Revise.' })
-    const project = service.saveProject({ name: 'Equipe', workspacePath: folder, defaultAgentIds: [agent.id] })
-    const inherited = service.saveConversation({ projectId: project.id })
-    expect(inherited).toMatchObject({ agentIds: [agent.id], workspaceId: project.defaultWorkspaceId, kind: 'direct' })
-    const assistantOnly = service.saveConversation({ projectId: project.id, agentIds: [] })
+    const workspace = await service.saveWorkspace({ name: 'Equipe', path: folder, defaultAgentIds: [agent.id] })
+    const inherited = service.saveConversation({ workspaceId: workspace.id })
+    expect(inherited).toMatchObject({ agentIds: [agent.id], workspaceId: workspace.id, kind: 'direct' })
+    const assistantOnly = service.saveConversation({ workspaceId: workspace.id, agentIds: [] })
     expect(assistantOnly.agentIds).toEqual([])
-    service.saveProject({ id: project.id, defaultAgentIds: [] })
+    await service.saveWorkspace({ id: workspace.id, defaultAgentIds: [] })
     expect(service.store.conversation(inherited.id).agentIds).toEqual([agent.id])
-    expect(service.saveConversation({ projectId: project.id }).agentIds).toEqual([])
+    expect(service.saveConversation({ workspaceId: workspace.id }).agentIds).toEqual([])
   })
 
-  it('valida projeto, Assistente reservado e imutabilidade do projeto da conversa', () => {
+  it('valida workspace e o Assistente reservado como participante', () => {
     const { service } = open(tempDirectory())
-    expect(() => service.saveProject({ name: '  ' })).toThrow()
-    expect(() => service.saveConversation({ projectId: 'inexistente' })).toThrow('Projeto não encontrado')
+    expect(() => service.store.saveWorkspace({ name: '  ', path: tempDirectory() })).not.toThrow()
+    expect(() => service.saveConversation({ workspaceId: 'inexistente' })).toThrow('Workspace não encontrado')
     expect(() => service.saveAgent({ name: 'Outro', alias: 'assistente', instructions: 'x' })).toThrow('menção')
     expect(() => service.saveConversation({ agentIds: [ASSISTANT_ID] })).toThrow()
-    const one = service.saveProject({ name: 'Um' })
-    const two = service.saveProject({ name: 'Dois' })
-    const conversation = service.saveConversation({ projectId: one.id })
-    expect(() => service.saveConversation({ id: conversation.id, projectId: two.id })).toThrow('não muda de projeto')
-    service.saveProject({ id: one.id, archived: true })
-    expect(() => service.saveConversation({ projectId: one.id })).toThrow('arquivado')
   })
 
   it('renomear a conversa não troca a sessão; trocar a pasta cria nova sessão', async () => {
@@ -284,14 +277,14 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     expect(runtime.turns[2].threadId).not.toBe(one)
   })
 
-  it('isola a sessão quando as instruções do projeto mudam e as conversas entre si', async () => {
+  it('isola a sessão quando as instruções do workspace mudam e as conversas entre si', async () => {
     const { service, runtime } = open(tempDirectory())
-    const project = service.saveProject({ name: 'Contexto', instructions: 'Contexto v1' })
-    const first = service.saveConversation({ projectId: project.id })
-    const second = service.saveConversation({ projectId: project.id })
+    const workspace = await service.saveWorkspace({ name: 'Contexto', instructions: 'Contexto v1' })
+    const first = service.saveConversation({ workspaceId: workspace.id })
+    const second = service.saveConversation({ workspaceId: workspace.id })
     await service.send(first.id, 'conversa-1 antes')
     await service.send(second.id, 'conversa-2')
-    service.saveProject({ id: project.id, instructions: 'Contexto v2' })
+    await service.saveWorkspace({ id: workspace.id, instructions: 'Contexto v2' })
     await service.send(first.id, 'conversa-1 depois')
 
     const firstThreads = runtime.threads.filter(thread => thread.agent.id === ASSISTANT_ID)
@@ -303,10 +296,32 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     expect(runtime.turns[2].threadId).toBe(firstThreads[2].id)
     expect(service.history(first.id).some(message => message.text.includes('conversa-2'))).toBe(false)
   })
+
+  it('exclui conversa, agente e workspace em cascata de verdade', async () => {
+    const { service } = open(tempDirectory())
+    const agent = service.saveAgent({ name: 'Descartável', alias: 'descartavel', instructions: 'x' })
+    const workspace = await service.saveWorkspace({ name: 'Temporário', defaultAgentIds: [agent.id] })
+    const conversation = service.saveConversation({ workspaceId: workspace.id, agentIds: [agent.id] })
+    await service.send(conversation.id, 'oi')
+
+    await service.deleteConversation(conversation.id)
+    expect(() => service.store.conversation(conversation.id)).toThrow('não encontrada')
+    expect(service.store.fileChangesForWorkspace(workspace.id)).toEqual([])
+
+    const other = service.saveConversation({ workspaceId: workspace.id, agentIds: [agent.id] })
+    service.deleteAgent(agent.id)
+    expect(() => service.store.agent(agent.id)).toThrow('não encontrado')
+    expect(service.store.conversation(other.id).agentIds).toEqual([])
+    expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
+
+    await service.deleteWorkspace(workspace.id)
+    expect(() => service.store.workspace(workspace.id)).toThrow('não encontrado')
+    expect(() => service.store.conversation(other.id)).toThrow('não encontrada')
+  })
 })
 
 describe('migração do SQLite V9', () => {
-  it('migra esquema 3 para 4, cria backups e associa projetos e conversas às pastas existentes', () => {
+  it('migra esquema 3 para 5, cria backup e funde projetos e pastas existentes em workspaces nomeados', () => {
     const directory = tempDirectory()
     const projectPath = tempDirectory()
     const standalonePath = tempDirectory()
@@ -329,14 +344,14 @@ describe('migração do SQLite V9', () => {
     const store = new WorkspaceStore(directory)
     const backups = readdirSync(directory).filter(name => name.startsWith('politron-v9.backup-schema3-'))
     expect(backups).toHaveLength(1)
-    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('4')
-    const project = store.project('project-1')
+    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('5')
+    expect(store.db.prepare("SELECT name FROM sqlite_master WHERE name='v9_projects'").get()).toBeUndefined()
     const projectConversation = store.conversation('project-conv')
     const localConversation = store.conversation('local-conv')
-    expect(store.workspace(project.defaultWorkspaceId!).path).toBe(projectPath)
-    expect(projectConversation.workspaceId).toBe(project.defaultWorkspaceId)
-    expect(store.workspace(localConversation.workspaceId)).toMatchObject({ projectId: null, kind: 'local', path: standalonePath })
-    expect(store.runs()[0]).toMatchObject({ workspaceId: project.defaultWorkspaceId, workspacePath: projectPath })
+    const projectWorkspace = store.workspace(projectConversation.workspaceId)
+    expect(projectWorkspace).toMatchObject({ name: 'Migração', path: projectPath, parentWorkspaceId: null })
+    expect(store.workspace(localConversation.workspaceId)).toMatchObject({ kind: 'local', path: standalonePath })
+    expect(store.runs()[0]).toMatchObject({ workspaceId: projectWorkspace.id, workspacePath: projectPath })
     store.close()
   })
 
@@ -369,17 +384,45 @@ describe('migração do SQLite V9', () => {
     expect((backup.prepare('SELECT COUNT(*) AS total FROM v9_messages').get() as { total: number }).total).toBe(1)
     backup.close()
 
-    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('4')
+    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('5')
     expect(store.agents()).toHaveLength(1)
-    expect(store.conversation('conv-1')).toMatchObject({ name: 'Grupo antigo', kind: 'group', agentIds: ['agent-1'], revision: 3, projectId: null, titleAuto: false })
+    expect(store.conversation('conv-1')).toMatchObject({ name: 'Grupo antigo', kind: 'group', agentIds: ['agent-1'], revision: 3, titleAuto: false })
     expect(store.history('conv-1')[0].text).toBe('mensagem antiga')
     expect(store.binding('conv-1:agent-1:r1:m:c3')).toBe('thread-legado')
-    expect(store.workspace(store.conversation('conv-1').workspaceId).kind).toBe('local')
+    expect(store.workspace(store.conversation('conv-1').workspaceId).kind).toBe('free')
     store.close()
 
     new WorkspaceStore(directory).close()
     expect(readdirSync(directory).filter(name => name.includes('.backup-'))).toHaveLength(1)
     expect(existsSync(join(directory, 'politron-v9.sqlite'))).toBe(true)
+  })
+
+  it('funde esquema 4 (projeto + workspace separados) em um único workspace nomeado', () => {
+    const directory = tempDirectory()
+    const workspacePath = tempDirectory()
+    const legacy = new DatabaseSync(join(directory, 'politron-v9.sqlite'))
+    legacy.exec(`CREATE TABLE v9_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE v9_agents (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_projects (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_workspaces (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_conversations (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE v9_runs (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_sessions (key TEXT PRIMARY KEY, thread_id TEXT NOT NULL);
+      CREATE TABLE v9_delegations (id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, source_conversation_id TEXT NOT NULL, target_conversation_id TEXT NOT NULL, data TEXT NOT NULL);
+      INSERT INTO v9_meta VALUES ('schema','4');`)
+    legacy.prepare('INSERT INTO v9_projects VALUES (?,?)').run('project-1', JSON.stringify({ id: 'project-1', name: 'Esquema 4', defaultWorkspaceId: 'workspace-1', instructions: 'Use TS', defaultAgentIds: [], revision: 1, archived: false, createdAt: '2026-10-01T00:00:00.000Z' }))
+    legacy.prepare('INSERT INTO v9_workspaces VALUES (?,?)').run('workspace-1', JSON.stringify({ id: 'workspace-1', projectId: 'project-1', kind: 'local', path: workspacePath, branch: 'main', baseBranch: null, changes: 0, archived: false, createdAt: '2026-10-01T00:00:00.000Z' }))
+    legacy.prepare('INSERT INTO v9_conversations VALUES (?,?)').run('conv-1', JSON.stringify({ id: 'conv-1', projectId: 'project-1', kind: 'direct', name: 'Conversa', agentIds: [], workspaceId: 'workspace-1', titleAuto: false, revision: 1, archived: false, createdAt: '2026-10-01T00:00:00.000Z' }))
+    legacy.close()
+
+    const store = new WorkspaceStore(directory)
+    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('5')
+    expect(store.db.prepare("SELECT name FROM sqlite_master WHERE name='v9_projects'").get()).toBeUndefined()
+    const workspace = store.workspace('workspace-1')
+    expect(workspace).toMatchObject({ name: 'Esquema 4', instructions: 'Use TS', path: workspacePath, parentWorkspaceId: null })
+    expect(store.conversation('conv-1').workspaceId).toBe('workspace-1')
+    store.close()
   })
 
   it('não cria backup em instalação nova', () => {

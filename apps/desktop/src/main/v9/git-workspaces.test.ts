@@ -37,7 +37,7 @@ describe('GitWorkspaceService', () => {
   it('creates a branch worktree, reports status, refuses dirty removal, then removes it cleanly', async () => {
     const { sourcePath, worktreeRoot } = await makeRepository()
     const service = new GitWorkspaceService(worktreeRoot)
-    const created = await service.createWorktree({ sourcePath, projectName: 'Instruções de Paz', branch: 'feature/fase-2' })
+    const created = await service.createWorktree({ sourcePath, workspaceName: 'Instruções de Paz', branch: 'feature/fase-2' })
 
     expect(created.branch).toBe('feature/fase-2')
     expect(created.baseBranch).toBe('main')
@@ -57,7 +57,7 @@ describe('GitWorkspaceService', () => {
   it('rejects invalid branch names and unregistered removal paths', async () => {
     const { sourcePath, worktreeRoot, directory } = await makeRepository()
     const service = new GitWorkspaceService(worktreeRoot)
-    await expect(service.createWorktree({ sourcePath, projectName: 'Project', branch: '../escape' })).rejects.toThrow('branch')
+    await expect(service.createWorktree({ sourcePath, workspaceName: 'Project', branch: '../escape' })).rejects.toThrow('branch')
     await expect(service.removeWorktree(directory)).rejects.toThrow('fora da pasta permitida')
   }, 30000)
 })

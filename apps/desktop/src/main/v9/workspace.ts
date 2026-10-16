@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import { basename, extname, isAbsolute, relative, resolve, sep, join } from 'node:path'
 import { app, dialog, shell, Notification, BrowserWindow } from 'electron'
 import { EventEmitter } from 'node:events'
-import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type Model, type Project, type Run, type WorkspaceEvent } from '../../shared/v9'
+import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type Model, type Run, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import { BrowserService } from './browser'
 import { GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, recipients } from './routing'
@@ -62,23 +62,21 @@ export class AppService extends EventEmitter {
   }
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.emitEvent({ type: 'changed' }); return agent }
   saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.emitEvent({ type: 'changed' }); return assistant }
-  saveProject(input: Partial<Project> & { workspacePath?: string | null }) { const project = this.store.saveProject(input); this.emitEvent({ type: 'changed' }); return project }
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }) { const conversation = this.store.saveConversation(input); this.emitEvent({ type: 'changed' }); return conversation }
-  async createLocalWorkspace(input: { projectId: string | null; path: string }) {
-    const path = canonicalDirectory(input.path)
-    if (!path) throw new Error('Selecione uma pasta existente.')
-    if (input.projectId) this.store.project(input.projectId)
-    const info = await this.gitWorkspaces.inspect(path).catch(() => ({ branch: null, changes: 0 }))
-    const existing = this.store.workspaces().find(item => item.projectId === input.projectId && item.path === path && !item.archived)
-    const workspace = existing || this.store.saveWorkspace({ projectId: input.projectId, kind: 'local', path, ...info, baseBranch: null, archived: false })
+  async saveWorkspace(input: Partial<Workspace> & { path?: string | null }) {
+    let info: { branch?: string | null; changes?: number } = {}
+    if (input.path !== undefined) {
+      const path = canonicalDirectory(input.path)
+      if (path) info = await this.gitWorkspaces.inspect(path).catch(() => ({ branch: null, changes: 0 }))
+    }
+    const workspace = this.store.saveWorkspace({ ...input, ...info })
     this.emitEvent({ type: 'changed' }); return workspace
   }
-  async createWorktree(input: { projectId: string; sourceWorkspaceId: string; branch: string; baseBranch?: string }) {
-    const project = this.store.project(input.projectId)
+  async createWorktree(input: { sourceWorkspaceId: string; branch: string; baseBranch?: string }) {
     const source = this.store.workspace(input.sourceWorkspaceId)
-    if (source.projectId !== project.id || source.archived) throw new Error('Escolha um workspace ativo deste projeto como origem.')
-    const created = await this.gitWorkspaces.createWorktree({ sourcePath: source.path, projectName: project.name, projectId: project.id, branch: input.branch, baseBranch: input.baseBranch || source.branch || undefined })
-    const workspace = this.store.saveWorkspace({ projectId: project.id, kind: 'worktree', path: created.path, branch: created.branch, baseBranch: created.baseBranch, changes: 0, archived: false })
+    if (source.archived) throw new Error('Escolha um workspace ativo como origem.')
+    const created = await this.gitWorkspaces.createWorktree({ sourcePath: source.path, workspaceName: source.name, workspaceId: source.id, branch: input.branch, baseBranch: input.baseBranch || source.branch || undefined })
+    const workspace = this.store.saveWorkspace({ name: input.branch, parentWorkspaceId: source.id, kind: 'worktree', path: created.path, branch: created.branch, baseBranch: created.baseBranch, changes: 0, archived: false })
     this.emitEvent({ type: 'changed' }); return workspace
   }
   async archiveWorkspace(workspaceId: string, preserveDirtyWorktree = false) {
@@ -89,6 +87,28 @@ export class AppService extends EventEmitter {
       if (!preserveDirtyWorktree) await this.gitWorkspaces.removeWorktree(workspace.path)
     }
     this.store.updateWorkspace({ ...workspace, archived: true })
+    this.emitEvent({ type: 'changed' })
+  }
+  private descendantWorkspaceIds(id: string): string[] {
+    const ids = [id]
+    for (const child of this.store.workspaces().filter(item => item.parentWorkspaceId === id)) ids.push(...this.descendantWorkspaceIds(child.id))
+    return ids
+  }
+  async deleteWorkspace(workspaceId: string) {
+    const workspace = this.store.workspace(workspaceId)
+    const ids = this.descendantWorkspaceIds(workspaceId)
+    for (const conversation of this.store.conversations().filter(item => ids.includes(item.workspaceId))) await this.stop(conversation.id)
+    if (workspace.kind === 'worktree') await this.gitWorkspaces.removeWorktree(workspace.path).catch(() => undefined)
+    this.store.deleteWorkspace(workspaceId, { cascade: true })
+    this.emitEvent({ type: 'changed' })
+  }
+  async deleteConversation(conversationId: string) {
+    await this.stop(conversationId)
+    this.store.deleteConversation(conversationId)
+    this.emitEvent({ type: 'changed' })
+  }
+  deleteAgent(agentId: string) {
+    this.store.deleteAgent(agentId)
     this.emitEvent({ type: 'changed' })
   }
   workspacePath(workspaceId: string) { const workspace = this.store.workspace(workspaceId); if (workspace.archived) throw new Error('Este workspace está arquivado.'); return workspace.path }
@@ -248,10 +268,10 @@ export class AppService extends EventEmitter {
       context.runtime = runtime
       const directory = run.workspacePath
       await fs.mkdir(directory, { recursive: true })
-      const projectInstructions = conversation.projectId ? this.store.project(conversation.projectId).instructions : ''
-      const projectContext = createHash('sha256').update(projectInstructions).digest('hex').slice(0, 16)
-      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${projectContext}`
-      const threadId = await runtime.thread(agent, directory, this.tools(context), this.store.binding(bindingKey), projectInstructions)
+      const workspaceInstructions = this.store.workspace(run.workspaceId).instructions
+      const workspaceContext = createHash('sha256').update(workspaceInstructions).digest('hex').slice(0, 16)
+      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}`
+      const threadId = await runtime.thread(agent, directory, this.tools(context), this.store.binding(bindingKey), workspaceInstructions)
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
       const result = await runtime.send(threadId, run.input, agent.model || undefined, 600000)

@@ -10,11 +10,13 @@ export function registerV9Ipc(service: AppService) {
   invoke('snapshot', () => service.snapshot())
   invoke('saveAgent', (input) => service.saveAgent(input))
   invoke('saveAssistantPreferences', (input) => service.saveAssistantPreferences(input))
-  invoke('saveProject', (input) => service.saveProject(input))
   invoke('saveConversation', (input) => service.saveConversation(input))
-  invoke('createLocalWorkspace', (input) => service.createLocalWorkspace(input))
+  invoke('saveWorkspace', (input) => service.saveWorkspace(input))
   invoke('createWorktree', (input) => service.createWorktree(input))
   invoke('archiveWorkspace', (id, preserveDirtyWorktree) => service.archiveWorkspace(id, preserveDirtyWorktree))
+  invoke('deleteWorkspace', (id) => service.deleteWorkspace(id))
+  invoke('deleteConversation', (id) => service.deleteConversation(id))
+  invoke('deleteAgent', (id) => service.deleteAgent(id))
   invoke('workspaceDiff', (id) => service.workspaceDiff(id))
   invoke('respondApproval', (id, approved) => service.respondApproval(id, approved))
   invoke('setVisibleConversation', (id) => service.setVisibleConversation(id))
@@ -36,6 +38,6 @@ export function registerV9Ipc(service: AppService) {
   service.on('workspace-event', send)
   return () => {
     service.off('workspace-event', send)
-    for (const channel of ['snapshot', 'saveAgent', 'saveAssistantPreferences', 'saveProject', 'saveConversation', 'createLocalWorkspace', 'createWorktree', 'archiveWorkspace', 'workspaceDiff', 'respondApproval', 'setVisibleConversation', 'hasClaudeCredential', 'saveClaudeCredential', 'history', 'send', 'stop', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'saveAgent', 'saveAssistantPreferences', 'saveConversation', 'saveWorkspace', 'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'respondApproval', 'setVisibleConversation', 'hasClaudeCredential', 'saveClaudeCredential', 'history', 'send', 'stop', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

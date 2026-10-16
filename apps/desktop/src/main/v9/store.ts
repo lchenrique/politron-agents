@@ -1,10 +1,10 @@
 import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
-import { isAbsolute, join, resolve } from 'node:path'
-import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type FileChange, type Message, type Project, type Run, type Snapshot, type Workspace } from '../../shared/v9'
+import { basename, isAbsolute, join, resolve } from 'node:path'
+import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type FileChange, type Message, type Run, type Snapshot, type Workspace } from '../../shared/v9'
 
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
   instructions: 'Você é o Assistente padrão do Politron. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
@@ -12,7 +12,7 @@ export const ASSISTANT: Agent = {
 }
 
 function normalizeConversation(value: Conversation): Conversation {
-  return { ...value, projectId: value.projectId ?? null, titleAuto: value.titleAuto ?? false }
+  return { ...value, titleAuto: value.titleAuto ?? false }
 }
 export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>
 const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: false, computerUse: false, approvalMode: 'ask' }
@@ -47,7 +47,6 @@ export class WorkspaceStore {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS v9_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_agents (id TEXT PRIMARY KEY, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS v9_projects (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_workspaces (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_conversations (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES v9_conversations(id), data TEXT NOT NULL);
@@ -60,7 +59,7 @@ export class WorkspaceStore {
       CREATE INDEX IF NOT EXISTS v9_delegation_source ON v9_delegations(source_conversation_id);
       CREATE INDEX IF NOT EXISTS v9_delegation_target ON v9_delegations(target_conversation_id);
       INSERT OR IGNORE INTO v9_meta VALUES ('schema','${previousSchema ?? SCHEMA_VERSION}');`)
-    if (previousSchema !== null && previousSchema < SCHEMA_VERSION) this.migrateWorkspaces()
+    if (previousSchema !== null && previousSchema < SCHEMA_VERSION) this.migrateWorkspaces(previousSchema)
     else this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
     for (const run of this.runs()) {
       if (['queued', 'running', 'waiting'].includes(run.status)) {
@@ -94,86 +93,104 @@ export class WorkspaceStore {
     }
     return version
   }
-  private migrateWorkspaces(): void {
-    const legacyProjects = this.all<Record<string, any>>('v9_projects')
+  private migrateWorkspaces(fromVersion: number): void {
     const legacyConversations = this.all<Record<string, any>>('v9_conversations')
     const legacyRuns = this.all<Record<string, any>>('v9_runs')
-    const workspaceRecords = new Map<string, Workspace>()
-    const pathKey = (projectId: string | null, path: string) => `${projectId || ''}\0${path.toLocaleLowerCase()}`
+    const workspaceRecords = new Map<string, Record<string, any>>()
+    for (const workspace of this.all<Record<string, any>>('v9_workspaces')) workspaceRecords.set(workspace.id, workspace)
     const legacyPath = (value: unknown): string | null => {
       if (typeof value !== 'string' || !value.trim()) return null
       const candidate = isAbsolute(value) ? value : resolve(this.dataDirectory, value)
       try { return canonicalDirectory(candidate) || resolve(candidate) } catch { return resolve(candidate) }
     }
-    const makeWorkspace = (projectId: string | null, path: string, branch: string | null = null): Workspace => {
-      const key = pathKey(projectId, path)
-      const existing = [...workspaceRecords.values()].find(item => pathKey(item.projectId, item.path) === key)
-      if (existing) return existing
-      const workspace: Workspace = { id: randomUUID(), projectId, kind: 'local', path, branch, baseBranch: null, changes: 0, archived: false, createdAt: new Date().toISOString() }
-      workspaceRecords.set(workspace.id, workspace)
+    const makePrivateWorkspace = (name: string): Record<string, any> => {
+      const id = randomUUID()
+      const dir = join(this.dataDirectory, 'workspaces', id)
+      mkdirSync(dir, { recursive: true })
+      const workspace = { id, name, kind: 'free', path: realpathSync.native(dir), branch: null, baseBranch: null, parentWorkspaceId: null, instructions: '', defaultAgentIds: [], changes: 0, archived: false, createdAt: new Date().toISOString() }
+      workspaceRecords.set(id, workspace)
       return workspace
     }
-    const projectWorkspaces = new Map<string, Workspace>()
-    for (const project of legacyProjects) {
-      const path = legacyPath(project.directory)
-      const workspace = path ? makeWorkspace(project.id, path) : undefined
-      if (workspace) projectWorkspaces.set(project.id, workspace)
-      delete project.directory
-      project.defaultWorkspaceId = workspace?.id || null
-    }
-    for (const conversation of legacyConversations) {
-      const projectId = conversation.projectId || null
-      const path = legacyPath(conversation.directory)
-      const projectWorkspace = projectId ? projectWorkspaces.get(projectId) : undefined
-      let workspace = path
-        ? projectWorkspace?.path === path ? projectWorkspace : makeWorkspace(projectId, path)
-        : projectWorkspace
-      if (!workspace && !path && !projectId) {
-        const privatePath = join(this.dataDirectory, 'workspaces', conversation.id)
-        mkdirSync(privatePath, { recursive: true })
-        workspace = makeWorkspace(null, realpathSync.native(privatePath))
+    // Esquemas abaixo de 4 guardavam "directory" direto em projetos/conversas/runs, sem workspaces próprios.
+    if (fromVersion < 4) {
+      const legacyProjects = this.all<Record<string, any>>('v9_projects')
+      const pathKey = (projectId: string | null, path: string) => `${projectId || ''}\0${path.toLocaleLowerCase()}`
+      const makeWorkspace = (projectId: string | null, path: string, branch: string | null = null): Record<string, any> => {
+        const key = pathKey(projectId, path)
+        const existing = [...workspaceRecords.values()].find(item => pathKey(item.legacyProjectId ?? null, item.path) === key)
+        if (existing) return existing
+        const workspace = { id: randomUUID(), legacyProjectId: projectId, name: '', kind: 'local', path, branch, baseBranch: null, parentWorkspaceId: null, instructions: '', defaultAgentIds: [], changes: 0, archived: false, createdAt: new Date().toISOString() }
+        workspaceRecords.set(workspace.id, workspace)
+        return workspace
       }
-      if (!workspace && !path) {
-        const privatePath = join(this.dataDirectory, 'workspaces', conversation.id)
-        mkdirSync(privatePath, { recursive: true })
-        workspace = makeWorkspace(projectId, realpathSync.native(privatePath))
+      const projectWorkspaces = new Map<string, Record<string, any>>()
+      for (const project of legacyProjects) {
+        const path = legacyPath(project.directory)
+        const workspace = path ? makeWorkspace(project.id, path) : undefined
+        if (workspace) { projectWorkspaces.set(project.id, workspace); workspace.name = project.name; workspace.instructions = project.instructions || ''; workspace.defaultAgentIds = project.defaultAgentIds || [] }
+        project.defaultWorkspaceId = workspace?.id || null
       }
-      if (!workspace) throw new Error(`Não foi possível migrar o workspace da conversa ${conversation.id}.`)
-      delete conversation.directory
-      conversation.workspaceId = workspace.id
-      conversation.projectId = projectId
-      conversation.titleAuto ??= false
-    }
-    const legacyAgents = this.all<Record<string, any>>('v9_agents')
-    for (const agent of legacyAgents) agent.approvalMode ??= 'ask'
-    const conversationWorkspaces = new Map(legacyConversations.map(conversation => [conversation.id, conversation.workspaceId as string]))
-    for (const run of legacyRuns) {
-      const workspaceId = conversationWorkspaces.get(run.conversationId)
-      const workspace = workspaceRecords.get(workspaceId || '')
-      if (!workspace) continue
-      delete run.directory
-      run.workspaceId = workspace.id
-      run.workspacePath = workspace.path
+      for (const conversation of legacyConversations) {
+        const projectId = conversation.projectId || null
+        const path = legacyPath(conversation.directory)
+        const projectWorkspace = projectId ? projectWorkspaces.get(projectId) : undefined
+        let workspace: Record<string, any> | undefined = path
+          ? projectWorkspace?.path === path ? projectWorkspace : makeWorkspace(projectId, path)
+          : projectWorkspace
+        if (!workspace) workspace = makePrivateWorkspace('')
+        if (projectId) { const project = legacyProjects.find((item: any) => item.id === projectId); if (project && !workspace.name) { workspace.name = project.name; workspace.instructions = project.instructions || ''; workspace.defaultAgentIds = project.defaultAgentIds || [] } }
+        delete conversation.directory
+        conversation.workspaceId = workspace.id
+        conversation.titleAuto ??= false
+      }
+      const conversationWorkspaces = new Map(legacyConversations.map(conversation => [conversation.id, conversation.workspaceId as string]))
+      for (const run of legacyRuns) {
+        const workspace = workspaceRecords.get(conversationWorkspaces.get(run.conversationId) || '')
+        if (!workspace) continue
+        delete run.directory
+        run.workspaceId = workspace.id
+        run.workspacePath = workspace.path
+      }
+      for (const workspace of workspaceRecords.values()) delete workspace.legacyProjectId
+      this.db.exec('DROP TABLE IF EXISTS v9_projects')
+    } else {
+      // Esquema 4: projetos e workspaces já existiam separados; funde um no outro.
+      const legacyProjects = this.all<Record<string, any>>('v9_projects')
+      for (const project of legacyProjects) {
+        let primary = project.defaultWorkspaceId ? workspaceRecords.get(project.defaultWorkspaceId) : undefined
+        if (!primary) primary = [...workspaceRecords.values()].find(item => item.projectId === project.id)
+        if (!primary) primary = makePrivateWorkspace(project.name)
+        primary.name = project.name
+        primary.instructions = project.instructions || ''
+        primary.defaultAgentIds = project.defaultAgentIds || []
+        for (const sibling of workspaceRecords.values()) {
+          if (sibling.projectId === project.id && sibling.id !== primary.id) sibling.parentWorkspaceId = primary.id
+        }
+      }
+      for (const workspace of workspaceRecords.values()) {
+        if (workspace.parentWorkspaceId === undefined) workspace.parentWorkspaceId = null
+        if (!workspace.projectId && !workspace.name) workspace.kind = 'free'
+        delete workspace.projectId
+      }
+      for (const conversation of legacyConversations) delete conversation.projectId
+      this.db.exec('DROP TABLE IF EXISTS v9_projects')
     }
     this.db.exec('BEGIN IMMEDIATE')
     try {
-      for (const workspace of workspaceRecords.values()) this.put('v9_workspaces', workspace)
-      for (const agent of legacyAgents) this.put('v9_agents', agent as { id: string })
-      for (const project of legacyProjects) this.put('v9_projects', project as { id: string })
+      for (const workspace of workspaceRecords.values()) this.put('v9_workspaces', workspace as { id: string })
       for (const conversation of legacyConversations) this.put('v9_conversations', conversation as { id: string })
       for (const run of legacyRuns) this.put('v9_runs', run as { id: string })
       this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
       this.db.exec('COMMIT')
     } catch (error) { this.db.exec('ROLLBACK'); throw error }
   }
-  private all<T>(table: string): T[] { return (this.db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all() as { data: string }[]).map(row => JSON.parse(row.data) as T) }
+  private tableExists(table: string): boolean { return !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table) }
+  private all<T>(table: string): T[] { if (!this.tableExists(table)) return []; return (this.db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all() as { data: string }[]).map(row => JSON.parse(row.data) as T) }
   private get<T>(table: string, id: string): T | undefined { const row = this.db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id) as { data: string } | undefined; return row ? JSON.parse(row.data) as T : undefined }
-  private put(table: string, value: { id: string }): void { this.db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(value.id, JSON.stringify(value)) }
+  private put<T extends { id: string }>(table: string, value: T): void { this.db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(value.id, JSON.stringify(value)) }
   agents(): Agent[] { return this.all<Agent>('v9_agents').map(normalizeAgent) }
-  projects(): Project[] { return this.all('v9_projects') }
   workspaces(): Workspace[] { return this.all('v9_workspaces') }
   workspace(id: string): Workspace { const value = this.get<Workspace>('v9_workspaces', id); if (!value) throw new Error('Workspace não encontrado.'); return value }
-  project(id: string): Project { const value = this.get<Project>('v9_projects', id); if (!value) throw new Error('Projeto não encontrado.'); return value }
   conversations(): Conversation[] { return this.all<Conversation>('v9_conversations').map(normalizeConversation) }
   runs(): Run[] { return this.all('v9_runs') }
   delegations(): Delegation[] { return (this.db.prepare('SELECT data FROM v9_delegations ORDER BY rowid').all() as { data: string }[]).map(row => JSON.parse(row.data)) }
@@ -204,7 +221,7 @@ export class WorkspaceStore {
   history(id: string): Message[] {
     return (this.db.prepare('SELECT data FROM (SELECT rowid,data FROM v9_messages WHERE conversation_id=? ORDER BY rowid DESC LIMIT 500) ORDER BY rowid').all(id) as { data: string }[]).map(row => JSON.parse(row.data))
   }
-  snapshot(): Snapshot { return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), projects: this.projects(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.runs().slice(-100), fileChanges: this.fileChanges().slice(-500), approvals: this.approvals() } }
+  snapshot(): Snapshot { return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.runs().slice(-100), fileChanges: this.fileChanges().slice(-500), approvals: this.approvals() } }
   saveAgent(input: Partial<Agent>): Agent {
     const previous = input.id ? this.agent(input.id) : undefined
     const name = requiredText(input.name, 'Nome', 80)
@@ -220,45 +237,48 @@ export class WorkspaceStore {
     const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : '#6366f1', avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round', canWrite: input.canWrite === true, computerUse: input.computerUse === true, approvalMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_agents', value); return value
   }
-  saveProject(input: Partial<Project> & { workspacePath?: string | null }): Project {
-    const previous = input.id ? this.project(input.id) : undefined
-    const name = requiredText(input.name ?? previous?.name, 'Nome do projeto', 100)
+  private userAgents(ids: string[]): void {
+    for (const id of ids) { if (id === ASSISTANT_ID) throw new Error('O Assistente padrão não é cadastrado como participante.'); this.agent(id) }
+  }
+  saveWorkspace(input: Partial<Workspace> & { path?: string | null }): Workspace {
+    const previous = input.id ? this.workspace(input.id) : undefined
     const defaultAgentIds = [...new Set(input.defaultAgentIds ?? previous?.defaultAgentIds ?? [])]
     if (defaultAgentIds.length > 10) throw new Error('A equipe padrão aceita até dez agentes.')
     this.userAgents(defaultAgentIds)
     const instructions = input.instructions === undefined ? previous?.instructions || '' : String(input.instructions)
-    if (instructions.length > 20000) throw new Error('Instruções do projeto: use até 20000 caracteres.')
-    const id = previous?.id || randomUUID()
-    let defaultWorkspaceId = input.defaultWorkspaceId ?? previous?.defaultWorkspaceId ?? null
-    if (input.workspacePath !== undefined) {
-      const path = canonicalDirectory(input.workspacePath)
-      if (path) {
-        const existingWorkspace = this.workspaces().find(item => item.projectId === id && item.kind === 'local' && item.path === path && !item.archived)
-        const workspace = existingWorkspace || this.saveWorkspace({ projectId: id, kind: 'local', path, branch: null, baseBranch: null, changes: 0, archived: false })
-        defaultWorkspaceId = workspace.id
-      } else defaultWorkspaceId = null
+    if (instructions.length > 20000) throw new Error('Instruções: use até 20000 caracteres.')
+    const parentWorkspaceId = input.parentWorkspaceId !== undefined ? input.parentWorkspaceId : previous?.parentWorkspaceId ?? null
+    if (parentWorkspaceId) this.workspace(parentWorkspaceId)
+    let path = previous?.path
+    let kind = previous?.kind ?? 'free'
+    const id = input.id || randomUUID()
+    if (input.path !== undefined) {
+      const resolved = canonicalDirectory(input.path)
+      if (resolved) { path = resolved; kind = input.kind === 'worktree' ? 'worktree' : 'local' }
+      else { path = previous?.path; kind = previous?.kind ?? 'free' }
     }
-    const value: Project = { id, name, defaultWorkspaceId, instructions: instructions.trim(), defaultAgentIds, revision: (previous?.revision || 0) + 1, archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
-    this.put('v9_projects', value); return value
-  }
-  private userAgents(ids: string[]): void {
-    for (const id of ids) { if (id === ASSISTANT_ID) throw new Error('O Assistente padrão não é cadastrado como participante.'); this.agent(id) }
-  }
-  saveWorkspace(input: Omit<Workspace, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): Workspace {
-    const path = canonicalDirectory(input.path)
-    if (!path) throw new Error('Selecione uma pasta existente para o workspace.')
-    const value: Workspace = { id: input.id || randomUUID(), projectId: input.projectId ?? null, kind: input.kind, path, branch: input.branch ?? null, baseBranch: input.baseBranch ?? null, changes: Math.max(0, input.changes || 0), archived: input.archived ?? false, createdAt: input.createdAt || new Date().toISOString() }
+    if (!path) {
+      const dir = join(this.dataDirectory, 'workspaces', id)
+      mkdirSync(dir, { recursive: true })
+      path = realpathSync.native(dir)
+      kind = 'free'
+    }
+    const name = String(input.name ?? previous?.name ?? '').trim().slice(0, 100)
+    const value: Workspace = { id, name, kind, path, branch: input.branch ?? previous?.branch ?? null, baseBranch: input.baseBranch ?? previous?.baseBranch ?? null, parentWorkspaceId, instructions: instructions.trim(), defaultAgentIds, changes: Math.max(0, input.changes ?? previous?.changes ?? 0), archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_workspaces', value)
     return value
   }
   updateWorkspace(value: Workspace): Workspace { this.workspace(value.id); this.put('v9_workspaces', value); return value }
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }): Conversation {
     const previous = input.id ? this.conversation(input.id) : undefined
-    if (previous && input.projectId !== undefined && input.projectId !== previous.projectId) throw new Error('Uma conversa não muda de projeto depois de criada.')
-    const projectId = previous ? previous.projectId : input.projectId ?? null
-    const project = projectId ? this.project(projectId) : undefined
-    if (project?.archived && !previous) throw new Error('Este projeto está arquivado.')
-    const agentIds = [...new Set(input.agentIds ?? previous?.agentIds ?? project?.defaultAgentIds ?? [])]
+    let workspace = input.workspaceId ? this.workspace(input.workspaceId) : previous ? this.workspace(previous.workspaceId) : undefined
+    if (input.workspacePath !== undefined) {
+      const path = canonicalDirectory(input.workspacePath)
+      workspace = path ? this.workspaces().find(item => item.kind === 'local' && item.path === path && !item.archived) || this.saveWorkspace({ path, kind: 'local', name: basename(path) }) : undefined
+    }
+    if (!workspace) workspace = this.saveWorkspace({ name: '' })
+    if (workspace.archived) throw new Error('Este workspace está arquivado.')
+    const agentIds = [...new Set(input.agentIds ?? previous?.agentIds ?? (!previous ? workspace.defaultAgentIds : []))]
     if (agentIds.length > 10) throw new Error('Selecione até dez agentes.')
     this.userAgents(agentIds)
     const kind = input.kind ?? (agentIds.length > 1 ? 'group' : previous?.kind ?? 'direct')
@@ -267,22 +287,40 @@ export class WorkspaceStore {
     if (kind === 'group' && !agentIds.length) throw new Error('Selecione de um a dez agentes para um grupo.')
     const named = typeof input.name === 'string' && input.name.trim() !== ''
     const name = named ? requiredText(input.name, 'Nome', 100) : previous?.name || 'Nova conversa'
-    let workspace = input.workspaceId ? this.workspace(input.workspaceId) : previous ? this.workspace(previous.workspaceId) : project?.defaultWorkspaceId ? this.workspace(project.defaultWorkspaceId) : undefined
-    if (input.workspacePath !== undefined) {
-      const path = canonicalDirectory(input.workspacePath)
-      if (path) workspace = this.workspaces().find(item => item.projectId === projectId && item.kind === 'local' && item.path === path && !item.archived) || this.saveWorkspace({ projectId, kind: 'local', path, branch: null, baseBranch: null, changes: 0, archived: false })
-      else workspace = undefined
-    }
-    if (!workspace) {
-      const privatePath = join(this.dataDirectory, 'workspaces', previous?.id || input.id || randomUUID())
-      mkdirSync(privatePath, { recursive: true })
-      const path = realpathSync.native(privatePath)
-      workspace = this.workspaces().find(item => item.projectId === projectId && item.path === path && !item.archived) || this.saveWorkspace({ projectId, kind: 'local', path, branch: null, baseBranch: null, changes: 0, archived: false })
-    }
-    if (workspace.archived) throw new Error('Este workspace está arquivado.')
-    if (projectId && workspace.projectId && workspace.projectId !== projectId) throw new Error('O workspace pertence a outro projeto.')
-    const value: Conversation = { id: previous?.id || randomUUID(), kind, name, agentIds, projectId, workspaceId: workspace.id, titleAuto: named ? false : previous?.titleAuto ?? true, revision: previous ? previous.revision + (workspace.id !== previous.workspaceId ? 1 : 0) : 1, archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
+    const value: Conversation = { id: previous?.id || randomUUID(), kind, name, agentIds, workspaceId: workspace.id, titleAuto: named ? false : previous?.titleAuto ?? true, revision: previous ? previous.revision + (workspace.id !== previous.workspaceId ? 1 : 0) : 1, archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_conversations', value); return value
+  }
+  deleteConversation(id: string): void {
+    this.conversation(id)
+    const runIds = this.runs().filter(run => run.conversationId === id).map(run => run.id)
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      this.db.prepare('DELETE FROM v9_messages WHERE conversation_id=?').run(id)
+      for (const runId of runIds) {
+        this.db.prepare('DELETE FROM v9_approvals WHERE run_id=?').run(runId)
+        this.db.prepare('DELETE FROM v9_file_changes WHERE run_id=?').run(runId)
+        this.db.prepare('DELETE FROM v9_runs WHERE id=?').run(runId)
+      }
+      this.db.prepare('DELETE FROM v9_delegations WHERE source_conversation_id=? OR target_conversation_id=?').run(id, id)
+      this.db.prepare('DELETE FROM v9_conversations WHERE id=?').run(id)
+      this.db.exec('COMMIT')
+    } catch (error) { this.db.exec('ROLLBACK'); throw error }
+  }
+  deleteWorkspace(id: string, options: { cascade?: boolean } = {}): void {
+    this.workspace(id)
+    const children = this.workspaces().filter(item => item.parentWorkspaceId === id)
+    if (children.length && !options.cascade) throw new Error(`Este workspace tem ${children.length} worktree(s) vinculado(s). Remova-os antes de excluir.`)
+    for (const child of children) this.deleteWorkspace(child.id, { cascade: true })
+    for (const conversation of this.conversations().filter(item => item.workspaceId === id)) this.deleteConversation(conversation.id)
+    this.db.prepare('DELETE FROM v9_file_changes WHERE workspace_id=?').run(id)
+    this.db.prepare('DELETE FROM v9_workspaces WHERE id=?').run(id)
+  }
+  deleteAgent(id: string): void {
+    if (id === ASSISTANT_ID) throw new Error('O Assistente padrão não pode ser excluído.')
+    this.agent(id)
+    for (const conversation of this.conversations().filter(item => item.agentIds.includes(id))) this.put('v9_conversations', { ...conversation, agentIds: conversation.agentIds.filter(agentId => agentId !== id) })
+    for (const workspace of this.workspaces().filter(item => item.defaultAgentIds.includes(id))) this.put('v9_workspaces', { ...workspace, defaultAgentIds: workspace.defaultAgentIds.filter(agentId => agentId !== id) })
+    this.db.prepare('DELETE FROM v9_agents WHERE id=?').run(id)
   }
   autoTitle(conversationId: string, firstMessage: string): Conversation {
     const conversation = this.conversation(conversationId)

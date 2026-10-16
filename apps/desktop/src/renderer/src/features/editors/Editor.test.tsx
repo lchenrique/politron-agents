@@ -9,18 +9,18 @@ const agent = (id: string, name: string): Agent => ({
   revision: 1, createdAt: '2026-10-16T12:00:00.000Z',
 })
 
-const renderEditor = (agents: Agent[] = [], projectId: string | null = null) => {
+const renderEditor = (agents: Agent[] = [], workspaceId: string | null = null) => {
   const onSave = vi.fn().mockResolvedValue(undefined)
-  render(<Editor kind="conversation" agents={agents} models={[]} projectId={projectId} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)
+  render(<Editor kind="conversation" agents={agents} models={[]} workspaceId={workspaceId} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)
   return onSave
 }
 
 describe('criação simples de conversa', () => {
   it('usa o Assistente quando nenhum agente é selecionado', async () => {
-    const onSave = renderEditor([], 'project-1')
+    const onSave = renderEditor([], 'workspace-1')
     expect(screen.getByText('Assistente padrão selecionado')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Criar conversa' }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', kind: 'direct', agentIds: [] })))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', kind: 'direct', agentIds: [] })))
   })
 
   it('exige nome e participantes ao criar um grupo', async () => {
