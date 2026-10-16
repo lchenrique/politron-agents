@@ -64,3 +64,37 @@ describe('colapso e exclusão da barra lateral', () => {
     confirm.mockRestore()
   })
 })
+
+describe('navegação orientada a workspaces', () => {
+  it('abrir o workspace não cria sessão: apenas o botão + cria', () => {
+    const onSelectWorkspace = vi.fn()
+    const onStartConversation = vi.fn()
+    renderSidebar({ onSelectWorkspace, onStartConversation })
+    fireEvent.click(screen.getByTitle('Workspace livre'))
+    expect(onSelectWorkspace).toHaveBeenCalledExactlyOnceWith(workspace.id)
+    expect(onStartConversation).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: `Nova conversa em ${workspace.name}` }))
+    expect(onStartConversation).toHaveBeenCalledExactlyOnceWith(workspace.id)
+  })
+
+  it('exibe sessões legadas dentro do Livre, sem lista avulsa', () => {
+    const legacy: Workspace = { ...workspace, id: 'legacy', name: '' }
+    const free: Workspace = { ...workspace, id: 'free', name: 'Livre' }
+    const conversation: Conversation = { id: 'legacy-session', kind: 'direct', name: 'Sessão preservada', agentIds: [], workspaceId: legacy.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [legacy, free], conversations: [conversation] } })
+    expect(screen.getByText('Sessão preservada')).toBeInTheDocument()
+    expect(screen.queryByText('Sessões antigas')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Recolher Livre' }))
+    expect(screen.queryByText('Sessão preservada')).not.toBeInTheDocument()
+  })
+
+  it('permite recolher independentemente agentes e workspaces', () => {
+    renderSidebar()
+    fireEvent.click(screen.getByRole('button', { name: 'Recolher agentes' }))
+    expect(screen.queryByRole('button', { name: /Lyra @lyra/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Expandir agentes' }))
+    expect(screen.getByRole('button', { name: /Lyra @lyra/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Recolher workspaces' }))
+    expect(screen.queryByRole('button', { name: `Recolher ${workspace.name}` })).not.toBeInTheDocument()
+  })
+})

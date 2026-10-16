@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, FolderPlus, MessageSquarePlus } from 'lucide-react'
+import { FolderPlus, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import TitleBar from '@/components/ide/TitleBar'
 import { ASSISTANT_ID, type Agent, type BrowserFrame, type Conversation, type Message, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import { Sidebar } from '../sidebar/Sidebar'
+import { WorkspaceOverview } from './WorkspaceOverview'
+import { PoliAvatar } from './PoliAvatar'
 import { ChatHeader } from '../chat/ChatHeader'
 import { MessageList } from '../chat/MessageList'
 import { Composer } from '../composer/Composer'
@@ -18,6 +20,8 @@ export default function AppShell() {
   const [models, setModels] = useState<Model[]>([])
   const [selectedModelName, setSelectedModelName] = useState('')
   const [selectedId, setSelectedId] = useState('')
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
+  const activeWorkspaceIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
   const seenIncomingIds = useRef(new Set<string>())
   const eventStatuses = useRef(new Map<string, string>())
@@ -34,11 +38,15 @@ export default function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   useEffect(() => { selectedIdRef.current = selectedId; if (selectedId) setUnreadCounts(current => { if (!current[selectedId]) return current; const next = { ...current }; delete next[selectedId]; return next }) }, [selectedId])
   useEffect(() => { localStorage.setItem('politron-unread-counts', JSON.stringify(unreadCounts)) }, [unreadCounts])
-  const selected = snapshot.conversations.find(item => item.id === selectedId) || snapshot.conversations.find(item => !item.archived)
+  const selected = activeWorkspaceId ? undefined : snapshot.conversations.find(item => item.id === selectedId && !item.archived) || (!activeWorkspaceId ? snapshot.conversations.find(item => !item.archived) : undefined)
+  const activeWorkspace = snapshot.workspaces.find(item => item.id === activeWorkspaceId && !item.archived)
+  const selectConversation = (id: string) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setSelectedId(id) }
+  const selectWorkspace = (id: string) => { activeWorkspaceIdRef.current = id; setActiveWorkspaceId(id); setSelectedId('') }
+  useEffect(() => { activeWorkspaceIdRef.current = activeWorkspaceId }, [activeWorkspaceId])
   const selectedAgents = useMemo(() => !selected ? [] : selected.agentIds.length ? selected.agentIds.map(id => snapshot.agents.find(agent => agent.id === id)).filter((agent): agent is Agent => !!agent) : [snapshot.assistant], [selected, snapshot.agents, snapshot.assistant])
   const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
   const selectedWorkspace = selected ? snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined
-  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(data); setSelectedId(current => data.conversations.some(item => item.id === current) ? current : data.conversations.find(item => !item.archived)?.id || '') } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
+  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(data); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => { void refresh(); void window.appAPI.models().then(data => { setModels(data); setSelectedModelName(current => current || data.find(item => item.isDefault)?.name || data[0]?.name || '') }).catch(error => setNotice(`Não foi possível carregar os modelos do Codex: ${errorText(error)}`)); const off = window.appAPI.onEvent(event => { if (event.type === 'message') { setMessages(current => { const at = current.findIndex(item => item.id === event.message.id); if (at < 0) return [...current, event.message]; const next = [...current]; next[at] = event.message; return next }); const previousStatus = eventStatuses.current.get(event.message.id); if (previousStatus !== event.message.status) { eventStatuses.current.set(event.message.id, event.message.status); void refresh() } if (event.message.role !== 'user' && event.message.conversationId !== selectedIdRef.current && !seenIncomingIds.current.has(event.message.id)) { seenIncomingIds.current.add(event.message.id); setUnreadCounts(current => ({ ...current, [event.message.conversationId]: (current[event.message.conversationId] || 0) + 1 })) } } else if (event.type === 'fileChange') setSnapshot(current => ({ ...current, fileChanges: [...current.fileChanges.filter(item => item.id !== event.fileChange.id), event.fileChange] })); else if (event.type === 'approval') setSnapshot(current => ({ ...current, approvals: [...current.approvals.filter(item => item.id !== event.approval.id), event.approval] })); else if (event.type === 'changed') void refresh(); else if (event.type === 'browser') setBrowserFrames(current => { const at = current.findIndex(frame => frame.key === event.frame.key); if (at < 0) return [...current, event.frame]; const next = [...current]; next[at] = event.frame; return next }) }); return off }, [refresh])
   useEffect(() => { let live = true; if (!selected) { setMessages([]); return } window.appAPI.history(selected.id).then(data => { if (live) setMessages(data) }).catch(error => setNotice(errorText(error))); return () => { live = false } }, [selected?.id])
   useEffect(() => { void window.appAPI.setVisibleConversation(selected?.id || null) }, [selected?.id])
@@ -47,17 +55,23 @@ export default function AppShell() {
   useEffect(() => { if (!selected?.workspaceId) { setWorkspaceDiff(''); return } window.appAPI.workspaceDiff(selected.workspaceId).then(setWorkspaceDiff).catch(error => setNotice(errorText(error))) }, [selected?.workspaceId, snapshot.workspaces, snapshot.fileChanges])
   useEffect(() => { const timeout = window.setTimeout(() => setNotice(''), 6000); return () => window.clearTimeout(timeout) }, [notice])
   const saveAgent = async (data: EditorData) => { const agent = await window.appAPI.saveAgent(data as Partial<Agent>); await refresh(); if (!data.id) setNotice(`${agent.name} já pode participar de uma conversa.`) }
-  const saveConversation = async (data: EditorData) => { const conversation = await window.appAPI.saveConversation(data as Partial<Conversation> & { workspacePath?: string | null }); await refresh(); setSelectedId(conversation.id) }
+  const saveConversation = async (data: EditorData) => { const conversation = await window.appAPI.saveConversation(data as Partial<Conversation> & { workspacePath?: string | null }); await refresh(); selectConversation(conversation.id) }
   const updateParticipants = async (agentIds: string[]) => { if (!selected) return; try { await window.appAPI.saveConversation({ id: selected.id, agentIds, kind: agentIds.length > 1 ? 'group' : 'direct' }); await refresh() } catch (error) { setNotice(errorText(error)) } }
-  const saveWorkspace = async (data: EditorData) => { const workspace = await window.appAPI.saveWorkspace(data as Partial<Workspace> & { path?: string | null }); await refresh(); if (!data.id) await startConversation(workspace.id) }
-  const startConversation = async (workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ workspaceId }); await refresh(); setSelectedId(conversation.id) } catch (error) { setNotice(errorText(error)) } }
+  const saveWorkspace = async (data: EditorData) => { const workspace = await window.appAPI.saveWorkspace(data as Partial<Workspace> & { path?: string | null }); await refresh(); selectWorkspace(workspace.id) }
+  const startConversation = async (workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ workspaceId }); await refresh(); selectConversation(conversation.id) } catch (error) { setNotice(errorText(error)) } }
   const deleteWorkspace = async (id: string) => { try { await window.appAPI.deleteWorkspace(id); await refresh() } catch (error) { setNotice(errorText(error)) } }
   const deleteConversation = async (id: string) => { try { await window.appAPI.deleteConversation(id); if (selectedId === id) setSelectedId(''); await refresh() } catch (error) { setNotice(errorText(error)) } }
   const deleteAgent = async (id: string) => { try { await window.appAPI.deleteAgent(id); await refresh() } catch (error) { setNotice(errorText(error)) } }
   const openAgent = async (agent: Agent, newConversation = false) => {
-    const previous = snapshot.conversations.filter(item => !item.archived && item.kind === 'direct' && item.agentIds.length === 1 && item.agentIds[0] === agent.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-    if (previous && !newConversation) { setSelectedId(previous.id); return }
-    try { const conversation = await window.appAPI.saveConversation({ kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); setSelectedId(conversation.id) }
+    const previous = snapshot.conversations.filter(item => !item.archived && item.kind === 'direct' && item.agentIds.length === 1 && item.agentIds[0] === agent.id && snapshot.workspaces.some(workspace => workspace.id === item.workspaceId && workspace.kind === 'free')).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    if (previous && !newConversation) { selectConversation(previous.id); return }
+    try { const conversation = await window.appAPI.saveConversation({ kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); selectConversation(conversation.id) }
+    catch (error) { setNotice(errorText(error)) }
+  }
+  const openWorkspaceAgent = async (workspaceId: string, agent: Agent) => {
+    const previous = snapshot.conversations.find(item => !item.archived && item.workspaceId === workspaceId && item.agentIds.length === 1 && item.agentIds[0] === agent.id)
+    if (previous) { selectConversation(previous.id); return }
+    try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
   const submitMessage = async (value: string, modelName: string, options: { files: File[] }) => {
@@ -81,7 +95,9 @@ export default function AppShell() {
         selected={selected}
         unreadCounts={unreadCounts}
         agentStates={agentStates}
-        onSelectConversation={setSelectedId}
+        onSelectConversation={selectConversation}
+        onSelectWorkspace={selectWorkspace}
+        activeWorkspaceId={activeWorkspaceId}
         onStartConversation={startConversation}
         onOpenAgent={openAgent}
         onOpenEditor={setEditor}
@@ -114,7 +130,7 @@ export default function AppShell() {
               conversations={snapshot.conversations}
               agentOf={agentOf}
               selectedAgents={selectedAgents}
-              onOpenRelatedConversation={setSelectedId}
+              onOpenRelatedConversation={selectConversation}
               onNotice={setNotice}
             />
             <Composer
@@ -125,7 +141,7 @@ export default function AppShell() {
               onStop={() => void window.appAPI.stop(selected.id)}
             />
           </div>
-        </> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><span className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Bot className="size-6" /></span><h1 className="text-xl font-semibold">Seu espaço de trabalho</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em workspaces e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-5 flex justify-center gap-2"><Button onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button><Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo workspace</Button></div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
+        </> : activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} conversations={snapshot.conversations} workspaces={snapshot.workspaces} agents={snapshot.agents} onCreateSession={() => void startConversation(activeWorkspace.id)} onOpenConversation={selectConversation} onEdit={() => setEditor({ kind: 'workspace', initial: activeWorkspace })} onOpenAgent={agent => void openWorkspaceAgent(activeWorkspace.id, agent)} /> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><div className="mx-auto mb-4 flex items-center justify-center"><PoliAvatar agent={{ ...snapshot.assistant, name: 'Pits' }} size={112} /></div><h1 className="text-xl font-semibold">Seu espaço de trabalho</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em workspaces e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-5 flex justify-center gap-2"><Button onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button><Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo workspace</Button></div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
       </main>
       {terminalOpen && <SidePanel
         computerOpen={computerOpen}

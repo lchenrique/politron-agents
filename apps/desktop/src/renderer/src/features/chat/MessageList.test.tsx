@@ -16,3 +16,11 @@ describe('diffs e aprovações no chat', () => {
     expect(screen.getByRole('button', { name: 'Negar' })).toBeInTheDocument()
   })
 })
+
+describe('estado vazio da conversa', () => {
+  it('mostra apenas o Pits ilustrado, sem a marca antiga no centro', () => {
+    render(<MessageList messages={[]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    expect(screen.getByRole('img', { name: 'Pits — idle' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
+  })
+})

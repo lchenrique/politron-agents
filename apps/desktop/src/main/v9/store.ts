@@ -61,6 +61,12 @@ export class WorkspaceStore {
       INSERT OR IGNORE INTO v9_meta VALUES ('schema','${previousSchema ?? SCHEMA_VERSION}');`)
     if (previousSchema !== null && previousSchema < SCHEMA_VERSION) this.migrateWorkspaces(previousSchema)
     else this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
+    // Agrupar sessões livres antigas sem mover seus diretórios originais.
+    const existingWorkspaces = this.workspaces()
+    if (this.conversations().some(conversation => existingWorkspaces.some(workspace => workspace.id === conversation.workspaceId && !workspace.name && !workspace.archived)) &&
+      !existingWorkspaces.some(workspace => workspace.kind === 'free' && workspace.name === 'Livre' && !workspace.archived)) {
+      this.saveWorkspace({ name: 'Livre' })
+    }
     for (const run of this.runs()) {
       if (['queued', 'running', 'waiting'].includes(run.status)) {
         this.putRun({ ...run, status: 'interrupted' })
@@ -286,7 +292,8 @@ export class WorkspaceStore {
       const path = canonicalDirectory(input.workspacePath)
       workspace = path ? this.workspaces().find(item => item.kind === 'local' && item.path === path && !item.archived) || this.saveWorkspace({ path, kind: 'local', name: basename(path) }) : undefined
     }
-    if (!workspace) workspace = this.saveWorkspace({ name: '' })
+    // Conversas sem projeto pertencem ao workspace Livre, sem criar pastas anônimas na navegação.
+    if (!workspace) workspace = this.workspaces().find(item => !item.archived && !item.parentWorkspaceId && item.kind === 'free' && item.name === 'Livre') || this.saveWorkspace({ name: 'Livre' })
     if (workspace.archived) throw new Error('Este workspace está arquivado.')
     const agentIds = [...new Set(input.agentIds ?? previous?.agentIds ?? (!previous ? workspace.defaultAgentIds : []))]
     if (agentIds.length > 10) throw new Error('Selecione até dez agentes.')
