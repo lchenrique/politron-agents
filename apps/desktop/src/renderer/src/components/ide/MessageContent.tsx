@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { TextAnimate } from "@/components/ui/text-animate";
 
 interface MessageContentProps {
   text: string;
@@ -67,27 +68,16 @@ export const MessageContent: React.FC<MessageContentProps> = ({ text }) => {
 
         if (!part.content.trim()) return null;
 
+        // Use TextAnimate for typing effect
         return (
-          <div
+          <TextAnimate 
             key={i}
-            className="text-[13px] leading-relaxed max-w-none
-            [&_p]:my-2
-            [&_h1]:text-lg [&_h1]:font-bold [&_h1]:my-3
-            [&_h2]:text-base [&_h2]:font-bold [&_h2]:my-3
-            [&_h3]:text-[14px] [&_h3]:font-bold [&_h3]:my-2
-            [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2
-            [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2
-            [&_li]:my-0.5
-            [&_pre]:bg-ide-bg [&_pre]:border [&_pre]:border-ide-border [&_pre]:my-3 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto
-            [&_code]:text-ide-text-muted [&_code]:bg-ide-surface-3 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-[12px]
-            [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-[13px] [&_pre_code]:text-ide-text
-            [&_a]:text-ide-indigo [&_a]:underline [&_a]:underline-offset-2
-            [&_blockquote]:border-l-2 [&_blockquote]:border-ide-border [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-ide-text-dim"
+            animation="slideUp" 
+            by="word"
+            className="text-[13px] leading-relaxed max-w-none"
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {part.content}
-            </ReactMarkdown>
-          </div>
+            {part.content}
+          </TextAnimate>
         );
       })}
     </div>

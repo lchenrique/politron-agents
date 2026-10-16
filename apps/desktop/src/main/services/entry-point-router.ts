@@ -107,7 +107,8 @@ export function resolveTeamAgent(
 }
 
 /**
- * Determine the routing for a request based on entry point and context
+ * Determine the routing for a request based on entry point and context.
+ * V2 now forces hierarchical routing even when the user addresses an executor directly.
  */
 export function determineRouting(params: {
   /** The team context (optional) */
@@ -122,6 +123,8 @@ export function determineRouting(params: {
   taskDescription?: string
   /** Whether the user explicitly asked for leadership */
   explicitLeadership?: boolean
+  /** Whether user is directly messaging an agent (bypassing hierarchy) */
+  isDirectMessage?: boolean
 }): RoutingDecision {
   const {
     team,
@@ -130,6 +133,7 @@ export function determineRouting(params: {
     requestedTarget,
     taskDescription = "",
     explicitLeadership = false,
+    isDirectMessage = false,
   } = params
 
   // Default decision
@@ -140,6 +144,39 @@ export function determineRouting(params: {
     canExecuteDirectly: false,
     shouldQueueBoardTask: true,
     taskScope: inferTaskScope(taskDescription),
+  }
+
+  // Even when the user talks directly to an executor, V2 requires hierarchical routing.
+  if (isDirectMessage && entryPointAgentId) {
+    const directAgent = team?.agents.find((a) => a.id === entryPointAgentId)
+    
+    if (directAgent) {
+      const agentMode = getAgentExecutionMode(directAgent.catalogSlug)
+      
+      // Coordinators still route hierarchically even in "direct" user messages
+      if (agentMode === "coordinator") {
+        return {
+          ...defaultDecision,
+          flow: "hierarchical",
+          targetAgent: directAgent,
+          reason: `Direct message to coordinator ${directAgent.catalogSlug} - using hierarchical flow`,
+          canExecuteDirectly: false,
+          shouldQueueBoardTask: false,
+        }
+      }
+
+      const taskScope = inferTaskScope(taskDescription)
+      const canHandle = canExecutorHandleScope(directAgent.catalogSlug, taskScope as any)
+
+      return {
+        flow: "hierarchical",
+        targetAgent: directAgent,
+        reason: `Direct user message to executor ${directAgent.catalogSlug} - routing through hierarchical flow`,
+        canExecuteDirectly: false,
+        shouldQueueBoardTask: !canHandle,
+        taskScope,
+      }
+    }
   }
 
   // If entry point is a coordinator, use hierarchical
@@ -189,16 +226,15 @@ export function determineRouting(params: {
         }
       }
 
-      // Target is an executor - determine if can execute directly
       const taskScope = inferTaskScope(taskDescription)
       const canHandle = canExecutorHandleScope(agent.catalogSlug, taskScope as any)
 
       return {
-        flow: "direct",
+        flow: "hierarchical",
         targetAgent: agent,
-        reason: `Target ${agent.catalogSlug} is an executor (matched by ${resolution.matchType}) - using direct flow`,
-        canExecuteDirectly: canHandle,
-        shouldQueueBoardTask: false, // Direct execution doesn't queue
+        reason: `Target ${agent.catalogSlug} is an executor (matched by ${resolution.matchType}) - routing through hierarchical flow`,
+        canExecuteDirectly: false,
+        shouldQueueBoardTask: !canHandle,
         taskScope,
       }
     }
@@ -220,12 +256,12 @@ export function determineRouting(params: {
       const canHandle = canExecutorHandleScope(entryAgent.catalogSlug, taskScope as any)
 
       return {
-        flow: canHandle ? "direct" : "hierarchical",
+        flow: "hierarchical",
         targetAgent: entryAgent,
         reason: canHandle
-          ? `Entry point ${entryAgent.catalogSlug} can handle this task directly`
+          ? `Entry point ${entryAgent.catalogSlug} is executor-capable, but V2 requires hierarchical routing`
           : `Entry point ${entryAgent.catalogSlug} cannot handle ${taskScope} - using hierarchical`,
-        canExecuteDirectly: canHandle,
+        canExecuteDirectly: false,
         shouldQueueBoardTask: !canHandle,
         taskScope,
       }

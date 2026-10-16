@@ -137,50 +137,124 @@ export function canExecutorHandleScope(slug: string, scope: ExecutionScope): boo
 /**
  * Infer the execution scope from task description
  * This is a heuristic - returns the most likely scope
+ * 
+ * FIX: Added extensive Portuguese keyword support for Brazilian Portuguese
  */
 export function inferTaskScope(taskDescription: string): ExecutionScope {
   const text = taskDescription.toLowerCase()
 
-  // Frontend indicators
-  if (
-    /\b(frontend|front-end|front end|react|vue|angular|html|css|interface|ui|tela|pagina|page|component|button|modal|sidebar|layout|style)\b/.test(
-      text
-    )
-  ) {
-    return "frontend"
+  // FRONTEND indicators (English + Portuguese)
+  const frontendPatterns = [
+    // English
+    /\b(frontend|front-end|front end|react|vue|angular|html|css|interface|ui|tela|pagina|page|component|button|modal|sidebar|layout|style)\b/,
+    // Portuguese
+    /\b(tela|página|pagina|componente|botao|botão|modal|sidebar|barra|layout|estilo|css|html|frontend|front-end|front end|interface|usuário|usuario|input|form|campo|grid|responsivo|react|vue|angular|sidebar|menu|nav|navegação|navegacao|header|cabeçalho|cabecalho|footer|rodapé|rodape)\b/,
+    // UI actions
+    /\b(exibir|mostrar|renderizar|render|aparecer|desaparecer|clicar|click|scroll|animação|animacao|transição|transicao|efeito|drag|arrastar|toque|touch)\b/,
+  ]
+  
+  for (const pattern of frontendPatterns) {
+    if (pattern.test(text)) {
+      return "frontend"
+    }
   }
 
-  // Design indicators
-  if (/\b(design|design|ui|ux|figma|prototipo|wireframe|mockup|layout visual|estilo|cor|pallete|font)\b/.test(text)) {
-    return "design"
+  // DESIGN indicators (English + Portuguese)
+  const designPatterns = [
+    // English
+    /\b(design|design|ui|ux|figma|prototipo|wireframe|mockup|layout visual|estilo|cor|pallete|font)\b/,
+    // Portuguese
+    /\b(design|design|ui|ux|figma|protótipo|prototipo|wireframe|mockup|estilo visual|cor|cores|paleta|fonte|font|typography|grid visual|composição|composicao|layout visual|marca|brand|identidade|design system|design system)\b/,
+  ]
+  
+  for (const pattern of designPatterns) {
+    if (pattern.test(text)) {
+      return "design"
+    }
   }
 
-  // QA indicators
-  if (/\b(qa|test|teste|testing|verificar|validar|criterio|critério|bug|erro|falha|coverage|integration|e2e|unit)\b/.test(text)) {
-    return "qa"
+  // QA indicators (English + Portuguese)
+  const qaPatterns = [
+    // English
+    /\b(qa|test|teste|testing|verificar|validar|criterio|critério|bug|erro|falha|coverage|integration|e2e|unit)\b/,
+    // Portuguese
+    /\b(teste|testar|testes|teste unitário|teste de integração|teste e2e|teste de ponta a ponta|qa|qualidade|verificar|validar|critério|criterio|aceite|bug|erro|falha|regressão|regressao|coverage|cobertura|unittest|integration|funcional|aceite|aceitar|rejeitar|critério de aceite)\b/,
+  ]
+  
+  for (const pattern of qaPatterns) {
+    if (pattern.test(text)) {
+      return "qa"
+    }
   }
 
-  // DevOps indicators
-  if (/\b(devops|deploy|docker|kubernetes|k8s|ci|cd|pipeline|infrastructure|infra|server|nginx|cloud|aws|gcp|azure)\b/.test(text)) {
-    return "devops"
+  // DEVOPS indicators (English + Portuguese)
+  const devopsPatterns = [
+    // English
+    /\b(devops|deploy|docker|kubernetes|k8s|ci|cd|pipeline|infrastructure|infra|server|nginx|cloud|aws|gcp|azure)\b/,
+    // Portuguese
+    /\b(devops|deploy|deployar|implantar|docker|kubernetes|k8s|ci|cd|pipeline|infraestrutura|infra|server|servidor|nginx|cloud|nuvem|aws|gcp|azure|github|gitlab|jenkins|github actions|github actions|workflow|automação|automacao|script|bash|shell|terminal|procfile|environment|variável|variavel|ambiente|produção|producao|homologação|homologacao)\b/,
+  ]
+  
+  for (const pattern of devopsPatterns) {
+    if (pattern.test(text)) {
+      return "devops"
+    }
   }
 
-  // Backend indicators
-  if (
-    /\b(backend|back-end|back end|api|rest|graphql|database|db|sql|postgres|mysql|mongodb|server|endpoint|auth|jwt|token|controller|service|model|schema)\b/.test(
-      text
-    )
-  ) {
-    return "backend"
+  // BACKEND indicators (English + Portuguese)
+  const backendPatterns = [
+    // English
+    /\b(backend|back-end|back end|api|rest|graphql|database|db|sql|postgres|mysql|mongodb|server|endpoint|auth|jwt|token|controller|service|model|schema)\b/,
+    // Portuguese
+    /\b(backend|back-end|back end|api|rest|graphql|banco de dados|bd|sql|postgres|mysql|mongodb|server|servidor|endpoint|autenticação|autenticacao|jwt|token|controller|service|serviço|model|modelo|schema|validação|validacao|regras de negócio|regras de negocio|lógica|logica|camada|rota|route|verb|request|response|header|body|param|query)\b/,
+  ]
+  
+  for (const pattern of backendPatterns) {
+    if (pattern.test(text)) {
+      return "backend"
+    }
   }
 
-  // Architecture indicators
-  if (
-    /\b(architect|arquitetura|architecture|design pattern|microservice|monolith|schema|model|design system|component design)\b/.test(
-      text
-    )
-  ) {
-    return "architecture"
+  // ARCHITECTURE indicators (English + Portuguese)
+  const architecturePatterns = [
+    // English
+    /\b(architect|arquitetura|architecture|design pattern|microservice|monolith|schema|model|design system|component design)\b/,
+    // Portuguese
+    /\b(arquitetura|arquiteto|architecture|design pattern|padrão de projeto|padroes|micro-serviço|microservico|monolito|schema|modelo|design system|sistema de design|componente|component design|especificação|especificacao|abstração|abstracao|interface|contrato|api design|modelagem)\b/,
+  ]
+  
+  for (const pattern of architecturePatterns) {
+    if (pattern.test(text)) {
+      return "architecture"
+    }
+  }
+
+  // Specific task verbs that indicate scope (Portuguese focused)
+  const taskVerbs: Record<string, ExecutionScope> = {
+    // Portuguese verbs
+    "criar": "frontend",        // criar tela
+    "implementar": "backend",   // implementar função
+    "desenvolver": "general",   // desenvolver feature
+    "desenhar": "design",      // desenhar interface
+    "testar": "qa",             // testar fluxo
+    "corrigir": "qa",           // corrigir bug
+    "ajustar": "frontend",     // ajustar estilo
+    "adicionar": "frontend",    // adicionar campo
+    "remover": "frontend",     // remover botão
+    "configurar": "devops",    // configurar deploy
+    "migrar": "backend",        // migrar banco
+    "otimizar": "backend",      // otimizar query
+    "criar endpoint": "backend", // criar endpoint
+    "criar componente": "frontend", // criar componente
+    "escrever teste": "qa",      // escrever teste
+    "revisar código": "qa",      // revisar código (code review)
+  }
+
+  // Check for task verb patterns
+  for (const [verb, scope] of Object.entries(taskVerbs)) {
+    if (text.includes(verb)) {
+      return scope
+    }
   }
 
   return "general"

@@ -1,15 +1,17 @@
+import 'dotenv/config'
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerHandlers } from './ipc/handlers'
 import { createAppWindow, destroyAppWindow } from './windows/manager'
 import { openCodeSdkService } from './services/opencode-sdk'
-import { GLOBAL_CEO_PROMPT } from './services/agent-catalog'
 import { appStateDb } from './services/app-state-db'
 import { teamStore } from './services/team-store'
 import { pipelineExecutor } from './services/pipeline-executor'
 import { syncAgencyAgentsToProject } from './services/agency-agent-sync'
 import { existsSync } from 'fs'
+import { WorkspaceService } from './v9/workspace'
+import { registerV9Ipc } from './v9/ipc'
 
 process.on('uncaughtException', (error) => {
   console.error('[Main] uncaughtException', error)
@@ -43,6 +45,7 @@ if (process.platform === 'win32') {
 
 // Global reference to main window
 let mainWindow: BrowserWindow | null = null
+let v9Workspace: WorkspaceService | null = null
 
 // Disable GPU acceleration for Windows sandbox compatibility
 app.disableHardwareAcceleration()
@@ -169,6 +172,8 @@ app.whenReady().then(async () => {
 
   console.log('[Main] Initializing app state DB')
   appStateDb.init(join(app.getPath('userData'), 'state'))
+  v9Workspace = new WorkspaceService(app.getPath('userData'))
+  registerV9Ipc(v9Workspace)
   const persistedState = appStateDb.loadState()
   console.log('[Main] Hydrating stores', {
     teams: persistedState.teams.length,
@@ -187,33 +192,11 @@ app.whenReady().then(async () => {
   mainWindow = createAppWindow(createWindow)
   console.log('[Main] Main window reference stored')
 
-  console.log('[Main] Syncing agency agents in background')
-  void syncAgencyAgentsToProject(process.cwd()).then(() => {
-    console.log('[Main] Agency agent sync finished')
-  })
-
-  console.log('[Main] PATH check:', process.env.PATH?.split(';').filter(p => p.includes('npm') || p.includes('Roaming')))
-  console.log('[Main] USERPROFILE:', process.env.USERPROFILE)
-
-  openCodeSdkService.initialize()
-    .then(async () => {
-      // Pre-warm the CEO session immediately after SDK is ready so the first
-      // message does not incur the cold-start penalty.
-      console.log('[Main] SDK ready — pre-warming CEO session in background')
-      openCodeSdkService.ensureSession({
-        agentId: 'ceo-global',
-        teamId: 'global',
-        role: 'global-ceo',
-        systemPromptPath: GLOBAL_CEO_PROMPT.targetPath,
-      }).then(() => {
-        console.log('[Main] CEO session pre-warmed successfully')
-      }).catch((err) => {
-        console.warn('[Main] CEO session pre-warm failed (non-fatal):', err)
-      })
-    })
-    .catch((error) => {
-      console.error('[Main] Failed to initialize OpenCode SDK:', error)
-    })
+  if (process.env.POLITRON_ENABLE_LEGACY === '1') {
+    console.log('[Main] Starting legacy agent runtime by explicit setting')
+    void syncAgencyAgentsToProject(process.cwd()).catch(error => console.error('[Main] Legacy agent sync failed:', error))
+    openCodeSdkService.initialize().catch(error => console.error('[Main] Failed to initialize OpenCode SDK:', error))
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -232,4 +215,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   destroyAppWindow()
+  v9Workspace?.dispose()
+  v9Workspace = null
 })

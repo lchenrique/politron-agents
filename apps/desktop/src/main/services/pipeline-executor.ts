@@ -377,6 +377,11 @@ export class PipelineExecutor extends EventEmitter {
     const task = this.tasks.get(taskId)
     if (!task) return undefined
 
+    // CRITICAL FIX: Release locks BEFORE setting blocked status to avoid deadlocks
+    for (const file of task.files) {
+      fileLockManager.releaseLock(file, task.agentId)
+    }
+
     task.status = "blocked"
     task.error = error
     task.blockedReason = error
@@ -384,12 +389,11 @@ export class PipelineExecutor extends EventEmitter {
     this.appendHistory(task, "blocked", error)
     appStateDb.saveTask(task)
 
-    for (const file of task.files) {
-      fileLockManager.releaseLock(file, task.agentId)
-    }
-
     this.emit("task:failed", task)
     this.emitPipelineStatusChanged(task.teamId)
+
+    // Also unblock dependent tasks when a task fails
+    this.checkAndUnblockDependentTasks(taskId, "cancelled")
 
     return task
   }
@@ -590,14 +594,21 @@ export class PipelineExecutor extends EventEmitter {
     return false
   }
 
-  private checkAndUnblockDependentTasks(completedTaskId: string): void {
+  private checkAndUnblockDependentTasks(completedTaskId: string, reason: "completed" | "cancelled" = "completed"): void {
     const dependentTasks = Array.from(this.tasks.values()).filter((t) =>
       t.dependsOn.includes(completedTaskId)
     )
 
     for (const task of dependentTasks) {
       if (task.status === "blocked") {
-        this.unblockTask(task.id)
+        if (reason === "cancelled") {
+          // If the dependency was cancelled, we should keep the dependent blocked
+          // but update the blocked reason to indicate the dependency failed
+          task.blockedReason = `Dependency ${completedTaskId} was cancelled`
+          this.appendHistory(task, "blocked", task.blockedReason)
+        } else {
+          this.unblockTask(task.id)
+        }
       }
     }
   }

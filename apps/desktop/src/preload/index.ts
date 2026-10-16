@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+import type { WorkspaceAPI, WorkspaceEvent } from '../shared/v9'
 
 interface AgentEnsureInput {
   agentId: string
@@ -309,3 +310,25 @@ const api = {
 }
 
 contextBridge.exposeInMainWorld('vibeAPI', api)
+
+const workspaceAPI: WorkspaceAPI = {
+  snapshot: () => ipcRenderer.invoke('v9:snapshot'),
+  saveAgent: (input) => ipcRenderer.invoke('v9:saveAgent', input),
+  saveConversation: (input) => ipcRenderer.invoke('v9:saveConversation', input),
+  history: (id) => ipcRenderer.invoke('v9:history', id),
+  send: (id, value, model) => ipcRenderer.invoke('v9:send', id, value, model),
+  stop: (id) => ipcRenderer.invoke('v9:stop', id),
+  cancelDelegation: (id) => ipcRenderer.invoke('v9:cancelDelegation', id),
+  models: () => ipcRenderer.invoke('v9:models'),
+  pickFolder: () => ipcRenderer.invoke('v9:pickFolder'),
+  openFolder: (id) => ipcRenderer.invoke('v9:openFolder', id),
+  browserFrames: (id) => ipcRenderer.invoke('v9:browserFrames', id),
+  browserControl: (key, human) => ipcRenderer.invoke('v9:browserControl', key, human),
+  browserAction: (key, action) => ipcRenderer.invoke('v9:browserAction', key, action),
+  onEvent: (callback) => {
+    const listener = (_event: IpcRendererEvent, payload: WorkspaceEvent) => callback(payload)
+    ipcRenderer.on('v9:event', listener)
+    return () => ipcRenderer.removeListener('v9:event', listener)
+  }
+}
+contextBridge.exposeInMainWorld('workspaceAPI', workspaceAPI)

@@ -710,6 +710,13 @@ class OpenCodeSdkService extends EventEmitter {
         void this.dispatchBoardTask(event.task.teamId, event.task.id)
       }
     })
+
+    // Notify delegation origins when sessions complete
+    sessionStore.on("session:status", (session: ManagedSession) => {
+      if (session.status === "done" || session.status === "error") {
+        void this.notifyDelegationOrigin(session.session.id, session.status)
+      }
+    })
   }
 
   async initialize(): Promise<void> {
@@ -843,16 +850,6 @@ class OpenCodeSdkService extends EventEmitter {
         : "Ainda n\u00e3o existe tech lead definido para este time; ajude a organizar o trabalho e sinalize a necessidade de um respons\u00e1vel t\u00e9cnico."
     const marketplacePrompt = buildAgentMarketplacePrompt()
 
-    const directFlowInstruction = !isTechLead
-      ? `
-[Fluxo Direto - Agentes Executores]
-- Quando o usu\u00e1rio enviar uma tarefa diretamente para voc\u00ea (sem passar por lideran\u00e7a), voc\u00ea pode executar diretamente se estiver no seu escopo de especialidade.
-- Se souber fazer a tarefa, n\u00e3o precisa escalar: execute e retorne o resultado.
-- Se a tarefa estiver fora do seu escopo, delegue para o agente certo do time ou escale para o Tech Lead.
-- Use [DELEGATE directFlow="true"] para envio direto a outro executor sem passar pelo board.
-`
-      : ""
-
     const techLeadFlowInstruction = isTechLead
       ? `
 [Fluxo Hier\u00e1rquico - Tech Lead]
@@ -879,11 +876,9 @@ Regra de idioma:
 
 Membros do time:
 ${members || "- nenhum agente contratado ainda"}
-${directFlowInstruction}
 ${techLeadFlowInstruction}
 Protocolos de colabora\u00e7\u00e3o:
 - Voc\u00ea pode delegar tarefas para outro agente do mesmo time usando [DELEGATE] com team, to, task e opcionalmente files.
-- Voc\u00ea pode usar [DELEGATE directFlow="true"] para enviar uma tarefa diretamente a um executor sem criar issue no board.
 - Lideran\u00e7a coordena e valida; implementa\u00e7\u00e3o deve ficar com os agentes executores do time.
 - Global CTO/CEO e Tech Lead s\u00f3 podem editar c\u00f3digo em casos estritamente necess\u00e1rios e excepcionais.
 - Se a demanda estiver clara, n\u00e3o pe\u00e7a confirma\u00e7\u00e3o para passos normais do fluxo: registre a issue, delegue e avance.
@@ -932,11 +927,6 @@ ${teamsSummary}
 - Se faltar capacidade/especialidade, aciona o RH Global para contratar.
 - O novo agente entra no time e recebe a tarefa.
 
-[Fluxo Direto]
-- Quando o usu\u00e1rio fala diretamente com um agente espec\u00edfico (Frontend, Backend, QA, Designer, etc.), o sistema pode enviar a tarefa diretamente.
-- Agentes executores podem receber tarefas sem passar pela lideran\u00e7a se a tarefa estiver no escopo deles.
-- Se o agente n\u00e3o souber fazer, ele delega ou escala para o Tech Lead.
-
 Regras:
 - Antes de pedir ajuda, tente delegar ao agente mais apropriado do time.
 - Global CTO e Tech Lead devem evitar executar c\u00f3digo como caminho normal.
@@ -952,8 +942,6 @@ Regras:
 - Mantenha as mensagens curtas, objetivas e espec\u00edficas ao papel de cada agente.
 - Fluxo padr\u00e3o de staffing: CEO Global recebe a demanda, Tech Lead avalia a capacidade, RH Global contrata e o novo agente assume a execu\u00e7\u00e3o no board.
 - Quando a necessidade de contrata\u00e7\u00e3o estiver clara, n\u00e3o pe\u00e7a confirma\u00e7\u00e3o redundante sobre cargo se ele j\u00e1 puder ser escolhido da lista oficial abaixo.
-- Use [DELEGATE directFlow="true"] para enviar tarefa diretamente a um executor sem passar pelo board.
-
 Regra de idioma:
 - Toda resposta vis\u00edvel ao usu\u00e1rio final deve ser em portugu\u00eas do Brasil.
 - A comunica\u00e7\u00e3o interna entre agentes pode usar ingl\u00eas quando for mais eficiente.
@@ -1432,13 +1420,6 @@ ${marketplacePrompt}
       return false
     }
 
-    // Direct flow means: deliver immediately, don't queue for board
-    // The agent will execute directly
-    const isDirectFlow = event.payload?.directFlow === "true"
-    if (isDirectFlow) {
-      return false
-    }
-
     const targetTeam = teamStore.getTeam(event.team.id)
     if (!targetTeam) {
       return false
@@ -1678,6 +1659,7 @@ ${marketplacePrompt}
       const isStaffingRequest =
         isGlobalTarget &&
         (event.toAgentSlug === "hr-global" || /rh global/i.test(event.toAgentName ?? ""))
+
       const staffingRole =
         event.payload?.desiredRole ||
         event.payload?.role ||

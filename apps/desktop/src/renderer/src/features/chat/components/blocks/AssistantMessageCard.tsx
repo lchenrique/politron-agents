@@ -2,26 +2,98 @@ import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
+import { motion } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import type { Components } from 'react-markdown';
 import type { AssistantMessageBlock } from '../../types/block.types';
 
+// Animation config
+const WORD_ANIMATION = {
+  duration: 0.3,
+  stagger: 0.03,
+  startDelay: 0,
+};
+
+// Split text into words preserving spaces
+function splitIntoWords(text: string): string[] {
+  return text.split(/(\s+)/).filter(s => s.length > 0);
+}
+
+// Wrap text content with word-by-word animation
+function AnimatedText({ children }: { children: React.ReactNode }) {
+  if (typeof children === 'string') {
+    const words = splitIntoWords(children);
+    if (words.length <= 1) {
+      return <span>{children}</span>;
+    }
+    return (
+      <>
+        {words.map((word, i) => (
+          <motion.span
+            key={i}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: WORD_ANIMATION.duration,
+              delay: WORD_ANIMATION.startDelay + i * WORD_ANIMATION.stagger,
+              ease: 'easeOut',
+            }}
+            style={{ display: 'inline-block', whiteSpace: 'pre' }}
+          >
+            {word}
+          </motion.span>
+        ))}
+      </>
+    );
+  }
+  return <span>{children}</span>;
+}
+
+// Custom markdown components with word-by-word animation
 const markdownComponents: Components = {
   p: ({ children }) => (
     <p className="my-2.5 text-[15px] leading-relaxed text-foreground/90">
-      {children}
+      <AnimatedText>{children}</AnimatedText>
     </p>
   ),
-  h1: ({ children }) => <h1 className="my-4 text-2xl font-bold text-foreground">{children}</h1>,
-  h2: ({ children }) => <h2 className="my-4 text-xl font-bold text-foreground">{children}</h2>,
-  h3: ({ children }) => <h3 className="my-3 text-lg font-bold text-foreground/90">{children}</h3>,
-  h4: ({ children }) => <h4 className="my-3 text-base font-semibold text-foreground/80">{children}</h4>,
-  ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-6 text-[15px] text-foreground/90">{children}</ul>,
-  ol: ({ children }) => <ol className="my-3 list-decimal space-y-1.5 pl-6 text-[15px] text-foreground/90">{children}</ol>,
-  li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
+  h1: ({ children }) => (
+    <h1 className="my-4 text-2xl font-bold text-foreground">
+      <AnimatedText>{children}</AnimatedText>
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="my-4 text-xl font-bold text-foreground">
+      <AnimatedText>{children}</AnimatedText>
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="my-3 text-lg font-bold text-foreground/90">
+      <AnimatedText>{children}</AnimatedText>
+    </h3>
+  ),
+  h4: ({ children }) => (
+    <h4 className="my-3 text-base font-semibold text-foreground/80">
+      <AnimatedText>{children}</AnimatedText>
+    </h4>
+  ),
+  ul: ({ children }) => (
+    <ul className="my-3 list-disc space-y-1.5 pl-6 text-[15px] text-foreground/90">
+      {children}
+    </ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="my-3 list-decimal space-y-1.5 pl-6 text-[15px] text-foreground/90">
+      {children}
+    </ol>
+  ),
+  li: ({ children }) => (
+    <li className="pl-1 leading-relaxed">
+      <AnimatedText>{children}</AnimatedText>
+    </li>
+  ),
   blockquote: ({ children }) => (
     <blockquote className="my-4 border-l-4 border-muted pl-4 italic text-muted-foreground">
-      {children}
+      <AnimatedText>{children}</AnimatedText>
     </blockquote>
   ),
   a: ({ href, children }) => (
@@ -31,9 +103,10 @@ const markdownComponents: Components = {
       rel="noreferrer noopener"
       className="text-primary font-medium underline underline-offset-2 hover:opacity-80"
     >
-      {children}
+      <AnimatedText>{children}</AnimatedText>
     </a>
   ),
+  // Block elements without animation (code blocks, tables)
   pre: ({ children }) => (
     <pre className="my-4 overflow-x-auto rounded-xl border border-border bg-muted/20 p-4 text-[13px] shadow-sm font-mono">
       {children}
@@ -69,21 +142,22 @@ const markdownComponents: Components = {
   tr: ({ children }) => <tr className="border-b border-border/50 last:border-0">{children}</tr>,
   th: ({ children }) => (
     <th className="border-r border-border/50 px-4 py-3 text-left font-semibold text-foreground last:border-0">
-      {children}
+      <AnimatedText>{children}</AnimatedText>
     </th>
   ),
   td: ({ children }) => (
     <td className="border-r border-border/30 px-4 py-2.5 text-foreground/70 last:border-0">
-      {children}
+      <AnimatedText>{children}</AnimatedText>
     </td>
   ),
 };
 
 export const AssistantMessageCard = memo(({ block }: { block: AssistantMessageBlock }) => {
   const isStreaming = block.status === 'streaming';
+  const hasContent = block.content.trim().length > 0;
   
   // Rule: Do not render empty blocks unless they are streaming (Rule 04)
-  if (!block.content.trim() && !isStreaming) return null;
+  if (!hasContent && !isStreaming) return null;
 
   return (
     <div className="flex w-full items-start py-5 group animate-fade-in text-foreground">
@@ -94,34 +168,40 @@ export const AssistantMessageCard = memo(({ block }: { block: AssistantMessageBl
       </div>
 
       <div className="min-w-0 flex-1 px-5">
-        <div className="markdown-body">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
-            {block.content}
-          </ReactMarkdown>
-
-          {isStreaming && (
-            <div className="mt-4 mb-1 flex items-center gap-4">
-              {/* Restoring the original Square Loader (requested by user) */}
-              <div className="agent-loader shrink-0 text-primary">
-                <div className="square" id="sq1" />
-                <div className="square" id="sq2" />
-                <div className="square" id="sq3" />
-                <div className="square" id="sq4" />
-                <div className="square" id="sq5" />
-                <div className="square" id="sq6" />
-                <div className="square" id="sq7" />
-                <div className="square" id="sq8" />
-                <div className="square" id="sq9" />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
-                  Gerando resposta...
-                </span>
-                <span className="mt-1 h-0.5 w-full animate-cursor-blink rounded-full bg-primary/40" />
-              </div>
+        {isStreaming && (
+          <div className="mb-3 flex items-center gap-4">
+            <div className="agent-loader shrink-0 text-primary">
+              <div className="square" id="sq1" />
+              <div className="square" id="sq2" />
+              <div className="square" id="sq3" />
+              <div className="square" id="sq4" />
+              <div className="square" id="sq5" />
+              <div className="square" id="sq6" />
+              <div className="square" id="sq7" />
+              <div className="square" id="sq8" />
+              <div className="square" id="sq9" />
             </div>
-          )}
-        </div>
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                Gerando resposta...
+              </span>
+              <span className="mt-1 h-0.5 w-full animate-cursor-blink rounded-full bg-primary/40" />
+            </div>
+          </div>
+        )}
+
+        {hasContent && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="markdown-body"
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+              {block.content}
+            </ReactMarkdown>
+          </motion.div>
+        )}
       </div>
     </div>
   );

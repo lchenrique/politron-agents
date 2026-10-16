@@ -191,6 +191,37 @@ class TeamStore extends EventEmitter {
   getActiveTeams(): Team[] {
     return Array.from(this.teams.values()).filter((team: Team) => team.status === "active")
   }
+
+  /**
+   * Find an agent across all teams by ID or name.
+   * Returns { team, agent } if found, undefined otherwise.
+   */
+  findAgentAcrossTeams(agentIdOrName: string): { team: Team; agent: Agent } | undefined {
+    for (const team of this.teams.values()) {
+      const agent = team.agents.find(
+        (a) => a.id === agentIdOrName || a.name.toLowerCase() === agentIdOrName.toLowerCase()
+      )
+      if (agent) {
+        return { team, agent }
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * Find all agents with a specific role/catalogSlug across all teams.
+   */
+  findAgentsByRoleAcrossTeams(catalogSlug: string): { team: Team; agent: Agent }[] {
+    const results: { team: Team; agent: Agent }[] = []
+    for (const team of this.teams.values()) {
+      for (const agent of team.agents) {
+        if (agent.catalogSlug === catalogSlug) {
+          results.push({ team, agent })
+        }
+      }
+    }
+    return results
+  }
 }
 
 export const teamStore = new TeamStore()

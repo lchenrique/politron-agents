@@ -76,6 +76,7 @@ type AgentHandoffEvent = {
   task: string;
   files?: string[];
   branchName?: string;
+  directFlow?: boolean;
 };
 
 type CommunicationParticipant = {
@@ -834,11 +835,23 @@ export function useOpencodeTranscriptBridge() {
       runtime.flushHandleByAgent.delete(context.agent.id);
     }
 
+    ensureAssistantBlock(context.agent.id);
+
     try {
       const messageToSend = context.isCeo ? buildCeoMessage(text, projects, workspace) : text;
       let ensuredActiveSessionId = activeSessionIdRef.current ?? activeSessionId;
 
       if (activeSessionIdRef.current) {
+        if (context.isGlobal) {
+          if (context.isCeo) {
+            await window.vibeAPI.ceo.subscribe();
+          } else {
+            await window.vibeAPI.agent.subscribe(context.agent.id);
+          }
+        } else {
+          await window.vibeAPI.agent.subscribe(context.agent.id);
+        }
+
         if (context.isGlobal) {
           const ensureRole = context.isCeo ? 'global-ceo' : 'global-agent';
           const ensureResult = await window.vibeAPI.ceo.ensure({
@@ -1729,6 +1742,12 @@ export function useOpencodeTranscriptBridge() {
   const handleAgentHandoff = useCallback((event: AgentHandoffEvent) => {
     if (!event.toAgentId) return;
     recordChatBridgeEvent('incoming:agent-handoff');
+
+    // Direct flow: user is talking directly to an agent, skip placeholder block
+    // The agent will respond directly without a handoff intermediary
+    if (event.directFlow) {
+      return;
+    }
 
     const sourceAgentId = activeAgentIdRef.current;
     if (sourceAgentId) {

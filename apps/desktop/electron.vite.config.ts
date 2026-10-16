@@ -5,7 +5,7 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        external: ['node-pty'],
+        external: ['node-pty', '@anthropic-ai/sdk', 'playwright'],
         input: {
           index: resolve(__dirname, 'src/main/index.ts')
         }

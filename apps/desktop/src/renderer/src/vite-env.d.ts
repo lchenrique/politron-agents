@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import type { WorkspaceAPI } from '../../shared/v9'
 
 interface VibeSdkSession {
  id: string;
@@ -17,6 +18,7 @@ interface VibeManagedSession {
  session: VibeSdkSession;
 }
 
+declare global {
 interface Window {
  vibeAPI: {
  windowControls: {
@@ -39,18 +41,19 @@ interface Window {
  send: (input: { agentId: string; message: string; model?: { modelID: string; providerID: string } }) => Promise<void>;
  subscribe: () => Promise<void>;
  };
- team: {
- create: (input: { name: string; projectPath: string; projectName?: string; projectColor?: string; templateId?: string }) => Promise<any>;
- delete: (teamId: string) => Promise<boolean>;
- get: (teamId: string) => Promise<any>;
- list: () => Promise<any[]>;
- hire: (input: { teamId: string; agent: any }) => Promise<any>;
- fire: (input: { teamId: string; agentId: string }) => Promise<any>;
- setTechLead: (input: { teamId: string; agentId: string }) => Promise<any>;
- pause: (teamId: string) => Promise<any>;
- resume: (teamId: string) => Promise<any>;
- createFromTemplate: (input: { templateId: string; teamName?: string; projectPath?: string }) => Promise<any>;
- };
+  team: {
+  create: (input: { name: string; projectPath: string; projectName?: string; projectColor?: string; templateId?: string }) => Promise<any>;
+  delete: (teamId: string) => Promise<boolean>;
+  get: (teamId: string) => Promise<any>;
+  list: () => Promise<any[]>;
+  hire: (input: { teamId: string; agent: any }) => Promise<any>;
+  fire: (input: { teamId: string; agentId: string }) => Promise<any>;
+  setTechLead: (input: { teamId: string; agentId: string }) => Promise<any>;
+  pause: (teamId: string) => Promise<any>;
+  resume: (teamId: string) => Promise<any>;
+  createFromTemplate: (input: { templateId: string; teamName?: string; projectPath?: string }) => Promise<any>;
+  updateAgent: (teamId: string, agentId: string, updates: Record<string, unknown>) => Promise<any>;
+  };
  template: {
  list: () => Promise<any[]>;
  get: (templateId: string) => Promise<any>;
@@ -242,4 +245,6 @@ interface Window {
     clearBoard: (input?: { scope?: "project" | "all"; teamId?: string }) => Promise<{ success: boolean; deleted: number; error?: string }>;
   };
   };
+  workspaceAPI: WorkspaceAPI;
+}
 }

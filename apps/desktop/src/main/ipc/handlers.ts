@@ -5,12 +5,23 @@ import { existsSync, readFileSync } from 'fs'
 import { registerTerminalHandlers } from './terminal'
 import { getAppWindow } from '../windows/manager'
 import { openCodeSdkService } from '../services/opencode-sdk'
+import { providerRouter } from '../services/provider-router'
 import { sessionStore } from '../services/session-store'
 import { teamStore } from '../services/team-store'
 import { pipelineExecutor } from '../services/pipeline-executor'
 import { gitWorktreeService } from '../services/git-worktree'
 import { fileLockManager } from '../services/file-lock'
-import { AGENT_CATALOG, GLOBAL_CEO_PROMPT, TEAM_TEMPLATES, getAgentBySlug, getTemplateById, loadAgentTemplates } from '../services/agent-catalog'
+import { 
+  AGENT_CATALOG, 
+  GLOBAL_CEO_PROMPT, 
+  TEAM_TEMPLATES, 
+  getAgentBySlug, 
+  getTemplateById, 
+  loadAgentTemplates,
+  getMarketplaceAgentByIdentity,
+  OPENCODE_MARKETPLACE_AGENTS,
+  type OpenCodeAgentDefinition,
+} from '../services/agent-catalog'
 import type { Agent, Team } from '../types/team'
 
 function forwardEventToRenderer(channel: string, ...args: unknown[]): void {
@@ -45,6 +56,10 @@ function resolveKnownCatalogSlugFromRole(role?: string): string | undefined {
   if (role === 'design') return 'ux-designer'
   if (role === 'global-ceo' || role === 'ceo') return 'ceo'
   return undefined
+}
+
+function isGlobalCeoAgentId(agentId: string): boolean {
+  return agentId === 'ceo-global' || agentId === 'global-ceo'
 }
 
 function resolvePromptPathFromAgentIdentity(
@@ -82,7 +97,7 @@ function resolvePromptPathFromAgentIdentity(
 }
 
 function resolveAgentSystemPromptPath(agentId: string, teamId?: string, workspaceDirectory?: string): string | undefined {
-  if (agentId === 'ceo-global') {
+  if (isGlobalCeoAgentId(agentId)) {
     return GLOBAL_CEO_PROMPT.targetPath
   }
 
@@ -114,7 +129,7 @@ function resolveAgentSystemPromptPath(agentId: string, teamId?: string, workspac
 }
 
 function resolveAgentCatalogSlug(agentId: string, teamId?: string): string | undefined {
-  if (agentId === 'ceo-global') {
+  if (isGlobalCeoAgentId(agentId)) {
     return 'ceo'
   }
 
@@ -405,6 +420,159 @@ export function registerHandlers(): void {
     return teamStore.addAgentToTeam(input.teamId, fullAgent)
   })
 
+  /**
+   * HR Global Staffing Handler
+   * 
+   * Handles staffing requests from Tech Leads when a team lacks specific capabilities.
+   * HR Global evaluates:
+   * 1. Is the staffing request valid (has team, desiredRole, justification)?
+   * 2. Can any existing agent in the team handle the task?
+   * 3. Which marketplace agent best fits the need?
+   * 4. Should the request be approved, rejected, or deferred?
+   * 
+   * Returns: { success: boolean, agent?: Agent, message: string, action: string }
+   * action can be: "hired" | "rejected" | "deferred" | "no_match"
+   */
+  ipcMain.handle('vibe:hr:staffing', async (_, input: {
+    teamId: string
+    desiredRole: string
+    justification: string
+    priority?: string
+    successCriteria?: string[]
+    taskDescription?: string
+    requesterAgentId?: string
+    requesterAgentName?: string
+  }) => {
+    const { teamId, desiredRole, justification, priority, successCriteria, taskDescription, requesterAgentId, requesterAgentName } = input
+
+    // Validate required fields
+    if (!teamId) {
+      return { success: false, message: 'Team ID is required', action: 'rejected' }
+    }
+    if (!desiredRole) {
+      return { success: false, message: 'Desired role is required for staffing', action: 'deferred' }
+    }
+    if (!justification) {
+      return { success: false, message: 'Justification is required for staffing decision', action: 'deferred' }
+    }
+
+    const team = teamStore.getTeam(teamId)
+    if (!team) {
+      return { success: false, message: `Team not found: ${teamId}`, action: 'rejected' }
+    }
+
+    // Step 1: Check if any existing agent in the team can handle this
+    const teamHasCapability = team.agents.some(agent => {
+      // Map desired role to agent capability
+      const roleSlug = resolveKnownCatalogSlugFromRole(desiredRole)
+      if (roleSlug) {
+        return agent.catalogSlug === roleSlug || agent.role === desiredRole.toLowerCase()
+      }
+      // Fuzzy match on role name
+      return agent.name.toLowerCase().includes(desiredRole.toLowerCase()) ||
+             agent.role.toLowerCase().includes(desiredRole.toLowerCase())
+    })
+
+    if (teamHasCapability) {
+      return {
+        success: true,
+        message: `Team "${team.name}" already has capability for "${desiredRole}". Consider delegating first before hiring.`,
+        action: 'rejected',
+        agent: undefined,
+      }
+    }
+
+    // Step 2: Find matching marketplace agent
+    let matchedAgent = getMarketplaceAgentByIdentity(desiredRole)
+
+    if (!matchedAgent) {
+      // Try broader search in marketplace
+      const allMatches = OPENCODE_MARKETPLACE_AGENTS.filter(agent => {
+        const searchText = `${agent.name} ${agent.role} ${agent.slug}`.toLowerCase()
+        return searchText.includes(desiredRole.toLowerCase())
+      })
+
+      if (allMatches.length === 0) {
+        return {
+          success: false,
+          message: `No marketplace agent found matching "${desiredRole}". Available roles: ${OPENCODE_MARKETPLACE_AGENTS.map(a => a.name).join(', ')}`,
+          action: 'no_match',
+          agent: undefined,
+        }
+      }
+
+      // If multiple matches, prefer the first one that matches role
+      const roleMatch = allMatches.find(a => 
+        a.role.toLowerCase().includes(desiredRole.toLowerCase()) ||
+        a.slug.toLowerCase().includes(desiredRole.toLowerCase())
+      )
+      
+      if (!roleMatch) {
+        return {
+          success: false,
+          message: `Ambiguous staffing request. Did you mean: ${allMatches.map(a => a.name).join(', ')}?`,
+          action: 'deferred',
+          agent: undefined,
+        }
+      }
+      
+      // Use the role-matched agent
+      matchedAgent = roleMatch
+    }
+
+    // Step 3: Create the new agent
+    const newAgent: Agent = {
+      id: crypto.randomUUID(),
+      name: matchedAgent.name,
+      role: matchedAgent.role,
+      catalogSlug: matchedAgent.slug,
+      systemPromptPath: matchedAgent.systemPromptPath || `.opencode/agents/${matchedAgent.slug}.md`,
+      status: 'idle',
+      color: matchedAgent.color,
+      currentFiles: [],
+      hiredAt: new Date().toISOString(),
+    }
+
+    // Add to team
+    const updatedTeam = teamStore.addAgentToTeam(teamId, newAgent)
+    if (!updatedTeam) {
+      return { success: false, message: 'Failed to add agent to team', action: 'rejected' }
+    }
+
+    // Step 4: If task description provided, create a task for the new agent
+    if (taskDescription) {
+      const title = taskDescription.slice(0, 90)
+      const pipelineTask = pipelineExecutor.ensureTask({
+        teamId,
+        agentId: newAgent.id,
+        title,
+        description: taskDescription,
+        requesterAgentId,
+        requesterAgentName,
+        responsibleAgentRole: newAgent.role,
+        priority,
+        context: justification,
+        acceptanceCriteria: successCriteria,
+        files: [],
+        dependsOn: [],
+        status: 'ready',
+      })
+
+      // Emit event for board visibility
+      forwardEventToRenderer('vibe:task:added', pipelineTask.task)
+    }
+
+    // Emit hiring event
+    forwardEventToRenderer('vibe:agent:hired', { team: updatedTeam, agent: newAgent })
+
+    return {
+      success: true,
+      message: `Staffing approved: ${newAgent.name} hired for team "${team.name}". Justification: ${justification}`,
+      action: 'hired',
+      agent: newAgent,
+    }
+  })
+
   ipcMain.handle('vibe:team:fire', async (_, input) => {
     return teamStore.removeAgentFromTeam(input.teamId, input.agentId)
   })
@@ -666,6 +834,36 @@ export function registerHandlers(): void {
       throw new Error('SDK client not initialized')
     }
 
+    // =============================================================================
+    // PROVIDER ROUTING - CEO, Tech Lead, RH always use MiniMax Direct
+    // These are internal agents that REQUIRE MiniMax API key
+    // =============================================================================
+    const INTERNAL_AGENTS = ['global-ceo', 'tech-lead', 'hr-global', 'global-agent']
+    const isInternalAgent = INTERNAL_AGENTS.includes(role)
+
+    if (isInternalAgent) {
+      // Internal agents MUST use MiniMax - no fallback, no feature flags
+      if (!process.env.MINIMAX_API_KEY) {
+        throw new Error(`MINIMAX_API_KEY is required for internal agent role: ${role}`)
+      }
+      
+      console.log('[vibe:session:prompt] Using MiniMax Direct for internal agent:', role)
+
+      // Use providerRouter.sendMessage() with useMiniMax=true for internal agents
+      // This bypasses feature flags and ensures MiniMax is used directly
+      // Events will be forwarded to renderer via providerRouter.subscribe() at line 1083
+      await providerRouter.sendMessage({
+        agentId,
+        message,
+        context: {
+          teamId,
+          role,
+        }
+      }, true) // useMiniMax = true
+
+      return { success: true, provider: 'minimax' }
+    }
+
     const sessionResult = await client.session.get({ path: { id: sessionId } })
     const session = sessionResult.data
     if (!session) {
@@ -812,6 +1010,44 @@ export function registerHandlers(): void {
 
   openCodeSdkService.on('vibe:agent:error', (...args) => {
     forwardEventToRenderer('vibe:agent:error', ...args)
+  })
+
+  // Subscribe to providerRouter chunks and forward tool events to renderer
+  // This handles InternalAgentService (MiniMax) tool events
+  providerRouter.subscribe((chunk) => {
+    const agentId = chunk.agentId || 'internal-agent'
+    if (chunk.type === 'tool_use' || chunk.type === 'tool_result') {
+      forwardEventToRenderer('vibe:agent:tool', {
+        agentId,
+        tool: chunk.toolName,
+        title: chunk.toolName,
+        state: chunk.type === 'tool_use' ? 'running' : 'completed',
+        input: chunk.toolInput,
+        output: chunk.type === 'tool_result' ? (typeof chunk.toolOutput === 'string' ? chunk.toolOutput : JSON.stringify(chunk.toolOutput)) : undefined,
+      })
+    } else if (chunk.type === 'text' && chunk.text) {
+      forwardEventToRenderer('vibe:agent:chunk', {
+        agentId,
+        message: { content: { text: chunk.text } },
+      })
+    } else if (chunk.type === 'done') {
+      forwardEventToRenderer('vibe:agent:status', {
+        agentId,
+        status: 'done',
+      })
+      forwardEventToRenderer('vibe:agent:done', {
+        agentId,
+      })
+    } else if (chunk.type === 'error') {
+      forwardEventToRenderer('vibe:agent:status', {
+        agentId,
+        status: 'error',
+      })
+      forwardEventToRenderer('vibe:agent:error', {
+        agentId,
+        error: chunk.error || chunk.content || 'Erro desconhecido no agente interno.',
+      })
+    }
   })
 
   openCodeSdkService.on('vibe:agent:handoff', (...args) => {
@@ -1027,3 +1263,4 @@ export function registerHandlers(): void {
     return teamStore.updateAgent(teamId, agentId, updates)
   })
 }
+

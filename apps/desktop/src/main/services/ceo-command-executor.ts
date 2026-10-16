@@ -242,11 +242,14 @@ export class CeoCommandExecutor extends EventEmitter {
 
     const resolveGlobalTarget = () => {
       const targetHint = targetAgentSlug || targetRole || targetAgentName || globalTargetFromTeamField?.name
-      if (!targetHint) {
-        return undefined
+      if (targetHint) {
+        return getGlobalAgentByIdentity(targetHint)
       }
-
-      return getGlobalAgentByIdentity(targetHint)
+      // If no explicit target but we have a staffing role requested, default to HR Global
+      if (staffingRole && team) {
+        return getGlobalAgentByIdentity("hr-global")
+      }
+      return undefined
     }
 
     const hireMissingAgent = (): Agent | undefined => {
@@ -276,11 +279,10 @@ export class CeoCommandExecutor extends EventEmitter {
       return agent
     }
 
-    const targetAgent = resolveTargetAgent() ?? (autoHire ? hireMissingAgent() : undefined)
+    let targetAgent = resolveTargetAgent() ?? (autoHire ? hireMissingAgent() : undefined)
     const globalTarget = targetAgent ? undefined : resolveGlobalTarget()
 
-    // Direct flow flag: bypass hierarchical check for direct user → agent communication
-    const isDirectFlow = isTruthyFlag(firstPayloadValue(getPayloadValue(command.payload, "directFlow")))
+    const originalTargetAgent: Agent | undefined = undefined
 
     const isStaffingRequest =
       Boolean(globalTarget) &&
@@ -406,9 +408,7 @@ export class CeoCommandExecutor extends EventEmitter {
 
     // In direct flow, never queue for board - send handoff directly to the executor
     // In hierarchical flow, only queue if target is NOT a Tech Lead
-    const shouldQueueBoardIssue = isDirectFlow
-      ? false
-      : !(targetAgent.isTeamLead || targetAgent.role === "tech-lead")
+    const shouldQueueBoardIssue = !(targetAgent.isTeamLead || targetAgent.role === "tech-lead")
 
     if (shouldQueueBoardIssue) {
       const pipelineTask = pipelineExecutor.ensureTask({
@@ -440,7 +440,18 @@ export class CeoCommandExecutor extends EventEmitter {
       teamId: team.id,
       teamName: team.name,
       task,
-      payload: { ...command.payload, directFlow: isDirectFlow ? "true" : undefined },
+      payload: {
+        ...command.payload,
+        // When escalating, include original target so Tech Lead knows who was intended
+        ...(originalTargetAgent
+          ? {
+              originalTargetAgentId: originalTargetAgent.id,
+              originalTargetAgentName: originalTargetAgent.name,
+              originalTargetAgentSlug: originalTargetAgent.catalogSlug,
+              escalationReason: `Agent ${originalTargetAgent.catalogSlug} cannot handle this task scope. Routed to Tech Lead for reassignment.`,
+            }
+          : {}),
+      },
       files,
       branchName,
     })

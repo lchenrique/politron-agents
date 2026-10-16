@@ -9,7 +9,7 @@ interface TitleBarProps {
 }
 
 const TitleBar = ({ terminalOpen, onToggleTerminal, className }: TitleBarProps) => {
-    const isWindows = window.vibeAPI.platform === "win32";
+    const isWindows = window.vibeAPI?.platform === "win32";
 
 
     if (isWindows) {

@@ -5,12 +5,13 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { activeTeamAtom } from "@/hooks/atoms";
 
-const RealTerminal = memo(() => {
+const RealTerminal = memo(({ directory }: { directory?: string | null }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const vibeAPIRef = useRef<any>(null);
   const activeTeam = useAtomValue(activeTeamAtom);
+  const activeDirectory = directory !== undefined ? directory : activeTeam?.projectPath;
   const hasNavigatedRef = useRef(false);
   const lastProjectPathRef = useRef<string | null>(null);
   const [platform, setPlatform] = useState<string>('win32'); // default to win32
@@ -25,9 +26,7 @@ const RealTerminal = memo(() => {
 
   // Get platform on mount
   useEffect(() => {
-    if (window.vibeAPI.system?.getPlatform) {
-      window.vibeAPI.system.getPlatform().then(setPlatform);
-    }
+    if (window.vibeAPI?.platform) setPlatform(window.vibeAPI.platform);
   }, []);
 
   const getThemeColors = () => {
@@ -51,7 +50,7 @@ const RealTerminal = memo(() => {
   };
 
   useEffect(() => {
-    if (!terminalRef.current || !activeTeam?.projectPath) return;
+    if (!terminalRef.current || !activeDirectory) return;
 
     // Initialize xterm.js
     const term = new Terminal({
@@ -80,7 +79,7 @@ const RealTerminal = memo(() => {
       vibeAPI.terminal.create({
         rows: term.rows,
         cols: term.cols,
-        cwd: activeTeam.projectPath
+        cwd: activeDirectory
       });
 
       const unbindData = vibeAPI.terminal.onData((data: string) => {
@@ -113,7 +112,7 @@ const RealTerminal = memo(() => {
       });
 
       hasNavigatedRef.current = false;
-      lastProjectPathRef.current = activeTeam.projectPath;
+      lastProjectPathRef.current = activeDirectory;
 
       return () => {
         unbindData();
@@ -126,27 +125,27 @@ const RealTerminal = memo(() => {
     return () => {
       term.dispose();
     };
-  }, []);
+  }, [activeDirectory]);
 
   // Effect to handle project path changes - send cd command when activeTeam changes after initial mount
   useEffect(() => {
-    if (!activeTeam?.projectPath || !vibeAPIRef.current?.terminal || !xtermRef.current) return;
+    if (!activeDirectory || !vibeAPIRef.current?.terminal || !xtermRef.current) return;
 
     // Skip if same path or already navigated
-    if (activeTeam.projectPath === lastProjectPathRef.current || hasNavigatedRef.current) return;
+    if (activeDirectory === lastProjectPathRef.current || hasNavigatedRef.current) return;
 
     // Small delay to ensure terminal is ready after project switch
     const timer = setTimeout(() => {
-      if (vibeAPIRef.current?.terminal && activeTeam?.projectPath) {
+      if (vibeAPIRef.current?.terminal && activeDirectory) {
         hasNavigatedRef.current = true;
-        lastProjectPathRef.current = activeTeam.projectPath;
-        const cdCommand = buildNavigationCommand(activeTeam.projectPath);
+        lastProjectPathRef.current = activeDirectory;
+        const cdCommand = buildNavigationCommand(activeDirectory);
         vibeAPIRef.current.terminal.write(cdCommand);
       }
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [activeTeam, platform]);
+  }, [activeDirectory, platform]);
 
   return (
     <div className="flex-1 w-full h-full bg-background overflow-hidden relative">
@@ -181,15 +180,16 @@ const TerminalPlaceholder = () => (
   </div>
 );
 
-const TerminalPanel = memo(() => {
+const TerminalPanel = memo(({ directory, showLogs = true }: { directory?: string | null; showLogs?: boolean }) => {
   const [activeTab, setActiveTab] = useState("terminal");
   const activeTeam = useAtomValue(activeTeamAtom);
-  const hasProject = !!activeTeam?.projectPath;
+  const activeDirectory = directory !== undefined ? directory : activeTeam?.projectPath;
+  const hasProject = !!activeDirectory;
 
   return (
     <div className="flex flex-col h-full flex-1 min-h-[150px]">
       <div className="flex border-ide-border border-b h-[38px] items-center px-3 gap-0.5 shrink-0 bg-ide-surface-1">
-        {["terminal", "logs"].map((tab) => (
+        {(showLogs ? ["terminal", "logs"] : ["terminal"]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -206,7 +206,7 @@ const TerminalPanel = memo(() => {
 
       <div className="flex-1 relative overflow-hidden h-full">
         <div className={`h-full ${activeTab === "terminal" ? "block" : "hidden"}`}>
-          {hasProject ? <RealTerminal /> : <TerminalPlaceholder />}
+          {hasProject ? <RealTerminal directory={activeDirectory} /> : <TerminalPlaceholder />}
         </div>
 
         <div className={`flex-1 overflow-y-auto p-2.5 flex flex-col gap-0.5 scrollbar-thin h-full ${activeTab === "logs" ? "block" : "hidden"}`}>

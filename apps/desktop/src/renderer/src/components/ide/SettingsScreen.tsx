@@ -22,7 +22,7 @@ type Diagnostics = Awaited<ReturnType<typeof window.vibeAPI.opencode.getConfigDi
 type EditorData = Awaited<ReturnType<typeof window.vibeAPI.opencode.getConfigEditorData>>;
 type JsonSectionKey = "permissionsJson" | "toolsJson";
 type McpServerType = "local" | "remote";
-type SettingsSection = "defaults" | "providers" | "mcp" | "permissions" | "tools" | "advanced";
+type SettingsSection = "defaults" | "providers" | "mcp" | "permissions" | "tools" | "advanced" | "features";
 
 interface SectionMeta {
   title: string;
@@ -103,6 +103,13 @@ const sectionMeta: Record<SettingsSection, SectionMeta> = {
     kicker: "Diagnóstico",
     hint: "Essa visão ajuda a entender de onde vem a configuração carregada.",
     accent: "from-zinc-500/20 via-zinc-500/10 to-transparent",
+  },
+  features: {
+    title: "Features",
+    description: "Controle recursos experimentais como dual-provider e group chat.",
+    kicker: "Experimentação",
+    hint: "Essas opções ativam funcionalidades em desenvolvimento. Mantenha desativado se não souber o que está fazendo.",
+    accent: "from-orange-500/20 via-orange-500/10 to-transparent",
   },
 };
 
@@ -199,6 +206,21 @@ const SettingsScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [mcpDrafts, setMcpDrafts] = useState<McpServerDraft[]>([]);
+
+  // Feature flags state
+  const [features, setFeatures] = useState({
+    dualProvider: {
+      enabled: false,
+      internalAgent: "minimax" as "opencode" | "minimax",
+      executorAgent: "opencode" as const,
+    },
+    groupChat: {
+      enabled: false,
+      maxParticipants: 10,
+      autoThreads: true,
+      allowSpontaneousContribution: false,
+    },
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -432,73 +454,90 @@ const SettingsScreen = () => {
   const renderSection = () => {
     if (activeSection === "defaults") {
       return (
-        <Card className="border-border/60 bg-card/80">
-          <CardHeader>
-            <CardTitle className="text-base">Geral</CardTitle>
-            <CardDescription>Comportamento padrão da CLI e identidade da sessão</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-2xl border border-border/60 bg-background/50 p-4 text-sm text-muted-foreground">
-              Ajuste as preferências básicas do OpenCode sem sair da tela.
+        <div className="space-y-6">
+          {/* Username */}
+          <div className="space-y-2">
+            <Label htmlFor="username" className="text-sm font-medium">Username</Label>
+            <Input 
+              id="username" 
+              value={editor.defaults.username ?? ""} 
+              onChange={(event) => updateDefault("username", event.target.value)} 
+              className="max-w-md"
+            />
+          </div>
+
+          {/* Default Agent */}
+          <div className="space-y-2">
+            <Label htmlFor="default_agent" className="text-sm font-medium">Default Agent</Label>
+            <Input 
+              id="default_agent" 
+              value={editor.defaults.default_agent ?? ""} 
+              onChange={(event) => updateDefault("default_agent", event.target.value)} 
+              className="max-w-md"
+            />
+          </div>
+
+          {/* Log Level */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Log Level</Label>
+            <Select value={editor.defaults.logLevel ?? ""} onValueChange={(value) => updateDefault("logLevel", value)}>
+              <SelectTrigger className="max-w-xs"><SelectValue placeholder="Selecionar nível" /></SelectTrigger>
+              <SelectContent>{["DEBUG", "INFO", "WARN", "ERROR"].map((level) => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+
+          {/* Model */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Model</Label>
+            <Select value={editor.defaults.model ?? ""} onValueChange={(value) => updateDefault("model", value)}>
+              <SelectTrigger className="max-w-md"><SelectValue placeholder="Selecionar modelo" /></SelectTrigger>
+              <SelectContent>{providerModelOptions.map((model) => <SelectItem key={`${model.providerID}:${model.id}`} value={model.id}>{model.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+
+          {/* Small Model */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Small Model</Label>
+            <Select value={editor.defaults.small_model ?? ""} onValueChange={(value) => updateDefault("small_model", value)}>
+              <SelectTrigger className="max-w-md"><SelectValue placeholder="Selecionar modelo" /></SelectTrigger>
+              <SelectContent>{providerModelOptions.map((model) => <SelectItem key={`small:${model.providerID}:${model.id}`} value={model.id}>{model.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+
+          {/* Share */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Share</Label>
+            <Select value={editor.defaults.share ?? ""} onValueChange={(value) => updateDefault("share", value)}>
+              <SelectTrigger className="max-w-xs"><SelectValue placeholder="Política de share" /></SelectTrigger>
+              <SelectContent>{["manual", "auto", "disabled"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+
+          {/* Autoupdate */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Autoupdate</Label>
+            <Select value={typeof editor.defaults.autoupdate === "boolean" ? String(editor.defaults.autoupdate) : editor.defaults.autoupdate ?? ""} onValueChange={(value) => updateDefault("autoupdate", value === "true" ? true : value === "false" ? false : value)}>
+              <SelectTrigger className="max-w-xs"><SelectValue placeholder="Auto update" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="true">Ativo</SelectItem>
+                <SelectItem value="false">Desativado</SelectItem>
+                <SelectItem value="notify">Notificar</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Snapshot Toggle */}
+          <div className="flex items-center gap-3">
+            <Switch 
+              checked={Boolean(editor.defaults.snapshot)} 
+              onCheckedChange={(checked) => updateDefault("snapshot", checked)} 
+            />
+            <div>
+              <Label className="text-sm font-medium cursor-pointer" onClick={() => updateDefault("snapshot", !editor.defaults.snapshot)}>Snapshot</Label>
+              <p className="text-xs text-muted-foreground">Captura o estado da conversa/configuração</p>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="username">username</Label>
-                <Input id="username" value={editor.defaults.username ?? ""} onChange={(event) => updateDefault("username", event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="default_agent">default_agent</Label>
-                <Input id="default_agent" value={editor.defaults.default_agent ?? ""} onChange={(event) => updateDefault("default_agent", event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>logLevel</Label>
-                <Select value={editor.defaults.logLevel ?? ""} onValueChange={(value) => updateDefault("logLevel", value)}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar nível" /></SelectTrigger>
-                  <SelectContent>{["DEBUG", "INFO", "WARN", "ERROR"].map((level) => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>model</Label>
-                <Select value={editor.defaults.model ?? ""} onValueChange={(value) => updateDefault("model", value)}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar modelo" /></SelectTrigger>
-                  <SelectContent>{providerModelOptions.map((model) => <SelectItem key={`${model.providerID}:${model.id}`} value={model.id}>{model.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>small_model</Label>
-                <Select value={editor.defaults.small_model ?? ""} onValueChange={(value) => updateDefault("small_model", value)}>
-                  <SelectTrigger><SelectValue placeholder="Selecionar modelo" /></SelectTrigger>
-                  <SelectContent>{providerModelOptions.map((model) => <SelectItem key={`small:${model.providerID}:${model.id}`} value={model.id}>{model.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>share</Label>
-                <Select value={editor.defaults.share ?? ""} onValueChange={(value) => updateDefault("share", value)}>
-                  <SelectTrigger><SelectValue placeholder="Política de share" /></SelectTrigger>
-                  <SelectContent>{["manual", "auto", "disabled"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>autoupdate</Label>
-                <Select value={typeof editor.defaults.autoupdate === "boolean" ? String(editor.defaults.autoupdate) : editor.defaults.autoupdate ?? ""} onValueChange={(value) => updateDefault("autoupdate", value === "true" ? true : value === "false" ? false : value)}>
-                  <SelectTrigger><SelectValue placeholder="Auto update" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="true">Ativo</SelectItem>
-                    <SelectItem value="false">Desativado</SelectItem>
-                    <SelectItem value="notify">Notificar</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center justify-between rounded-xl border border-border/60 bg-card/70 p-3">
-                <div>
-                  <div className="text-sm font-medium text-foreground">snapshot</div>
-                  <div className="text-xs text-muted-foreground">Captura o estado da conversa/configuração</div>
-                </div>
-                <Switch checked={Boolean(editor.defaults.snapshot)} onCheckedChange={(checked) => updateDefault("snapshot", checked)} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       );
     }
 
@@ -687,6 +726,83 @@ const SettingsScreen = () => {
             </CardContent>
           </Card>
         );
+      case "features":
+        return (
+          <Card className="border-border/60 bg-card/80">
+            <CardHeader>
+              <CardTitle className="text-base">Features</CardTitle>
+              <CardDescription>Controle recursos experimentais como dual-provider e group chat</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="rounded-2xl border border-border/60 bg-background/50 p-4 text-sm text-muted-foreground">
+                Estas opções ativam funcionalidades em desenvolvimento. Mantenha desativado se não souber o que está fazendo.
+              </div>
+
+              {/* Dual Provider Toggle */}
+              <div className="flex items-center justify-between rounded-xl border border-border/60 bg-card/70 p-4">
+                <div>
+                  <div className="text-sm font-medium text-foreground">Dual Provider</div>
+                  <div className="text-xs text-muted-foreground">
+                    Usar MiniMax Direct para agentes internos em vez do OpenCode SDK
+                  </div>
+                </div>
+                <Switch
+                  checked={features.dualProvider.enabled}
+                  onCheckedChange={() => setFeatures((current) => ({
+                    ...current,
+                    dualProvider: {
+                      ...current.dualProvider,
+                      enabled: !current.dualProvider.enabled,
+                    },
+                  }))}
+                />
+              </div>
+
+              {/* Internal Agent Provider Toggle */}
+              <div className="flex items-center justify-between rounded-xl border border-border/60 bg-card/70 p-4">
+                <div>
+                  <div className="text-sm font-medium text-foreground">Internal Agent Provider</div>
+                  <div className="text-xs text-muted-foreground">
+                    Current: {features.dualProvider.internalAgent}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFeatures((current) => ({
+                    ...current,
+                    dualProvider: {
+                      ...current.dualProvider,
+                      internalAgent: current.dualProvider.internalAgent === "minimax" ? "opencode" : "minimax",
+                    },
+                  }))}
+                >
+                  Switch to {features.dualProvider.internalAgent === "minimax" ? "OpenCode" : "MiniMax"}
+                </Button>
+              </div>
+
+              {/* Group Chat Toggle */}
+              <div className="flex items-center justify-between rounded-xl border border-border/60 bg-card/70 p-4">
+                <div>
+                  <div className="text-sm font-medium text-foreground">Group Chat</div>
+                  <div className="text-xs text-muted-foreground">
+                    Ativar @mention routing e agent threads
+                  </div>
+                </div>
+                <Switch
+                  checked={features.groupChat.enabled}
+                  onCheckedChange={() => setFeatures((current) => ({
+                    ...current,
+                    groupChat: {
+                      ...current.groupChat,
+                      enabled: !current.groupChat.enabled,
+                    },
+                  }))}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        );
       default:
         return (
           <div className="space-y-4">
@@ -787,81 +903,48 @@ const SettingsScreen = () => {
   };
 
   return (
-    <div className="h-full w-full overflow-hidden p-3 pt-1">
-      <div className="h-full rounded-3xl overflow-hidden bg-background/80 border border-border/60 shadow-2xl">
-        <div className="flex h-full flex-col">
-          <div className="flex items-start justify-between gap-4 border-b border-border/60 px-6 py-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.35em] text-muted-foreground"><Settings2 className="h-3.5 w-3.5" />Configurações OpenCode</div>
-              <h1 className="mt-2 text-2xl font-semibold text-foreground">Configurações</h1>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">A navegação de seção fica no sidebar do app; este painel mostra o editor da seção ativa.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button onClick={() => void handleSave()} disabled={!canSave}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar</Button>
-            </div>
+    <div className="h-full w-full overflow-hidden">
+      <div className="flex h-full flex-col">
+        {/* Simple Header */}
+        <div className="flex items-center justify-between gap-4 border-b border-border/60 px-6 py-4">
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">{activeMeta.title}</h1>
+            <p className="text-sm text-muted-foreground">{activeMeta.description}</p>
           </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground mr-2">{formatEditorPath(editor.targetPath)}</span>
+            <Button variant="outline" size="sm" onClick={() => setRefreshTick((value) => value + 1)}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Recarregar
+            </Button>
+            <Button onClick={() => void handleSave()} disabled={!canSave}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Salvar
+            </Button>
+          </div>
+        </div>
 
-          <ScrollArea className="flex-1">
-            <div className="mx-auto w-full max-w-5xl space-y-5 p-6">
-              <Card className="overflow-hidden border-border/60 bg-card/80">
-                <div className={cn("h-1 w-full bg-gradient-to-r", activeMeta.accent)} />
-                <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between">
-                  <div className="space-y-3">
-                    <div className="inline-flex items-center rounded-full border border-border/60 bg-background/60 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                      {activeMeta.kicker}
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-semibold text-foreground">{activeMeta.title}</h2>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{activeMeta.description}</p>
-                    </div>
-                  </div>
-                  <div className="max-w-sm rounded-2xl border border-border/60 bg-background/50 p-4">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Foco da seção</div>
-                    <p className="mt-2 text-sm leading-6 text-foreground">{activeMeta.hint}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/60 bg-card/80">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-base">Contexto</CardTitle>
-                  <CardDescription>Alvo atual de gravação</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                  <div className="rounded-xl border border-border/60 bg-background/50 p-3 text-xs text-muted-foreground">
-                    <div className="uppercase tracking-[0.2em]">Arquivo</div>
-                    <div className="mt-1 font-mono text-foreground">{formatEditorPath(editor.targetPath)}</div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Escopo</Label>
-                    <Select value={scope} onValueChange={(value) => setScope(value as "global" | "project")}>
-                      <SelectTrigger className="h-9"><SelectValue placeholder="Escopo" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="global">Global</SelectItem>
-                        <SelectItem value="project" disabled={!activeTeam?.projectPath}>Projeto</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl border border-border/60 bg-card/70 p-3 md:col-span-2">
-                    <div>
-                      <div className="text-sm font-medium text-foreground">Config existente</div>
-                      <div className="text-xs text-muted-foreground">{editor.exists ? "Sim" : "Não"}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setRefreshTick((value) => value + 1)}>
-                        <FolderOpen className="mr-2 h-4 w-4" />
-                        Recarregar
-                      </Button>
-                      <Badge variant={editor.exists ? "secondary" : "outline"}>{editor.exists ? "Arquivo" : "Novo"}</Badge>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              {renderSection()}
+        <ScrollArea className="flex-1">
+          <div className="mx-auto w-full max-w-3xl space-y-6 p-6">
+            {/* Scope Selector */}
+            <div className="flex items-center gap-4 pb-4 border-b border-border/30">
+              <span className="text-sm text-muted-foreground">Escopo:</span>
+              <Select value={scope} onValueChange={(value) => setScope(value as "global" | "project")}>
+                <SelectTrigger className="w-32 h-8"><SelectValue placeholder="Escopo" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Global</SelectItem>
+                  <SelectItem value="project" disabled={!activeTeam?.projectPath}>Projeto</SelectItem>
+                </SelectContent>
+              </Select>
+              <Badge variant={editor.exists ? "secondary" : "outline"}>{editor.exists ? "Salvo em arquivo" : "Novo"}</Badge>
             </div>
-          </ScrollArea>
 
-          <div className="border-t border-border/60 px-6 py-3 text-xs text-muted-foreground">{canSave ? "Pronto para salvar." : "Ajuste os campos inválidos antes de salvar."}</div>
+            {renderSection()}
+          </div>
+        </ScrollArea>
+
+        <div className="border-t border-border/60 px-6 py-3 text-xs text-muted-foreground">
+          {canSave ? "Pronto para salvar." : "Ajuste os campos inválidos antes de salvar."}
         </div>
       </div>
     </div>
