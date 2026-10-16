@@ -84,13 +84,17 @@ Aceite: `npm ci && npm run typecheck && npm test && npm run build` em `apps/desk
 
 ### Fase 1: Navegação MausBot + Paseo
 
-1. Barra lateral conforme seção 3 (Nova conversa, Projetos em árvore, Bots como contatos).
-2. Clique no bot abre conversa direta (a mais recente ou cria uma); editar perfil por menu. Conversas diretas também listadas sob o bot.
+Estado: concluída em 16/10/2026. Composer centralizado e sem cartão externo; fluxos simples de conversa/projeto; Assistente padrão quando não há agentes e nome obrigatório para grupo; avatar e formulário de agente simplificado; agentes como contatos com conversas diretas e ações no menu; equipe padrão e pasta opcional em projeto; chips para alterar participantes nos próximos envios; seletor de modelo sincronizado ao composer; tela própria de configurações; estados ocioso/trabalhando/aguardando e contadores de não lidas persistidos localmente. “Pits” segue como mascote provisório; animação foi avaliada e adiada em favor de SVG/CSS leve quando houver arte aprovada.
+
+1. Barra lateral conforme seção 3 (Nova conversa, Projetos em árvore, agentes como contatos).
+2. Clique no agente abre conversa direta (a mais recente ou cria uma); editar perfil por menu. Conversas diretas também listadas sob o agente.
 3. Cabeçalho com projeto, título, chips de participantes (adicionar/remover vale para o próximo envio) e seletor de modelo.
 4. Tela de Configurações própria.
-5. Estado de cada bot (ocioso, trabalhando, aguardando) e contagem de não lidas.
+5. Estado de cada agente (ocioso, trabalhando, aguardando) e contagem de não lidas.
+6. Validar visualmente composer e navegação no Electron, incluindo temas claro, escuro e colorido; executar o roteiro de aceite com capturas.
+7. Avatar personalizado está disponível; mascote “Pits” fica como direção provisória de marca. Avaliar movimento leve em SVG/CSS, com respeito a movimento reduzido, apenas após o fluxo funcional e sem adicionar Three.js para avatares simples.
 
-Aceite: teste de renderer para clique no bot abrindo chat; roteiro manual com captura de tela em 3 temas (claro, escuro, um colorido).
+Aceite final: itens 1–7 completos; teste de renderer para clique no agente abrindo chat; roteiro manual com captura de tela em 3 temas (claro, escuro, um colorido). O build e os testes automatizados aprovados não substituem a revisão visual no Electron.
 
 ### Fase 2: Workspaces e worktrees (Paseo)
 
@@ -181,7 +185,7 @@ Atualizar a cada fase: data, commit, o que foi provado (testes, integração rea
 | Fase | Estado | Commit | Evidência | Pendências |
 | --- | --- | --- | --- | --- |
 | 0 Limpeza | em validação | commits `9fdb67a` a `0b78d2b` | `npm ci` concluído; `npm run typecheck` passou; `npm test` passou (18 aprovados, 1 integração pulada); `npm run test:codex` passou (19 aprovados); `npm run build` passou; `npm run dev` compilou main/preload e registrou janela mostrada | Captura de tela não obtida: a sessão não expõe janela nativa nem navegador pelo Computer Use. `npm run lint` falhou com 26 erros e 7 avisos. O teste real emite aviso EPERM ao tentar remover diretório temporário, apesar de passar. Build emite avisos de PostCSS e diretivas `use client`. |
-| 1 Navegação | pendente | | | |
+| 1 Navegação | concluída | `a708084` | `npm test`: 24 aprovados, 1 integração Codex ignorada; typecheck e build aprovados; Electron aberto com captura visual validada em temas escuro, claro e colorido; centralização do composer medida em 0 px de desvio; configurações e retorno à conversa verificados | Avisos existentes do Vite/PostCSS e diretivas `use client` no build. |
 | 2 Workspaces | pendente | | | |
 | 3 Diff | pendente | | | |
 | 4 Aprovações | pendente | | | |
