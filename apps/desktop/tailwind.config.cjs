@@ -102,5 +102,5 @@ module.exports = {
       },
     },
   },
-  plugins: [require("./src/renderer/node_modules/tailwindcss-animate")],
+  plugins: [require("tailwindcss-animate")],
 }
