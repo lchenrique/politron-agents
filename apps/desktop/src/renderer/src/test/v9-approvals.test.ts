@@ -1,0 +1,88 @@
+import { EventEmitter } from 'node:events'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Approval, Run } from '../../../shared/v9'
+
+vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false }, safeStorage: { isEncryptionAvailable: () => false } }))
+
+import { AppService } from '../../../main/v9/workspace'
+import { WorkspaceStore } from '../../../main/v9/store'
+
+class FakeRuntime extends EventEmitter {
+  async models() { return [] }
+  async thread() { return 'thread-test' }
+  async request() { return { turn: { id: 'turn-test', status: 'inProgress' } } }
+  respond() {}
+  async interrupt() {}
+  close() {}
+}
+
+const directories: string[] = []
+const services: AppService[] = []
+function directory() { const value = mkdtempSync(join(tmpdir(), 'politron-approval-')); directories.push(value); return value }
+function open(path: string) { const service = new AppService(path, new FakeRuntime() as any); services.push(service); return service }
+afterEach(() => {
+  for (const service of services.splice(0)) service.dispose()
+  for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 })
+})
+
+function setup() {
+  const data = directory(); const workspacePath = directory(); const service = open(data)
+  const agent = service.saveAgent({ name: 'Escritora', alias: 'escritora', instructions: 'Edite apenas o solicitado.', canWrite: true, approvalMode: 'ask' })
+  const conversation = service.saveConversation({ name: 'Aprovações', agentIds: [agent.id], workspacePath })
+  const workspace = service.store.workspace(conversation.workspaceId)
+  const now = new Date().toISOString()
+  const message = { id: 'message-test', conversationId: conversation.id, agentId: agent.id, author: agent.name, role: 'assistant' as const, text: 'Vou criar o arquivo.', status: 'running' as const, runId: 'run-test', createdAt: now }
+  service.store.putMessage(message)
+  const run = { id: 'run-test', conversationId: conversation.id, agentId: agent.id, rootId: 'run-test', parentId: null, ancestry: [agent.id], status: 'running' as const, threadId: null, turnId: null, messageId: message.id, input: 'Crie um arquivo.', agent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now } satisfies Run
+  service.store.putRun(run)
+  const context: any = { run, message, conversation, agent, signal: new AbortController().signal }
+  ;(service as any).contexts.set(run.id, context)
+  return { service, context, workspacePath, run }
+}
+
+const write = (service: AppService, context: unknown, content = 'proposta', toolCallId = 'tool-1') => (service as any).callTool(context, 'workspace_write', { path: 'nota.txt', content }, toolCallId) as Promise<string>
+
+describe('aprovações inline V9', () => {
+  it('suspende a execução e só grava a proposta depois da aprovação', async () => {
+    const { service, context, workspacePath, run } = setup()
+    const pendingWrite = write(service, context)
+    await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
+    expect(service.store.runs().find(item => item.id === run.id)?.status).toBe('waiting')
+    const approval = service.store.approvals()[0]
+    expect(approval.details).toMatchObject({ path: 'nota.txt', after: 'proposta' })
+    expect(existsSync(join(workspacePath, 'nota.txt'))).toBe(false)
+    await service.respondApproval(approval.id, true)
+    await expect(pendingWrite).resolves.toContain('Arquivo salvo')
+    expect(readFileSync(join(workspacePath, 'nota.txt'), 'utf8')).toBe('proposta')
+    expect(service.store.approval(approval.id)?.status).toBe('approved')
+    expect(service.store.fileChangesForRun(run.id)[0]).toMatchObject({ status: 'applied', after: 'proposta' })
+  })
+
+  it('nega escrita e permite cancelar uma espera sem executar a ferramenta', async () => {
+    const first = setup(); const deniedWrite = write(first.service, first.context)
+    await vi.waitFor(() => expect(first.service.store.approvals()[0]?.status).toBe('pending'))
+    await first.service.respondApproval(first.service.store.approvals()[0].id, false)
+    await expect(deniedWrite).resolves.toContain('negada')
+    expect(existsSync(join(first.workspacePath, 'nota.txt'))).toBe(false)
+
+    const second = setup(); const controller = new AbortController(); second.context.signal = controller.signal
+    const waitingWrite = write(second.service, second.context)
+    await vi.waitFor(() => expect(second.service.store.approvals()[0]?.status).toBe('pending'))
+    controller.abort()
+    await expect(waitingWrite).resolves.toContain('negada')
+    expect(second.service.store.approvals()[0].status).toBe('interrupted')
+    expect(existsSync(join(second.workspacePath, 'nota.txt'))).toBe(false)
+  })
+
+  it('converte aprovações pendentes em interrompidas ao reiniciar, sem repetir a escrita', () => {
+    const data = directory(); const store = new WorkspaceStore(data)
+    const approval: Approval = { id: 'approval-pending', runId: 'run-pending', conversationId: 'conversation-pending', agentId: 'agent-pending', kind: 'write', details: { path: 'secret.txt', after: 'never write' }, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
+    store.putApproval(approval); store.close()
+    const reopened = new WorkspaceStore(data)
+    expect(reopened.approval(approval.id)).toMatchObject({ status: 'interrupted' })
+    reopened.close()
+  })
+})

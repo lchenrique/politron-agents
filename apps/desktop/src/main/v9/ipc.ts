@@ -11,11 +11,19 @@ export function registerV9Ipc(service: AppService) {
   invoke('saveAgent', (input) => service.saveAgent(input))
   invoke('saveProject', (input) => service.saveProject(input))
   invoke('saveConversation', (input) => service.saveConversation(input))
+  invoke('createLocalWorkspace', (input) => service.createLocalWorkspace(input))
+  invoke('createWorktree', (input) => service.createWorktree(input))
+  invoke('archiveWorkspace', (id) => service.archiveWorkspace(id))
+  invoke('workspaceDiff', (id) => service.workspaceDiff(id))
+  invoke('respondApproval', (id, approved) => service.respondApproval(id, approved))
+  invoke('setVisibleConversation', (id) => service.setVisibleConversation(id))
+  invoke('hasClaudeCredential', () => service.hasClaudeCredential())
+  invoke('saveClaudeCredential', (key) => service.saveClaudeCredential(key))
   invoke('history', (id) => service.history(id))
   invoke('send', (id, text, model) => service.send(id, text, model))
   invoke('stop', (id) => service.stop(id))
   invoke('cancelDelegation', (id) => service.cancelDelegation(id))
-  invoke('models', () => service.models())
+  invoke('models', (runtime) => service.models(runtime))
   invoke('pickFolder', () => service.pickFolder())
   invoke('openFolder', (id) => service.openFolder(id))
   invoke('browserFrames', (id) => service.browserFrames(id))
@@ -27,6 +35,6 @@ export function registerV9Ipc(service: AppService) {
   service.on('workspace-event', send)
   return () => {
     service.off('workspace-event', send)
-    for (const channel of ['snapshot', 'saveAgent', 'saveProject', 'saveConversation', 'history', 'send', 'stop', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'saveAgent', 'saveProject', 'saveConversation', 'createLocalWorkspace', 'createWorktree', 'archiveWorkspace', 'workspaceDiff', 'respondApproval', 'setVisibleConversation', 'hasClaudeCredential', 'saveClaudeCredential', 'history', 'send', 'stop', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

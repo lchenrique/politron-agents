@@ -8,7 +8,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/renderer/src/test/setup.ts"],
-    include: ["src/renderer/src/**/*.{test,spec}.{ts,tsx}"],
+    include: ["src/renderer/src/**/*.{test,spec}.{ts,tsx}", "src/main/**/*.{test,spec}.ts"],
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src/renderer/src") },

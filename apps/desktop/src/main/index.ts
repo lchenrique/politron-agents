@@ -157,7 +157,7 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  registerTerminalHandlers()
+  registerTerminalHandlers(workspaceId => appService!.workspacePath(workspaceId))
   registerWindowControlHandlers()
   console.log('[Main] IPC handlers registered')
 

@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Agent, Conversation, Model } from '../../../../shared/v9'
 import { ChatHeader } from './ChatHeader'
 
-const agent: Agent = { id: 'a1', name: 'Lyra', alias: 'lyra', description: '', instructions: '', runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, revision: 1, createdAt: '2026-10-16T12:00:00.000Z' }
-const conversation: Conversation = { id: 'c1', kind: 'direct', name: 'Planejamento', agentIds: ['a1'], projectId: null, titleAuto: false, directory: null, revision: 1, archived: false, createdAt: '2026-10-16T12:00:00.000Z' }
-const models: Model[] = [{ id: 'model-1', name: 'Codex Fast', isDefault: true }, { id: 'model-2', name: 'Codex Deep', isDefault: false }]
+const agent: Agent = { id: 'a1', name: 'Lyra', alias: 'lyra', description: '', instructions: '', runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-16T12:00:00.000Z' }
+const conversation: Conversation = { id: 'c1', kind: 'direct', name: 'Planejamento', agentIds: ['a1'], projectId: null, workspaceId: 'ws1', titleAuto: false, revision: 1, archived: false, createdAt: '2026-10-16T12:00:00.000Z' }
+const models: Model[] = [{ id: 'codex:model-1', name: 'Codex Fast', runtime: 'codex', isDefault: true }, { id: 'codex:model-2', name: 'Codex Deep', runtime: 'codex', isDefault: false }]
 
 describe('cabeçalho da conversa', () => {
   it('permite remover e adicionar participantes para os próximos envios', () => {

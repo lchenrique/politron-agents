@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {} }))
+vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false } }))
 
 import { AppService } from '../../../main/v9/workspace'
 import { WorkspaceStore } from '../../../main/v9/store'
@@ -53,8 +53,9 @@ function setup(runtime: FakeRuntime) {
   services.push(service)
   const requester = service.saveAgent({ name: 'Agente A', alias: 'agente-a', instructions: 'Instruções de A', canWrite: true })
   const recipient = service.saveAgent({ name: 'Agente B', alias: 'agente-b', instructions: 'Instruções próprias de B', canWrite: false })
-  const source = service.saveConversation({ kind: 'group', name: 'Conversa de origem', agentIds: [requester.id], directory })
-  const run: Run = { id: 'run-root', conversationId: source.id, agentId: requester.id, rootId: 'run-root', parentId: null, ancestry: [requester.id], status: 'running', threadId: null, turnId: null, messageId: 'source-run-message', input: 'Trabalho de A', agent: requester, directory, createdAt: new Date().toISOString() }
+  const source = service.saveConversation({ kind: 'group', name: 'Conversa de origem', agentIds: [requester.id], workspacePath: directory })
+  const sourceWorkspace = service.store.workspace(source.workspaceId)
+  const run: Run = { id: 'run-root', conversationId: source.id, agentId: requester.id, rootId: 'run-root', parentId: null, ancestry: [requester.id], status: 'running', threadId: null, turnId: null, messageId: 'source-run-message', input: 'Trabalho de A', agent: requester, workspaceId: sourceWorkspace.id, workspacePath: sourceWorkspace.path, createdAt: new Date().toISOString() }
   service.store.putRun(run)
   const controller = new AbortController()
   ;(service as any).active.set(run.id, controller)
@@ -86,7 +87,7 @@ describe('delegação entre conversas V9', () => {
     expect(result).toBe('Resultado do agente destinatário.')
     expect(runtime.started).toBe(1)
     expect(runtime.agents[0]).toMatchObject({ id: recipient.id, canWrite: false, instructions: 'Instruções próprias de B' })
-    expect(runtime.directories[0]).not.toBe(source.directory)
+    expect(runtime.directories[0]).not.toBe(service.store.workspace(source.workspaceId).path)
     const delegation = service.store.delegations()[0]
     expect(delegation).toMatchObject({ status: 'completed', sourceConversationId: source.id, recipientAgentId: recipient.id, result })
     expect(service.store.history(source.id).find(message => message.delegationId === delegation.id)).toMatchObject({ status: 'completed', relatedConversationId: delegation.targetConversationId })

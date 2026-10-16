@@ -33,7 +33,7 @@ export function ChatHeader({ selected, selectedAgents, agents, selectedProject, 
     </div>
     <div className="flex items-center gap-1">
       <label className="sr-only" htmlFor="chat-model-select">Modelo</label><select id="chat-model-select" aria-label="Modelo da conversa" value={modelName} onChange={event => onModelChange(event.target.value)} className="h-8 max-w-44 rounded-md border border-border/60 bg-background px-2 text-xs">{models.map(model => <option key={model.id} value={model.name}>{model.name}{model.isDefault ? ' · padrão' : ''}</option>)}</select>
-      <Button variant="ghost" size="sm" className="max-w-40 gap-2 text-xs text-muted-foreground" title={selected.directory || 'Pasta privada da conversa'} onClick={() => void window.appAPI.openFolder(selected.id)}><FolderOpen className="size-3.5 shrink-0" /><span className="truncate">{selected.directory?.split(/[\\/]/).filter(Boolean).at(-1) || 'Pasta privada'}</span></Button>
+      <Button variant="ghost" size="sm" className="max-w-40 gap-2 text-xs text-muted-foreground" title="Abrir workspace da conversa" onClick={() => void window.appAPI.openFolder(selected.id)}><FolderOpen className="size-3.5 shrink-0" /><span className="truncate">Workspace</span></Button>
       <Button variant="ghost" size="icon" aria-label="Abrir navegador dos agentes" title="Computer Use" onClick={onOpenComputerUse}><Globe className="size-4" /></Button>
       <Button variant="ghost" size="icon" aria-label="Editar conversa e pasta" onClick={onEditConversation}><Settings2 className="size-4" /></Button>
     </div>

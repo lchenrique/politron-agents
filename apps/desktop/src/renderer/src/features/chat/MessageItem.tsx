@@ -18,6 +18,7 @@ export function MessageItem({ message, agent, relatedConversation, onOpenRelated
       <div className={`mb-1.5 flex items-center gap-2 text-xs font-medium ${human ? 'justify-end text-muted-foreground' : 'text-foreground'}`}>
         {human ? 'Você' : agent?.name || message.author}
         {message.status === 'running' && <span className="font-normal text-muted-foreground">está trabalhando</span>}
+        {message.status === 'waiting' && <span className="font-normal text-amber-600">aguarda sua aprovação</span>}
         {message.status === 'queued' && <span className="font-normal text-muted-foreground">na fila</span>}
         {message.status === 'failed' && <span className="font-normal text-destructive">falhou</span>}
         {message.status === 'interrupted' && <span className="font-normal text-muted-foreground">cancelada</span>}

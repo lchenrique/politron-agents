@@ -5,10 +5,11 @@ import { homedir } from 'node:os'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Agent, Model } from '../../shared/v9'
+import type { AgentRuntime } from './agent-runtime'
 
 type RpcMessage = { id?: number | string; method?: string; params?: Record<string, any>; result?: any; error?: { message: string } }
 export interface DynamicTool { type: 'function'; name: string; description: string; inputSchema: Record<string, unknown> }
-export class CodexRuntime extends EventEmitter {
+export class CodexRuntime extends EventEmitter implements AgentRuntime {
   private process: ChildProcessWithoutNullStreams | null = null
   private ready: Promise<void> | null = null
   private nextId = 0
@@ -71,7 +72,7 @@ export class CodexRuntime extends EventEmitter {
   async models(): Promise<Model[]> {
     await this.start()
     const result = await this.request('model/list', {})
-    return (result.data || []).map((model: any) => ({ id: model.id, name: model.displayName || model.model || model.id, isDefault: model.isDefault === true }))
+    return (result.data || []).map((model: any) => ({ id: model.id, name: model.displayName || model.model || model.id, runtime: 'codex' as const, isDefault: model.isDefault === true }))
   }
   async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string): Promise<string> {
     await this.start()
@@ -87,7 +88,7 @@ export class CodexRuntime extends EventEmitter {
       'features.apply_patch_freeform': false
     }
     for (const name of await this.configuredMcpNames(join(directory, '.codex', 'config.toml'))) config[`mcp_servers.${name}.enabled`] = false
-    const params = { cwd: directory, model: agent.model || null, sandbox: 'read-only', approvalPolicy: 'on-request', config, developerInstructions: `Você é ${agent.name}. ${agent.instructions}\nTrabalhe em português. Use somente as ferramentas disponibilizadas para acessar arquivos, navegar e colaborar. Se a tarefa precisar da análise de outro participante, use group_members e ask_agent; a resposta do colega volta diretamente para você e não inicia outro broadcast. Não execute comandos por meios alternativos. Não afirme ter feito uma ação sem resultado real de ferramenta. Sua menção é @${agent.alias}.${projectInstructions ? `\nInstruções do projeto:\n${projectInstructions}` : ''}` }
+    const params = { cwd: directory, model: agent.model || null, reasoningEffort: agent.effort || 'medium', sandbox: 'read-only', approvalPolicy: 'on-request', config, developerInstructions: `Você é ${agent.name}. ${agent.instructions}\nTrabalhe em português. Use somente as ferramentas disponibilizadas para acessar arquivos, navegar e colaborar. Se a tarefa precisar da análise de outro participante, use group_members e ask_agent; a resposta do colega volta diretamente para você e não inicia outro broadcast. Não execute comandos por meios alternativos. Não afirme ter feito uma ação sem resultado real de ferramenta. Sua menção é @${agent.alias}.${projectInstructions ? `\nInstruções do projeto:\n${projectInstructions}` : ''}` }
     const result = threadId
       ? await this.request('thread/resume', { ...params, threadId })
       : await this.request('thread/start', { ...params, dynamicTools: tools })

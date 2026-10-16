@@ -4,8 +4,10 @@ import os from 'os'
 
 let ptyProcess: pty.IPty | null = null
 
-export function registerTerminalHandlers(): void {
-  ipcMain.handle('vibe:terminal:create', (event, { rows, cols, cwd }) => {
+export function registerTerminalHandlers(resolveWorkspacePath: (workspaceId: string) => string): void {
+  ipcMain.handle('vibe:terminal:create', (event, { rows, cols, workspaceId }) => {
+    if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Selecione um workspace para abrir o terminal.')
+    const cwd = resolveWorkspacePath(workspaceId)
     if (ptyProcess) {
       ptyProcess.kill()
     }
@@ -16,7 +18,7 @@ export function registerTerminalHandlers(): void {
       name: 'xterm-color',
       cols: cols || 80,
       rows: rows || 24,
-      cwd: cwd || os.homedir(),
+      cwd,
       env: process.env as { [key: string]: string }
     })
 

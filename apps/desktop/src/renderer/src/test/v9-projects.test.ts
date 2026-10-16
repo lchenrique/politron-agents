@@ -1,11 +1,11 @@
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {} }))
+vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false } }))
 
 import { AppService } from '../../../main/v9/workspace'
 import { WorkspaceStore } from '../../../main/v9/store'
@@ -52,11 +52,56 @@ afterEach(() => {
 })
 
 describe('Assistente padrão e conversas por projeto V9', () => {
+  it('resolve o terminal pelo workspace selecionado e recusa um workspace arquivado', () => {
+    const { service } = open(tempDirectory())
+    const folder = tempDirectory()
+    const conversation = service.saveConversation({ workspacePath: folder })
+    expect(service.workspacePath(conversation.workspaceId)).toBe(folder)
+    service.archiveWorkspace(conversation.workspaceId)
+    expect(() => service.workspacePath(conversation.workspaceId)).toThrow('arquivado')
+  })
+
+  it('persiste diffs idempotentes de escrita, erros, arquivos grandes/binários e autores distintos', async () => {
+    const data = tempDirectory()
+    const folder = tempDirectory()
+    const { service } = open(data)
+    const agentA = service.saveAgent({ name: 'Editora A', alias: 'editora-a', instructions: 'Escreve.', canWrite: true, approvalMode: 'automatic' })
+    const agentB = service.saveAgent({ name: 'Editora B', alias: 'editora-b', instructions: 'Escreve.', canWrite: true, approvalMode: 'automatic' })
+    const conversation = service.saveConversation({ name: 'Diffs', agentIds: [agentA.id], workspacePath: folder })
+    const workspace = service.store.workspace(conversation.workspaceId)
+    const context = (agent: Agent, runId: string, messageId: string) => ({ run: { id: runId, workspaceId: workspace.id, workspacePath: workspace.path }, message: { id: messageId }, conversation, agent })
+    const write = (ctx: unknown, path: string, content: string, id: string) => (service as any).callTool(ctx, 'workspace_write', { path, content }, id)
+    await write(context(agentA, 'run-a', 'msg-a'), 'notes.txt', 'linha um\nlinha dois', 'tool-create')
+    await write(context(agentA, 'run-a', 'msg-a'), 'notes.txt', 'linha um\nlinha três', 'tool-edit')
+    await write(context(agentA, 'run-a', 'msg-a'), 'notes.txt', 'linha um\nlinha três', 'tool-unchanged')
+    await write(context(agentA, 'run-a', 'msg-a'), 'notes.txt', 'conteúdo repetido', 'tool-edit')
+    writeFileSync(join(folder, 'folder-target'), '')
+    mkdirSync(join(folder, 'directory-target'))
+    await expect(write(context(agentA, 'run-a', 'msg-a'), 'directory-target', 'falha', 'tool-failed')).rejects.toThrow('arquivo comum')
+    writeFileSync(join(folder, 'large.txt'), 'x'.repeat(250_000))
+    await write(context(agentB, 'run-b', 'msg-b'), 'large.txt', 'pequeno', 'tool-large')
+    writeFileSync(join(folder, 'binary.dat'), Buffer.from([0, 1, 2]))
+    await write(context(agentB, 'run-b', 'msg-b'), 'binary.dat', 'texto', 'tool-binary')
+
+    const changes = service.store.fileChanges()
+    expect(changes).toHaveLength(6)
+    expect(changes.find(item => item.toolCallId === 'tool-create')).toMatchObject({ status: 'applied', additions: 2, deletions: 0, agentId: agentA.id })
+    expect(changes.find(item => item.toolCallId === 'tool-edit')).toMatchObject({ status: 'applied', additions: 1, deletions: 1 })
+    expect(changes.find(item => item.toolCallId === 'tool-unchanged')).toMatchObject({ status: 'unchanged' })
+    expect(changes.filter(item => item.toolCallId === 'tool-edit')).toHaveLength(1)
+    expect(changes.find(item => item.toolCallId === 'tool-failed')).toMatchObject({ status: 'failed' })
+    expect(changes.find(item => item.toolCallId === 'tool-large')).toMatchObject({ truncated: true, agentId: agentB.id })
+    expect(changes.find(item => item.toolCallId === 'tool-binary')).toMatchObject({ binary: true, agentId: agentB.id })
+    close(service)
+    const reopened = open(data).service
+    expect(reopened.store.fileChanges()).toHaveLength(6)
+  })
+
   it('inicia e continua uma conversa do Assistente em um projeto sem bot nem grupo cadastrados', async () => {
     const { service, runtime } = open(tempDirectory())
     expect(service.snapshot().agents).toEqual([])
     const project = service.saveProject({ name: 'Site' })
-    expect(project).toMatchObject({ name: 'Site', directory: null, defaultAgentIds: [] })
+    expect(project).toMatchObject({ name: 'Site', defaultWorkspaceId: null, defaultAgentIds: [] })
     const conversation = service.saveConversation({ projectId: project.id })
     expect(conversation).toMatchObject({ projectId: project.id, agentIds: [], kind: 'direct', name: 'Nova conversa', titleAuto: true })
 
@@ -78,7 +123,7 @@ describe('Assistente padrão e conversas por projeto V9', () => {
   it('funciona também fora de projetos, sem pasta, bot ou grupo', async () => {
     const { service } = open(tempDirectory())
     const conversation = service.saveConversation({})
-    expect(conversation).toMatchObject({ projectId: null, agentIds: [], directory: null })
+    expect(conversation).toMatchObject({ projectId: null, agentIds: [], workspaceId: expect.any(String) })
     await service.send(conversation.id, 'Olá')
     expect(service.history(conversation.id)[1]).toMatchObject({ role: 'assistant', status: 'completed', agentId: ASSISTANT_ID })
   })
@@ -138,9 +183,9 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     const { service } = open(tempDirectory())
     const folder = tempDirectory()
     const agent = service.saveAgent({ name: 'Revisora', alias: 'revisora', instructions: 'Revise.' })
-    const project = service.saveProject({ name: 'Equipe', directory: folder, defaultAgentIds: [agent.id] })
+    const project = service.saveProject({ name: 'Equipe', workspacePath: folder, defaultAgentIds: [agent.id] })
     const inherited = service.saveConversation({ projectId: project.id })
-    expect(inherited).toMatchObject({ agentIds: [agent.id], directory: project.directory, kind: 'direct' })
+    expect(inherited).toMatchObject({ agentIds: [agent.id], workspaceId: project.defaultWorkspaceId, kind: 'direct' })
     const assistantOnly = service.saveConversation({ projectId: project.id, agentIds: [] })
     expect(assistantOnly.agentIds).toEqual([])
     service.saveProject({ id: project.id, defaultAgentIds: [] })
@@ -170,7 +215,7 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     await service.send(conversation.id, 'dois')
     const [one, two] = runtime.turns.map(turn => turn.threadId)
     expect(two).toBe(one)
-    service.saveConversation({ id: conversation.id, directory: tempDirectory() })
+    service.saveConversation({ id: conversation.id, workspacePath: tempDirectory() })
     await service.send(conversation.id, 'três')
     expect(runtime.turns[2].threadId).not.toBe(one)
   })
@@ -197,6 +242,40 @@ describe('Assistente padrão e conversas por projeto V9', () => {
 })
 
 describe('migração do SQLite V9', () => {
+  it('migra esquema 3 para 4, cria backups e associa projetos e conversas às pastas existentes', () => {
+    const directory = tempDirectory()
+    const projectPath = tempDirectory()
+    const standalonePath = tempDirectory()
+    const legacy = new DatabaseSync(join(directory, 'politron-v9.sqlite'))
+    legacy.exec(`CREATE TABLE v9_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE v9_agents (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_projects (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_conversations (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE v9_runs (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE v9_sessions (key TEXT PRIMARY KEY, thread_id TEXT NOT NULL);
+      CREATE TABLE v9_delegations (id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, source_conversation_id TEXT NOT NULL, target_conversation_id TEXT NOT NULL, data TEXT NOT NULL);
+      INSERT INTO v9_meta VALUES ('schema','3');`)
+    legacy.prepare('INSERT INTO v9_projects VALUES (?,?)').run('project-1', JSON.stringify({ id: 'project-1', name: 'Migração', directory: projectPath, instructions: '', defaultAgentIds: [], revision: 1, archived: false, createdAt: '2026-10-01T00:00:00.000Z' }))
+    legacy.prepare('INSERT INTO v9_conversations VALUES (?,?)').run('project-conv', JSON.stringify({ id: 'project-conv', projectId: 'project-1', kind: 'direct', name: 'Projeto', agentIds: [], directory: null, revision: 1, archived: false, createdAt: '2026-10-01T00:00:00.000Z' }))
+    legacy.prepare('INSERT INTO v9_conversations VALUES (?,?)').run('local-conv', JSON.stringify({ id: 'local-conv', projectId: null, kind: 'direct', name: 'Local', agentIds: [], directory: standalonePath, revision: 1, archived: false, createdAt: '2026-10-01T00:00:00.000Z' }))
+    legacy.prepare('INSERT INTO v9_runs VALUES (?,?)').run('run-1', JSON.stringify({ id: 'run-1', conversationId: 'project-conv', directory: projectPath, status: 'completed' }))
+    legacy.close()
+
+    const store = new WorkspaceStore(directory)
+    const backups = readdirSync(directory).filter(name => name.startsWith('politron-v9.backup-schema3-'))
+    expect(backups).toHaveLength(1)
+    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('4')
+    const project = store.project('project-1')
+    const projectConversation = store.conversation('project-conv')
+    const localConversation = store.conversation('local-conv')
+    expect(store.workspace(project.defaultWorkspaceId!).path).toBe(projectPath)
+    expect(projectConversation.workspaceId).toBe(project.defaultWorkspaceId)
+    expect(store.workspace(localConversation.workspaceId)).toMatchObject({ projectId: null, kind: 'local', path: standalonePath })
+    expect(store.runs()[0]).toMatchObject({ workspaceId: project.defaultWorkspaceId, workspacePath: projectPath })
+    store.close()
+  })
+
   it('cria backup antes de subir do esquema 2 e preserva conversas e mensagens antigas', () => {
     const directory = tempDirectory()
     const legacy = new DatabaseSync(join(directory, 'politron-v9.sqlite'))
@@ -208,7 +287,7 @@ describe('migração do SQLite V9', () => {
       CREATE TABLE v9_sessions (key TEXT PRIMARY KEY, thread_id TEXT NOT NULL);
       CREATE TABLE v9_delegations (id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, source_conversation_id TEXT NOT NULL, target_conversation_id TEXT NOT NULL, data TEXT NOT NULL);
       INSERT INTO v9_meta VALUES ('schema','2');`)
-    const agent = { id: 'agent-1', name: 'Antigo', alias: 'antigo', description: '', instructions: 'x', runtime: 'codex', model: '', color: '#6366f1', avatar: '', canWrite: false, computerUse: false, revision: 1, createdAt: '2026-10-01T00:00:00.000Z' }
+    const agent = { id: 'agent-1', name: 'Antigo', alias: 'antigo', description: '', instructions: 'x', runtime: 'codex', model: '', color: '#6366f1', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-01T00:00:00.000Z' }
     const conversation = { id: 'conv-1', kind: 'group', name: 'Grupo antigo', agentIds: ['agent-1'], directory: null, revision: 3, archived: false, createdAt: '2026-10-01T00:00:00.000Z' }
     const message = { id: 'msg-1', conversationId: 'conv-1', agentId: null, author: 'Você', role: 'user', text: 'mensagem antiga', status: 'completed', runId: null, createdAt: '2026-10-01T00:00:00.000Z' }
     legacy.prepare('INSERT INTO v9_agents VALUES (?,?)').run(agent.id, JSON.stringify(agent))
@@ -226,11 +305,12 @@ describe('migração do SQLite V9', () => {
     expect((backup.prepare('SELECT COUNT(*) AS total FROM v9_messages').get() as { total: number }).total).toBe(1)
     backup.close()
 
-    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('3')
+    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('4')
     expect(store.agents()).toHaveLength(1)
     expect(store.conversation('conv-1')).toMatchObject({ name: 'Grupo antigo', kind: 'group', agentIds: ['agent-1'], revision: 3, projectId: null, titleAuto: false })
     expect(store.history('conv-1')[0].text).toBe('mensagem antiga')
     expect(store.binding('conv-1:agent-1:r1:m:c3')).toBe('thread-legado')
+    expect(store.workspace(store.conversation('conv-1').workspaceId).kind).toBe('local')
     store.close()
 
     new WorkspaceStore(directory).close()

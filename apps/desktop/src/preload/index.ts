@@ -22,7 +22,7 @@ const api = {
   platform: process.platform,
 
   terminal: {
-    create: (input: { rows: number; cols: number; cwd?: string }) =>
+    create: (input: { rows: number; cols: number; workspaceId: string }) =>
       ipcRenderer.invoke('vibe:terminal:create', input),
     write: (data: string) =>
       ipcRenderer.send('vibe:terminal:write', data),
@@ -40,11 +40,19 @@ const appAPI: AppAPI = {
   saveAgent: (input) => ipcRenderer.invoke('v9:saveAgent', input),
   saveProject: (input) => ipcRenderer.invoke('v9:saveProject', input),
   saveConversation: (input) => ipcRenderer.invoke('v9:saveConversation', input),
+  createLocalWorkspace: (input) => ipcRenderer.invoke('v9:createLocalWorkspace', input),
+  createWorktree: (input) => ipcRenderer.invoke('v9:createWorktree', input),
+  archiveWorkspace: (id) => ipcRenderer.invoke('v9:archiveWorkspace', id),
+  workspaceDiff: (id) => ipcRenderer.invoke('v9:workspaceDiff', id),
+  respondApproval: (id, approved) => ipcRenderer.invoke('v9:respondApproval', id, approved),
+  setVisibleConversation: (id) => ipcRenderer.invoke('v9:setVisibleConversation', id),
   history: (id) => ipcRenderer.invoke('v9:history', id),
   send: (id, value, model) => ipcRenderer.invoke('v9:send', id, value, model),
   stop: (id) => ipcRenderer.invoke('v9:stop', id),
   cancelDelegation: (id) => ipcRenderer.invoke('v9:cancelDelegation', id),
-  models: () => ipcRenderer.invoke('v9:models'),
+  models: (runtime) => ipcRenderer.invoke('v9:models', runtime),
+  hasClaudeCredential: () => ipcRenderer.invoke('v9:hasClaudeCredential'),
+  saveClaudeCredential: (key) => ipcRenderer.invoke('v9:saveClaudeCredential', key),
   pickFolder: () => ipcRenderer.invoke('v9:pickFolder'),
   openFolder: (id) => ipcRenderer.invoke('v9:openFolder', id),
   browserFrames: (id) => ipcRenderer.invoke('v9:browserFrames', id),

@@ -4,8 +4,8 @@ import { emptySnapshot } from '../app/appShellShared'
 import type { Agent, Project, Snapshot } from '../../../../shared/v9'
 import { Sidebar } from './Sidebar'
 
-const agent: Agent = { id: 'agent-1', name: 'Lyra', alias: 'lyra', description: '', instructions: 'Ajude.', runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, revision: 1, createdAt: '2026-10-16T12:00:00.000Z' }
-const project: Project = { id: 'project-1', name: 'Instruções de Paz', directory: null, instructions: '', defaultAgentIds: [], revision: 1, archived: false, createdAt: '2026-10-16T12:00:00.000Z' }
+const agent: Agent = { id: 'agent-1', name: 'Lyra', alias: 'lyra', description: '', instructions: 'Ajude.', runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-16T12:00:00.000Z' }
+const project: Project = { id: 'project-1', name: 'Instruções de Paz', defaultWorkspaceId: null, instructions: '', defaultAgentIds: [], revision: 1, archived: false, createdAt: '2026-10-16T12:00:00.000Z' }
 const snapshot: Snapshot = { ...emptySnapshot, agents: [agent], projects: [project] }
 
 function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {

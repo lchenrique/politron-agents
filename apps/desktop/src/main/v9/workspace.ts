@@ -1,42 +1,138 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { basename, extname, isAbsolute, relative, resolve, sep, join } from 'node:path'
-import { app, dialog, shell } from 'electron'
+import { app, dialog, shell, Notification, BrowserWindow } from 'electron'
 import { EventEmitter } from 'node:events'
-import { ASSISTANT_ID, type Agent, type Conversation, type Delegation, type Message, type Project, type Run, type WorkspaceEvent } from '../../shared/v9'
+import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type Model, type Project, type Run, type WorkspaceEvent } from '../../shared/v9'
 import { BrowserService } from './browser'
+import { GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, recipients } from './routing'
 import { CodexRuntime, type DynamicTool } from './codex'
+import { ClaudeRuntime } from './claude'
+import type { AgentRuntime } from './agent-runtime'
+import { ClaudeCredentialStore } from './credentials'
 import { canonicalDirectory, WorkspaceStore } from './store'
 
-type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; flushTimer?: ReturnType<typeof setTimeout> }
+type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; flushTimer?: ReturnType<typeof setTimeout> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
 
 export class AppService extends EventEmitter {
   readonly store: WorkspaceStore
   readonly runtime: CodexRuntime
+  readonly claudeRuntime: AgentRuntime
+  readonly credentials: ClaudeCredentialStore
   readonly browser = new BrowserService()
+  readonly gitWorkspaces: GitWorkspaceService
   private readonly queue = new WorkspaceQueue()
   private readonly active = new Map<string, AbortController>()
   private readonly contexts = new Map<string, RunContext>()
   private readonly completedTurns = new Set<string>()
   private readonly delegationTasks = new Map<string, Promise<string>>()
-  private readonly browserRoot: string
-  constructor(dataDirectory: string, runtime: CodexRuntime = new CodexRuntime()) {
+  private readonly approvalWaiters = new Map<string, (approved: boolean) => void>()
+  private visibleConversationId: string | null = null
+  private readonly statusTimer: ReturnType<typeof setInterval>
+  constructor(dataDirectory: string, runtime: CodexRuntime = new CodexRuntime(), claudeRuntime?: AgentRuntime) {
     super()
     this.runtime = runtime
     this.store = new WorkspaceStore(dataDirectory)
-    this.browserRoot = join(dataDirectory, 'workspaces')
-    this.runtime.on('event', (event: any) => void this.onRuntimeEvent(event))
+    this.credentials = new ClaudeCredentialStore(dataDirectory)
+    this.claudeRuntime = claudeRuntime || new ClaudeRuntime(dataDirectory, () => this.credentials.load())
+    this.gitWorkspaces = new GitWorkspaceService(join(dataDirectory, 'worktrees'))
+    this.statusTimer = setInterval(() => void this.refreshWorkspaceStatuses(), 5000)
+    this.statusTimer.unref?.()
+    this.runtime.on('event', (event: any) => void this.onRuntimeEvent(event, this.runtime))
+    this.claudeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.claudeRuntime))
     this.browser.on('frame', frame => this.emitEvent({ type: 'browser', frame }))
     this.runtime.on('disconnected', (error: Error) => {
       for (const context of this.contexts.values()) void this.finish(context, 'failed', `Conexão com Codex encerrada: ${error.message}`)
     })
   }
   snapshot() { return this.store.snapshot() }
+  private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : this.runtime }
+  private async refreshWorkspaceStatuses() {
+    for (const workspace of this.store.workspaces()) {
+      if (workspace.archived) continue
+      try {
+        const info = await this.gitWorkspaces.inspect(workspace.path)
+        if (info.branch !== workspace.branch || info.changes !== workspace.changes) {
+          this.store.updateWorkspace({ ...workspace, ...info }); this.emitEvent({ type: 'changed' })
+        }
+      } catch { /* pasta removida ou inacessível: preserva o último estado salvo */ }
+    }
+  }
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.emitEvent({ type: 'changed' }); return agent }
-  saveProject(input: Partial<Project>) { const project = this.store.saveProject(input); this.emitEvent({ type: 'changed' }); return project }
-  saveConversation(input: Partial<Conversation>) { const conversation = this.store.saveConversation(input); this.emitEvent({ type: 'changed' }); return conversation }
+  saveProject(input: Partial<Project> & { workspacePath?: string | null }) { const project = this.store.saveProject(input); this.emitEvent({ type: 'changed' }); return project }
+  saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }) { const conversation = this.store.saveConversation(input); this.emitEvent({ type: 'changed' }); return conversation }
+  async createLocalWorkspace(input: { projectId: string | null; path: string }) {
+    const path = canonicalDirectory(input.path)
+    if (!path) throw new Error('Selecione uma pasta existente.')
+    if (input.projectId) this.store.project(input.projectId)
+    const info = await this.gitWorkspaces.inspect(path).catch(() => ({ branch: null, changes: 0 }))
+    const existing = this.store.workspaces().find(item => item.projectId === input.projectId && item.path === path && !item.archived)
+    const workspace = existing || this.store.saveWorkspace({ projectId: input.projectId, kind: 'local', path, ...info, baseBranch: null, archived: false })
+    this.emitEvent({ type: 'changed' }); return workspace
+  }
+  async createWorktree(input: { projectId: string; sourceWorkspaceId: string; branch: string; baseBranch?: string }) {
+    const project = this.store.project(input.projectId)
+    const source = this.store.workspace(input.sourceWorkspaceId)
+    if (source.projectId !== project.id || source.archived) throw new Error('Escolha um workspace ativo deste projeto como origem.')
+    const created = await this.gitWorkspaces.createWorktree({ sourcePath: source.path, projectName: project.name, projectId: project.id, branch: input.branch, baseBranch: input.baseBranch || source.branch || undefined })
+    const workspace = this.store.saveWorkspace({ projectId: project.id, kind: 'worktree', path: created.path, branch: created.branch, baseBranch: created.baseBranch, changes: 0, archived: false })
+    this.emitEvent({ type: 'changed' }); return workspace
+  }
+  async archiveWorkspace(workspaceId: string) {
+    const workspace = this.store.workspace(workspaceId)
+    if (workspace.kind === 'worktree' && !workspace.archived) await this.gitWorkspaces.removeWorktree(workspace.path)
+    this.store.updateWorkspace({ ...workspace, archived: true })
+    this.emitEvent({ type: 'changed' })
+  }
+  workspacePath(workspaceId: string) { const workspace = this.store.workspace(workspaceId); if (workspace.archived) throw new Error('Este workspace está arquivado.'); return workspace.path }
+  workspaceDiff(workspaceId: string) { return this.gitWorkspaces.diff(this.workspacePath(workspaceId)) }
+  setVisibleConversation(conversationId: string | null) { if (conversationId !== null) this.store.conversation(conversationId); this.visibleConversationId = conversationId }
+  private notifyWhenAway(conversationId: string, title: string, body: string) {
+    const focusedConversation = this.visibleConversationId === conversationId && BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.isFocused())
+    if (!focusedConversation && Notification.isSupported()) new Notification({ title, body }).show()
+  }
+  async respondApproval(approvalId: string, approved: boolean) {
+    const approval = this.store.approval(approvalId)
+    if (!approval || approval.status !== 'pending') throw new Error('Esta aprovação não está mais pendente.')
+    if (typeof approved !== 'boolean') throw new Error('Decisão de aprovação inválida.')
+    const updated = { ...approval, status: approved ? 'approved' as const : 'denied' as const, resolvedAt: new Date().toISOString() }
+    this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
+    const context = this.contexts.get(approval.runId)
+    if (context) {
+      context.run.status = 'running'; this.store.putRun(context.run)
+      this.updateMessage(context.message, 'running', context.message.text)
+    }
+    const resolveApproval = this.approvalWaiters.get(approvalId)
+    if (!resolveApproval) throw new Error('A execução desta aprovação não está ativa. Ela não será repetida automaticamente.')
+    this.approvalWaiters.delete(approvalId); resolveApproval(approved)
+  }
+  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details']): Promise<boolean> {
+    if (context.agent.approvalMode === 'automatic') return true
+    const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
+    this.store.putApproval(approval)
+    context.run.status = 'waiting'; this.store.putRun(context.run)
+    this.updateMessage(context.message, 'waiting', context.message.text)
+    this.emitEvent({ type: 'approval', approval })
+    this.notifyWhenAway(context.conversation.id, 'Politron precisa da sua atenção', `${context.agent.name} aguarda aprovação para ${kind === 'write' ? 'alterar um arquivo' : 'usar o navegador'}.`)
+    if (context.signal?.aborted) {
+      const interrupted = { ...approval, status: 'interrupted' as const, resolvedAt: new Date().toISOString() }
+      this.store.putApproval(interrupted); this.emitEvent({ type: 'approval', approval: interrupted }); return false
+    }
+    return new Promise(resolveApproval => {
+      const abort = () => {
+        const pending = this.store.approval(approval.id)
+        if (pending?.status === 'pending') {
+          const interrupted = { ...pending, status: 'interrupted' as const, resolvedAt: new Date().toISOString() }
+          this.store.putApproval(interrupted); this.emitEvent({ type: 'approval', approval: interrupted })
+        }
+        this.approvalWaiters.delete(approval.id); resolveApproval(false)
+      }
+      this.approvalWaiters.set(approval.id, resolveApproval)
+      context.signal?.addEventListener('abort', abort, { once: true })
+    })
+  }
   history(id: string) { this.store.conversation(id); return this.store.history(id) }
   private emitEvent(event: WorkspaceEvent) { this.emit('workspace-event', event) }
   private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null) {
@@ -48,23 +144,32 @@ export class AppService extends EventEmitter {
     if (!input) return
     const conversation = this.store.conversation(conversationId)
     if (conversation.archived) throw new Error('Esta conversa está arquivada.')
+    const workspace = this.store.workspace(conversation.workspaceId)
+    if (workspace.archived) throw new Error('O workspace desta conversa está arquivado.')
     const agents = (conversation.agentIds.length ? conversation.agentIds : [ASSISTANT_ID]).map(id => this.store.agent(id))
-    if (model && !(await this.models()).some(item => item.id === model)) throw new Error('O modelo selecionado não está disponível no Codex.')
+    const selectedRuntime = model?.includes(':') ? model.slice(0, model.indexOf(':')) as Agent['runtime'] : undefined
+    const selectedModel = selectedRuntime ? model!.slice(model!.indexOf(':') + 1) : model
+    if (selectedRuntime && selectedRuntime !== 'codex' && selectedRuntime !== 'claude') throw new Error('Motor selecionado inválido.')
+    if (selectedModel) {
+      const available = await this.runtimeFor(selectedRuntime || agents[0]?.runtime || 'codex').models()
+      if (!available.some(item => item.id === selectedModel)) throw new Error(`O modelo selecionado não está disponível no ${selectedRuntime === 'claude' ? 'Claude' : 'Codex'}.`)
+    }
     const selected = recipients(input, agents)
     if (!selected.length) throw new Error('Não há agentes para responder nesta conversa.')
-    const userMessage = this.addMessage(conversationId, null, 'user', input, 'completed', null)
+    const turnAlreadyActive = this.store.runs().some(run => run.conversationId === conversationId && ['queued', 'running', 'waiting'].includes(run.status))
+    const userMessage = this.addMessage(conversationId, null, 'user', input, turnAlreadyActive ? 'queued' : 'completed', null)
     if (conversation.titleAuto) { this.store.autoTitle(conversationId, input); this.emitEvent({ type: 'changed' }) }
     const tasks: Promise<void>[] = []
     for (const agent of selected) {
-      const runAgent = model ? { ...agent, model } : agent
-      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input, agent: runAgent, directory: conversation.directory, createdAt: new Date().toISOString() }
+      const runAgent = selectedModel ? { ...agent, ...(selectedRuntime ? { runtime: selectedRuntime } : {}), model: selectedModel } : agent
+      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
       const message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
       run.messageId = message.id
       this.store.putRun(run)
       const controller = new AbortController()
       this.active.set(run.id, controller)
-      tasks.push(this.queue.enqueue(conversation.directory || `conversation:${conversationId}`, controller.signal, () => this.execute({ run, message, conversation, agent: runAgent }, controller.signal)))
+      tasks.push(this.queue.enqueue(workspace.path, controller.signal, () => this.execute({ run, message, conversation, agent: runAgent }, controller.signal)))
     }
     void userMessage
     await Promise.all(tasks)
@@ -73,7 +178,7 @@ export class AppService extends EventEmitter {
     const runs = this.store.runs().filter(run => run.conversationId === conversationId && ['queued', 'running', 'waiting'].includes(run.status))
     for (const run of runs) {
       this.active.get(run.id)?.abort()
-      if (run.threadId && run.turnId) await this.runtime.interrupt(run.threadId, run.turnId).catch(() => undefined)
+      if (run.threadId && run.turnId) await this.runtimeFor(run.agent.runtime).interrupt(run.threadId, run.turnId).catch(() => undefined)
       const context = this.contexts.get(run.id)
       if (context) await this.finish(context, 'interrupted', context.message.text)
       else {
@@ -91,7 +196,7 @@ export class AppService extends EventEmitter {
     const run = this.store.runs().find(item => item.id === delegation.childRunId)
     if (!run) throw new Error('A execução associada ao pedido não foi encontrada.')
     this.active.get(run.id)?.abort()
-    if (run.threadId && run.turnId) await this.runtime.interrupt(run.threadId, run.turnId).catch(() => undefined)
+    if (run.threadId && run.turnId) await this.runtimeFor(run.agent.runtime).interrupt(run.threadId, run.turnId).catch(() => undefined)
     const context = this.contexts.get(run.id)
     if (context) await this.finish(context, 'interrupted', context.message.text || 'Pedido cancelado.')
     else {
@@ -106,7 +211,16 @@ export class AppService extends EventEmitter {
       if (message) { const next = { ...message, status: 'interrupted' as const, text: `${message.text.split('\n')[0]}\nPedido cancelado pelo usuário.` }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next }) }
     }
   }
-  async models() { return this.runtime.models() }
+  async hasClaudeCredential() { return this.credentials.has() }
+  async saveClaudeCredential(apiKey: string) { await this.credentials.save(apiKey) }
+  async models(runtimeName?: Agent['runtime']): Promise<Model[]> {
+    const withProvider = (name: Agent['runtime'], models: Model[]) => models.map(model => ({ ...model, runtime: name, id: `${name}:${model.id}`, name: `${model.name} · ${name === 'claude' ? 'Claude' : 'Codex'}` }))
+    if (runtimeName) return withProvider(runtimeName, await this.runtimeFor(runtimeName).models())
+    const codexModels = withProvider('codex', await this.runtime.models())
+    if (!await this.credentials.has()) return codexModels
+    try { return [...codexModels, ...withProvider('claude', await this.claudeRuntime.models())] }
+    catch { return codexModels }
+  }
   browserFrames(conversationId: string) { this.store.conversation(conversationId); return this.browser.frames(conversationId) }
   browserControl(key: string, human: boolean) { return this.browser.control(key, human) }
   browserAction(key: string, action: { type: 'click' | 'type' | 'scroll' | 'key' | 'refresh'; x?: number; y?: number; text?: string }) { return this.browser.userAction(key, action) }
@@ -114,52 +228,55 @@ export class AppService extends EventEmitter {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled || !result.filePaths[0] ? null : canonicalDirectory(result.filePaths[0])
   }
-  async openFolder(conversationId: string) { const conversation = this.store.conversation(conversationId); if (conversation.directory) await shell.openPath(conversation.directory) }
+  async openFolder(conversationId: string) { const conversation = this.store.conversation(conversationId); const workspace = this.store.workspace(conversation.workspaceId); const error = await shell.openPath(workspace.path); if (error) throw new Error(error) }
   private async execute(context: RunContext, signal: AbortSignal): Promise<void> {
     const { run, message, conversation, agent } = context
     if (signal.aborted) return
+    for (const queued of this.store.history(conversation.id).filter(item => item.role === 'user' && item.status === 'queued')) {
+      const next = { ...queued, status: 'completed' as const }
+      this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
+    }
     this.contexts.set(run.id, context)
+    context.signal = signal
     try {
-      const directory = await this.resolveDirectory(conversation, run)
+      const runtime = this.runtimeFor(agent.runtime)
+      context.runtime = runtime
+      const directory = run.workspacePath
+      await fs.mkdir(directory, { recursive: true })
       const projectInstructions = conversation.projectId ? this.store.project(conversation.projectId).instructions : ''
       const projectContext = createHash('sha256').update(projectInstructions).digest('hex').slice(0, 16)
-      const bindingKey = `${conversation.id}:${agent.id}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${projectContext}`
-      const threadId = await this.runtime.thread(agent, directory, this.tools(context), this.store.binding(bindingKey), projectInstructions)
+      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${projectContext}`
+      const threadId = await runtime.thread(agent, directory, this.tools(context), this.store.binding(bindingKey), projectInstructions)
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
-      const result = await this.runtime.request('turn/start', { threadId, input: [{ type: 'text', text: run.input }], ...(agent.model ? { model: agent.model } : {}) }, 600000)
+      const result = await runtime.request('turn/start', { threadId, input: [{ type: 'text', text: run.input }], ...(agent.model ? { model: agent.model } : {}) }, 600000)
+      if (result.thread?.id) { run.threadId = result.thread.id; this.store.putRun(run) }
       const turnId = result.turn.id as string
       run.turnId = turnId; this.store.putRun(run)
-      this.store.bind(bindingKey, threadId)
-      if (signal.aborted) { await this.runtime.interrupt(threadId, turnId).catch(() => undefined); throw new Error('Execução interrompida.') }
+      this.store.bind(bindingKey, run.threadId || threadId)
+      if (signal.aborted) { await runtime.interrupt(run.threadId || threadId, turnId).catch(() => undefined); throw new Error('Execução interrompida.') }
       await new Promise<void>((resolve, reject) => {
-        const turnKey = `${threadId}:${turnId}`
+        const turnKey = `${run.threadId || threadId}:${turnId}`
         if (signal.aborted) { reject(new Error('Execução interrompida.')); return }
-        if (this.completedTurns.has(turnKey)) { resolve(); return }
+        if (this.completedTurns.has(turnKey) || this.completedTurns.has(`${threadId}:${turnId}`)) { resolve(); return }
         if (result.turn.status === 'failed') { reject(new Error(result.turn.error?.message || 'Codex não conseguiu iniciar a resposta.')); return }
         if (result.turn.status === 'interrupted') { reject(new Error('Execução interrompida pelo Codex.')); return }
         const done = (event: any) => {
           if (event.method !== 'turn/completed') return
-          if (event.params?.threadId !== threadId || event.params?.turn?.id !== run.turnId) return
-          this.runtime.off('event', done)
+          if (event.params?.turn?.id !== run.turnId) return
+          runtime.off('event', done)
           signal.removeEventListener('abort', abort)
           if (event.params.turn.status === 'failed') reject(new Error(event.params.turn.error?.message || 'Codex não concluiu a resposta.'))
           else if (event.params.turn.status === 'interrupted') reject(new Error('Execução interrompida pelo Codex.'))
           else resolve()
         }
-        const abort = () => { this.runtime.off('event', done); reject(new Error('Execução interrompida.')) }
-        this.runtime.on('event', done); signal.addEventListener('abort', abort, { once: true })
+        const abort = () => { runtime.off('event', done); reject(new Error('Execução interrompida.')) }
+        runtime.on('event', done); signal.addEventListener('abort', abort, { once: true })
       })
       await this.finish(context, 'completed', message.text)
     } catch (error) {
       await this.finish(context, signal.aborted ? 'interrupted' : 'failed', message.text || (error instanceof Error ? error.message : 'Erro ao executar o agente.'))
     } finally { this.contexts.delete(run.id); this.active.delete(run.id) }
-  }
-  private async resolveDirectory(conversation: Conversation, run: Run): Promise<string> {
-    if (conversation.directory) return canonicalDirectory(conversation.directory)!
-    const directory = join(this.browserRoot, conversation.id, run.agent.id)
-    await fs.mkdir(directory, { recursive: true })
-    return directory
   }
   private updateMessage(message: Message, status: Message['status'], value: string) {
     const next = { ...message, text: value, status }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
@@ -168,6 +285,7 @@ export class AppService extends EventEmitter {
     if (['completed', 'interrupted', 'failed'].includes(context.run.status)) return
     if (context.flushTimer) clearTimeout(context.flushTimer)
     context.run.status = status; this.store.putRun(context.run); this.updateMessage(context.message, status, value || (status === 'completed' ? '(Sem resposta em texto.)' : ''))
+    if (status === 'completed') this.notifyWhenAway(context.conversation.id, 'Tarefa concluída', `${context.agent.name} concluiu a resposta.`)
   }
   private tools(context: RunContext): DynamicTool[] {
     const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]): DynamicTool => ({ type: 'function', name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false } })
@@ -187,27 +305,27 @@ export class AppService extends EventEmitter {
       tool('ask_agent', 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário, e o resultado voltará diretamente a você.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido concreto. Inclua somente o contexto necessário; a conversa de origem não será compartilhada.' } }, ['agent', 'task'])
     ]
   }
-  private async onRuntimeEvent(event: any) {
+  private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
     const params = event?.params || {}
     if (event.method === 'turn/completed' && params.threadId && params.turn?.id) this.completedTurns.add(`${params.threadId}:${params.turn.id}`)
     if (event.method === 'item/tool/call') {
-      const context = [...this.contexts.values()].find(entry => entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
-      if (!context) { this.runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: 'Execução não encontrada.' }] }); return }
+      const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
+      if (!context) { runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: 'Execução não encontrada.' }] }); return }
       try {
         const result = await this.callTool(context, params.tool, params.arguments || {}, String(event.id ?? params.toolCallId ?? ''))
-        this.runtime.respond(event.id, { success: true, contentItems: [{ type: 'inputText', text: typeof result === 'string' ? result : JSON.stringify(result) }] })
-      } catch (error) { this.runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: error instanceof Error ? error.message : 'A ferramenta falhou.' }] }) }
+        runtime.respond(event.id, { success: true, contentItems: [{ type: 'inputText', text: typeof result === 'string' ? result : JSON.stringify(result) }] })
+      } catch (error) { runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: error instanceof Error ? error.message : 'A ferramenta falhou.' }] }) }
       return
     }
     if (event.method === 'item/agentMessage/delta') {
-      const context = [...this.contexts.values()].find(entry => entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
+      const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (context && typeof params.delta === 'string') {
         context.message.text += params.delta
         if (!context.flushTimer) context.flushTimer = setTimeout(() => { context.flushTimer = undefined; this.updateMessage(context.message, 'running', context.message.text) }, 45)
       }
     }
     if (event.method === 'item/completed' && params.item?.type === 'agentMessage') {
-      const context = [...this.contexts.values()].find(entry => entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
+      const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (context && typeof params.item.text === 'string') {
         if (context.flushTimer) { clearTimeout(context.flushTimer); context.flushTimer = undefined }
         context.message.text = params.item.text
@@ -215,11 +333,11 @@ export class AppService extends EventEmitter {
       }
     }
     if (['execCommandApproval', 'commandExecutionRequestApproval', 'applyPatchApproval', 'item/permissions/requestApproval'].includes(event.method)) {
-      this.runtime.respond(event.id, { decision: 'decline' })
+      runtime.respond(event.id, { decision: 'decline' })
     }
   }
   private async callTool(context: RunContext, name: string, args: Record<string, unknown>, callId = ''): Promise<unknown> {
-    const root = context.run.directory || await this.resolveDirectory(context.conversation, context.run)
+    const root = context.run.workspacePath
     const inside = (input: unknown) => {
       const rel = text(input, 1000)
       if (isAbsolute(rel)) throw new Error('Use um caminho relativo à pasta do grupo.')
@@ -248,6 +366,21 @@ export class AppService extends EventEmitter {
       if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para escrever arquivos.')
       const target = inside(args.path)
       const content = text(args.content, 1_000_000)
+      const relativePath = relative(root, target)
+      const toolCallId = callId || randomUUID()
+      const record = (status: 'applied' | 'failed' | 'unknown' | 'unchanged', before: string, after: string, binary: boolean, truncated: boolean) => {
+        const oldLines = before ? before.split('\n') : []
+        const newLines = after ? after.split('\n') : []
+        let prefix = 0
+        while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++
+        let suffix = 0
+        while (suffix < oldLines.length - prefix && suffix < newLines.length - prefix && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]) suffix++
+        const value = { id: randomUUID(), runId: context.run.id, messageId: context.message.id, toolCallId, agentId: context.agent.id, workspaceId: context.run.workspaceId, path: relativePath, status, before, after, additions: Math.max(0, newLines.length - prefix - suffix), deletions: Math.max(0, oldLines.length - prefix - suffix), truncated, binary, createdAt: new Date().toISOString() }
+        if (this.store.putFileChange(value)) this.emitEvent({ type: 'fileChange', fileChange: value })
+      }
+      let before = ''
+      let binary = false
+      let truncated = false
       const parentPath = resolve(target, '..')
       let nearest = parentPath
       while (true) {
@@ -258,14 +391,43 @@ export class AppService extends EventEmitter {
       await fs.mkdir(parentPath, { recursive: true })
       const parent = await fs.realpath(parentPath)
       if (parent !== root && !parent.startsWith(root + sep)) throw new Error('A pasta de destino aponta para fora do grupo.')
-      try { const existing = await fs.lstat(target); if (existing.isSymbolicLink() || !existing.isFile()) throw new Error('O destino precisa ser um arquivo comum dentro da pasta do grupo.') } catch (error: any) { if (error?.code !== 'ENOENT') throw error }
-      await fs.writeFile(target, content, { encoding: 'utf8', flag: 'w' })
+      try {
+        const existing = await fs.lstat(target)
+        if (existing.isSymbolicLink() || !existing.isFile()) throw new Error('O destino precisa ser um arquivo comum dentro da pasta do workspace.')
+        const original = await fs.readFile(target)
+        binary = original.includes(0)
+        truncated = original.length > 200_000 || Buffer.byteLength(content) > 200_000
+        if (!binary) before = original.subarray(0, 200_000).toString('utf8')
+      } catch (error: any) { if (error?.code !== 'ENOENT') { record('failed', before, '', binary, truncated); throw error } }
+      if (!binary && before === content) { record('unchanged', before, content.slice(0, 200_000), false, truncated); return `Sem alterações: ${relativePath}` }
+      if (!await this.requestApproval(context, 'write', { path: relativePath, before: binary ? '' : before, after: content.slice(0, 200_000), truncated: truncated || content.length > 200_000 })) {
+        record('failed', before, before, binary, truncated)
+        return `Alteração negada pelo usuário: ${relativePath}`
+      }
+      let writeStarted = false
+      try {
+        writeStarted = true
+        await fs.writeFile(target, content, { encoding: 'utf8', flag: 'w' })
+        const written = await fs.readFile(target)
+        const afterBinary = written.includes(0)
+        const after = afterBinary ? '' : written.subarray(0, 200_000).toString('utf8')
+        record('applied', before, after, binary || afterBinary, truncated || written.length > 200_000)
+      } catch (error) {
+        record(writeStarted ? 'unknown' : 'failed', before, '', binary, truncated)
+        throw error
+      }
       return `Arquivo salvo: ${relative(root, target)}`
     }
     if (name === 'group_members') return context.conversation.agentIds.map(id => { const agent = this.store.agent(id); return { name: agent.name, alias: `@${agent.alias}`, description: agent.description } })
-    if (name === 'browser_open') return this.browser.open(context.conversation.id, context.agent.id, args.url)
+    if (name === 'browser_open') {
+      if (!await this.requestApproval(context, 'browser', { action: `Abrir ${text(args.url, 2000)}` })) return 'Ação de navegador negada pelo usuário.'
+      return this.browser.open(context.conversation.id, context.agent.id, args.url)
+    }
     if (name === 'browser_observe') return this.browser.observe(context.conversation.id, context.agent.id)
-    if (name === 'browser_click' || name === 'browser_fill' || name === 'browser_key' || name === 'browser_scroll') return this.browser.act(context.conversation.id, context.agent.id, name.replace('browser_', ''), args)
+    if (name === 'browser_click' || name === 'browser_fill' || name === 'browser_key' || name === 'browser_scroll') {
+      if (!await this.requestApproval(context, 'browser', { action: `${name.replace('browser_', '')}: ${JSON.stringify(args).slice(0, 1000)}` })) return 'Ação de navegador negada pelo usuário.'
+      return this.browser.act(context.conversation.id, context.agent.id, name.replace('browser_', ''), args)
+    }
     if (name === 'ask_agent') {
       const requested = text(args.agent, 100).replace(/^@/, '').toLocaleLowerCase('pt-BR')
       const task = text(args.task, 5000)
@@ -295,11 +457,12 @@ export class AppService extends EventEmitter {
     let targetConversation: Conversation
     let request: Message, resultMessage: Message, originMessage: Message, child: Run, delegation: Delegation
     try {
-    targetConversation = this.store.saveConversation({ kind: 'direct', name: `Pedido: ${recipient.name} · ${taskLabel}`, agentIds: [recipient.id], directory: null })
+    targetConversation = this.store.saveConversation({ kind: 'direct', name: `Pedido: ${recipient.name} · ${taskLabel}`, agentIds: [recipient.id] })
     request = { id: randomUUID(), conversationId: targetConversation.id, agentId: parent.agent.id, author: `Pedido de ${parent.agent.name}`, role: 'activity', text: task, status: 'queued', runId: null, createdAt: now }
     resultMessage = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, author: recipient.name, role: 'assistant', text: '', status: 'queued', runId: null, createdAt: now }
     originMessage = { id: randomUUID(), conversationId: parent.conversation.id, agentId: recipient.id, author: recipient.name, role: 'activity', text: `Pedido para ${recipient.name}: ${task}\nAguardando execução na conversa privada do agente.`, status: 'queued', runId: null, relatedConversationId: targetConversation.id, createdAt: now }
-    child = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: [...parent.run.ancestry, recipient.id], status: 'queued', threadId: null, turnId: null, messageId: resultMessage.id, input: task, agent: recipient, directory: null, createdAt: now }
+    const targetWorkspace = this.store.workspace(targetConversation.workspaceId)
+    child = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: [...parent.run.ancestry, recipient.id], status: 'queued', threadId: null, turnId: null, messageId: resultMessage.id, input: task, agent: recipient, workspaceId: targetWorkspace.id, workspacePath: targetWorkspace.path, createdAt: now }
     delegation = { id: randomUUID(), idempotencyKey, rootRunId: parent.run.rootId, parentRunId: parent.run.id, childRunId: child.id, requesterAgentId: parent.agent.id, recipientAgentId: recipient.id, sourceConversationId: parent.conversation.id, targetConversationId: targetConversation.id, sourceMessageId: originMessage.id, requestMessageId: request.id, resultMessageId: resultMessage.id, task, status: 'queued', result: '', error: '', createdAt: now, updatedAt: now }
     request.delegationId = delegation.id; request.relatedConversationId = parent.conversation.id
     resultMessage.delegationId = delegation.id; resultMessage.relatedConversationId = parent.conversation.id
@@ -343,7 +506,8 @@ export class AppService extends EventEmitter {
     return result
   }
   dispose() {
+    clearInterval(this.statusTimer)
     for (const context of this.contexts.values()) if (context.flushTimer) clearTimeout(context.flushTimer)
-    void this.browser.close(); this.runtime.close(); this.store.close()
+    void this.browser.close(); this.runtime.close(); this.claudeRuntime.close(); this.store.close()
   }
 }

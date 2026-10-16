@@ -29,6 +29,7 @@ export default function AppShell() {
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [computerOpen, setComputerOpen] = useState(false)
   const [browserFrames, setBrowserFrames] = useState<BrowserFrame[]>([])
+  const [workspaceDiff, setWorkspaceDiff] = useState('')
   const [loading, setLoading] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
   useEffect(() => { selectedIdRef.current = selectedId; if (selectedId) setUnreadCounts(current => { if (!current[selectedId]) return current; const next = { ...current }; delete next[selectedId]; return next }) }, [selectedId])
@@ -38,16 +39,18 @@ export default function AppShell() {
   const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
   const selectedProject = selected?.projectId ? snapshot.projects.find(project => project.id === selected.projectId) : undefined
   const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(data); setSelectedId(current => data.conversations.some(item => item.id === current) ? current : data.conversations.find(item => !item.archived)?.id || '') } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
-  useEffect(() => { void refresh(); void window.appAPI.models().then(data => { setModels(data); setSelectedModelName(current => current || data.find(item => item.isDefault)?.name || data[0]?.name || '') }).catch(error => setNotice(`Não foi possível carregar os modelos do Codex: ${errorText(error)}`)); const off = window.appAPI.onEvent(event => { if (event.type === 'message') { setMessages(current => { const at = current.findIndex(item => item.id === event.message.id); if (at < 0) return [...current, event.message]; const next = [...current]; next[at] = event.message; return next }); const previousStatus = eventStatuses.current.get(event.message.id); if (previousStatus !== event.message.status) { eventStatuses.current.set(event.message.id, event.message.status); void refresh() } if (event.message.role !== 'user' && event.message.conversationId !== selectedIdRef.current && !seenIncomingIds.current.has(event.message.id)) { seenIncomingIds.current.add(event.message.id); setUnreadCounts(current => ({ ...current, [event.message.conversationId]: (current[event.message.conversationId] || 0) + 1 })) } } else if (event.type === 'changed') void refresh(); else if (event.type === 'browser') setBrowserFrames(current => { const at = current.findIndex(frame => frame.key === event.frame.key); if (at < 0) return [...current, event.frame]; const next = [...current]; next[at] = event.frame; return next }) }); return off }, [refresh])
+  useEffect(() => { void refresh(); void window.appAPI.models().then(data => { setModels(data); setSelectedModelName(current => current || data.find(item => item.isDefault)?.name || data[0]?.name || '') }).catch(error => setNotice(`Não foi possível carregar os modelos do Codex: ${errorText(error)}`)); const off = window.appAPI.onEvent(event => { if (event.type === 'message') { setMessages(current => { const at = current.findIndex(item => item.id === event.message.id); if (at < 0) return [...current, event.message]; const next = [...current]; next[at] = event.message; return next }); const previousStatus = eventStatuses.current.get(event.message.id); if (previousStatus !== event.message.status) { eventStatuses.current.set(event.message.id, event.message.status); void refresh() } if (event.message.role !== 'user' && event.message.conversationId !== selectedIdRef.current && !seenIncomingIds.current.has(event.message.id)) { seenIncomingIds.current.add(event.message.id); setUnreadCounts(current => ({ ...current, [event.message.conversationId]: (current[event.message.conversationId] || 0) + 1 })) } } else if (event.type === 'fileChange') setSnapshot(current => ({ ...current, fileChanges: [...current.fileChanges.filter(item => item.id !== event.fileChange.id), event.fileChange] })); else if (event.type === 'approval') setSnapshot(current => ({ ...current, approvals: [...current.approvals.filter(item => item.id !== event.approval.id), event.approval] })); else if (event.type === 'changed') void refresh(); else if (event.type === 'browser') setBrowserFrames(current => { const at = current.findIndex(frame => frame.key === event.frame.key); if (at < 0) return [...current, event.frame]; const next = [...current]; next[at] = event.frame; return next }) }); return off }, [refresh])
   useEffect(() => { let live = true; if (!selected) { setMessages([]); return } window.appAPI.history(selected.id).then(data => { if (live) setMessages(data) }).catch(error => setNotice(errorText(error))); return () => { live = false } }, [selected?.id])
+  useEffect(() => { void window.appAPI.setVisibleConversation(selected?.id || null) }, [selected?.id])
   const refreshBrowser = useCallback(async () => { if (!selected) { setBrowserFrames([]); return } try { setBrowserFrames(await window.appAPI.browserFrames(selected.id)) } catch (error) { setNotice(errorText(error)) } }, [selected?.id])
   useEffect(() => { void refreshBrowser() }, [refreshBrowser])
+  useEffect(() => { if (!selected?.workspaceId) { setWorkspaceDiff(''); return } window.appAPI.workspaceDiff(selected.workspaceId).then(setWorkspaceDiff).catch(error => setNotice(errorText(error))) }, [selected?.workspaceId, snapshot.workspaces, snapshot.fileChanges])
   useEffect(() => { const timeout = window.setTimeout(() => setNotice(''), 6000); return () => window.clearTimeout(timeout) }, [notice])
   const saveAgent = async (data: EditorData) => { const agent = await window.appAPI.saveAgent(data as Partial<Agent>); await refresh(); if (!data.id) setNotice(`${agent.name} já pode participar de uma conversa.`) }
   const saveConversation = async (data: EditorData) => { const conversation = await window.appAPI.saveConversation(data as Partial<Conversation>); await refresh(); setSelectedId(conversation.id) }
   const updateParticipants = async (agentIds: string[]) => { if (!selected) return; try { await window.appAPI.saveConversation({ id: selected.id, agentIds, kind: agentIds.length > 1 ? 'group' : 'direct' }); await refresh() } catch (error) { setNotice(errorText(error)) } }
-  const saveProject = async (data: EditorData) => { const project = await window.appAPI.saveProject(data as Partial<Project>); await refresh(); if (!data.id) await startConversation(project.id) }
-  const startConversation = async (projectId: string | null) => { try { const conversation = await window.appAPI.saveConversation({ projectId }); await refresh(); setSelectedId(conversation.id) } catch (error) { setNotice(errorText(error)) } }
+  const saveProject = async (data: EditorData) => { const project = await window.appAPI.saveProject(data as Partial<Project> & { workspacePath?: string | null }); await refresh(); if (!data.id) await startConversation(project.id) }
+  const startConversation = async (projectId: string | null, workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ projectId, workspaceId }); await refresh(); setSelectedId(conversation.id) } catch (error) { setNotice(errorText(error)) } }
   const openAgent = async (agent: Agent, newConversation = false) => {
     const previous = snapshot.conversations.filter(item => !item.archived && item.kind === 'direct' && item.agentIds.length === 1 && item.agentIds[0] === agent.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
     if (previous && !newConversation) { setSelectedId(previous.id); return }
@@ -99,6 +102,8 @@ export default function AppShell() {
           <div className="flex min-h-0 flex-1 flex-col">
             <MessageList
               messages={messages}
+              fileChanges={snapshot.fileChanges.filter(change => messages.some(message => message.runId === change.runId))}
+              approvals={snapshot.approvals.filter(approval => messages.some(message => message.runId === approval.runId))}
               conversations={snapshot.conversations}
               agentOf={agentOf}
               selectedAgents={selectedAgents}
@@ -122,10 +127,11 @@ export default function AppShell() {
         agents={snapshot.agents}
         onRefreshBrowser={() => void refreshBrowser()}
         onChanged={setNotice}
-        directory={selected?.directory}
+        workspaceId={selected?.workspaceId}
+        workspaceDiff={workspaceDiff}
       />}
     </div>
     {notice && <div role="status" className="fixed bottom-5 right-5 z-[60] max-w-md rounded-xl border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-xl">{notice}</div>}
-    {editor && <Editor kind={editor.kind} initial={editor.initial} projectId={editor.projectId} defaultAgentIds={editor.projectId ? snapshot.projects.find(project => project.id === editor.projectId)?.defaultAgentIds : undefined} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'project' ? saveProject : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
+    {editor && <Editor kind={editor.kind} initial={editor.initial} projectId={editor.projectId} defaultAgentIds={editor.projectId ? snapshot.projects.find(project => project.id === editor.projectId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'project' ? saveProject : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
   </div>
 }

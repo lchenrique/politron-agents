@@ -5,7 +5,7 @@ import { Editor } from './Editor'
 
 const agent = (id: string, name: string): Agent => ({
   id, name, alias: name.toLowerCase(), description: 'Especialista', instructions: 'Instruções do agente',
-  runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false,
+  runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask',
   revision: 1, createdAt: '2026-10-16T12:00:00.000Z',
 })
 

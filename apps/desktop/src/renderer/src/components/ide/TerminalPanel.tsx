@@ -1,33 +1,13 @@
 import { useEffect, useRef, useState, memo } from "react";
-import { useAtomValue } from "jotai";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { activeTeamAtom } from "@/hooks/atoms";
 
-const RealTerminal = memo(({ directory }: { directory?: string | null }) => {
+const RealTerminal = memo(({ workspaceId }: { workspaceId?: string | null }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const vibeAPIRef = useRef<any>(null);
-  const activeTeam = useAtomValue(activeTeamAtom);
-  const activeDirectory = directory !== undefined ? directory : activeTeam?.projectPath;
-  const hasNavigatedRef = useRef(false);
-  const lastProjectPathRef = useRef<string | null>(null);
-  const [platform, setPlatform] = useState<string>('win32'); // default to win32
-
-  const buildNavigationCommand = (targetPath: string) => {
-    if (platform === 'win32') {
-      return `Set-Location -LiteralPath "${targetPath.replace(/"/g, '""')}"\r`;
-    }
-
-    return `cd "${targetPath.replace(/"/g, '\\"')}"\n`;
-  };
-
-  // Get platform on mount
-  useEffect(() => {
-    if (window.vibeAPI?.platform) setPlatform(window.vibeAPI.platform);
-  }, []);
 
   const getThemeColors = () => {
     const style = getComputedStyle(document.documentElement);
@@ -50,7 +30,7 @@ const RealTerminal = memo(({ directory }: { directory?: string | null }) => {
   };
 
   useEffect(() => {
-    if (!terminalRef.current || !activeDirectory) return;
+    if (!terminalRef.current || !workspaceId) return;
 
     // Initialize xterm.js
     const term = new Terminal({
@@ -79,7 +59,7 @@ const RealTerminal = memo(({ directory }: { directory?: string | null }) => {
       vibeAPI.terminal.create({
         rows: term.rows,
         cols: term.cols,
-        cwd: activeDirectory
+        workspaceId
       });
 
       const unbindData = vibeAPI.terminal.onData((data: string) => {
@@ -111,9 +91,6 @@ const RealTerminal = memo(({ directory }: { directory?: string | null }) => {
         attributeFilter: ['class', 'data-theme']
       });
 
-      hasNavigatedRef.current = false;
-      lastProjectPathRef.current = activeDirectory;
-
       return () => {
         unbindData();
         resizeObserver.disconnect();
@@ -125,27 +102,7 @@ const RealTerminal = memo(({ directory }: { directory?: string | null }) => {
     return () => {
       term.dispose();
     };
-  }, [activeDirectory]);
-
-  // Effect to handle project path changes - send cd command when activeTeam changes after initial mount
-  useEffect(() => {
-    if (!activeDirectory || !vibeAPIRef.current?.terminal || !xtermRef.current) return;
-
-    // Skip if same path or already navigated
-    if (activeDirectory === lastProjectPathRef.current || hasNavigatedRef.current) return;
-
-    // Small delay to ensure terminal is ready after project switch
-    const timer = setTimeout(() => {
-      if (vibeAPIRef.current?.terminal && activeDirectory) {
-        hasNavigatedRef.current = true;
-        lastProjectPathRef.current = activeDirectory;
-        const cdCommand = buildNavigationCommand(activeDirectory);
-        vibeAPIRef.current.terminal.write(cdCommand);
-      }
-    }, 150);
-
-    return () => clearTimeout(timer);
-  }, [activeDirectory, platform]);
+  }, [workspaceId]);
 
   return (
     <div className="flex-1 w-full h-full bg-background overflow-hidden relative">
@@ -180,11 +137,9 @@ const TerminalPlaceholder = () => (
   </div>
 );
 
-const TerminalPanel = memo(({ directory, showLogs = true }: { directory?: string | null; showLogs?: boolean }) => {
+const TerminalPanel = memo(({ workspaceId, showLogs = true }: { workspaceId?: string | null; showLogs?: boolean }) => {
   const [activeTab, setActiveTab] = useState("terminal");
-  const activeTeam = useAtomValue(activeTeamAtom);
-  const activeDirectory = directory !== undefined ? directory : activeTeam?.projectPath;
-  const hasProject = !!activeDirectory;
+  const hasProject = !!workspaceId;
 
   return (
     <div className="flex flex-col h-full flex-1 min-h-[150px]">
@@ -206,7 +161,7 @@ const TerminalPanel = memo(({ directory, showLogs = true }: { directory?: string
 
       <div className="flex-1 relative overflow-hidden h-full">
         <div className={`h-full ${activeTab === "terminal" ? "block" : "hidden"}`}>
-          {hasProject ? <RealTerminal directory={activeDirectory} /> : <TerminalPlaceholder />}
+          {hasProject ? <RealTerminal workspaceId={workspaceId} /> : <TerminalPlaceholder />}
         </div>
 
         <div className={`flex-1 overflow-y-auto p-2.5 flex flex-col gap-0.5 scrollbar-thin h-full ${activeTab === "logs" ? "block" : "hidden"}`}>
