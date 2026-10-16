@@ -180,7 +180,7 @@ Atualizar a cada fase: data, commit, o que foi provado (testes, integração rea
 
 | Fase | Estado | Commit | Evidência | Pendências |
 | --- | --- | --- | --- | --- |
-| 0 Limpeza | pendente | | | |
+| 0 Limpeza | em validação | commits `9fdb67a` a `0b78d2b` | `npm ci` concluído; `npm run typecheck` passou; `npm test` passou (18 aprovados, 1 integração pulada); `npm run test:codex` passou (19 aprovados); `npm run build` passou; `npm run dev` compilou main/preload e registrou janela mostrada | Captura de tela não obtida: a sessão não expõe janela nativa nem navegador pelo Computer Use. `npm run lint` falhou com 26 erros e 7 avisos. O teste real emite aviso EPERM ao tentar remover diretório temporário, apesar de passar. Build emite avisos de PostCSS e diretivas `use client`. |
 | 1 Navegação | pendente | | | |
 | 2 Workspaces | pendente | | | |
 | 3 Diff | pendente | | | |
