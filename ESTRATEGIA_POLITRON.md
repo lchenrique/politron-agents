@@ -13,24 +13,25 @@ Resultado esperado para o usuário: abrir o app, escolher um projeto, abrir um w
 
 ## 2. Modelo de domínio unificado
 
+**Atualizado em 16/10/2026:** Projeto deixou de existir como entidade separada. O usuário pediu, em conversa, que Workspace vire o único nível organizador, igual à lista plana do Paseo, podendo ser criado com ou sem pasta pelo mesmo fluxo. Workspace agora carrega nome, instruções e equipe padrão próprios (o que antes era de Projeto); um worktree é um Workspace filho (`parentWorkspaceId`) do workspace que o originou. Conversa sempre pertence a um Workspace; quando esse workspace não tem nome (criado automaticamente, sem o usuário escolher), a conversa aparece solta no topo da barra lateral em vez de na árvore de Workspaces. Isso reabre o que a Fase 2 já havia implementado como "concluída" com Projeto + Workspace separados; a migração de esquema (4 para 5) funde os dois.
+
 ```mermaid
 flowchart TD
-  P[Projeto: nome, pasta raiz git opcional, instruções, equipe padrão] --> W1[Workspace local: checkout principal]
-  P --> W2[Workspace worktree: branch feat/login]
+  W1[Workspace com pasta: nome, instruções, equipe padrão] --> W2[Workspace worktree filho: branch feat/login]
   W1 --> C1[Conversa: Assistente]
   W2 --> C2[Conversa: equipe Forge + Sentinel]
   W2 --> T[Terminal do workspace]
+  WL[Workspace livre: sem pasta, só nome] --> C3[Conversa: tema qualquer]
   B[Bots: contatos globais] -.participam.-> C2
   B --> D[Conversa direta com o bot]
 ```
 
 | Entidade | Origem | Regras |
 | --- | --- | --- |
-| **Bot** (`Agent`) | MausBot | Identidade (nome, avatar, cor, descrição), instruções, motor e modelo, permissões (`canWrite`, `computerUse`, modo de aprovação). Global, não pertence a projeto. Clique abre conversa direta; editar perfil é ação separada. |
+| **Bot** (`Agent`) | MausBot | Identidade (nome, avatar, cor, descrição), instruções, motor e modelo, permissões (`canWrite`, `computerUse`, modo de aprovação). Global, não pertence a workspace. Clique abre conversa direta; editar perfil é ação separada. |
 | **Assistente** | GPT Desktop | Perfil embutido (`ASSISTANT_ID`), sem cadastro. Responde quando a conversa não tem participantes. |
-| **Projeto** | Paseo | Nome obrigatório; pasta raiz opcional (sem pasta = só conversa). Instruções compartilhadas, equipe padrão opcional. |
-| **Workspace** | Paseo | Pertence a um projeto com pasta. `kind: 'local' \| 'worktree'`, `path`, `branch`, `baseBranch`, `archived`. Todo projeto com pasta ganha automaticamente um workspace `local`. Worktree é opcional, criado pelo usuário para isolar uma frente de trabalho. |
-| **Conversa** | Ambos | Pertence a um workspace, a um projeto sem pasta ou a nada (avulsa/direta). Participantes próprios (zero = Assistente, um = só ele, vários = grupo). Título automático. |
+| **Workspace** | Paseo (unificado) | Nome, `kind: 'local' \| 'worktree' \| 'free'`, `path` (sempre real; gerenciado pelo app quando `free`), `branch`, `baseBranch`, `parentWorkspaceId` (worktree aponta pro workspace de origem), `instructions`, `defaultAgentIds`, `archived`. Criado com ou sem pasta pelo mesmo fluxo; sem pasta e sem nome = workspace privado automático, que fica fora da árvore até o usuário dar nome. |
+| **Conversa** | Ambos | Sempre pertence a um workspace (nunca solta no banco). Workspace sem nome = conversa some na lista plana do topo; workspace nomeado = conversa aparece na árvore de Workspaces. Participantes próprios (zero = Assistente, um = só ele, vários = grupo). Título automático. |
 | **Run / Sessão** | V9 atual | Sessão por conversa + participante + motor + revisão de contexto. Nunca compartilhada entre conversas. |
 | **Delegação** | MausBot + V9 | `ask_agent` com estado durável, deduplicação, cancelamento, sem ciclos (já implementado). |
 | **Alteração de arquivo** (`FileChange`) | Paseo | Registro persistido de cada escrita real com diff anterior/posterior, autor, run, estado. |
@@ -38,7 +39,7 @@ flowchart TD
 
 Regras de conversa que já valem e não mudam: mensagem humana sem menção aciona todos os participantes ativos; com menção, só os citados; respostas de bots não iniciam nova rodada; mudar participantes vale para o próximo envio, nunca redireciona turno em andamento.
 
-**Conflito de nomes:** hoje `WorkspaceService`, `WorkspaceAPI`, `workspaceAPI` e `features/workspace/Workspace.tsx` designam o app inteiro. Na Fase 0 renomear para `AppService`, `AppAPI`, `appAPI` e `features/app/AppShell.tsx`, liberando "Workspace" para o conceito do Paseo.
+**Conflito de nomes:** hoje `WorkspaceService`, `WorkspaceAPI`, `workspaceAPI` e `features/workspace/Workspace.tsx` designam o app inteiro. Na Fase 0 renomear para `AppService`, `AppAPI`, `appAPI` e `features/app/AppShell.tsx`, liberando "Workspace" para o conceito do Paseo. **(Feito na Fase 0.)**
 
 ## 3. Layout
 
@@ -186,7 +187,7 @@ Atualizar a cada fase: data, commit, o que foi provado (testes, integração rea
 | --- | --- | --- | --- | --- |
 | 0 Limpeza | em validação | commits `9fdb67a` a `0b78d2b` | `npm ci` concluído; `npm run typecheck` passou; `npm test` passou (18 aprovados, 1 integração pulada); `npm run test:codex` passou (19 aprovados); `npm run build` passou; `npm run dev` compilou main/preload e registrou janela mostrada | Captura de tela não obtida: a sessão não expõe janela nativa nem navegador pelo Computer Use. `npm run lint` falhou com 26 erros e 7 avisos. O teste real emite aviso EPERM ao tentar remover diretório temporário, apesar de passar. Build emite avisos de PostCSS e diretivas `use client`. |
 | 1 Navegação | concluída | `a708084`, auditoria `b41bf23` | `npm test`: 24 aprovados, 1 integração Codex ignorada; typecheck e build aprovados; Electron aberto com capturas em temas escuro, claro e Cyberpunk; composer central com desvio 0 px; Pits visível em SVG e sem animação com `prefers-reduced-motion`; configurações, retorno à conversa e clique em agente testados | Avisos existentes do Vite/PostCSS e diretivas `use client` no build. |
-| 2 Workspaces | concluída em 16/10/2026 | `091a6d4`, auditoria `b41bf23` | Migração 3→4 com backup e recusa de esquema futuro; worktrees Git em `<projeto>/<branch>`; teste ponta a ponta de duas conversas escrevendo em paralelo sem cruzar arquivos; fila serial por workspace; terminal Electron abriu em `C:\Users\lchen\orca\kairos`, igual ao caminho resolvido do `workspaceId`; arquivamento pede confirmação e preserva worktree sujo | Avisos de dependências e PostCSS continuam no build. |
+| 2 Workspaces | revisada em 16/10/2026 | `091a6d4` (Projeto+Workspace separados), `3d8a404` (fusão em Workspace único) | Migração 3→4→5 com backup e recusa de esquema futuro, cobrindo os dois formatos legados; worktrees Git como workspace filho (`parentWorkspaceId`); teste ponta a ponta de duas conversas escrevendo em paralelo sem cruzar arquivos; fila serial por workspace; terminal resolve pasta pelo `workspaceId`; arquivamento pede confirmação e preserva worktree sujo; exclusão real (não só arquivar) de workspace/conversa/agente com cascata testada; `npm test` 44 aprovados/2 ignorados (suíte completa, sem falhas), typecheck e build aprovados; captura real do Electron confirma árvore de Workspaces e conversas soltas no topo | Fusão Projeto→Workspace foi decisão do usuário em conversa, não do documento original; UI/UX de deleção e colapso ainda não teve rodada de revisão visual dedicada (só a captura funcional). |
 | 3 Diff | concluída em 16/10/2026 | `091a6d4`, auditoria `b41bf23` | `FileChange` persistido/idempotente; UI de diff e cartão de aprovação cobertos por teste; falha inclusive em caminho fora do workspace registrada; criar/editar/sem mudança/repetir/dois autores/arquivo grande/binário/reiniciar; painel direito contra `HEAD` | Diff binário é identificado, sem conteúdo textual. |
 | 4 Aprovações | concluída em 16/10/2026 | `091a6d4`, `cd5a94a`, auditoria `b41bf23` | Perguntar/automático para bots e Assistente; permissões do Assistente persistidas e desligadas por padrão; escrita e abertura do navegador sob aprovação; aprovar/negar/cancelar; reinício converte aprovação, run e mensagem em interrompidos sem gravar/reexecutar; badges inline de conversa/workspace; aviso também para falha; suíte atual 42 aprovados/2 ignorados, typecheck e build aprovados | Notificação do Windows depende de suporte do sistema. |
 | 5 Claude | concluída em 16/10/2026 | `091a6d4`, auditoria `b41bf23` | `AgentRuntime.send` compartilhado por Codex e Claude; SDK com MCP do app e ferramentas nativas de escrita/shell bloqueadas; chave em `safeStorage`; motor/modelo/esforço persistidos e perfis; retomada por ID; simulado cobre resposta, diff e Claude→Codex; teste condicional da trilha Claude real; validação transversal: typecheck/build aprovados, `npm test` 41 aprovados/2 ignorados, `npm run test:codex` 42 aprovados/1 ignorado e delegação Codex real aprovada | Integração real Claude não executada: `ANTHROPIC_API_KEY` ausente e `POLITRON_RUN_CLAUDE_INTEGRATION` vazio. O teste real Codex passou com aviso `EPERM` ao limpar pasta temporária. |
