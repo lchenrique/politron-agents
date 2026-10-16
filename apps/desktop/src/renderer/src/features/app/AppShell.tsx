@@ -1,100 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { ArrowUp, Bot, Folder, FolderOpen, FolderPlus, Globe, MessageSquarePlus, MousePointer2, Plus, RotateCcw, Settings2, Sparkles, Users, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Bot, FolderPlus, MessageSquarePlus, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import TitleBar from '@/components/ide/TitleBar'
-import TerminalPanel from '@/components/ide/TerminalPanel'
-import AI_Prompt from '@/components/kokonutui/ai-prompt'
 import { ASSISTANT_ID, type Agent, type BrowserFrame, type Conversation, type Message, type Model, type Project, type Snapshot } from '../../../../shared/v9'
-
-const assistantPlaceholder: Agent = { id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: '', instructions: '', runtime: 'codex', model: '', color: '#6366f1', avatar: '', canWrite: false, computerUse: false, revision: 1, createdAt: '' }
-const emptySnapshot: Snapshot = { assistant: assistantPlaceholder, agents: [], projects: [], conversations: [], messages: [], runs: [] }
-const errorText = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível concluir essa ação.'
-const aliasFor = (name: string) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-')
-
-function BrowserPanel({ frames, agents, onRefresh, onChanged }: { frames: BrowserFrame[]; agents: Agent[]; onRefresh: () => void; onChanged: (value: string) => void }) {
-  const [typing, setTyping] = useState('')
-  const [working, setWorking] = useState(false)
-  const act = async (frame: BrowserFrame, action: { type: 'click' | 'type' | 'scroll' | 'key' | 'refresh'; x?: number; y?: number; text?: string }) => { setWorking(true); try { await window.appAPI.browserAction(frame.key, action); onRefresh() } catch (error) { onChanged(errorText(error)) } finally { setWorking(false) } }
-  if (!frames.length) return <div className="flex h-full flex-col items-center justify-center px-6 text-center"><span className="mb-3 flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Globe className="size-5" /></span><h3 className="text-sm font-medium">Navegador dos agentes</h3><p className="mt-2 max-w-[250px] text-xs leading-5 text-muted-foreground">Ative Computer Use nas configurações de um agente. Quando ele abrir uma página, ela aparecerá aqui com um cursor próprio.</p></div>
-  return <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto p-3">{frames.map(frame => { const agent = agents.find(item => item.id === frame.agentId); return <section key={frame.key} className="overflow-hidden rounded-xl border border-border/70 bg-background"><div className="flex items-center gap-2 border-b border-border/60 px-3 py-2"><span className="size-2 rounded-full" style={{ background: agent?.color || '#7565e8' }} /><span className="min-w-0 flex-1 truncate text-xs font-medium">{agent?.name || 'Agente'}</span><button className={`rounded-md px-2 py-1 text-[10px] ${frame.human ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent'}`} onClick={() => void window.appAPI.browserControl(frame.key, !frame.human).then(onRefresh).catch(error => onChanged(errorText(error)))}>{frame.human ? 'Devolver controle' : 'Assumir controle'}</button></div><div className="relative mx-auto w-full bg-muted" onWheel={event => { event.preventDefault(); if (frame.human) void act(frame, { type: 'scroll', y: event.deltaY }) }}><img src={frame.image} alt={`Página aberta por ${agent?.name || 'agente'}`} className={`block h-auto w-full ${frame.human ? 'cursor-crosshair' : ''}`} onClick={event => { if (!frame.human) return; const rect = event.currentTarget.getBoundingClientRect(); void act(frame, { type: 'click', x: (event.clientX - rect.left) * frame.width / rect.width, y: (event.clientY - rect.top) * frame.height / rect.height }) }} />{frame.x !== null && frame.y !== null && <span className="pointer-events-none absolute z-10 flex -translate-x-1 -translate-y-1 items-start" style={{ left: `${frame.x / frame.width * 100}%`, top: `${frame.y / frame.height * 100}%` }}><MousePointer2 className="size-5 fill-black stroke-white drop-shadow" style={{ color: agent?.color || '#7565e8' }} /><span className="ml-1 mt-3 rounded bg-black/80 px-1.5 py-0.5 text-[9px] text-white">{agent?.name || 'Agente'}</span></span>}</div><div className="flex min-w-0 items-center gap-1.5 border-t border-border/60 px-2.5 py-2"><span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground" title={frame.url}>{frame.url || 'about:blank'}</span><span className="shrink-0 text-[9px] text-muted-foreground">{frame.action}</span></div>{frame.human && <div className="flex gap-1.5 p-2"><input value={typing} onChange={event => setTyping(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && typing) { void act(frame, { type: 'type', text: typing }); setTyping('') } }} className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs" placeholder="Digitar na página…" /><Button variant="outline" size="icon" className="size-8" disabled={working} aria-label="Digitar texto" onClick={() => { void act(frame, { type: 'type', text: typing }); setTyping('') }}><ArrowUp className="size-3.5" /></Button><Button variant="outline" size="icon" className="size-8" disabled={working} aria-label="Atualizar página" onClick={() => void act(frame, { type: 'refresh' })}><RotateCcw className="size-3.5" /></Button></div>}</section> })}</div>
-}
-
-function Avatar({ agent, size = 'sm' }: { agent?: Agent; size?: 'sm' | 'md' }) {
-  const classes = size === 'md' ? 'size-9 text-sm' : 'size-7 text-[10px]'
-  return <span className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/60 font-semibold ${classes}`} style={{ backgroundColor: agent?.color || 'hsl(var(--muted))', color: 'white' }}>
-    {agent?.avatar ? <img className="size-full object-cover" src={agent.avatar} alt="" /> : agent?.name?.slice(0, 1).toLocaleUpperCase('pt-BR') || <Bot className="size-4" />}
-  </span>
-}
-
-type EditorKind = 'agent' | 'conversation' | 'project'
-type EditorData = Partial<Agent> | Partial<Conversation> | Partial<Project>
-
-function Editor({ kind, agents, models, initial, projectId, defaultAgentIds, onClose, onSave, onPickFolder }: {
-  kind: EditorKind; agents: Agent[]; models: Model[]; initial?: Agent | Conversation | Project; projectId?: string | null; defaultAgentIds?: string[];
-  onClose: () => void; onSave: (data: EditorData) => Promise<void>; onPickFolder: () => Promise<string | null>
-}) {
-  const editing = !!initial
-  const [name, setName] = useState(initial?.name || '')
-  const [alias, setAlias] = useState((initial as Agent | undefined)?.alias || '')
-  const [description, setDescription] = useState((initial as Agent | undefined)?.description || '')
-  const [instructions, setInstructions] = useState((initial as Agent | undefined)?.instructions || '')
-  const [model, setModel] = useState((initial as Agent | undefined)?.model || '')
-  const [color, setColor] = useState((initial as Agent | undefined)?.color || '#7565e8')
-  const [avatar, setAvatar] = useState((initial as Agent | undefined)?.avatar || '')
-  const [canWrite, setCanWrite] = useState((initial as Agent | undefined)?.canWrite || false)
-  const [computerUse, setComputerUse] = useState((initial as Agent | undefined)?.computerUse || false)
-  const originalConversation = kind === 'conversation' ? initial as Conversation | undefined : undefined
-  const originalProject = kind === 'project' ? initial as Project | undefined : undefined
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(originalConversation?.agentIds || originalProject?.defaultAgentIds || defaultAgentIds || [])
-  const [directory, setDirectory] = useState(originalConversation?.directory || originalProject?.directory || '')
-  const [problem, setProblem] = useState('')
-  const [saving, setSaving] = useState(false)
-  const uploadRef = useRef<HTMLInputElement>(null)
-  const chooseAvatar = (file?: File) => {
-    if (!file) return
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 1_400_000) { setProblem('Escolha uma imagem PNG, JPG ou WebP de até 1,4 MB.'); return }
-    const reader = new FileReader(); reader.onload = () => setAvatar(String(reader.result || '')); reader.readAsDataURL(file)
-  }
-  const submit = async () => {
-    setSaving(true); setProblem('')
-    try {
-      if (kind === 'agent') await onSave({ ...(initial ? { id: initial.id } : {}), name, alias: alias || aliasFor(name), description, instructions, model, color, avatar, canWrite, computerUse, runtime: 'codex' })
-      else if (kind === 'project') await onSave({ ...(initial ? { id: initial.id } : {}), name, instructions, defaultAgentIds: selectedAgents, directory: directory || null })
-      else await onSave({ ...(initial ? { id: initial.id } : { projectId: projectId ?? null }), name: name.trim() ? name : undefined, kind: selectedAgents.length > 1 || (originalConversation?.kind === 'group' && selectedAgents.length) ? 'group' : 'direct', agentIds: selectedAgents, directory: directory || null, archived: originalConversation?.archived || false })
-      onClose()
-    } catch (error) { setProblem(errorText(error)) } finally { setSaving(false) }
-  }
-  const toggleAgent = (id: string) => setSelectedAgents(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <section role="dialog" aria-modal="true" aria-labelledby="workspace-editor-title" className="w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-background text-foreground shadow-2xl">
-      <header className="flex items-center justify-between border-b border-border/70 px-5 py-4">
-        <div><h2 id="workspace-editor-title" className="font-semibold">{kind === 'agent' ? editing ? 'Editar agente' : 'Criar agente' : kind === 'project' ? editing ? 'Editar projeto' : 'Novo projeto' : editing ? 'Editar conversa' : 'Nova conversa com equipe'}</h2><p className="mt-1 text-xs text-muted-foreground">{kind === 'agent' ? 'Defina como ele trabalha e quais recursos pode usar.' : kind === 'project' ? 'Pasta, instruções e equipe padrão são herdadas pelas novas conversas do projeto.' : 'Sem participantes, o Assistente padrão responde. Escolha agentes para formar uma equipe.'}</p></div>
-        <Button variant="ghost" size="icon" aria-label="Fechar" onClick={onClose}><X /></Button>
-      </header>
-      <div className="max-h-[72vh] space-y-4 overflow-y-auto px-5 py-4">
-        <label className="block space-y-1.5 text-sm">Nome<input autoFocus value={name} onChange={event => { setName(event.target.value); if (kind === 'agent' && !editing) setAlias(aliasFor(event.target.value)) }} className="h-10 w-full rounded-lg border border-input bg-background px-3" placeholder={kind === 'agent' ? 'Por exemplo, Revisora' : kind === 'project' ? 'Nome do projeto' : 'Opcional; o título vem da primeira mensagem'} /></label>
-        {kind === 'agent' ? <>
-          <label className="block space-y-1.5 text-sm">Menção<input value={alias} onChange={event => setAlias(aliasFor(event.target.value))} className="h-10 w-full rounded-lg border border-input bg-background px-3" placeholder="revisora" /></label>
-          <label className="block space-y-1.5 text-sm">Descrição<input value={description} onChange={event => setDescription(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-3" placeholder="Especialidade em uma linha" /></label>
-          <label className="block space-y-1.5 text-sm">Instruções<textarea value={instructions} onChange={event => setInstructions(event.target.value)} rows={5} className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2" placeholder="Explique como esse agente deve trabalhar" /></label>
-          <label className="block space-y-1.5 text-sm">Modelo<select value={model} onChange={event => setModel(event.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-3"><option value="">Padrão do Codex</option>{models.map(item => <option key={item.id} value={item.id}>{item.name}{item.isDefault ? ' · padrão' : ''}</option>)}</select></label>
-          <div className="flex items-center gap-3"><button type="button" onClick={() => uploadRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent"><Avatar agent={{ id: '', name, alias, description, instructions, model, runtime: 'codex', color, avatar, canWrite, computerUse, revision: 0, createdAt: '' }} size="md" /> Personalizar avatar</button><input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => chooseAvatar(event.target.files?.[0])} /><input aria-label="Cor do agente" type="color" value={color} onChange={event => setColor(event.target.value)} className="size-10 cursor-pointer rounded-lg border border-border bg-background p-1" /></div>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 p-3 text-sm"><input type="checkbox" checked={canWrite} onChange={event => setCanWrite(event.target.checked)} className="mt-1 accent-primary" /><span><span className="block font-medium">Pode editar arquivos da pasta do grupo</span><span className="mt-0.5 block text-xs text-muted-foreground">O acesso continua limitado à pasta escolhida nesta conversa.</span></span></label>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/70 p-3 text-sm"><input type="checkbox" checked={computerUse} onChange={event => setComputerUse(event.target.checked)} className="mt-1 accent-primary" /><span><span className="block font-medium">Permitir Computer Use</span><span className="mt-0.5 block text-xs text-muted-foreground">Este agente pode navegar em uma sessão isolada e mostrar cada ação com seu cursor.</span></span></label>
-        </> : <>
-          {kind === 'project' && <label className="block space-y-1.5 text-sm">Instruções do projeto<textarea value={instructions} onChange={event => setInstructions(event.target.value)} rows={4} className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2" placeholder="Opcional; valem para todas as conversas do projeto" /></label>}
-          <div className="space-y-1.5 text-sm"><span>{kind === 'project' ? 'Equipe padrão (opcional)' : 'Participantes (opcional)'}</span><div className="max-h-44 space-y-1 overflow-auto rounded-lg border border-border p-2">{agents.length ? agents.map(agent => <label key={agent.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 hover:bg-accent/60"><input type="checkbox" checked={selectedAgents.includes(agent.id)} onChange={() => toggleAgent(agent.id)} className="accent-primary" /><Avatar agent={agent} /><span className="min-w-0 flex-1 truncate">{agent.name}</span><span className="text-xs text-muted-foreground">@{agent.alias}</span></label>) : <p className="px-2 py-3 text-xs text-muted-foreground">Nenhum agente cadastrado; o Assistente padrão cuida da conversa.</p>}</div></div>
-          <label className="block space-y-1.5 text-sm">{kind === 'project' ? 'Pasta do projeto' : 'Pasta da conversa'}<div className="flex gap-2"><input readOnly value={directory} className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-xs" placeholder="Opcional; uma pasta privada será usada sem seleção" /><Button type="button" variant="outline" onClick={async () => { try { setDirectory(await onPickFolder() || directory) } catch (error) { setProblem(errorText(error)) } }}><FolderOpen className="size-4" /> Escolher</Button></div></label>
-        </>}
-        {problem && <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{problem}</p>}
-      </div>
-      <footer className="flex justify-end gap-2 border-t border-border/70 px-5 py-4"><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button onClick={() => void submit()} disabled={saving || (kind !== 'conversation' && !name.trim()) || (kind === 'agent' && !instructions.trim())}>{saving ? 'Salvando…' : editing ? 'Salvar' : kind === 'agent' ? 'Criar agente' : kind === 'project' ? 'Criar projeto' : 'Criar conversa'}</Button></footer>
-    </section>
-  </div>
-}
+import { Sidebar } from '../sidebar/Sidebar'
+import { ChatHeader } from '../chat/ChatHeader'
+import { MessageList } from '../chat/MessageList'
+import { Composer } from '../composer/Composer'
+import { SidePanel } from '../panels/SidePanel'
+import { Editor, type EditorData, type EditorKind } from '../editors/Editor'
+import { emptySnapshot, errorText } from './appShellShared'
 
 export default function AppShell() {
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot)
@@ -109,8 +24,7 @@ export default function AppShell() {
   const [loading, setLoading] = useState(true)
   const selected = snapshot.conversations.find(item => item.id === selectedId) || snapshot.conversations.find(item => !item.archived)
   const selectedAgents = useMemo(() => !selected ? [] : selected.agentIds.length ? selected.agentIds.map(id => snapshot.agents.find(agent => agent.id === id)).filter((agent): agent is Agent => !!agent) : [snapshot.assistant], [selected, snapshot.agents, snapshot.assistant])
-  const agentOf = (id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined
-  const conversationsOf = (projectId: string | null) => snapshot.conversations.filter(item => !item.archived && item.projectId === projectId)
+  const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
   const selectedProject = selected?.projectId ? snapshot.projects.find(project => project.id === selected.projectId) : undefined
   const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(data); setSelectedId(current => data.conversations.some(item => item.id === current) ? current : data.conversations.find(item => !item.archived)?.id || '') } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => { void refresh(); void window.appAPI.models().then(setModels).catch(error => setNotice(`Não foi possível carregar os modelos do Codex: ${errorText(error)}`)); const off = window.appAPI.onEvent(event => { if (event.type === 'message') setMessages(current => { const at = current.findIndex(item => item.id === event.message.id); if (at < 0) return [...current, event.message]; const next = [...current]; next[at] = event.message; return next }); else if (event.type === 'changed') void refresh(); else if (event.type === 'browser') setBrowserFrames(current => { const at = current.findIndex(frame => frame.key === event.frame.key); if (at < 0) return [...current, event.frame]; const next = [...current]; next[at] = event.frame; return next }) }); return off }, [refresh])
@@ -132,42 +46,57 @@ export default function AppShell() {
     const selectedModel = models.find(item => item.name === modelName)?.id
     await window.appAPI.send(selected.id, input, selectedModel)
   }
-  const conversationButton = (conversation: Conversation) => <button key={conversation.id} onClick={() => setSelectedId(conversation.id)} className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${conversation.id === selected?.id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'}`}><span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-background/70">{conversation.agentIds.length ? <Users className="size-3.5" /> : <Sparkles className="size-3.5" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium">{conversation.name}</span><span className="block truncate text-[10px] opacity-70">{!conversation.agentIds.length ? 'Assistente' : conversation.kind === 'group' ? `${conversation.agentIds.length} agentes` : agentOf(conversation.agentIds[0])?.name}</span></span></button>
   const promptModels = useMemo(() => models.map(item => ({ name: item.name, description: item.isDefault ? 'Modelo padrão do Codex' : undefined })), [models])
+
   return <div className="flex h-dvh w-full flex-col overflow-hidden bg-background font-sans text-foreground">
     <TitleBar terminalOpen={terminalOpen} onToggleTerminal={() => setTerminalOpen(value => !value)} className="border-b border-border/50" />
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      <aside className="flex w-[270px] shrink-0 flex-col border-r border-border/60 bg-card/40">
-        <div className="flex items-center px-4 pb-3 pt-4"><div className="flex items-center gap-2"><span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary"><Bot className="size-4" /></span><span className="text-sm font-semibold tracking-tight">Politron</span></div></div>
-        <div className="px-3"><Button variant="outline" className="h-9 w-full justify-start gap-2 border-border/60 bg-background/70 text-sm" onClick={() => void startConversation(null)}><MessageSquarePlus className="size-4" /> Nova conversa</Button></div>
-        <div className="mt-5 flex items-center justify-between px-4"><span className="text-[11px] font-semibold uppercase tracking-[.12em] text-muted-foreground">Conversas</span><Button variant="ghost" size="icon" className="size-7" aria-label="Nova conversa com equipe" title="Nova conversa com equipe" onClick={() => setEditor({ kind: 'conversation', projectId: null })}><Users className="size-4" /></Button></div>
-        <nav aria-label="Conversas" className="mt-1 min-h-0 flex-1 space-y-0.5 overflow-auto px-2">
-          {conversationsOf(null).map(conversationButton)}
-          {!snapshot.conversations.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Clique em Nova conversa para falar com o Assistente. Não é preciso criar agente nem grupo.</p>}
-          <div className="mt-4 flex items-center justify-between px-2"><span className="text-[11px] font-semibold uppercase tracking-[.12em] text-muted-foreground">Projetos</span><Button variant="ghost" size="icon" className="size-7" aria-label="Novo projeto" title="Novo projeto" onClick={() => setEditor({ kind: 'project' })}><FolderPlus className="size-4" /></Button></div>
-          {snapshot.projects.filter(project => !project.archived).map(project => <div key={project.id} className="pt-1"><div className="group flex items-center gap-1.5 px-2 py-1 text-xs font-medium"><Folder className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate" title={project.directory || project.name}>{project.name}</span><Button variant="ghost" size="icon" className="size-6" aria-label={`Nova conversa em ${project.name}`} title="Nova conversa neste projeto" onClick={() => void startConversation(project.id)}><Plus className="size-3.5" /></Button><Button variant="ghost" size="icon" className="size-6" aria-label={`Editar projeto ${project.name}`} onClick={() => setEditor({ kind: 'project', initial: project })}><Settings2 className="size-3.5" /></Button></div>{conversationsOf(project.id).map(conversationButton)}{!conversationsOf(project.id).length && <p className="px-3 py-1 text-[10px] text-muted-foreground">Nenhuma conversa ainda.</p>}</div>)}
-        </nav>
-        <div className="border-t border-border/60 px-3 pb-3 pt-3"><div className="mb-2 flex items-center justify-between px-1"><span className="text-[11px] font-semibold uppercase tracking-[.12em] text-muted-foreground">Seus agentes</span><Button variant="ghost" size="icon" className="size-7" aria-label="Criar agente" onClick={() => setEditor({ kind: 'agent' })}><Plus className="size-4" /></Button></div><div className="max-h-40 space-y-0.5 overflow-auto">{snapshot.agents.map(agent => <button key={agent.id} onClick={() => setEditor({ kind: 'agent', initial: agent })} className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left hover:bg-accent/50"><Avatar agent={agent} /><span className="min-w-0 flex-1 truncate text-xs font-medium">{agent.name}</span><span className="text-[10px] text-muted-foreground">@{agent.alias}</span></button>)}{!snapshot.agents.length && <p className="px-2 py-2 text-xs text-muted-foreground">Crie seu primeiro agente.</p>}</div></div>
-        <button disabled={!selected?.directory} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => setNotice(errorText(error)))} className="flex items-center gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:cursor-default disabled:opacity-50"><FolderOpen className="size-3.5" /> Abrir pasta da conversa</button>
-      </aside>
+      <Sidebar
+        snapshot={snapshot}
+        selected={selected}
+        onSelectConversation={setSelectedId}
+        onStartConversation={startConversation}
+        onOpenEditor={setEditor}
+        onNotice={setNotice}
+      />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {selected ? <>
-          <header className="flex h-[58px] shrink-0 items-center justify-between border-b border-border/50 px-5"><div className="flex min-w-0 items-center gap-3"><div className="flex -space-x-2">{selectedAgents.slice(0, 4).map(agent => <span key={agent.id} className="rounded-full bg-background p-0.5"><Avatar agent={agent} /></span>)}</div><div className="min-w-0"><div className="truncate text-sm font-semibold">{selected.name}</div><div className="truncate text-[11px] text-muted-foreground">{[selectedProject?.name, selected.agentIds.length ? selectedAgents.map(agent => `@${agent.alias}`).join(' · ') : 'Assistente padrão'].filter(Boolean).join(' · ')}</div></div></div><div className="flex items-center gap-1"><Button variant="ghost" size="sm" className="max-w-52 gap-2 text-xs text-muted-foreground" title={selected.directory || 'Pasta privada da conversa'} onClick={() => void window.appAPI.openFolder(selected.id)}><FolderOpen className="size-3.5 shrink-0" /><span className="truncate">{selected.directory?.split(/[\\/]/).filter(Boolean).at(-1) || 'Pasta privada'}</span></Button><Button variant="ghost" size="icon" aria-label="Abrir navegador dos agentes" title="Computer Use" onClick={() => { setComputerOpen(true); setTerminalOpen(true) }}><Globe className="size-4" /></Button><Button variant="ghost" size="icon" aria-label="Editar participantes e pasta" onClick={() => setEditor({ kind: 'conversation', initial: selected })}><Settings2 className="size-4" /></Button></div></header>
+          <ChatHeader
+            selected={selected}
+            selectedAgents={selectedAgents}
+            selectedProject={selectedProject}
+            onOpenComputerUse={() => { setComputerOpen(true); setTerminalOpen(true) }}
+            onEditConversation={() => setEditor({ kind: 'conversation', initial: selected })}
+          />
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
-              <div className="mx-auto flex max-w-3xl flex-col gap-6">
-                {messages.map(message => { const agent = agentOf(message.agentId); const human = message.role === 'user'; const relatedConversation = message.relatedConversationId && snapshot.conversations.find(item => item.id === message.relatedConversationId); return <article key={message.id} className={`flex gap-3 ${human ? 'justify-end' : 'justify-start'}`}>{!human && <Avatar agent={agent} /> }<div className={`min-w-0 max-w-[85%] ${human ? 'rounded-2xl bg-accent px-4 py-3' : 'pt-0.5'}`}><div className={`mb-1.5 flex items-center gap-2 text-xs font-medium ${human ? 'justify-end text-muted-foreground' : 'text-foreground'}`}>{human ? 'Você' : agent?.name || message.author}{message.status === 'running' && <span className="font-normal text-muted-foreground">está trabalhando</span>}{message.status === 'queued' && <span className="font-normal text-muted-foreground">na fila</span>}{message.status === 'failed' && <span className="font-normal text-destructive">falhou</span>}{message.status === 'interrupted' && <span className="font-normal text-muted-foreground">cancelada</span>}</div>{human ? <div className="whitespace-pre-wrap text-sm leading-6">{message.text}</div> : message.role === 'activity' ? <><div className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{message.text}</div>{relatedConversation && <button onClick={() => setSelectedId(relatedConversation.id)} className="mt-2 text-xs font-medium text-primary underline-offset-4 hover:underline">Abrir conversa relacionada: {relatedConversation.name}</button>}{message.delegationId && ['queued', 'running', 'waiting'].includes(message.status) && <button onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(error => setNotice(errorText(error)))} className="ml-3 mt-2 text-xs font-medium text-destructive underline-offset-4 hover:underline">Cancelar pedido</button>}</> : <div className="prose prose-sm dark:prose-invert max-w-none break-words text-[14px] leading-6 prose-p:my-2 prose-pre:overflow-auto prose-pre:rounded-lg prose-pre:bg-muted prose-pre:p-3 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text || (message.status === 'running' ? ' ' : '')}</ReactMarkdown>{message.status === 'running' && !message.text && <span className="inline-block h-4 w-1 animate-pulse rounded bg-primary/70" />}</div>}</div>{human && <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-semibold">EU</span>}</article> })}
-                {!messages.length && <div className="mx-auto mt-[9vh] max-w-xl text-center"><div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Bot className="size-6" /></div><h1 className="text-xl font-semibold tracking-tight">O que vamos fazer hoje?</h1><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Escreva sua tarefa. Sem menção, todos os participantes recebem; use @menção para direcionar a mensagem.</p><div className="mt-5 flex flex-wrap justify-center gap-2">{selectedAgents.map(agent => <span key={agent.id} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 px-2.5 py-1 text-xs text-muted-foreground"><Avatar agent={agent} /> @{agent.alias}</span>)}</div></div>}
-              </div>
-            </div>
-            <div className="shrink-0 px-4 pb-4 pt-2 sm:px-8"><div className="mx-auto max-w-3xl"><AI_Prompt models={promptModels} defaultModel={models.find(item => item.isDefault)?.name || models[0]?.name} placeholder="Peça qualquer coisa ou use @ para escolher os agentes…" headerText="" commands={[]} onSubmit={submitMessage} onStop={() => void window.appAPI.stop(selected.id)} className="border-border/70 bg-card" /> <p className="mt-2 px-2 text-center text-[10px] text-muted-foreground">Agentes podem errar. Confira ações realizadas nos arquivos do grupo.</p></div></div>
+            <MessageList
+              messages={messages}
+              conversations={snapshot.conversations}
+              agentOf={agentOf}
+              selectedAgents={selectedAgents}
+              onOpenRelatedConversation={setSelectedId}
+              onNotice={setNotice}
+            />
+            <Composer
+              models={promptModels}
+              defaultModelName={models.find(item => item.isDefault)?.name || models[0]?.name}
+              onSubmit={submitMessage}
+              onStop={() => void window.appAPI.stop(selected.id)}
+            />
           </div>
         </> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><span className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Bot className="size-6" /></span><h1 className="text-xl font-semibold">Seu espaço de trabalho</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em projetos e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-5 flex justify-center gap-2"><Button onClick={() => void startConversation(null)}><MessageSquarePlus className="size-4" /> Nova conversa</Button><Button variant="outline" onClick={() => setEditor({ kind: 'project' })}><FolderPlus className="size-4" /> Novo projeto</Button><Button variant="outline" onClick={() => setEditor({ kind: 'agent' })}><Plus className="size-4" /> Criar agente</Button></div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
       </main>
-      {terminalOpen && <aside className="w-[380px] shrink-0 border-l border-border/60 bg-card/30">{computerOpen ? <div className="flex h-full min-h-0 flex-col"><div className="flex h-10 shrink-0 items-center justify-between border-b border-border/60 px-3"><span className="flex items-center gap-2 text-xs font-medium"><Globe className="size-3.5" /> Browser computer use</span><Button size="icon" variant="ghost" className="size-7" aria-label="Mostrar terminal" onClick={() => setComputerOpen(false)}><Settings2 className="size-3.5" /></Button></div><BrowserPanel frames={browserFrames.filter(frame => frame.conversationId === selected?.id)} agents={snapshot.agents} onRefresh={() => void refreshBrowser()} onChanged={setNotice} /></div> : <div className="h-full p-3"><TerminalPanel directory={selected?.directory} showLogs={false} /></div>}</aside>}
+      {terminalOpen && <SidePanel
+        computerOpen={computerOpen}
+        onCloseComputer={() => setComputerOpen(false)}
+        browserFrames={browserFrames.filter(frame => frame.conversationId === selected?.id)}
+        agents={snapshot.agents}
+        onRefreshBrowser={() => void refreshBrowser()}
+        onChanged={setNotice}
+        directory={selected?.directory}
+      />}
     </div>
     {notice && <div role="status" className="fixed bottom-5 right-5 z-[60] max-w-md rounded-xl border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-xl">{notice}</div>}
     {editor && <Editor kind={editor.kind} initial={editor.initial} projectId={editor.projectId} defaultAgentIds={editor.projectId ? snapshot.projects.find(project => project.id === editor.projectId)?.defaultAgentIds : undefined} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'project' ? saveProject : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
   </div>
 }
-
