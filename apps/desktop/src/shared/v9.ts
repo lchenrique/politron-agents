@@ -67,7 +67,7 @@ export interface AppAPI {
   saveConversation(input: Partial<Conversation>): Promise<Conversation>
   createLocalWorkspace(input: { projectId: string | null; path: string }): Promise<Workspace>
   createWorktree(input: { projectId: string; sourceWorkspaceId: string; branch: string; baseBranch?: string }): Promise<Workspace>
-  archiveWorkspace(workspaceId: string): Promise<void>
+  archiveWorkspace(workspaceId: string, preserveDirtyWorktree?: boolean): Promise<void>
   workspaceDiff(workspaceId: string): Promise<string>
   respondApproval(approvalId: string, approved: boolean): Promise<void>
   setVisibleConversation(conversationId: string | null): Promise<void>

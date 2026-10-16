@@ -13,7 +13,7 @@ export function registerV9Ipc(service: AppService) {
   invoke('saveConversation', (input) => service.saveConversation(input))
   invoke('createLocalWorkspace', (input) => service.createLocalWorkspace(input))
   invoke('createWorktree', (input) => service.createWorktree(input))
-  invoke('archiveWorkspace', (id) => service.archiveWorkspace(id))
+  invoke('archiveWorkspace', (id, preserveDirtyWorktree) => service.archiveWorkspace(id, preserveDirtyWorktree))
   invoke('workspaceDiff', (id) => service.workspaceDiff(id))
   invoke('respondApproval', (id, approved) => service.respondApproval(id, approved))
   invoke('setVisibleConversation', (id) => service.setVisibleConversation(id))

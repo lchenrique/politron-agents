@@ -77,12 +77,33 @@ describe('aprovações inline V9', () => {
     expect(existsSync(join(second.workspacePath, 'nota.txt'))).toBe(false)
   })
 
+  it('pede aprovação antes de abrir o navegador', async () => {
+    const { service, context } = setup()
+    const open = vi.spyOn(service.browser, 'open').mockResolvedValue({ key: 'browser-test', url: 'https://example.com', title: 'Example', text: '', screenshot: '' } as any)
+    const pendingNavigation = (service as any).callTool(context, 'browser_open', { url: 'https://example.com' }, 'browser-call') as Promise<string>
+    await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
+    expect(service.store.approvals()[0]).toMatchObject({ kind: 'browser', details: { action: 'Abrir https://example.com' } })
+    expect(open).not.toHaveBeenCalled()
+    await service.respondApproval(service.store.approvals()[0].id, false)
+    await expect(pendingNavigation).resolves.toContain('negada')
+    expect(open).not.toHaveBeenCalled()
+  })
+
   it('converte aprovações pendentes em interrompidas ao reiniciar, sem repetir a escrita', () => {
-    const data = directory(); const store = new WorkspaceStore(data)
-    const approval: Approval = { id: 'approval-pending', runId: 'run-pending', conversationId: 'conversation-pending', agentId: 'agent-pending', kind: 'write', details: { path: 'secret.txt', after: 'never write' }, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
-    store.putApproval(approval); store.close()
+    const data = directory(), workspacePath = directory(), store = new WorkspaceStore(data)
+    const agent = store.saveAgent({ name: 'Escritora', alias: 'escritora', instructions: 'Escreva com aprovação.' })
+    const conversation = store.saveConversation({ name: 'Pendente', agentIds: [agent.id], workspacePath })
+    const workspace = store.workspace(conversation.workspaceId)
+    const now = new Date().toISOString()
+    const message = { id: 'message-pending', conversationId: conversation.id, agentId: agent.id, author: agent.name, role: 'assistant' as const, text: '', status: 'waiting' as const, runId: 'run-pending', createdAt: now }
+    const run: Run = { id: 'run-pending', conversationId: conversation.id, agentId: agent.id, rootId: 'run-pending', parentId: null, ancestry: [agent.id], status: 'waiting', threadId: 'thread-pending', turnId: 'turn-pending', messageId: message.id, input: 'Crie um arquivo.', agent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now }
+    const approval: Approval = { id: 'approval-pending', runId: run.id, conversationId: conversation.id, agentId: agent.id, kind: 'write', details: { path: 'secret.txt', after: 'never write' }, status: 'pending', createdAt: now, resolvedAt: null }
+    store.putMessage(message); store.putRun(run); store.putApproval(approval); store.close()
     const reopened = new WorkspaceStore(data)
     expect(reopened.approval(approval.id)).toMatchObject({ status: 'interrupted' })
+    expect(reopened.runs().find(item => item.id === run.id)?.status).toBe('interrupted')
+    expect(reopened.message(message.id)?.status).toBe('interrupted')
+    expect(existsSync(join(workspacePath, 'secret.txt'))).toBe(false)
     reopened.close()
   })
 })

@@ -9,10 +9,8 @@ interface DiffCardProps {
   defaultExpanded?: boolean;
 }
 
-// NOTA (Fase 0 da limpeza): este componente vinha do chat legado e lia o bloco
-// de um store global de transcript que foi removido. Por ora ele recebe o
-// bloco direto por prop e controla a expansão localmente; a Fase 3
-// ("Diff no chat") é quem vai ligá-lo ao registro real de FileChange.
+// O card recebe o diff como prop para servir tanto mudanças de arquivo quanto
+// propostas de aprovação, sem depender de um store global de transcript.
 export const DiffCard = memo(({ block, defaultExpanded = false }: DiffCardProps) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 

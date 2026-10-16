@@ -94,6 +94,9 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       : await this.request('thread/start', { ...params, dynamicTools: tools })
     return result.thread.id
   }
+  async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<any> {
+    return this.request('turn/start', { threadId, input: [{ type: 'text', text: input }], ...(model ? { model } : {}) }, timeout)
+  }
   async interrupt(threadId: string, turnId: string): Promise<void> { await this.request('turn/interrupt', { threadId, turnId }) }
   close(): void {
     const child = this.process

@@ -62,6 +62,11 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
     return id
   }
 
+  async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<any> {
+    void timeout
+    return this.request('turn/start', { threadId, input: [{ type: 'text', text: input }], ...(model ? { model } : {}) })
+  }
+
   async request(method: string, params: Record<string, unknown> = {}): Promise<any> {
     if (method !== 'turn/start') throw new Error(`Método Claude não suportado: ${method}`)
     const threadId = String(params.threadId || '')
@@ -97,7 +102,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         allowedTools: context.tools.map(item => `mcp__politron__${item.name}`),
         mcpServers: { politron: server },
         systemPrompt: { type: 'preset', preset: 'claude_code', append: `Você é ${context.agent.name}. ${context.agent.instructions}\nTrabalhe em português. Use somente as ferramentas disponibilizadas pelo Politron; não use meios alternativos para acessar arquivos, navegador ou executar comandos. Sua menção é @${context.agent.alias}.${context.projectInstructions ? `\nInstruções do projeto:\n${context.projectInstructions}` : ''}` },
-        model: context.agent.model || undefined,
+        model: typeof params.model === 'string' ? params.model : context.agent.model || undefined,
         effort: context.agent.effort || 'medium',
         ...(context.sessionId ? { resume: context.sessionId } : {}),
         abortController

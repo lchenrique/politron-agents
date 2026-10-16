@@ -80,9 +80,13 @@ export class AppService extends EventEmitter {
     const workspace = this.store.saveWorkspace({ projectId: project.id, kind: 'worktree', path: created.path, branch: created.branch, baseBranch: created.baseBranch, changes: 0, archived: false })
     this.emitEvent({ type: 'changed' }); return workspace
   }
-  async archiveWorkspace(workspaceId: string) {
+  async archiveWorkspace(workspaceId: string, preserveDirtyWorktree = false) {
     const workspace = this.store.workspace(workspaceId)
-    if (workspace.kind === 'worktree' && !workspace.archived) await this.gitWorkspaces.removeWorktree(workspace.path)
+    if (workspace.kind === 'worktree' && !workspace.archived) {
+      const status = await this.gitWorkspaces.inspect(workspace.path)
+      if (status.changes && !preserveDirtyWorktree) throw new Error('Este worktree tem alterações locais. Confirme o arquivamento preservando a pasta para não perder esses arquivos.')
+      if (!preserveDirtyWorktree) await this.gitWorkspaces.removeWorktree(workspace.path)
+    }
     this.store.updateWorkspace({ ...workspace, archived: true })
     this.emitEvent({ type: 'changed' })
   }
@@ -249,7 +253,7 @@ export class AppService extends EventEmitter {
       const threadId = await runtime.thread(agent, directory, this.tools(context), this.store.binding(bindingKey), projectInstructions)
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
-      const result = await runtime.request('turn/start', { threadId, input: [{ type: 'text', text: run.input }], ...(agent.model ? { model: agent.model } : {}) }, 600000)
+      const result = await runtime.send(threadId, run.input, agent.model || undefined, 600000)
       if (result.thread?.id) { run.threadId = result.thread.id; this.store.putRun(run) }
       const turnId = result.turn.id as string
       run.turnId = turnId; this.store.putRun(run)
@@ -286,6 +290,7 @@ export class AppService extends EventEmitter {
     if (context.flushTimer) clearTimeout(context.flushTimer)
     context.run.status = status; this.store.putRun(context.run); this.updateMessage(context.message, status, value || (status === 'completed' ? '(Sem resposta em texto.)' : ''))
     if (status === 'completed') this.notifyWhenAway(context.conversation.id, 'Tarefa concluída', `${context.agent.name} concluiu a resposta.`)
+    else if (status === 'failed') this.notifyWhenAway(context.conversation.id, 'Tarefa precisa de atenção', `${context.agent.name} não conseguiu concluir a resposta.`)
   }
   private tools(context: RunContext): DynamicTool[] {
     const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]): DynamicTool => ({ type: 'function', name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false } })
@@ -364,9 +369,7 @@ export class AppService extends EventEmitter {
     }
     if (name === 'workspace_write') {
       if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para escrever arquivos.')
-      const target = inside(args.path)
-      const content = text(args.content, 1_000_000)
-      const relativePath = relative(root, target)
+      let relativePath = typeof args.path === 'string' ? args.path.slice(0, 1000).replace(/\\/g, '/') : '(caminho inválido)'
       const toolCallId = callId || randomUUID()
       const record = (status: 'applied' | 'failed' | 'unknown' | 'unchanged', before: string, after: string, binary: boolean, truncated: boolean) => {
         const oldLines = before ? before.split('\n') : []
@@ -381,6 +384,13 @@ export class AppService extends EventEmitter {
       let before = ''
       let binary = false
       let truncated = false
+      let target: string
+      let content: string
+      try {
+        target = inside(args.path)
+        relativePath = relative(root, target)
+        content = text(args.content, 1_000_000)
+      } catch (error) { record('failed', '', '', false, false); throw error }
       const parentPath = resolve(target, '..')
       let nearest = parentPath
       while (true) {

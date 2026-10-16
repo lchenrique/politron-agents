@@ -31,6 +31,7 @@ class FakeRuntime extends EventEmitter {
     })
     return { turn: { id: turnId, status: 'inProgress' } }
   }
+  async send(threadId: string, _input: string) { return this.request('turn/start', { threadId }) }
   complete(index: number) {
     const threadId = `thread-${index}`, turnId = `turn-${index}`
     this.emit('event', { method: 'item/agentMessage/delta', params: { threadId, turnId, delta: `Resultado ${index}.` } })

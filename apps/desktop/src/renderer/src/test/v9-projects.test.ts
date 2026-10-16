@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -35,10 +36,41 @@ class FakeRuntime extends EventEmitter {
     })
     return { turn: { id: turnId, status: 'inProgress' } }
   }
-  respond() {}
+  async send(threadId: string, input: string) { return this.request('turn/start', { threadId, input: [{ text: input }] }) }
+  respond(_id?: number | string, _result?: unknown) {}
   async interrupt() {}
   async models() { return [] }
   close() {}
+}
+
+class ParallelWriteRuntime extends FakeRuntime {
+  private requests = 0
+  private releasePair!: () => void
+  private readonly bothRequestsStarted = new Promise<void>(resolve => { this.releasePair = resolve })
+  private readonly toolResults = new Map<string, (result: unknown) => void>()
+  maxParallelWrites = 0
+  private activeWrites = 0
+  async request(_method: string, params: { threadId: string; input: Array<{ text: string }> }) {
+    const turnId = `parallel-${++this.parallelTurnCounter}`
+    const filename = params.input[0].text
+    this.turns.push({ threadId: params.threadId, text: filename })
+    this.requests++
+    if (this.requests === 2) this.releasePair()
+    setTimeout(() => void (async () => {
+      await this.bothRequestsStarted
+      this.activeWrites++
+      this.maxParallelWrites = Math.max(this.maxParallelWrites, this.activeWrites)
+      const toolCallId = `write-${turnId}`
+      const result = new Promise(resolve => this.toolResults.set(toolCallId, resolve))
+      this.emit('event', { id: toolCallId, method: 'item/tool/call', params: { threadId: params.threadId, turnId, tool: 'workspace_write', arguments: { path: `${filename}.txt`, content: filename } } })
+      await result
+      this.activeWrites--
+      this.emit('event', { method: 'turn/completed', params: { threadId: params.threadId, turn: { id: turnId, status: 'completed' } } })
+    })(), 0)
+    return { turn: { id: turnId, status: 'inProgress' } }
+  }
+  respond(id?: number | string, result?: unknown) { if (id === undefined) return; this.toolResults.get(String(id))?.(result); this.toolResults.delete(String(id)) }
+  private parallelTurnCounter = 0
 }
 
 const dirs: string[] = []
@@ -52,6 +84,36 @@ afterEach(() => {
 })
 
 describe('Assistente padrão e conversas por projeto V9', () => {
+  it('duas conversas escrevem em paralelo em worktrees diferentes sem cruzar arquivos', async () => {
+    const { service, runtime } = open(tempDirectory(), new ParallelWriteRuntime())
+    const sourcePath = tempDirectory()
+    execFileSync('git', ['init', '-b', 'main'], { cwd: sourcePath, windowsHide: true })
+    execFileSync('git', ['config', 'user.name', 'Politron Tests'], { cwd: sourcePath, windowsHide: true })
+    execFileSync('git', ['config', 'user.email', 'tests@example.invalid'], { cwd: sourcePath, windowsHide: true })
+    writeFileSync(join(sourcePath, 'README.md'), 'base\n')
+    execFileSync('git', ['add', 'README.md'], { cwd: sourcePath, windowsHide: true })
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: sourcePath, windowsHide: true })
+    const project = service.saveProject({ name: 'Concorrência', workspacePath: sourcePath })
+    const source = service.store.workspace(project.defaultWorkspaceId!)
+    const firstWorkspace = await service.createWorktree({ projectId: project.id, sourceWorkspaceId: source.id, branch: 'fase-2/primeira' })
+    const secondWorkspace = await service.createWorktree({ projectId: project.id, sourceWorkspaceId: source.id, branch: 'fase-2/segunda' })
+    const agent = service.saveAgent({ name: 'Escritora', alias: 'escritora', instructions: 'Escreva.', canWrite: true, approvalMode: 'automatic' })
+    const first = service.store.saveConversation({ name: 'Primeira frente', kind: 'direct', projectId: project.id, workspaceId: firstWorkspace.id, agentIds: [agent.id] })
+    const second = service.store.saveConversation({ name: 'Segunda frente', kind: 'direct', projectId: project.id, workspaceId: secondWorkspace.id, agentIds: [agent.id] })
+
+    await Promise.all([service.send(first.id, 'primeira'), service.send(second.id, 'segunda')])
+
+    expect((runtime as ParallelWriteRuntime).maxParallelWrites).toBe(2)
+    expect(readFileSync(join(firstWorkspace.path, 'primeira.txt'), 'utf8')).toBe('primeira')
+    expect(readFileSync(join(secondWorkspace.path, 'segunda.txt'), 'utf8')).toBe('segunda')
+    expect(existsSync(join(firstWorkspace.path, 'segunda.txt'))).toBe(false)
+    await expect(service.archiveWorkspace(firstWorkspace.id)).rejects.toThrow('preservando a pasta')
+    await service.archiveWorkspace(firstWorkspace.id, true)
+    expect(service.store.workspace(firstWorkspace.id).archived).toBe(true)
+    expect(readFileSync(join(firstWorkspace.path, 'primeira.txt'), 'utf8')).toBe('primeira')
+    rmSync(firstWorkspace.path, { recursive: true, force: true })
+  }, 30000)
+
   it('resolve o terminal pelo workspace selecionado e recusa um workspace arquivado', () => {
     const { service } = open(tempDirectory())
     const folder = tempDirectory()
@@ -82,19 +144,21 @@ describe('Assistente padrão e conversas por projeto V9', () => {
     await write(context(agentB, 'run-b', 'msg-b'), 'large.txt', 'pequeno', 'tool-large')
     writeFileSync(join(folder, 'binary.dat'), Buffer.from([0, 1, 2]))
     await write(context(agentB, 'run-b', 'msg-b'), 'binary.dat', 'texto', 'tool-binary')
+    await expect(write(context(agentB, 'run-b', 'msg-b'), '../fora.txt', 'bloqueado', 'tool-outside')).rejects.toThrow('sai da pasta')
 
     const changes = service.store.fileChanges()
-    expect(changes).toHaveLength(6)
+    expect(changes).toHaveLength(7)
     expect(changes.find(item => item.toolCallId === 'tool-create')).toMatchObject({ status: 'applied', additions: 2, deletions: 0, agentId: agentA.id })
     expect(changes.find(item => item.toolCallId === 'tool-edit')).toMatchObject({ status: 'applied', additions: 1, deletions: 1 })
     expect(changes.find(item => item.toolCallId === 'tool-unchanged')).toMatchObject({ status: 'unchanged' })
     expect(changes.filter(item => item.toolCallId === 'tool-edit')).toHaveLength(1)
     expect(changes.find(item => item.toolCallId === 'tool-failed')).toMatchObject({ status: 'failed' })
+    expect(changes.find(item => item.toolCallId === 'tool-outside')).toMatchObject({ status: 'failed', path: '../fora.txt' })
     expect(changes.find(item => item.toolCallId === 'tool-large')).toMatchObject({ truncated: true, agentId: agentB.id })
     expect(changes.find(item => item.toolCallId === 'tool-binary')).toMatchObject({ binary: true, agentId: agentB.id })
     close(service)
     const reopened = open(data).service
-    expect(reopened.store.fileChanges()).toHaveLength(6)
+    expect(reopened.store.fileChanges()).toHaveLength(7)
   })
 
   it('inicia e continua uma conversa do Assistente em um projeto sem bot nem grupo cadastrados', async () => {
