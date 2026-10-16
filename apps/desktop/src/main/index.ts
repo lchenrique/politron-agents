@@ -2,14 +2,9 @@ import 'dotenv/config'
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { registerHandlers } from './ipc/handlers'
+import { registerTerminalHandlers } from './ipc/terminal'
+import { registerWindowControlHandlers } from './ipc/window-controls'
 import { createAppWindow, destroyAppWindow } from './windows/manager'
-import { openCodeSdkService } from './services/opencode-sdk'
-import { appStateDb } from './services/app-state-db'
-import { teamStore } from './services/team-store'
-import { pipelineExecutor } from './services/pipeline-executor'
-import { syncAgencyAgentsToProject } from './services/agency-agent-sync'
-import { existsSync } from 'fs'
 import { WorkspaceService } from './v9/workspace'
 import { registerV9Ipc } from './v9/ipc'
 
@@ -20,21 +15,6 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
   console.error('[Main] unhandledRejection', reason)
 })
-
-// Fix PATH for Windows - ensure npm global bin is available for opencode CLI
-const userProfilePath = process.env.USERPROFILE || process.env.HOME || ''
-const npmGlobalPath = join(userProfilePath, 'AppData', 'Roaming', 'npm')
-if (existsSync(npmGlobalPath)) {
-  // Add npm global bin to PATH
-  process.env.PATH = `${npmGlobalPath};${process.env.PATH}`
-
-  // Find and add the actual opencode binary to PATH
-  const opencodeBinPath = join(npmGlobalPath, 'node_modules', 'opencode-ai', 'node_modules', 'opencode-windows-x64', 'bin')
-  if (existsSync(opencodeBinPath)) {
-    process.env.PATH = `${opencodeBinPath};${process.env.PATH}`
-    console.log('[Main] Added opencode binary to PATH:', opencodeBinPath)
-  }
-}
 
 if (process.platform === 'win32') {
   const existingPathext = process.env.PATHEXT || ''
@@ -170,33 +150,19 @@ app.whenReady().then(async () => {
   console.log('[Main] app.whenReady() resolved')
   electronApp.setAppUserModelId('com.politron.desktop')
 
-  console.log('[Main] Initializing app state DB')
-  appStateDb.init(join(app.getPath('userData'), 'state'))
   v9Workspace = new WorkspaceService(app.getPath('userData'))
   registerV9Ipc(v9Workspace)
-  const persistedState = appStateDb.loadState()
-  console.log('[Main] Hydrating stores', {
-    teams: persistedState.teams.length,
-    tasks: persistedState.tasks.length
-  })
-  pipelineExecutor.hydrate(persistedState.tasks)
-  teamStore.hydrate(persistedState.teams)
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  registerHandlers()
+  registerTerminalHandlers()
+  registerWindowControlHandlers()
   console.log('[Main] IPC handlers registered')
 
   mainWindow = createAppWindow(createWindow)
   console.log('[Main] Main window reference stored')
-
-  if (process.env.POLITRON_ENABLE_LEGACY === '1') {
-    console.log('[Main] Starting legacy agent runtime by explicit setting')
-    void syncAgencyAgentsToProject(process.cwd()).catch(error => console.error('[Main] Legacy agent sync failed:', error))
-    openCodeSdkService.initialize().catch(error => console.error('[Main] Failed to initialize OpenCode SDK:', error))
-  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
