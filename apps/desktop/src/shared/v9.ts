@@ -63,6 +63,7 @@ export type WorkspaceEvent =
 export interface AppAPI {
   snapshot(): Promise<Snapshot>
   saveAgent(input: Partial<Agent>): Promise<Agent>
+  saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>>): Promise<Agent>
   saveProject(input: Partial<Project>): Promise<Project>
   saveConversation(input: Partial<Conversation>): Promise<Conversation>
   createLocalWorkspace(input: { projectId: string | null; path: string }): Promise<Workspace>

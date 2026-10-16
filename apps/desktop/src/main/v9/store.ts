@@ -14,6 +14,8 @@ export const ASSISTANT: Agent = {
 function normalizeConversation(value: Conversation): Conversation {
   return { ...value, projectId: value.projectId ?? null, titleAuto: value.titleAuto ?? false }
 }
+export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>
+const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: false, computerUse: false, approvalMode: 'ask' }
 function normalizeAgent(value: Agent): Agent { return { ...value, approvalMode: value.approvalMode === 'automatic' ? 'automatic' : 'ask' } }
 
 export function requiredText(value: unknown, label: string, limit = 10000): string {
@@ -177,13 +179,32 @@ export class WorkspaceStore {
   delegations(): Delegation[] { return (this.db.prepare('SELECT data FROM v9_delegations ORDER BY rowid').all() as { data: string }[]).map(row => JSON.parse(row.data)) }
   delegation(id: string): Delegation | undefined { const row = this.db.prepare('SELECT data FROM v9_delegations WHERE id=?').get(id) as { data: string } | undefined; return row ? JSON.parse(row.data) as Delegation : undefined }
   delegationByKey(key: string): Delegation | undefined { const row = this.db.prepare('SELECT data FROM v9_delegations WHERE idempotency_key=?').get(key) as { data: string } | undefined; return row ? JSON.parse(row.data) as Delegation : undefined }
-  agent(id: string): Agent { if (id === ASSISTANT_ID) return ASSISTANT; const value = this.get<Agent>('v9_agents', id); if (!value) throw new Error('Agente não encontrado.'); return normalizeAgent(value) }
+  assistantPreferences(): AssistantPreferences {
+    const read = (key: keyof AssistantPreferences) => this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get(`assistant_${key}`) as { value: string } | undefined
+    return {
+      canWrite: read('canWrite')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.canWrite : read('canWrite')?.value === 'true',
+      computerUse: read('computerUse')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.computerUse : read('computerUse')?.value === 'true',
+      approvalMode: read('approvalMode')?.value === 'automatic' ? 'automatic' : 'ask'
+    }
+  }
+  saveAssistantPreferences(input: Partial<AssistantPreferences>): Agent {
+    const previous = this.assistantPreferences()
+    const value: AssistantPreferences = {
+      canWrite: input.canWrite ?? previous.canWrite,
+      computerUse: input.computerUse ?? previous.computerUse,
+      approvalMode: input.approvalMode ?? previous.approvalMode
+    }
+    if (typeof value.canWrite !== 'boolean' || typeof value.computerUse !== 'boolean' || !['ask', 'automatic'].includes(value.approvalMode)) throw new Error('Preferências do Assistente inválidas.')
+    for (const [key, setting] of Object.entries(value)) this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(`assistant_${key}`, String(setting))
+    return { ...ASSISTANT, ...value }
+  }
+  agent(id: string): Agent { if (id === ASSISTANT_ID) return { ...ASSISTANT, ...this.assistantPreferences() }; const value = this.get<Agent>('v9_agents', id); if (!value) throw new Error('Agente não encontrado.'); return normalizeAgent(value) }
   conversation(id: string): Conversation { const value = this.get<Conversation>('v9_conversations', id); if (!value) throw new Error('Conversa não encontrada.'); return normalizeConversation(value) }
   message(id: string): Message | undefined { return this.get('v9_messages', id) }
   history(id: string): Message[] {
     return (this.db.prepare('SELECT data FROM (SELECT rowid,data FROM v9_messages WHERE conversation_id=? ORDER BY rowid DESC LIMIT 500) ORDER BY rowid').all(id) as { data: string }[]).map(row => JSON.parse(row.data))
   }
-  snapshot(): Snapshot { return { assistant: ASSISTANT, agents: this.agents(), projects: this.projects(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.runs().slice(-100), fileChanges: this.fileChanges().slice(-500), approvals: this.approvals() } }
+  snapshot(): Snapshot { return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), projects: this.projects(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.runs().slice(-100), fileChanges: this.fileChanges().slice(-500), approvals: this.approvals() } }
   saveAgent(input: Partial<Agent>): Agent {
     const previous = input.id ? this.agent(input.id) : undefined
     const name = requiredText(input.name, 'Nome', 80)

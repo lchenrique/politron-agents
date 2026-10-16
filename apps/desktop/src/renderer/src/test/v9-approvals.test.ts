@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Approval, Run } from '../../../shared/v9'
+import { ASSISTANT_ID, type Approval, type Run } from '../../../shared/v9'
 
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false }, safeStorage: { isEncryptionAvailable: () => false } }))
 
@@ -46,6 +46,27 @@ function setup() {
 const write = (service: AppService, context: unknown, content = 'proposta', toolCallId = 'tool-1') => (service as any).callTool(context, 'workspace_write', { path: 'nota.txt', content }, toolCallId) as Promise<string>
 
 describe('aprovações inline V9', () => {
+  it('persiste permissões e modo de aprovação do Assistente, exigindo confirmação antes de escrever', async () => {
+    const data = directory(), workspacePath = directory(), service = open(data)
+    const assistant = service.saveAssistantPreferences({ canWrite: true, computerUse: true, approvalMode: 'ask' })
+    expect(service.store.agent(ASSISTANT_ID)).toMatchObject({ canWrite: true, computerUse: true, approvalMode: 'ask' })
+    const persisted = new WorkspaceStore(data)
+    expect(persisted.snapshot().assistant).toMatchObject({ canWrite: true, computerUse: true, approvalMode: 'ask' })
+    persisted.close()
+    const conversation = service.saveConversation({ name: 'Assistente', agentIds: [], workspacePath })
+    const workspace = service.store.workspace(conversation.workspaceId)
+    const now = new Date().toISOString()
+    const message = { id: 'assistant-message', conversationId: conversation.id, agentId: ASSISTANT_ID, author: 'Assistente', role: 'assistant' as const, text: '', status: 'running' as const, runId: 'assistant-run', createdAt: now }
+    const run: Run = { id: 'assistant-run', conversationId: conversation.id, agentId: ASSISTANT_ID, rootId: 'assistant-run', parentId: null, ancestry: [ASSISTANT_ID], status: 'running', threadId: null, turnId: null, messageId: message.id, input: 'Crie arquivo.', agent: assistant, workspaceId: workspace.id, workspacePath, createdAt: now }
+    service.store.putMessage(message); service.store.putRun(run)
+    const context: any = { run, message, conversation, agent: service.store.agent(ASSISTANT_ID), signal: new AbortController().signal }
+    const pendingWrite = write(service, context, 'conteúdo do assistente', 'assistant-write')
+    await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
+    expect(existsSync(join(workspacePath, 'nota.txt'))).toBe(false)
+    await service.respondApproval(service.store.approvals()[0].id, true)
+    await expect(pendingWrite).resolves.toContain('Arquivo salvo')
+  })
+
   it('suspende a execução e só grava a proposta depois da aprovação', async () => {
     const { service, context, workspacePath, run } = setup()
     const pendingWrite = write(service, context)

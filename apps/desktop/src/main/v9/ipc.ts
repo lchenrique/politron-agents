@@ -9,6 +9,7 @@ export function registerV9Ipc(service: AppService) {
   })
   invoke('snapshot', () => service.snapshot())
   invoke('saveAgent', (input) => service.saveAgent(input))
+  invoke('saveAssistantPreferences', (input) => service.saveAssistantPreferences(input))
   invoke('saveProject', (input) => service.saveProject(input))
   invoke('saveConversation', (input) => service.saveConversation(input))
   invoke('createLocalWorkspace', (input) => service.createLocalWorkspace(input))
@@ -35,6 +36,6 @@ export function registerV9Ipc(service: AppService) {
   service.on('workspace-event', send)
   return () => {
     service.off('workspace-event', send)
-    for (const channel of ['snapshot', 'saveAgent', 'saveProject', 'saveConversation', 'createLocalWorkspace', 'createWorktree', 'archiveWorkspace', 'workspaceDiff', 'respondApproval', 'setVisibleConversation', 'hasClaudeCredential', 'saveClaudeCredential', 'history', 'send', 'stop', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'saveAgent', 'saveAssistantPreferences', 'saveProject', 'saveConversation', 'createLocalWorkspace', 'createWorktree', 'archiveWorkspace', 'workspaceDiff', 'respondApproval', 'setVisibleConversation', 'hasClaudeCredential', 'saveClaudeCredential', 'history', 'send', 'stop', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

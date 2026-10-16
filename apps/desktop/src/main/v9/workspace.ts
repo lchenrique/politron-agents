@@ -11,7 +11,7 @@ import { CodexRuntime, type DynamicTool } from './codex'
 import { ClaudeRuntime } from './claude'
 import type { AgentRuntime } from './agent-runtime'
 import { ClaudeCredentialStore } from './credentials'
-import { canonicalDirectory, WorkspaceStore } from './store'
+import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
 
 type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; flushTimer?: ReturnType<typeof setTimeout> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
@@ -61,6 +61,7 @@ export class AppService extends EventEmitter {
     }
   }
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.emitEvent({ type: 'changed' }); return agent }
+  saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.emitEvent({ type: 'changed' }); return assistant }
   saveProject(input: Partial<Project> & { workspacePath?: string | null }) { const project = this.store.saveProject(input); this.emitEvent({ type: 'changed' }); return project }
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }) { const conversation = this.store.saveConversation(input); this.emitEvent({ type: 'changed' }); return conversation }
   async createLocalWorkspace(input: { projectId: string | null; path: string }) {

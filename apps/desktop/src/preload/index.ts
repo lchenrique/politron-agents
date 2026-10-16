@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('vibeAPI', api)
 const appAPI: AppAPI = {
   snapshot: () => ipcRenderer.invoke('v9:snapshot'),
   saveAgent: (input) => ipcRenderer.invoke('v9:saveAgent', input),
+  saveAssistantPreferences: (input) => ipcRenderer.invoke('v9:saveAssistantPreferences', input),
   saveProject: (input) => ipcRenderer.invoke('v9:saveProject', input),
   saveConversation: (input) => ipcRenderer.invoke('v9:saveConversation', input),
   createLocalWorkspace: (input) => ipcRenderer.invoke('v9:createLocalWorkspace', input),
