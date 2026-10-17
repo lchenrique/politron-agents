@@ -45,3 +45,25 @@ describe('persistência do Poli Studio', () => {
     reopened.db.close()
   })
 })
+
+describe('cor sorteada para um Pit novo', () => {
+  it('sorteia uma cor da paleta quando nenhuma é informada, inclusive quando o Chief cria o agente sem escolher cor', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'politron-cor-'))
+    dirs.push(dir)
+    const store = new WorkspaceStore(dir)
+    const agent = store.saveAgent({ name: 'Nina Frontend', alias: 'nina', instructions: 'Cuide do frontend.' })
+    expect(agent.color).toMatch(/^#[\da-f]{6}$/i)
+    expect(agent.color).not.toBe('#6366f1')
+    store.db.close()
+  })
+
+  it('preserva a cor já escolhida ao atualizar o agente sem mandar cor de novo', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'politron-cor-manter-'))
+    dirs.push(dir)
+    const store = new WorkspaceStore(dir)
+    const agent = store.saveAgent({ name: 'Nina', alias: 'nina', instructions: 'x', color: '#32b6a0' })
+    const updated = store.saveAgent({ id: agent.id, name: 'Nina Frontend', alias: 'nina', instructions: 'x' })
+    expect(updated.color).toBe('#32b6a0')
+    store.db.close()
+  })
+})

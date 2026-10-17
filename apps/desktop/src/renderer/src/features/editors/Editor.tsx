@@ -5,10 +5,10 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { Agent, Conversation, Model, Workspace } from '../../../../shared/v9'
+import { randomPitColor, type Agent, type Conversation, type Model, type Workspace } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
 import { PoliCustomizer } from '../app/PoliCustomizer'
-import { aliasFor, errorText } from '../app/appShellShared'
+import { EFFORT_LABELS, EFFORT_LEVELS, aliasFor, errorText } from '../app/appShellShared'
 
 export type EditorKind = 'agent' | 'conversation' | 'workspace'
 export type EditorData = (Partial<Agent> | Partial<Conversation> | Partial<Workspace>) & { workspacePath?: string | null; path?: string | null }
@@ -27,7 +27,8 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
   const [runtime, setRuntime] = useState((initial as Agent | undefined)?.runtime || 'codex')
   const [role, setRole] = useState((initial as Agent | undefined)?.role || 'agent')
   const [effort, setEffort] = useState((initial as Agent | undefined)?.effort || 'medium')
-  const [color, setColor] = useState((initial as Agent | undefined)?.color || '#786bea')
+  // Cada Pit novo sorteia uma cor da paleta; editar um agente existente preserva a cor já escolhida.
+  const [color, setColor] = useState((initial as Agent | undefined)?.color || randomPitColor())
   const [pitsShape, setPitsShape] = useState((initial as Agent | undefined)?.pitsShape || 'round')
   const [pits, setPits] = useState<Partial<Agent>>(() => {
     const agent = initial as Agent | undefined
@@ -86,7 +87,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
             <label className="block space-y-1.5 text-sm">Perfil rápido<Select value="" onValueChange={profile => { if (profile === 'codex-balanced' || profile === 'codex-focused') { setRuntime('codex'); setModel(''); setEffort(profile === 'codex-focused' ? 'high' : 'medium') } else if (profile.startsWith('claude-')) { setRuntime('claude'); const desired = profile === 'claude-opus' ? /opus/i : /sonnet/i; setModel(models.find(item => item.runtime === 'claude' && desired.test(item.name))?.id.replace(/^claude:/, '') || ''); setEffort(profile === 'claude-opus' ? 'high' : 'medium') } }}><SelectTrigger aria-label="Perfil rápido"><SelectValue placeholder="Escolha uma base…" /></SelectTrigger><SelectContent><SelectItem value="codex-balanced">Codex equilibrado</SelectItem><SelectItem value="codex-focused">Codex focado</SelectItem><SelectItem value="claude-sonnet">Claude Sonnet equilibrado</SelectItem><SelectItem value="claude-opus">Claude Opus avançado</SelectItem></SelectContent></Select></label>
             <label className="block space-y-1.5 text-sm">Motor<Select value={runtime} onValueChange={value => { setRuntime(value as 'codex' | 'claude'); setModel('') }}><SelectTrigger aria-label="Motor"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="codex">Codex</SelectItem><SelectItem value="claude">Claude Agent SDK</SelectItem></SelectContent></Select></label>
             <label className="block space-y-1.5 text-sm">Modelo<Select value={model ? runtime + ':' + model : ''} onValueChange={value => setModel(value.replace(/^(codex|claude):/, ''))}><SelectTrigger aria-label="Modelo"><SelectValue placeholder="Padrão do motor" /></SelectTrigger><SelectContent>{models.filter(item => item.runtime === runtime).map(item => <SelectItem key={item.id} value={item.id}>{item.name}{item.isDefault ? ' · padrão' : ''}</SelectItem>)}</SelectContent></Select></label>
-            <label className="block space-y-1.5 text-sm">Esforço<Select value={effort} onValueChange={value => setEffort(value as typeof effort)}><SelectTrigger aria-label="Esforço"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Baixo</SelectItem><SelectItem value="medium">Equilibrado</SelectItem><SelectItem value="high">Alto</SelectItem><SelectItem value="xhigh">Muito alto</SelectItem><SelectItem value="max">Máximo</SelectItem></SelectContent></Select></label>
+            <label className="block space-y-1.5 text-sm">Esforço<Select value={effort} onValueChange={value => setEffort(value as typeof effort)}><SelectTrigger aria-label="Esforço"><SelectValue /></SelectTrigger><SelectContent>{EFFORT_LEVELS.map(level => <SelectItem key={level} value={level}>{EFFORT_LABELS[level]}</SelectItem>)}</SelectContent></Select></label>
             <label className="block space-y-1.5 text-sm">Aprovações para arquivos e navegador<Select value={approvalMode} onValueChange={value => setApprovalMode(value as 'ask' | 'automatic')}><SelectTrigger aria-label="Aprovações para arquivos e navegador"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de agir (padrão)</SelectItem><SelectItem value="automatic">Executar automaticamente</SelectItem></SelectContent></Select></label>
             <label className="flex items-center gap-3 rounded-lg border border-border/70 p-3 text-sm"><Checkbox checked={canWrite} onCheckedChange={checked => setCanWrite(checked === true)} /><span><span className="block font-medium">Pode editar arquivos</span><span className="mt-0.5 block text-xs text-muted-foreground">O acesso depende da pasta escolhida na conversa.</span></span></label>
             <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/70 p-3 text-sm"><Checkbox checked={computerUse} onCheckedChange={checked => setComputerUse(checked === true)} className="mt-1" /><span><span className="block font-medium">Permitir Computer Use</span><span className="mt-0.5 block text-xs text-muted-foreground">Navegar em sessão isolada.</span></span></label>

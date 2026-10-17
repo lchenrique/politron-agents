@@ -1,4 +1,7 @@
 export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'interrupted' | 'failed'
+/** Mesma paleta do Poli Studio (PoliCustomizer); usada também para sortear a cor de um Pit novo, criado pelo usuário ou pelo Chief. */
+export const PIT_COLOR_PALETTE = ['#786bea', '#4098eb', '#32b6a0', '#f0a05b', '#ef79ac', '#393f56', '#e05e70']
+export const randomPitColor = (): string => PIT_COLOR_PALETTE[Math.floor(Math.random() * PIT_COLOR_PALETTE.length)]
 export interface Agent {
   id: string; name: string; alias: string; description: string; instructions: string
   runtime: 'codex' | 'claude'; model: string; color: string; avatar: string

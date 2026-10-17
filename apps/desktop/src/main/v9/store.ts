@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
-import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type FileChange, type Message, type Run, type Snapshot, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type Conversation, type Delegation, type FileChange, type Message, type Run, type Snapshot, type Workspace } from '../../shared/v9'
 
 export const SCHEMA_VERSION = 6
 export const ASSISTANT: Agent = {
@@ -250,7 +250,7 @@ export class WorkspaceStore {
     const role = input.role ?? previous?.role ?? 'agent'
     if (role !== 'agent' && role !== 'chief') throw new Error('Papel de agente inválido.')
     if (role === 'chief' && this.agents().some(agent => agent.id !== input.id && agent.role === 'chief')) throw new Error('Já existe um Chief. Remova esse papel do agente atual antes de transferi-lo.')
-    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, role, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : '#6366f1', avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round',
+    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, role, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : previous?.color || randomPitColor(), avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round',
       pitsEyeColor: /^#[\da-f]{6}$/i.test(input.pitsEyeColor || '') ? input.pitsEyeColor : previous?.pitsEyeColor || '#ffffff',
       pitsCheekColor: /^#[\da-f]{6}$/i.test(input.pitsCheekColor || '') ? input.pitsCheekColor : previous?.pitsCheekColor || '#f5a5d1',
       pitsEyeSize: typeof input.pitsEyeSize === 'number' && Number.isFinite(input.pitsEyeSize) ? Math.max(4, Math.min(15, input.pitsEyeSize)) : previous?.pitsEyeSize ?? 8,

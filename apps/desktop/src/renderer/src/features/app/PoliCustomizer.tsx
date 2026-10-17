@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Slider } from '@/components/ui/slider'
-import type { Agent } from '../../../../shared/v9'
+import { PIT_COLOR_PALETTE, type Agent } from '../../../../shared/v9'
 import { PoliAvatar, type PoliExpression } from './PoliAvatar'
 
 type Tab = 'appearance' | 'animation' | 'states'
-const swatches = ['#786bea', '#4098eb', '#32b6a0', '#f0a05b', '#ef79ac', '#393f56', '#e05e70']
+// Mesma paleta usada para sortear a cor de um Pit novo (ver randomPitColor em shared/v9.ts).
+const swatches = PIT_COLOR_PALETTE
 const states: { value: PoliExpression; label: string }[] = [
   { value: 'idle', label: 'Disponível' },
   { value: 'thinking', label: 'Pensando' },
