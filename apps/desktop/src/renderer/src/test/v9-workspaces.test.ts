@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false } }))
 
 import { AppService } from '../../../main/v9/workspace'
-import { WorkspaceStore } from '../../../main/v9/store'
+import { SCHEMA_VERSION, WorkspaceStore } from '../../../main/v9/store'
 import { ASSISTANT_ID, type Agent } from '../../../shared/v9'
 
 type Thread = { id: string; agent: Agent; directory: string; projectInstructions?: string; resumedFrom?: string }
@@ -344,7 +344,7 @@ describe('migração do SQLite V9', () => {
     const store = new WorkspaceStore(directory)
     const backups = readdirSync(directory).filter(name => name.startsWith('politron-v9.backup-schema3-'))
     expect(backups).toHaveLength(1)
-    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('5')
+    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe(String(SCHEMA_VERSION))
     expect(store.db.prepare("SELECT name FROM sqlite_master WHERE name='v9_projects'").get()).toBeUndefined()
     const projectConversation = store.conversation('project-conv')
     const localConversation = store.conversation('local-conv')
@@ -384,7 +384,7 @@ describe('migração do SQLite V9', () => {
     expect((backup.prepare('SELECT COUNT(*) AS total FROM v9_messages').get() as { total: number }).total).toBe(1)
     backup.close()
 
-    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('5')
+    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe(String(SCHEMA_VERSION))
     expect(store.agents()).toHaveLength(1)
     expect(store.conversation('conv-1')).toMatchObject({ name: 'Grupo antigo', kind: 'group', agentIds: ['agent-1'], revision: 3, titleAuto: false })
     expect(store.history('conv-1')[0].text).toBe('mensagem antiga')
@@ -417,7 +417,7 @@ describe('migração do SQLite V9', () => {
     legacy.close()
 
     const store = new WorkspaceStore(directory)
-    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe('5')
+    expect((store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get() as { value: string }).value).toBe(String(SCHEMA_VERSION))
     expect(store.db.prepare("SELECT name FROM sqlite_master WHERE name='v9_projects'").get()).toBeUndefined()
     const workspace = store.workspace('workspace-1')
     expect(workspace).toMatchObject({ name: 'Esquema 4', instructions: 'Use TS', path: workspacePath, parentWorkspaceId: null })

@@ -49,3 +49,15 @@ describe('Composer compacto e elástico', () => {
     expect(onSubmit).toHaveBeenCalledWith('primeira\nsegunda', 'Modelo real', expect.objectContaining({ files: [] }))
   })
 })
+
+describe('modelo do agente não é sobrescrito por padrão', () => {
+  it('oferece "Usar o modelo do agente" como primeira opção, sem forçar esforço', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<Composer conversationId="inherit-test" models={[{ name: 'Codex Fast' }]} defaultModelName="Usar o modelo do agente" onModelChange={vi.fn()} onSubmit={onSubmit} onStop={vi.fn()} />)
+    const textarea = screen.getByRole('textbox', { name: 'Message' })
+    fireEvent.change(textarea, { target: { value: 'oi' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce())
+    expect(onSubmit).toHaveBeenCalledWith('oi', 'Usar o modelo do agente', expect.objectContaining({ effort: undefined }))
+  })
+})

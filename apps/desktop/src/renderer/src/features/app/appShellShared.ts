@@ -5,6 +5,9 @@ export const emptySnapshot: Snapshot = { assistant: assistantPlaceholder, agents
 export const errorText = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível concluir essa ação.'
 export const aliasFor = (name: string) => name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-')
 
+/** Sentinela do composer: nenhuma mudança de modelo/esforço para este envio, cada participante usa o que está configurado no seu perfil. */
+export const INHERIT_MODEL_NAME = 'Usar o modelo do agente'
+
 /** Mesma escala de esforço do editor de agente, em rótulos para o seletor do composer. */
 export const EFFORT_LEVELS: NonNullable<Agent['effort']>[] = ['low', 'medium', 'high', 'xhigh', 'max']
 export const EFFORT_LABELS: Record<NonNullable<Agent['effort']>, string> = { low: 'Baixo', medium: 'Equilibrado', high: 'Alto', xhigh: 'Muito alto', max: 'Máximo' }

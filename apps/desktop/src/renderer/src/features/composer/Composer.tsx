@@ -1,8 +1,9 @@
 import AI_Prompt, { type PromptModel } from '@/components/kokonutui/ai-prompt'
 import type { Agent } from '../../../../shared/v9'
-import { EFFORT_LABELS, EFFORT_LEVELS, effortFromLabel } from '../app/appShellShared'
+import { EFFORT_LABELS, EFFORT_LEVELS, INHERIT_MODEL_NAME, effortFromLabel } from '../app/appShellShared'
 
 const EFFORT_OPTIONS = EFFORT_LEVELS.map(level => EFFORT_LABELS[level])
+const INHERIT_OPTION: PromptModel = { name: INHERIT_MODEL_NAME, description: 'Cada participante usa o modelo configurado no seu perfil' }
 
 export function Composer({ models, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId }: {
   conversationId?: string
@@ -13,7 +14,8 @@ export function Composer({ models, defaultModelName, defaultEffort, onModelChang
   onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort'] }) => Promise<void>
   onStop: () => void
 }) {
-  const withEffort = models.map(model => ({ ...model, efforts: model.efforts ?? EFFORT_OPTIONS, defaultEffort: model.defaultEffort ?? EFFORT_LABELS[defaultEffort || 'medium'] }))
+  // "Usar o modelo do agente" não tem efforts: ao escolhê-lo, o botão de esforço some e nada é sobrescrito no envio.
+  const withEffort = [INHERIT_OPTION, ...models.map(model => ({ ...model, efforts: model.efforts ?? EFFORT_OPTIONS, defaultEffort: model.defaultEffort ?? EFFORT_LABELS[defaultEffort || 'medium'] }))]
   return <div className="shrink-0 px-3 pb-2 pt-1 sm:px-6">
     <div className="mx-auto max-w-3xl">
       <AI_Prompt

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type FileChange, type Message, type Run, type Snapshot, type Workspace } from '../../shared/v9'
 
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
   instructions: 'Você é o Assistente padrão do Politron. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
@@ -180,6 +180,13 @@ export class WorkspaceStore {
       }
       for (const conversation of legacyConversations) delete conversation.projectId
       this.db.exec('DROP TABLE IF EXISTS v9_projects')
+    }
+    // Esquema 6: o Chief nasceu sem nenhuma permissão habilitada, mesmo com a aprovação do usuário já exigida em cada proposta; libera as quatro permissões nos workspaces existentes para igualar o padrão novo.
+    if (fromVersion < 6) {
+      for (const workspace of workspaceRecords.values()) {
+        const permissions = workspace.permissions || {}
+        workspace.permissions = { ...permissions, chiefCreateAgents: true, chiefEditAgents: true, chiefManageTeam: true, chiefCreateSessions: true }
+      }
     }
     this.db.exec('BEGIN IMMEDIATE')
     try {

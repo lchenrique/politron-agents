@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
@@ -6,6 +7,9 @@ import { DiffCard } from '../diff/DiffCard'
 import { PolitronToolApproval } from './PolitronToolApproval'
 import { PoliAvatar } from '../app/PoliAvatar'
 import { assistantPlaceholder } from '../app/appShellShared'
+
+/** Distância do fim ainda considerada "no final", para decidir se um novo evento deve puxar o scroll junto. */
+const STICK_TO_BOTTOM_PX = 96
 
 export function MessageList({ messages, fileChanges, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice }: {
   messages: Message[]
@@ -17,7 +21,20 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
   onOpenRelatedConversation: (id: string) => void
   onNotice: (value: string) => void
 }) {
-  return <div className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
+  const scrollRef = useRef<HTMLDivElement>(null)
+  // Só gruda no final se o usuário já estava lá; rolar pra ler o histórico não é interrompido por uma resposta chegando.
+  const stickToBottom = useRef(true)
+  const onScroll = () => {
+    const element = scrollRef.current
+    if (!element) return
+    stickToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < STICK_TO_BOTTOM_PX
+  }
+  useLayoutEffect(() => {
+    const element = scrollRef.current
+    if (!element || !stickToBottom.current) return
+    element.scrollTop = element.scrollHeight
+  }, [messages, fileChanges, approvals])
+  return <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       {messages.map(message => {
         const agent = agentOf(message.agentId)
