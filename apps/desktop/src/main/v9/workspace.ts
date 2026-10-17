@@ -278,8 +278,11 @@ export class AppService extends EventEmitter {
       await fs.mkdir(directory, { recursive: true })
       const workspaceInstructions = this.store.workspace(run.workspaceId).instructions
       const workspaceContext = createHash('sha256').update(workspaceInstructions).digest('hex').slice(0, 16)
-      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}`
-      const threadId = await runtime.thread(agent, directory, this.tools(context), this.store.binding(bindingKey), workspaceInstructions)
+      const tools = this.tools(context)
+      // Retomar uma sessão existente não atualiza as ferramentas do Codex/Claude: se a lista mudou (permissão, papel, ou código), força uma sessão nova em vez de reaproveitar uma com ferramentas desatualizadas.
+      const toolsKey = createHash('sha256').update(tools.map(tool => tool.name).sort().join(',')).digest('hex').slice(0, 12)
+      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:t${toolsKey}`
+      const threadId = await runtime.thread(agent, directory, tools, this.store.binding(bindingKey), workspaceInstructions)
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
       const result = await runtime.send(threadId, run.input, agent.model || undefined, 600000)
