@@ -17,3 +17,33 @@
   .poli-avatar .poli-avatar__aura,
   .poli-avatar .poli-avatar__thought { animation: none !important; }
 }
+.poli-avatar__look { transform: translate(calc(var(--poli-look-x, 0) * 1px), calc(var(--poli-look-y, 0) * 1px)); transition: transform 140ms ease-out; }
+.poli-avatar__lean { transform-box: view-box; transform-origin: 120px 174px; transform: rotate(var(--poli-lean, 0deg)); transition: transform 220ms ease-out; }
+.poli-avatar svg { transform-origin: 50% 90%; }
+.poli-avatar[data-animate="true"][data-mood="happy"] svg { animation: poli-avatar-boing 420ms cubic-bezier(.3, 1.6, .5, 1); }
+.poli-avatar[data-mood="boop"] svg { animation: poli-avatar-boop 480ms cubic-bezier(.3, 1.6, .5, 1); }
+.poli-avatar[data-mood="surprised"] svg { animation: poli-avatar-jump 450ms ease-out; }
+.poli-avatar[data-hover="true"] .poli-avatar__aura { opacity: .3; }
+.poli-avatar[data-mood="dizzy"] .poli-avatar__float { animation: poli-avatar-wobble .9s ease-in-out infinite; }
+.poli-avatar[data-animate="true"][data-mood="sleep"] .poli-avatar__float { animation-duration: calc(var(--poli-speed, 3s) * 2); }
+.poli-avatar__spin { transform-box: fill-box; transform-origin: center; animation: poli-avatar-spin 1s linear infinite; }
+.poli-avatar__heart { transform-box: fill-box; transform-origin: center; opacity: 0; animation: poli-avatar-heart .9s ease-out infinite; }
+.poli-avatar__z { opacity: 0; animation: poli-avatar-z 2.4s ease-in-out infinite; }
+.poli-avatar__snore { transform-box: fill-box; transform-origin: center; animation: poli-avatar-snore 3s ease-in-out infinite; }
+@keyframes poli-avatar-boing { 0% { transform: scale(1); } 35% { transform: scale(1.08, .92); } 70% { transform: scale(.96, 1.05); } 100% { transform: scale(1); } }
+@keyframes poli-avatar-boop { 0% { transform: scale(1); } 30% { transform: scale(1.12, .84); } 65% { transform: scale(.94, 1.06); } 100% { transform: scale(1); } }
+@keyframes poli-avatar-jump { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(-14%) scale(.96, 1.06); } }
+@keyframes poli-avatar-wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+@keyframes poli-avatar-spin { to { transform: rotate(360deg); } }
+@keyframes poli-avatar-heart { 0% { opacity: 0; transform: translateY(6px) scale(.5); } 25% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-26px) scale(.8); } }
+@keyframes poli-avatar-z { 0% { opacity: 0; transform: translate(0, 6px); } 30% { opacity: .9; } 100% { opacity: 0; transform: translate(10px, -18px); } }
+@keyframes poli-avatar-snore { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.5); } }
+@media (prefers-reduced-motion: reduce) {
+  .poli-avatar .poli-avatar__look,
+  .poli-avatar .poli-avatar__lean { transform: none !important; transition: none; }
+  .poli-avatar svg,
+  .poli-avatar .poli-avatar__spin,
+  .poli-avatar .poli-avatar__snore { animation: none !important; }
+  .poli-avatar .poli-avatar__heart,
+  .poli-avatar .poli-avatar__z { animation: none !important; opacity: 1; }
+}
