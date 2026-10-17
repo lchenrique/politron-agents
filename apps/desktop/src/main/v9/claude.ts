@@ -101,7 +101,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         disallowedTools: ['Write', 'Edit', 'Bash', 'NotebookEdit', 'MultiEdit'],
         allowedTools: context.tools.map(item => `mcp__politron__${item.name}`),
         mcpServers: { politron: server },
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: `Você é ${context.agent.name}. ${context.agent.instructions}\nTrabalhe em português. Use somente as ferramentas disponibilizadas pelo Politron; não use meios alternativos para acessar arquivos, navegador ou executar comandos. Sua menção é @${context.agent.alias}.${context.projectInstructions ? `\nInstruções do projeto:\n${context.projectInstructions}` : ''}` },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: `Você é ${context.agent.name}. ${context.agent.instructions}\nTrabalhe em português. Use somente as ferramentas disponibilizadas pelo Politron; não use meios alternativos para acessar arquivos, navegador ou executar comandos. Sua menção é @${context.agent.alias}. "Pits" é o apelido carinhoso que este aplicativo usa para agente; se o usuário pedir para criar, editar ou falar com um "Pits", ele está se referindo a um agente — não pergunte o que "Pits" significa, use diretamente as ferramentas disponíveis.${context.projectInstructions ? `\nInstruções do projeto:\n${context.projectInstructions}` : ''}` },
         model: typeof params.model === 'string' ? params.model : context.agent.model || undefined,
         effort: context.agent.effort || 'medium',
         ...(context.sessionId ? { resume: context.sessionId } : {}),

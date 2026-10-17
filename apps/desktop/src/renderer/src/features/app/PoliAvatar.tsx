@@ -167,6 +167,13 @@ export function PoliAvatar({ agent, size = 36, state = 'idle', expression }: {
             {face === 'coding' && <>
               <path d="M113 128 H127" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
               <path d="M51 174 l-12 -10 12 -10 M65 154 l12 10 -12 10" fill="none" stroke={eyeColor} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              {/* Mãozinha digitando: aparece sempre que o agente está em execução, incluindo ao editar arquivos. */}
+              <g className={animate ? 'poli-avatar__type' : ''} aria-hidden="true">
+                <rect x="146" y="173" width="36" height="5" rx="2.5" fill={eyeColor} opacity=".35" />
+                <rect className="poli-avatar__finger poli-avatar__finger--1" x="150" y="161" width="6" height="13" rx="3" fill={eyeColor} />
+                <rect className="poli-avatar__finger poli-avatar__finger--2" x="161" y="161" width="6" height="13" rx="3" fill={eyeColor} />
+                <rect className="poli-avatar__finger poli-avatar__finger--3" x="172" y="161" width="6" height="13" rx="3" fill={eyeColor} />
+              </g>
             </>}
             {face === 'done' && <>
               <path d="M106 124 Q120 147 134 124" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" />

@@ -25,7 +25,10 @@ describe('contatos de agentes na barra lateral', () => {
 
   it('mantém a navegação compacta sem repetir o símbolo antigo do Politron', () => {
     renderSidebar()
-    expect(screen.getByRole('button', { name: 'Nova sessão livre' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Criar novo' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Nova sessão livre' })).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Criar novo' }), { key: 'Enter' })
+    expect(screen.getByRole('menuitem', { name: 'Nova sessão livre' })).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
   })
 
@@ -62,6 +65,17 @@ describe('contatos de agentes na barra lateral', () => {
     renderSidebar({ onStartConversation })
     fireEvent.click(screen.getByRole('button', { name: `Nova conversa em ${workspace.name}` }))
     expect(onStartConversation).toHaveBeenCalledWith(workspace.id)
+  })
+
+  it('mantém Chief compacto com avatar menor e sem título repetido', () => {
+    const chief: Agent = { ...agent, role: 'chief' }
+    renderSidebar({ snapshot: { ...snapshot, agents: [chief] } })
+    const card = screen.getByRole('region', { name: 'Chief' })
+    expect(card).toHaveTextContent('Chief · Coordenação')
+    expect(card.querySelector('[style*="width: 30px"]')).not.toBeNull()
+    expect(card.querySelector('[style*="width: 42px"]')).toBeNull()
+    expect(screen.getByRole('tab', { name: /Agentes 1/ })).toBeInTheDocument()
+    expect(card.querySelectorAll('[aria-label="Chief"]')).toHaveLength(1)
   })
 
   it('fixa um Chief com coroa no topo sem duplicá-lo na lista de agentes', () => {
@@ -151,15 +165,14 @@ describe('navegação orientada a workspaces', () => {
     expect(screen.queryByText('Sessão preservada')).not.toBeInTheDocument()
   })
 
-  it('permite recolher independentemente agentes e workspaces', () => {
+  it('usa as abas para alternar agentes e projetos, sem cabeçalhos repetidos', () => {
     renderSidebar()
+    expect(screen.queryByRole('button', { name: 'Recolher workspaces' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Novo workspace' })).not.toBeInTheDocument()
     fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
-    fireEvent.click(screen.getByRole('button', { name: 'Recolher agentes' }))
-    expect(screen.queryByRole('button', { name: /Lyra @lyra/ })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Expandir agentes' }))
     expect(screen.getByRole('button', { name: /Lyra @lyra/ })).toBeInTheDocument()
+    expect(screen.queryByText('Meus Polis')).not.toBeInTheDocument()
     fireEvent.mouseDown(screen.getByRole('tab', { name: /Projetos/ }), { button: 0 })
-    fireEvent.click(screen.getByRole('button', { name: 'Recolher workspaces' }))
-    expect(screen.queryByRole('button', { name: `Recolher ${workspace.name}` })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: `Recolher ${workspace.name}` })).toBeInTheDocument()
   })
 })

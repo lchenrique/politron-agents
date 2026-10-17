@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs'
 import { basename, extname, isAbsolute, relative, resolve, sep, join } from 'node:path'
 import { app, dialog, shell, Notification, BrowserWindow } from 'electron'
 import { EventEmitter } from 'node:events'
+import { listProjectDirectory, readProjectText, writeProjectText } from './project-files'
 import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type Model, type Run, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import { BrowserService } from './browser'
 import { GitWorkspaceService } from './git-workspaces'
@@ -15,6 +16,8 @@ import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from '.
 
 type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; flushTimer?: ReturnType<typeof setTimeout> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
+/** Como e onde habilitar cada permissão do Chief, para a mensagem de recusa orientar o usuário em vez de só negar. */
+const howToEnablePermission = (label: string) => ` Para habilitar, abra o menu (⋯) deste workspace, escolha Editar e marque "${label}" em Permissões do workspace.`
 
 export class AppService extends EventEmitter {
   readonly store: WorkspaceStore
@@ -113,6 +116,9 @@ export class AppService extends EventEmitter {
   }
   workspacePath(workspaceId: string) { const workspace = this.store.workspace(workspaceId); if (workspace.archived) throw new Error('Este workspace está arquivado.'); return workspace.path }
   workspaceDiff(workspaceId: string) { return this.gitWorkspaces.diff(this.workspacePath(workspaceId)) }
+  listProjectFiles(workspaceId: string, directory = '') { return listProjectDirectory(this.workspacePath(workspaceId), directory) }
+  readProjectFile(workspaceId: string, path: string) { return readProjectText(this.workspacePath(workspaceId), path) }
+  writeProjectFile(workspaceId: string, path: string, content: string, expectedHash: string) { return writeProjectText(this.workspacePath(workspaceId), path, content, expectedHash) }
   setVisibleConversation(conversationId: string | null) { if (conversationId !== null) this.store.conversation(conversationId); this.visibleConversationId = conversationId }
   private notifyWhenAway(conversationId: string, title: string, body: string) {
     const focusedConversation = this.visibleConversationId === conversationId && BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.isFocused())
@@ -165,7 +171,7 @@ export class AppService extends EventEmitter {
     const message: Message = { id: randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, createdAt: new Date().toISOString() }
     this.store.putMessage(message); this.emitEvent({ type: 'message', message }); return message
   }
-  async send(conversationId: string, value: string, model?: string): Promise<void> {
+  async send(conversationId: string, value: string, model?: string, effort?: Agent['effort']): Promise<void> {
     const input = text(value, 100000).trim()
     if (!input) return
     const conversation = this.store.conversation(conversationId)
@@ -180,6 +186,7 @@ export class AppService extends EventEmitter {
       const available = await this.runtimeFor(selectedRuntime || agents[0]?.runtime || 'codex').models()
       if (!available.some(item => item.id === selectedModel)) throw new Error(`O modelo selecionado não está disponível no ${selectedRuntime === 'claude' ? 'Claude' : 'Codex'}.`)
     }
+    if (effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço selecionado inválido.')
     const selected = recipients(input, agents)
     if (!selected.length) throw new Error('Não há agentes para responder nesta conversa.')
     const turnAlreadyActive = this.store.runs().some(run => run.conversationId === conversationId && ['queued', 'running', 'waiting'].includes(run.status))
@@ -187,7 +194,7 @@ export class AppService extends EventEmitter {
     if (conversation.titleAuto) { this.store.autoTitle(conversationId, input); this.emitEvent({ type: 'changed' }) }
     const tasks: Promise<void>[] = []
     for (const agent of selected) {
-      const runAgent = selectedModel ? { ...agent, ...(selectedRuntime ? { runtime: selectedRuntime } : {}), model: selectedModel } : agent
+      const runAgent = selectedModel || effort ? { ...agent, ...(selectedRuntime ? { runtime: selectedRuntime } : {}), ...(selectedModel ? { model: selectedModel } : {}), ...(effort ? { effort } : {}) } : agent
       const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
       const message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
@@ -332,11 +339,11 @@ export class AppService extends EventEmitter {
         tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY'])
       ] : []),
       tool('group_members', 'Mostra os agentes desta conversa e a equipe padrão do workspace.', {}, []),
-      ...(context.agent.role === 'chief' && (permissions?.chiefCreateAgents || permissions?.chiefEditAgents) ? [
-        tool('propose_agent', 'Propõe criar um agente novo ou alterar o perfil de um agente que já participa desta equipe. Nada será salvo sem aprovação explícita do usuário. Agentes novos começam sem acesso a arquivos e navegador.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
+      ...(context.agent.role === 'chief' ? [
+        tool('propose_agent', 'Propõe criar um agente novo (um "Pits" novo) ou alterar o perfil de um agente que já participa desta equipe. Nada será salvo sem aprovação explícita do usuário. Agentes novos começam sem acesso a arquivos e navegador. Se o usuário pedir para "criar um Pits", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
+        tool('propose_team', 'Propõe alterar a equipe padrão deste workspace. Só persiste após aprovação explícita do usuário.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents']),
+        tool('propose_session', 'Propõe criar uma nova sessão neste workspace, com a equipe informada ou o Assistente padrão. Só cria após aprovação do usuário.', { name: { type: 'string' }, agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['name', 'agents']),
       ] : []),
-      ...(context.agent.role === 'chief' && permissions?.chiefManageTeam ? [tool('propose_team', 'Propõe alterar a equipe padrão deste workspace. Só persiste após aprovação explícita do usuário.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents'])] : []),
-      ...(context.agent.role === 'chief' && permissions?.chiefCreateSessions ? [tool('propose_session', 'Propõe criar uma nova sessão neste workspace, com a equipe informada ou o Assistente padrão. Só cria após aprovação do usuário.', { name: { type: 'string' }, agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['name', 'agents'])] : []),
       tool('ask_agent', context.agent.role === 'chief' ? 'Propõe uma delegação para um agente da equipe deste workspace. O usuário precisa aprovar antes de o destinatário receber a tarefa.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário, e o resultado voltará diretamente a você.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido concreto. Inclua somente o contexto necessário; a conversa de origem não será compartilhada.' } }, ['agent', 'task'])
     ]
   }
@@ -465,8 +472,8 @@ export class AppService extends EventEmitter {
       if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor alterações no catálogo de agentes.')
       const operation = args.operation === 'update' ? 'update' : args.operation === 'create' ? 'create' : null
       if (!operation) throw new Error('Escolha criar ou atualizar um agente.')
-      if (operation === 'create' && !workspace.permissions?.chiefCreateAgents) throw new Error('O Chief não pode criar agentes neste workspace. Peça ao usuário para habilitar essa permissão.')
-      if (operation === 'update' && !workspace.permissions?.chiefEditAgents) throw new Error('O Chief não pode editar agentes neste workspace. Peça ao usuário para habilitar essa permissão.')
+      if (operation === 'create' && !workspace.permissions?.chiefCreateAgents) throw new Error('O Chief não pode criar agentes neste workspace ainda.' + howToEnablePermission('Chief pode propor novos agentes'))
+      if (operation === 'update' && !workspace.permissions?.chiefEditAgents) throw new Error('O Chief não pode editar agentes neste workspace ainda.' + howToEnablePermission('Chief pode propor alterações de agentes'))
       const nameValue = text(args.name, 80).trim()
       const instructions = text(args.instructions, 20000).trim()
       const description = text(args.description ?? '', 500).trim()
@@ -488,7 +495,7 @@ export class AppService extends EventEmitter {
     }
     if (name === 'propose_team') {
       if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor alterações de equipe.')
-      if (!workspace.permissions?.chiefManageTeam) throw new Error('O Chief não pode alterar a equipe deste workspace. Peça ao usuário para habilitar essa permissão.')
+      if (!workspace.permissions?.chiefManageTeam) throw new Error('O Chief não pode alterar a equipe deste workspace ainda.' + howToEnablePermission('Chief pode propor mudanças na equipe'))
       if (!Array.isArray(args.agents) || args.agents.length > 10 || args.agents.some(id => typeof id !== 'string')) throw new Error('Informe até dez nomes ou menções de agentes.')
       const requestedNames = args.agents.map(value => String(value).replace(/^@/, '').trim())
       const team = requestedNames.map(value => this.store.agents().find(agent => agent.id === value || agent.alias.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR')))
@@ -501,7 +508,8 @@ export class AppService extends EventEmitter {
       return `Equipe aprovada e atualizada em ${workspace.name}.`
     }
     if (name === 'propose_session') {
-      if (context.agent.role !== 'chief' || !workspace.permissions?.chiefCreateSessions) throw new Error('O Chief não pode criar sessões neste workspace.')
+      if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor sessões.')
+      if (!workspace.permissions?.chiefCreateSessions) throw new Error('O Chief não pode criar sessões neste workspace ainda.' + howToEnablePermission('Chief pode propor novas sessões'))
       const sessionName = text(args.name, 100).trim()
       if (!sessionName) throw new Error('Informe um nome para a sessão proposta.')
       if (!Array.isArray(args.agents) || args.agents.length > 10 || args.agents.some(id => typeof id !== 'string')) throw new Error('Informe até dez agentes para a sessão.')

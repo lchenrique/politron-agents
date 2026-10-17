@@ -99,7 +99,11 @@ interface AIPromptProps {
   /** Called with the files picked, dropped or pasted into the prompt. */
   onAttach?: (files: FileList | File[]) => void;
   className?: string;
+  /** Draft key for preserving unsent content when docking moves the chat. */
+  draftKey?: string;
 }
+
+const draftAttachments = new Map<string, PromptAttachment[]>();
 
 const DEFAULT_COMMANDS: PromptCommand[] = [
   {
@@ -755,13 +759,16 @@ export default function AI_Prompt({
   onAttach,
   commands = DEFAULT_COMMANDS,
   className,
+  draftKey,
 }: AIPromptProps) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(() => {
+    try { return draftKey ? sessionStorage.getItem(draftKey) || "" : ""; } catch { return ""; }
+  });
   const [command, setCommand] = useState<PromptCommand | null>(null);
   const [menuIndex, setMenuIndex] = useState(0);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const menuId = useId();
-  const [attachments, setAttachments] = useState<PromptAttachment[]>([]);
+  const [attachments, setAttachments] = useState<PromptAttachment[]>(() => draftKey ? draftAttachments.get(draftKey) || [] : []);
   const [responding, setResponding] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -769,8 +776,8 @@ export default function AI_Prompt({
   // The last message sent, for ↑ in an empty prompt (as in a terminal).
   const lastSentRef = useRef("");
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({
-    minHeight: 56,
-    maxHeight: 280,
+    minHeight: 36,
+    maxHeight: 220,
   });
   // A default that is not in `models` would show a model the menu can't pick.
   const [selectedModel, setSelectedModel] = useState(() =>
@@ -784,6 +791,13 @@ export default function AI_Prompt({
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => {
+    if (!draftKey) return;
+    try { sessionStorage.setItem(draftKey, value); } catch { /* Continue without persistence. */ }
+  }, [draftKey, value]);
+  useEffect(() => {
+    if (draftKey) draftAttachments.set(draftKey, attachments);
+  }, [draftKey, attachments]);
 
   useEffect(() => {
     if (!models.some((model) => model.name === defaultModel) || selectedModel === defaultModel) return;
@@ -953,8 +967,8 @@ export default function AI_Prompt({
   const hasTray = attachments.length > 0 || command !== null;
 
   return (
-    <div className={cn("mx-auto w-full max-w-3xl py-4", className)}>
-      <div className="rounded-[22px] bg-black/[0.04] p-1 dark:bg-white/[0.04]">
+    <div className={cn("mx-auto w-full max-w-3xl py-0.5", className)}>
+      <div className="rounded-[20px] bg-black/[0.04] p-0.5 dark:bg-white/[0.04]">
         {headerText && (
           <PromoHeader
             action={headerAction}
@@ -1060,7 +1074,7 @@ export default function AI_Prompt({
             aria-autocomplete="list"
             aria-controls={menuOpen ? menuId : undefined}
             aria-expanded={menuOpen}
-            className="min-h-[56px] w-full resize-none rounded-none border-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] text-black leading-relaxed placeholder:text-black/35 focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent dark:text-white dark:placeholder:text-white/35"
+            className="min-h-[36px] w-full resize-none rounded-none border-none bg-transparent px-3 pt-2 pb-0 text-[13px] text-black leading-5 placeholder:text-black/40 focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent dark:text-white dark:placeholder:text-white/40"
             id={textareaId}
             onBlur={() => setMenuDismissed(true)}
             onChange={(e) => {
@@ -1084,10 +1098,10 @@ export default function AI_Prompt({
             value={value}
           />
 
-          <div className="flex items-center gap-1 px-2.5 pt-1 pb-2.5">
+          <div className="flex items-center gap-1 px-2.5 pt-0 pb-1.5">
             <label
               className={cn(
-                "flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full ring-1 ring-black/10 dark:ring-white/15",
+                "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full ring-1 ring-black/10 dark:ring-white/15",
                 "text-black/60 hover:bg-black/5 hover:text-black dark:text-white/60 dark:hover:bg-white/10 dark:hover:text-white",
                 "has-focus-visible:ring-2 has-focus-visible:ring-blue-500/60",
                 "transition-[background-color,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"

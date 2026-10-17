@@ -34,24 +34,25 @@ function setup() {
   const chief = service.saveAgent({ name: 'Chief', alias: 'chief', role: 'chief', instructions: 'Coordene a equipe.' })
   const workspace = service.store.saveWorkspace({ name: 'Projeto' })
   const names = (agent: Agent = chief) => ((service as unknown as { tools: (context: unknown) => { name: string }[] }).tools({ agent, run: { workspaceId: workspace.id } })).map(tool => tool.name)
-  return { service, chief, workspace, names }
+  const propose = (name: string, args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent: chief, run: { workspaceId: workspace.id, workspacePath: workspace.path } }, name, args)
+  return { service, chief, workspace, names, propose }
 }
 
 describe('permissões independentes do Chief', () => {
-  it('permite propor equipe sem habilitar criação ou edição de agentes', () => {
-    const { service, workspace, names } = setup()
+  it('exibe as ferramentas do Chief, mas nega criar agente sem permissão', async () => {
+    const { service, workspace, names, propose } = setup()
     service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefManageTeam: true } })
-    expect(names()).toContain('propose_team')
-    expect(names()).not.toContain('propose_agent')
-    expect(names()).not.toContain('propose_session')
+    expect(names()).toEqual(expect.arrayContaining(['propose_team', 'propose_agent', 'propose_session']))
+    await expect(propose('propose_agent', { operation: 'create', name: 'Teste', instructions: 'Trabalhe.' })).rejects.toThrow(/não pode criar agentes/)
+    await expect(propose('propose_session', { name: 'Nova sessão', agents: [] })).rejects.toThrow(/não pode criar sessões/)
   })
 
-  it('permite propor sessão sem habilitar criação ou edição de agentes', () => {
-    const { service, workspace, names } = setup()
+  it('exibe proposta de sessão, mas aplica permissões na execução', async () => {
+    const { service, workspace, names, propose } = setup()
     service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateSessions: true } })
-    expect(names()).toContain('propose_session')
-    expect(names()).not.toContain('propose_agent')
-    expect(names()).not.toContain('propose_team')
+    expect(names()).toEqual(expect.arrayContaining(['propose_team', 'propose_agent', 'propose_session']))
+    await expect(propose('propose_team', { agents: [] })).rejects.toThrow(/não pode alterar a equipe/)
+    await expect(propose('propose_agent', { operation: 'create', name: 'Teste', instructions: 'Trabalhe.' })).rejects.toThrow(/não pode criar agentes/)
   })
 
   it('não oferece ferramentas do Chief a agentes normais', () => {

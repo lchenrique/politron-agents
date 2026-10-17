@@ -24,6 +24,7 @@ const api = {
   terminal: {
     create: (input: { rows: number; cols: number; workspaceId: string }) =>
       ipcRenderer.invoke('vibe:terminal:create', input),
+    close: () => ipcRenderer.invoke('vibe:terminal:close'),
     write: (data: string) =>
       ipcRenderer.send('vibe:terminal:write', data),
     resize: (input: { cols: number; rows: number }) =>
@@ -47,10 +48,13 @@ const appAPI: AppAPI = {
   deleteConversation: (id) => ipcRenderer.invoke('v9:deleteConversation', id),
   deleteAgent: (id) => ipcRenderer.invoke('v9:deleteAgent', id),
   workspaceDiff: (id) => ipcRenderer.invoke('v9:workspaceDiff', id),
+  listProjectFiles: (id, directory) => ipcRenderer.invoke('v9:listProjectFiles', id, directory),
+  readProjectFile: (id, filePath) => ipcRenderer.invoke('v9:readProjectFile', id, filePath),
+  writeProjectFile: (id, filePath, content, hash) => ipcRenderer.invoke('v9:writeProjectFile', id, filePath, content, hash),
   respondApproval: (id, approved) => ipcRenderer.invoke('v9:respondApproval', id, approved),
   setVisibleConversation: (id) => ipcRenderer.invoke('v9:setVisibleConversation', id),
   history: (id) => ipcRenderer.invoke('v9:history', id),
-  send: (id, value, model) => ipcRenderer.invoke('v9:send', id, value, model),
+  send: (id, value, model, effort) => ipcRenderer.invoke('v9:send', id, value, model, effort),
   stop: (id) => ipcRenderer.invoke('v9:stop', id),
   cancelDelegation: (id) => ipcRenderer.invoke('v9:cancelDelegation', id),
   models: (runtime) => ipcRenderer.invoke('v9:models', runtime),

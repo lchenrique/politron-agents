@@ -1,25 +1,33 @@
 import AI_Prompt, { type PromptModel } from '@/components/kokonutui/ai-prompt'
+import type { Agent } from '../../../../shared/v9'
+import { EFFORT_LABELS, EFFORT_LEVELS, effortFromLabel } from '../app/appShellShared'
 
-export function Composer({ models, defaultModelName, onModelChange, onSubmit, onStop }: {
+const EFFORT_OPTIONS = EFFORT_LEVELS.map(level => EFFORT_LABELS[level])
+
+export function Composer({ models, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId }: {
+  conversationId?: string
   models: PromptModel[]
   defaultModelName?: string
+  defaultEffort?: Agent['effort']
   onModelChange: (model: string) => void
-  onSubmit: (value: string, modelName: string, options: { files: File[] }) => Promise<void>
+  onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort'] }) => Promise<void>
   onStop: () => void
 }) {
-  return <div className="shrink-0 px-4 pb-4 pt-2 sm:px-8">
+  const withEffort = models.map(model => ({ ...model, efforts: model.efforts ?? EFFORT_OPTIONS, defaultEffort: model.defaultEffort ?? EFFORT_LABELS[defaultEffort || 'medium'] }))
+  return <div className="shrink-0 px-3 pb-2 pt-1 sm:px-6">
     <div className="mx-auto max-w-3xl">
       <AI_Prompt
-        models={models}
+        key={conversationId}
+        draftKey={conversationId ? 'politron.composer.draft.' + conversationId : undefined}
+        models={withEffort}
         defaultModel={defaultModelName}
         onModelChange={onModelChange}
         placeholder="Peça qualquer coisa ou use @ para escolher os agentes…"
         headerText=""
         commands={[]}
-        onSubmit={onSubmit}
+        onSubmit={(value, modelName, options) => onSubmit(value, modelName, { files: options.files, effort: effortFromLabel(options.effort || '') })}
         onStop={onStop}
       />
-      <p className="mt-2 px-2 text-center text-[10px] text-muted-foreground">Agentes podem errar. Confira ações realizadas nos arquivos do grupo.</p>
     </div>
   </div>
 }

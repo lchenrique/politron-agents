@@ -288,10 +288,11 @@ export class WorkspaceStore {
     const filesWrite = permissionInput.filesWrite ?? oldPermissions?.filesWrite ?? 'inherit'
     const computerUse = permissionInput.computerUse ?? oldPermissions?.computerUse ?? 'inherit'
     if (!['inherit', 'deny'].includes(filesWrite) || !['inherit', 'deny'].includes(computerUse)) throw new Error('Política de acesso do workspace inválida.')
-    const chiefCreateAgents = permissionInput.chiefCreateAgents ?? oldPermissions?.chiefCreateAgents ?? false
-    const chiefEditAgents = permissionInput.chiefEditAgents ?? oldPermissions?.chiefEditAgents ?? false
-    const chiefManageTeam = permissionInput.chiefManageTeam ?? oldPermissions?.chiefManageTeam ?? false
-    const chiefCreateSessions = permissionInput.chiefCreateSessions ?? oldPermissions?.chiefCreateSessions ?? false
+    // Workspaces novos já nascem com o Chief liberado para propor; a aprovação explícita de cada proposta continua obrigatória e é a proteção real.
+    const chiefCreateAgents = permissionInput.chiefCreateAgents ?? oldPermissions?.chiefCreateAgents ?? true
+    const chiefEditAgents = permissionInput.chiefEditAgents ?? oldPermissions?.chiefEditAgents ?? true
+    const chiefManageTeam = permissionInput.chiefManageTeam ?? oldPermissions?.chiefManageTeam ?? true
+    const chiefCreateSessions = permissionInput.chiefCreateSessions ?? oldPermissions?.chiefCreateSessions ?? true
     if ([chiefCreateAgents, chiefEditAgents, chiefManageTeam, chiefCreateSessions].some(value => typeof value !== 'boolean')) throw new Error('Permissões do Chief inválidas.')
     const permissions = {
       chiefCreateAgents,

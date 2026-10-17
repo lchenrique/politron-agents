@@ -13,7 +13,8 @@ interface Window {
  };
  platform: string;
  terminal: {
- create: (input: { rows: number; cols: number; cwd?: string }) => Promise<boolean>;
+ create: (input: { rows: number; cols: number; workspaceId: string }) => Promise<boolean>;
+ close: () => Promise<boolean>;
  write: (data: string) => void;
  resize: (input: { cols: number; rows: number }) => void;
  onData: (callback: (data: string) => void) => () => void;

@@ -47,3 +47,10 @@
   .poli-avatar .poli-avatar__heart,
   .poli-avatar .poli-avatar__z { animation: none !important; opacity: 1; }
 }
+.poli-avatar__finger { transform-box: fill-box; transform-origin: bottom center; animation: poli-avatar-type-finger .5s ease-in-out infinite; }
+.poli-avatar__finger--2 { animation-delay: .15s; }
+.poli-avatar__finger--3 { animation-delay: .3s; }
+@keyframes poli-avatar-type-finger { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.45); } }
+@media (prefers-reduced-motion: reduce) {
+  .poli-avatar__finger { animation: none !important; }
+}

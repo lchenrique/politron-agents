@@ -4,3 +4,8 @@ export const assistantPlaceholder: Agent = { id: ASSISTANT_ID, name: 'Assistente
 export const emptySnapshot: Snapshot = { assistant: assistantPlaceholder, agents: [], workspaces: [], conversations: [], messages: [], runs: [], fileChanges: [], approvals: [] }
 export const errorText = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível concluir essa ação.'
 export const aliasFor = (name: string) => name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-')
+
+/** Mesma escala de esforço do editor de agente, em rótulos para o seletor do composer. */
+export const EFFORT_LEVELS: NonNullable<Agent['effort']>[] = ['low', 'medium', 'high', 'xhigh', 'max']
+export const EFFORT_LABELS: Record<NonNullable<Agent['effort']>, string> = { low: 'Baixo', medium: 'Equilibrado', high: 'Alto', xhigh: 'Muito alto', max: 'Máximo' }
+export const effortFromLabel = (label: string): NonNullable<Agent['effort']> | undefined => EFFORT_LEVELS.find(level => EFFORT_LABELS[level] === label)

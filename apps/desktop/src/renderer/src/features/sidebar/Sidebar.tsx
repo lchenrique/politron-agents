@@ -12,7 +12,6 @@ import type { EditorKind } from '../editors/Editor'
 function readSet(key: string): Set<string> {
   try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []) } catch { return new Set() }
 }
-function readBoolean(key: string): boolean { try { return JSON.parse(localStorage.getItem(key) || 'false') === true } catch { return false } }
 
 export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, agentStates, onSelectConversation, onSelectWorkspace, onStartConversation, onOpenAgent, onOpenEditor, onOpenSettings, onDeleteWorkspace, onDeleteConversation, onDeleteAgent, onSetChief, onNotice }: {
   snapshot: Snapshot
@@ -35,15 +34,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [section, setSection] = useState<'projects' | 'agents'>(() => { try { return localStorage.getItem('politron.sidebar.section') === 'agents' ? 'agents' : 'projects' } catch { return 'projects' } })
   useEffect(() => { localStorage.setItem('politron.sidebar.section', section) }, [section])
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readSet('politron.sidebar.collapsed-workspaces'))
-  const [agentsCollapsed, setAgentsCollapsed] = useState(() => readBoolean('politron.sidebar.agents-collapsed'))
-  const [workspacesCollapsed, setWorkspacesCollapsed] = useState(() => readBoolean('politron.sidebar.workspaces-collapsed'))
   const [favorites, setFavorites] = useState<Set<string>>(() => readSet('politron.sidebar.favorites'))
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null)
   const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null)
   const [openWorkspaceMenuId, setOpenWorkspaceMenuId] = useState<string | null>(null)
   useEffect(() => { localStorage.setItem('politron.sidebar.collapsed-workspaces', JSON.stringify([...collapsed])) }, [collapsed])
-  useEffect(() => { localStorage.setItem('politron.sidebar.agents-collapsed', JSON.stringify(agentsCollapsed)) }, [agentsCollapsed])
-  useEffect(() => { localStorage.setItem('politron.sidebar.workspaces-collapsed', JSON.stringify(workspacesCollapsed)) }, [workspacesCollapsed])
   useEffect(() => { localStorage.setItem('politron.sidebar.favorites', JSON.stringify([...favorites])) }, [favorites])
   const toggle = (id: string) => setCollapsed(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
   const favoriteKey = (type: 'workspace' | 'conversation' | 'agent', id: string) => `${type}:${id}`
@@ -87,20 +82,20 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
 
   const agentRow = (agent: Agent, pinnedChief = false) => <div
     key={agent.id}
-    className={'group flex items-center gap-1 rounded-lg transition-colors ' + (pinnedChief ? 'border border-amber-500/25 bg-amber-500/5 hover:bg-amber-500/10' : 'hover:bg-accent/50')}
+    className={'group flex items-center gap-1 rounded-md transition-colors ' + (pinnedChief ? 'border border-amber-500/25 bg-amber-500/5 hover:bg-amber-500/10' : 'hover:bg-accent/50')}
     onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}
   >
-    <button onClick={() => void onOpenAgent(agent)} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <Avatar agent={agent} state={agentStates[agent.id] || 'idle'} />
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex items-center gap-1 truncate text-xs font-semibold">{agent.name}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 fill-amber-500/20 text-amber-500" />}</span>
-        <span className="truncate text-[10px] text-muted-foreground">{pinnedChief ? 'Chief · Coordena a equipe' : agent.description || '@' + agent.alias}</span>
+    <button onClick={() => void onOpenAgent(agent)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Avatar agent={agent} size="xs" state={agentStates[agent.id] || 'idle'} />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex min-w-0 items-center gap-1 truncate text-xs font-semibold">{agent.name}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 fill-amber-500/20 text-amber-500" />}</span>
+        <span className="truncate text-[10px] text-muted-foreground">{pinnedChief ? 'Chief · Coordenação' : agent.description || '@' + agent.alias}</span>
       </span>
       <AgentPresence state={agentStates[agent.id] || 'idle'} />
       {isFavorite('agent', agent.id) && <Star className="size-3 shrink-0 fill-amber-500 text-amber-500" aria-label="Favorito" />}
     </button>
     <DropdownMenu open={openAgentMenuId === agent.id} onOpenChange={open => setOpenAgentMenuId(open ? agent.id : null)}>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-7 shrink-0 text-muted-foreground opacity-70 hover:opacity-100" aria-label={'Ações de ' + agent.name}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-6 shrink-0 text-muted-foreground opacity-70 hover:opacity-100" aria-label={'Ações de ' + agent.name}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={() => void onOpenAgent(agent, true)}><MessageSquarePlus className="mr-2 size-4" />Nova conversa</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'agent', initial: agent })}><Pencil className="mr-2 size-4" />Editar perfil</DropdownMenuItem>
@@ -205,11 +200,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     Number(isFavorite('agent', b.id)) - Number(isFavorite('agent', a.id)) || a.name.localeCompare(b.name, 'pt-BR'))
 
   return <aside className="flex w-[296px] shrink-0 flex-col border-r border-border/60 bg-card/35" aria-label="Barra lateral do Politron">
-    <header className="space-y-2.5 border-b border-border/40 px-3 pb-3 pt-3">
-      <div className="flex items-center justify-between px-1">
-        <div><h2 className="text-sm font-semibold tracking-tight">Espaço de trabalho</h2><p className="text-[10px] text-muted-foreground">Projetos, sessões e seus Polis</p></div>
+    <header className="space-y-1.5 border-b border-border/40 px-3 pb-2 pt-2">
+      <div className="flex h-7 items-center justify-between px-1">
+        <h2 className="text-xs font-semibold tracking-tight">Espaço de trabalho</h2>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Criar novo"><Plus className="size-4" /></Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7" aria-label="Criar novo"><Plus className="size-4" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={() => void onStartConversation()}><MessageSquarePlus className="mr-2 size-4" />Nova sessão livre</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'workspace' })}><FolderPlus className="mr-2 size-4" />Novo projeto</DropdownMenuItem>
@@ -217,16 +212,15 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <Button variant="outline" className="h-9 w-full justify-start gap-2 border-border/60 bg-background/60 text-xs" onClick={() => void onStartConversation()}><MessageSquarePlus className="size-4" />Nova sessão livre<Plus className="ml-auto size-3.5 text-muted-foreground" /></Button>
-      <ActionSearchBar items={paletteItems} onSelect={openPaletteItem} shortcut label="Busca rápida" placeholder="Buscar ou executar… Ctrl K" className="!max-w-none" />
+      <ActionSearchBar items={paletteItems} onSelect={openPaletteItem} shortcut label="Busca rápida" placeholder="Buscar projetos, agentes, comandos…" className="!max-w-none" />
     </header>
-    {showChief && chiefAgent && <section aria-label="Chief" className="border-b border-border/40 px-2 py-2"><div className="mb-1 flex items-center gap-1.5 px-2 text-[10px] font-semibold uppercase tracking-[.12em] text-amber-600"><Crown className="size-3.5 fill-amber-500/20" /> Chief · Coordenação</div>{agentRow(chiefAgent, true)}</section>}
+    {showChief && chiefAgent && <section aria-label="Chief" className="border-b border-border/40 px-2 py-1.5">{agentRow(chiefAgent, true)}</section>}
     <Tabs value={section} onValueChange={value => setSection(value as 'projects' | 'agents')} className="flex min-h-0 flex-1 flex-col">
-      <TabsList className="mx-3 mt-3 grid h-9 grid-cols-2">
+      <TabsList className="mx-3 mt-2 grid h-8 grid-cols-2">
         <TabsTrigger value="projects" className="gap-1.5 text-xs"><FolderOpen className="size-3.5" />Projetos <span className="text-[10px] opacity-65">{rootWorkspaces.length}</span></TabsTrigger>
-        <TabsTrigger value="agents" className="gap-1.5 text-xs"><Users className="size-3.5" />Agentes <span className="text-[10px] opacity-65">{regularAgents.length}</span></TabsTrigger>
+        <TabsTrigger value="agents" className="gap-1.5 text-xs"><Users className="size-3.5" />Agentes <span className="text-[10px] opacity-65">{snapshot.agents.length}</span></TabsTrigger>
       </TabsList>
-      <TabsContent value="projects" className="mt-0 min-h-0 flex-1 space-y-3 overflow-auto px-2 pb-4 pt-2">
+      <TabsContent value="projects" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
         {!!favorites.size && <section aria-label="Favoritos" className="space-y-0.5">
           <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[.12em] text-muted-foreground">Favoritos</p>
           {[...favorites].map(key => {
@@ -242,39 +236,22 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             return null
           })}
         </section>}
-        <section aria-label="Projetos" className="space-y-1">
-          <div className="flex items-center justify-between px-2">
-            <Button type="button" variant="ghost" size="sm" aria-label={workspacesCollapsed ? 'Expandir workspaces' : 'Recolher workspaces'} onClick={() => setWorkspacesCollapsed(value => !value)} className="h-7 gap-1 px-1.5 text-[10px] font-semibold uppercase tracking-[.1em] text-muted-foreground">
-              {workspacesCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}Workspaces
-            </Button>
-            <Button variant="ghost" size="icon" className="size-7" aria-label="Novo workspace" title="Novo projeto" onClick={() => onOpenEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /></Button>
-          </div>
-          <div hidden={workspacesCollapsed} className="space-y-0.5">
-            {rootWorkspaces.map(workspace => workspaceNode(workspace))}
-            {!rootWorkspaces.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Crie um projeto para organizar sua equipe e seus históricos.</p>}
-            {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="mt-2"><Button variant="ghost" className="h-8 w-full justify-start gap-1.5 px-2 text-xs" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}>{collapsed.has('legacy') ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}<FolderOpen className="size-3.5" />Sessões antigas<span className="ml-auto text-[10px]">{legacyConversations.length}</span></Button>{!collapsed.has('legacy') && <div className="ml-5 border-l border-border/50 pl-1">{legacyConversations.map(conversationButton)}</div>}</div>}
-          </div>
+        <section aria-label="Projetos" className="space-y-0.5">
+          {rootWorkspaces.map(workspace => workspaceNode(workspace))}
+          {!rootWorkspaces.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Crie um projeto pelo botão + para organizar suas sessões.</p>}
+          {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="mt-2"><Button variant="ghost" className="h-8 w-full justify-start gap-1.5 px-2 text-xs" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}>{collapsed.has('legacy') ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}<FolderOpen className="size-3.5" />Sessões antigas<span className="ml-auto text-[10px]">{legacyConversations.length}</span></Button>{!collapsed.has('legacy') && <div className="ml-5 border-l border-border/50 pl-1">{legacyConversations.map(conversationButton)}</div>}</div>}
         </section>
       </TabsContent>
-      <TabsContent value="agents" className="mt-0 min-h-0 flex-1 space-y-3 overflow-auto px-2 pb-4 pt-2">
-        <section aria-label="Catálogo de agentes">
-          <div className="mb-2 flex items-center justify-between px-2">
-            <Button variant="ghost" size="sm" type="button" className="h-7 gap-1 px-1.5 text-[10px] font-semibold uppercase tracking-[.1em] text-muted-foreground" aria-label={agentsCollapsed ? 'Expandir agentes' : 'Recolher agentes'} onClick={() => setAgentsCollapsed(value => !value)}>
-              {agentsCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}Meus Polis <span className="opacity-65">{visibleAgents.length}</span>
-            </Button>
-            <Button variant="ghost" size="icon" className="size-7" aria-label="Criar agente" title="Adicionar Poli" onClick={() => onOpenEditor({ kind: 'agent' })}><Plus className="size-4" /></Button>
-          </div>
-          <div hidden={agentsCollapsed} className="space-y-1">
-            {visibleAgents.map(agent => agentRow(agent))}
-            {!visibleAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Adicione um Poli para conversar ou montar uma equipe.</p>}
-          </div>
+      <TabsContent value="agents" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
+        <section aria-label="Catálogo de agentes" className="space-y-0.5">
+          {visibleAgents.map(agent => agentRow(agent))}
+          {!visibleAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">{chiefAgent ? 'Nenhum outro agente cadastrado. Use o botão + para criar.' : 'Crie um Poli pelo botão + para começar.'}</p>}
         </section>
-        {regularAgents.length > 0 && <p className="px-3 text-[10px] leading-4 text-muted-foreground">Clique para conversar. Use o menu ⋯ para editar, favoritar ou promover a Chief.</p>}
       </TabsContent>
     </Tabs>
-    <footer className="border-t border-border/60 px-3 py-2">
-      <Button variant="ghost" disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} className="h-8 w-full justify-start gap-2 px-2 text-xs text-muted-foreground"><FolderOpen className="size-3.5" />Abrir pasta da conversa</Button>
-      <Button variant="ghost" onClick={onOpenSettings} className="h-8 w-full justify-start gap-2 px-2 text-xs text-muted-foreground"><Settings2 className="size-3.5" />Configurações</Button>
+    <footer className="flex items-center gap-1 border-t border-border/60 px-2 py-1">
+      <Button variant="ghost" disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><FolderOpen className="size-3.5" />Pasta</Button>
+      <Button variant="ghost" onClick={onOpenSettings} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><Settings2 className="size-3.5" />Configurações</Button>
     </footer>
   </aside>
 }

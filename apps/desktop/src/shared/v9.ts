@@ -51,6 +51,8 @@ export interface Delegation {
 }
 export interface Model { id: string; name: string; runtime: 'codex' | 'claude'; isDefault: boolean }
 export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[] }
+export interface ProjectFileEntry { name: string; path: string; directory: boolean }
+export interface ProjectFileContent { path: string; name: string; content: string; hash: string }
 export interface BrowserFrame {
   key: string; conversationId: string; agentId: string; url: string; title: string
   image: string; width: number; height: number; x: number | null; y: number | null
@@ -74,10 +76,13 @@ export interface AppAPI {
   deleteConversation(conversationId: string): Promise<void>
   deleteAgent(agentId: string): Promise<void>
   workspaceDiff(workspaceId: string): Promise<string>
+  listProjectFiles(workspaceId: string, directory?: string): Promise<ProjectFileEntry[]>
+  readProjectFile(workspaceId: string, filePath: string): Promise<ProjectFileContent>
+  writeProjectFile(workspaceId: string, filePath: string, content: string, expectedHash: string): Promise<{ path: string; hash: string }>
   respondApproval(approvalId: string, approved: boolean): Promise<void>
   setVisibleConversation(conversationId: string | null): Promise<void>
   history(conversationId: string): Promise<Message[]>
-  send(conversationId: string, text: string, model?: string): Promise<void>
+  send(conversationId: string, text: string, model?: string, effort?: Agent['effort']): Promise<void>
   stop(conversationId: string): Promise<void>
   cancelDelegation(delegationId: string): Promise<void>
   models(runtime?: 'codex' | 'claude'): Promise<Model[]>
