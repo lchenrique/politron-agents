@@ -62,3 +62,23 @@ describe('permissões independentes do Chief', () => {
     expect(names({ ...chief, role: 'agent' })).not.toEqual(expect.arrayContaining(['propose_agent', 'propose_team', 'propose_session']))
   })
 })
+
+describe('visibilidade de agentes pelo group_members', () => {
+  it('Chief enxerga todo o catálogo, mesmo agentes de fora desta conversa e workspace', async () => {
+    const { service, chief, propose } = setup()
+    service.saveAgent({ name: 'Nina Frontend', alias: 'nina', instructions: 'Cuide do frontend.' })
+    service.saveAgent({ name: 'Verati', alias: 'verati', instructions: 'Minecraft.' })
+    const members = await propose('group_members', {}) as { alias: string }[]
+    expect(members.map(member => member.alias)).toEqual(expect.arrayContaining(['@' + chief.alias, '@nina', '@verati']))
+  })
+
+  it('agente comum continua vendo só a conversa e a equipe padrão do workspace', async () => {
+    const { service, workspace, chief, names } = setup()
+    const nina = service.saveAgent({ name: 'Nina Frontend', alias: 'nina', instructions: 'Cuide do frontend.' })
+    service.saveAgent({ name: 'Verati', alias: 'verati', instructions: 'Minecraft.' })
+    const callAsAgent = (name: string, args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent: { ...chief, role: 'agent' }, run: { workspaceId: workspace.id, workspacePath: workspace.path }, conversation: { agentIds: [nina.id] } }, name, args)
+    expect(names({ ...chief, role: 'agent' })).toContain('group_members')
+    const members = await callAsAgent('group_members', {}) as { alias: string }[]
+    expect(members.map(member => member.alias)).toEqual(['@nina'])
+  })
+})

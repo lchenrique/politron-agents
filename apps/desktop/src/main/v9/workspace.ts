@@ -341,7 +341,7 @@ export class AppService extends EventEmitter {
         tool('browser_key', 'Pressiona uma tecla comum na página, como Enter, Tab ou Escape.', { key: { type: 'string' } }, ['key']),
         tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY'])
       ] : []),
-      tool('group_members', 'Mostra os agentes desta conversa e a equipe padrão do workspace.', {}, []),
+      tool('group_members', context.agent.role === 'chief' ? 'Lista todos os Pits cadastrados no aplicativo, não só os desta conversa. Use para saber quem existe antes de propor equipe, sessão ou delegação.' : 'Mostra os agentes desta conversa e a equipe padrão do workspace.', {}, []),
       ...(context.agent.role === 'chief' ? [
         tool('propose_agent', 'Propõe criar um agente novo (um "Pits" novo) ou alterar o perfil de um agente que já participa desta equipe. Nada será salvo sem aprovação explícita do usuário. Agentes novos começam sem acesso a arquivos e navegador. Se o usuário pedir para "criar um Pits", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
         tool('propose_team', 'Propõe alterar a equipe padrão deste workspace. Só persiste após aprovação explícita do usuário.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents']),
@@ -470,7 +470,11 @@ export class AppService extends EventEmitter {
       }
       return `Arquivo salvo: ${relative(root, target)}`
     }
-    if (name === 'group_members') return [...new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])].map(id => { const agent = this.store.agent(id); return { name: agent.name, alias: `@${agent.alias}`, description: agent.description } })
+    if (name === 'group_members') {
+      // O Chief coordena o aplicativo inteiro: precisa enxergar todo o catálogo, não só quem já está nesta conversa.
+      const ids = context.agent.role === 'chief' ? this.store.agents().map(item => item.id) : [...new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])]
+      return ids.map(id => { const agent = this.store.agent(id); return { name: agent.name, alias: `@${agent.alias}`, description: agent.description } })
+    }
     if (name === 'propose_agent') {
       if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor alterações no catálogo de agentes.')
       const operation = args.operation === 'update' ? 'update' : args.operation === 'create' ? 'create' : null
