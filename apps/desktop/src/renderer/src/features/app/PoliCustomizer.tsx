@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Slider } from '@/components/ui/slider'
 import type { Agent } from '../../../../shared/v9'
 import { PoliAvatar, type PoliExpression } from './PoliAvatar'
 
@@ -13,10 +15,10 @@ const states: { value: PoliExpression; label: string }[] = [
 function Range({ label, value, min, max, step = 1, unit = '', onChange }: {
   label: string; value: number; min: number; max: number; step?: number; unit?: string; onChange: (value: number) => void
 }) {
-  return <label className="block space-y-1.5 text-xs"><span className="flex items-center justify-between gap-3 text-muted-foreground"><span>{label}</span><output className="tabular-nums text-foreground">{value}{unit}</output></span><input className="w-full accent-primary" type="range" min={min} max={max} step={step} value={value} onChange={event => onChange(Number(event.target.value))} /></label>
+  return <label className="block space-y-1.5 text-xs"><span className="flex items-center justify-between gap-3 text-muted-foreground"><span>{label}</span><output className="tabular-nums text-foreground">{value}{unit}</output></span><Slider aria-label={label} min={min} max={max} step={step} value={[value]} onValueChange={values => onChange(values[0])} className="py-2" /></label>
 }
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <label className="flex items-center justify-between gap-3 text-xs"><span>{label}</span><input type="checkbox" className="size-4 accent-primary" checked={checked} onChange={event => onChange(event.target.checked)} /></label>
+  return <label className="flex items-center justify-between gap-3 text-xs"><span>{label}</span><Checkbox checked={checked} onCheckedChange={value => onChange(value === true)} /></label>
 }
 export function PoliCustomizer({ agent, onChange }: { agent: Agent; onChange: (patch: Partial<Agent>) => void }) {
   const [tab, setTab] = useState<Tab>('appearance')

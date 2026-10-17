@@ -76,7 +76,7 @@ export class AppService extends EventEmitter {
     const source = this.store.workspace(input.sourceWorkspaceId)
     if (source.archived) throw new Error('Escolha um workspace ativo como origem.')
     const created = await this.gitWorkspaces.createWorktree({ sourcePath: source.path, workspaceName: source.name, workspaceId: source.id, branch: input.branch, baseBranch: input.baseBranch || source.branch || undefined })
-    const workspace = this.store.saveWorkspace({ name: input.branch, parentWorkspaceId: source.id, kind: 'worktree', path: created.path, branch: created.branch, baseBranch: created.baseBranch, changes: 0, archived: false })
+    const workspace = this.store.saveWorkspace({ name: input.branch, parentWorkspaceId: source.id, kind: 'worktree', path: created.path, branch: created.branch, baseBranch: created.baseBranch, instructions: source.instructions, defaultAgentIds: source.defaultAgentIds, permissions: source.permissions, changes: 0, archived: false })
     this.emitEvent({ type: 'changed' }); return workspace
   }
   async archiveWorkspace(workspaceId: string, preserveDirtyWorktree = false) {
@@ -133,14 +133,15 @@ export class AppService extends EventEmitter {
     if (!resolveApproval) throw new Error('A execução desta aprovação não está ativa. Ela não será repetida automaticamente.')
     this.approvalWaiters.delete(approvalId); resolveApproval(approved)
   }
-  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details']): Promise<boolean> {
-    if (context.agent.approvalMode === 'automatic') return true
+  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], forceAsk = false): Promise<boolean> {
+    if (!forceAsk && context.agent.approvalMode === 'automatic') return true
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
     this.store.putApproval(approval)
     context.run.status = 'waiting'; this.store.putRun(context.run)
     this.updateMessage(context.message, 'waiting', context.message.text)
     this.emitEvent({ type: 'approval', approval })
-    this.notifyWhenAway(context.conversation.id, 'Politron precisa da sua atenção', `${context.agent.name} aguarda aprovação para ${kind === 'write' ? 'alterar um arquivo' : 'usar o navegador'}.`)
+    const action = kind === 'write' ? 'alterar um arquivo' : kind === 'browser' ? 'usar o navegador' : kind === 'delegation' ? 'delegar uma tarefa' : 'alterar um agente ou uma equipe'
+    this.notifyWhenAway(context.conversation.id, 'Politron precisa da sua atenção', `${context.agent.name} aguarda aprovação para ${action}.`)
     if (context.signal?.aborted) {
       const interrupted = { ...approval, status: 'interrupted' as const, resolvedAt: new Date().toISOString() }
       this.store.putApproval(interrupted); this.emitEvent({ type: 'approval', approval: interrupted }); return false
@@ -315,11 +316,14 @@ export class AppService extends EventEmitter {
   }
   private tools(context: RunContext): DynamicTool[] {
     const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]): DynamicTool => ({ type: 'function', name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false } })
+    const permissions = this.store.workspace(context.run.workspaceId).permissions
+    const canWrite = context.agent.canWrite && permissions?.filesWrite !== 'deny'
+    const canUseComputer = context.agent.computerUse && permissions?.computerUse !== 'deny'
     return [
       tool('workspace_list', 'Lista arquivos e pastas dentro da pasta deste grupo.', { path: { type: 'string', description: 'Caminho relativo; use . para a raiz.' } }, ['path']),
       tool('workspace_read', 'Lê um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' } }, ['path']),
-      ...(context.agent.canWrite ? [tool('workspace_write', 'Cria ou substitui um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
-      ...(context.agent.computerUse ? [
+      ...(canWrite ? [tool('workspace_write', 'Cria ou substitui um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
+      ...(canUseComputer ? [
         tool('browser_open', 'Abre um endereço HTTP ou HTTPS na sessão privada deste agente.', { url: { type: 'string' } }, ['url']),
         tool('browser_observe', 'Lê o conteúdo visível e os controles da página aberta pelo agente.', {}, []),
         tool('browser_click', 'Clica em um seletor CSS ou em uma posição dentro da página.', { selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, []),
@@ -327,8 +331,13 @@ export class AppService extends EventEmitter {
         tool('browser_key', 'Pressiona uma tecla comum na página, como Enter, Tab ou Escape.', { key: { type: 'string' } }, ['key']),
         tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY'])
       ] : []),
-      tool('group_members', 'Mostra os agentes deste grupo e suas descrições.', {}, []),
-      tool('ask_agent', 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário, e o resultado voltará diretamente a você.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido concreto. Inclua somente o contexto necessário; a conversa de origem não será compartilhada.' } }, ['agent', 'task'])
+      tool('group_members', 'Mostra os agentes desta conversa e a equipe padrão do workspace.', {}, []),
+      ...(context.agent.role === 'chief' && (permissions?.chiefCreateAgents || permissions?.chiefEditAgents) ? [
+        tool('propose_agent', 'Propõe criar um agente novo ou alterar o perfil de um agente que já participa desta equipe. Nada será salvo sem aprovação explícita do usuário. Agentes novos começam sem acesso a arquivos e navegador.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
+      ] : []),
+      ...(context.agent.role === 'chief' && permissions?.chiefManageTeam ? [tool('propose_team', 'Propõe alterar a equipe padrão deste workspace. Só persiste após aprovação explícita do usuário.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents'])] : []),
+      ...(context.agent.role === 'chief' && permissions?.chiefCreateSessions ? [tool('propose_session', 'Propõe criar uma nova sessão neste workspace, com a equipe informada ou o Assistente padrão. Só cria após aprovação do usuário.', { name: { type: 'string' }, agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['name', 'agents'])] : []),
+      tool('ask_agent', context.agent.role === 'chief' ? 'Propõe uma delegação para um agente da equipe deste workspace. O usuário precisa aprovar antes de o destinatário receber a tarefa.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário, e o resultado voltará diretamente a você.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido concreto. Inclua somente o contexto necessário; a conversa de origem não será compartilhada.' } }, ['agent', 'task'])
     ]
   }
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
@@ -372,6 +381,7 @@ export class AppService extends EventEmitter {
       if (back === '..' || back.startsWith(`..${sep}`) || isAbsolute(back)) throw new Error('O caminho sai da pasta do grupo.')
       return target
     }
+    const workspace = this.store.workspace(context.run.workspaceId)
     if (name === 'workspace_list') {
       const target = inside(args.path || '.')
       const actual = await fs.realpath(target)
@@ -390,6 +400,7 @@ export class AppService extends EventEmitter {
     }
     if (name === 'workspace_write') {
       if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para escrever arquivos.')
+      if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia alterações em arquivos.')
       let relativePath = typeof args.path === 'string' ? args.path.slice(0, 1000).replace(/\\/g, '/') : '(caminho inválido)'
       const toolCallId = callId || randomUUID()
       const record = (status: 'applied' | 'failed' | 'unknown' | 'unchanged', before: string, after: string, binary: boolean, truncated: boolean) => {
@@ -449,23 +460,86 @@ export class AppService extends EventEmitter {
       }
       return `Arquivo salvo: ${relative(root, target)}`
     }
-    if (name === 'group_members') return context.conversation.agentIds.map(id => { const agent = this.store.agent(id); return { name: agent.name, alias: `@${agent.alias}`, description: agent.description } })
+    if (name === 'group_members') return [...new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])].map(id => { const agent = this.store.agent(id); return { name: agent.name, alias: `@${agent.alias}`, description: agent.description } })
+    if (name === 'propose_agent') {
+      if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor alterações no catálogo de agentes.')
+      const operation = args.operation === 'update' ? 'update' : args.operation === 'create' ? 'create' : null
+      if (!operation) throw new Error('Escolha criar ou atualizar um agente.')
+      if (operation === 'create' && !workspace.permissions?.chiefCreateAgents) throw new Error('O Chief não pode criar agentes neste workspace. Peça ao usuário para habilitar essa permissão.')
+      if (operation === 'update' && !workspace.permissions?.chiefEditAgents) throw new Error('O Chief não pode editar agentes neste workspace. Peça ao usuário para habilitar essa permissão.')
+      const nameValue = text(args.name, 80).trim()
+      const instructions = text(args.instructions, 20000).trim()
+      const description = text(args.description ?? '', 500).trim()
+      const existing = operation === 'update' ? this.store.agents().find(agent => agent.alias.toLocaleLowerCase('pt-BR') === String(args.agent || '').replace(/^@/, '').toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === String(args.agent || '').toLocaleLowerCase('pt-BR')) : undefined
+      if (operation === 'update' && (!existing || ![...context.conversation.agentIds, ...workspace.defaultAgentIds].includes(existing.id))) throw new Error('O Chief só pode propor alterações em agentes desta equipe.')
+      if (!nameValue || !instructions) throw new Error('A proposta precisa de nome e instruções.')
+      const desiredAlias = (text(args.alias ?? existing?.alias ?? '', 80).trim() || nameValue.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-'))
+      if (!/^[\p{L}\p{N}_-]+$/u.test(desiredAlias)) throw new Error('A menção proposta deve usar letras, números, hífen ou sublinhado.')
+      if (this.store.agents().some(agent => agent.id !== existing?.id && agent.alias.toLocaleLowerCase('pt-BR') === desiredAlias.toLocaleLowerCase('pt-BR'))) throw new Error('A menção proposta já pertence a outro agente.')
+      const proposal = operation === 'create'
+        ? { operation, name: nameValue, alias: desiredAlias, description, instructions, runtime: 'codex', canWrite: false, computerUse: false, approvalMode: 'ask' }
+        : { operation, id: existing!.id, previousName: existing!.name, name: nameValue, alias: desiredAlias, description, instructions, runtime: existing!.runtime, model: existing!.model, effort: existing!.effort, role: existing!.role || 'agent', color: existing!.color, avatar: existing!.avatar ? 'Imagem existente preservada' : '', pitsShape: existing!.pitsShape, pitsEyeColor: existing!.pitsEyeColor, pitsEyeSize: existing!.pitsEyeSize, pitsEyeSpacing: existing!.pitsEyeSpacing, pitsCheekColor: existing!.pitsCheekColor, pitsBlush: existing!.pitsBlush, pitsAura: existing!.pitsAura, pitsAnimate: existing!.pitsAnimate, pitsSpeed: existing!.pitsSpeed, pitsAmplitude: existing!.pitsAmplitude, canWrite: existing!.canWrite, computerUse: existing!.computerUse, approvalMode: existing!.approvalMode }
+      const label = operation === 'create' ? `Criar agente ${nameValue}` : `Atualizar agente ${existing!.name}`
+      if (!await this.requestApproval(context, 'agent-change', { action: label, recipientName: nameValue, task: instructions, proposal: JSON.stringify(proposal) }, true)) return `Proposta negada: ${label}.`
+      const saveInput = operation === 'create' ? proposal as Partial<Agent> : { ...existing!, name: nameValue, alias: desiredAlias, description, instructions }
+      const saved = this.store.saveAgent(saveInput)
+      this.emitEvent({ type: 'changed' })
+      return `Alteração aprovada e salva para ${saved.name}.`
+    }
+    if (name === 'propose_team') {
+      if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor alterações de equipe.')
+      if (!workspace.permissions?.chiefManageTeam) throw new Error('O Chief não pode alterar a equipe deste workspace. Peça ao usuário para habilitar essa permissão.')
+      if (!Array.isArray(args.agents) || args.agents.length > 10 || args.agents.some(id => typeof id !== 'string')) throw new Error('Informe até dez nomes ou menções de agentes.')
+      const requestedNames = args.agents.map(value => String(value).replace(/^@/, '').trim())
+      const team = requestedNames.map(value => this.store.agents().find(agent => agent.id === value || agent.alias.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR')))
+      if (team.some(agent => !agent)) throw new Error('A proposta inclui um agente que não existe.')
+      const agentIds = [...new Set(team.map(agent => agent!.id))]
+      const proposal = { workspaceId: workspace.id, workspace: workspace.name, agentIds, agents: team.map(agent => agent!.name) }
+      if (!await this.requestApproval(context, 'agent-change', { action: `Alterar equipe de ${workspace.name}`, task: team.map(agent => agent!.name).join(', ') || 'Equipe vazia', proposal: JSON.stringify(proposal) }, true)) return `Proposta de equipe negada para ${workspace.name}.`
+      this.store.saveWorkspace({ id: workspace.id, defaultAgentIds: agentIds })
+      this.emitEvent({ type: 'changed' })
+      return `Equipe aprovada e atualizada em ${workspace.name}.`
+    }
+    if (name === 'propose_session') {
+      if (context.agent.role !== 'chief' || !workspace.permissions?.chiefCreateSessions) throw new Error('O Chief não pode criar sessões neste workspace.')
+      const sessionName = text(args.name, 100).trim()
+      if (!sessionName) throw new Error('Informe um nome para a sessão proposta.')
+      if (!Array.isArray(args.agents) || args.agents.length > 10 || args.agents.some(id => typeof id !== 'string')) throw new Error('Informe até dez agentes para a sessão.')
+      const requestedNames = args.agents.map(value => String(value).replace(/^@/, '').trim())
+      const eligibleIds = new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])
+      const team = requestedNames.map(value => this.store.agents().find(agent => eligibleIds.has(agent.id) && (agent.id === value || agent.alias.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR'))))
+      if (team.some(agent => !agent)) throw new Error('A sessão proposta só pode incluir agentes desta equipe.')
+      const agentIds = [...new Set(team.map(agent => agent!.id))]
+      const proposal = { workspaceId: workspace.id, workspace: workspace.name, name: sessionName, kind: agentIds.length > 1 ? 'group' : 'direct', agentIds, agents: team.map(agent => agent!.name) }
+      if (!await this.requestApproval(context, 'agent-change', { action: `Criar sessão ${sessionName} em ${workspace.name}`, task: agentIds.length ? `Participantes: ${team.map(agent => agent!.name).join(', ')}` : 'Assistente padrão', proposal: JSON.stringify(proposal) }, true)) return `Proposta de sessão negada: ${sessionName}.`
+      const conversation = this.store.saveConversation({ workspaceId: workspace.id, name: sessionName, kind: agentIds.length > 1 ? 'group' : 'direct', agentIds })
+      this.emitEvent({ type: 'changed' })
+      return `Sessão ${conversation.name} aprovada e criada em ${workspace.name}.`
+    }
     if (name === 'browser_open') {
+      if (!context.agent.computerUse || workspace.permissions?.computerUse === 'deny') throw new Error('O uso do navegador está bloqueado neste agente ou workspace.')
       if (!await this.requestApproval(context, 'browser', { action: `Abrir ${text(args.url, 2000)}` })) return 'Ação de navegador negada pelo usuário.'
       return this.browser.open(context.conversation.id, context.agent.id, args.url)
     }
-    if (name === 'browser_observe') return this.browser.observe(context.conversation.id, context.agent.id)
+    if (name === 'browser_observe') {
+      if (!context.agent.computerUse || workspace.permissions?.computerUse === 'deny') throw new Error('O uso do navegador está bloqueado neste agente ou workspace.')
+      return this.browser.observe(context.conversation.id, context.agent.id)
+    }
     if (name === 'browser_click' || name === 'browser_fill' || name === 'browser_key' || name === 'browser_scroll') {
+      if (!context.agent.computerUse || workspace.permissions?.computerUse === 'deny') throw new Error('O uso do navegador está bloqueado neste agente ou workspace.')
       if (!await this.requestApproval(context, 'browser', { action: `${name.replace('browser_', '')}: ${JSON.stringify(args).slice(0, 1000)}` })) return 'Ação de navegador negada pelo usuário.'
       return this.browser.act(context.conversation.id, context.agent.id, name.replace('browser_', ''), args)
     }
     if (name === 'ask_agent') {
       const requested = text(args.agent, 100).replace(/^@/, '').toLocaleLowerCase('pt-BR')
       const task = text(args.task, 5000)
-      const candidate = this.store.agents().find(agent => agent.id !== context.agent.id && (agent.alias.toLocaleLowerCase('pt-BR') === requested || agent.name.toLocaleLowerCase('pt-BR') === requested))
-      if (!candidate) throw new Error('Esse agente não existe ou não pode receber um pedido de si mesmo.')
+      const workspace = this.store.workspace(context.run.workspaceId)
+      const eligibleIds = new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])
+      const candidate = this.store.agents().find(agent => (context.agent.role !== 'chief' || eligibleIds.has(agent.id)) && agent.id !== context.agent.id && (agent.alias.toLocaleLowerCase('pt-BR') === requested || agent.name.toLocaleLowerCase('pt-BR') === requested))
+      if (!candidate) throw new Error(context.agent.role === 'chief' ? 'Esse agente não está na equipe desta conversa ou do workspace, ou você pediu ao Chief para delegar a si mesmo.' : 'Esse agente não existe ou não pode receber um pedido de si mesmo.')
       if (context.run.ancestry.includes(candidate.id)) throw new Error('Essa delegação criaria um ciclo de agentes.')
       if (context.run.ancestry.length >= 4) throw new Error('A delegação atingiu o limite de profundidade.')
+      if (context.agent.role === 'chief' && !await this.requestApproval(context, 'delegation', { action: `Enviar uma tarefa para ${candidate.name}`, recipientName: candidate.name, task }, true)) return `Delegação para ${candidate.name} negada pelo usuário.`
       const idempotencyKey = `${context.run.id}:${callId || `${candidate.id}:${task}`}`
       const existing = this.store.delegationByKey(idempotencyKey)
       if (existing) {

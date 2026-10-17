@@ -1,6 +1,9 @@
 import { ArrowLeft, KeyRound, Palette } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ThemeSelector } from '@/components/ide/ThemeSelector'
 
 export function SettingsPage({ onClose }: { onClose: () => void }) {
@@ -36,14 +39,14 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       </section>
       <section className="space-y-4 rounded-xl border border-border/70 bg-card p-5">
         <div><h2 className="text-sm font-medium">Assistente padrão</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Escolha quais ferramentas ficam disponíveis. Escritas e ações no navegador seguem o modo de aprovação abaixo.</p></div>
-        <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={assistantAccess.canWrite} onChange={event => void updateAssistant({ ...assistantAccess, canWrite: event.target.checked })} className="mt-0.5 accent-primary" /><span><span className="font-medium">Permitir alterações em arquivos</span><span className="mt-0.5 block text-xs text-muted-foreground">Quando ativado, o Assistente pode propor alterações no workspace.</span></span></label>
-        <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={assistantAccess.computerUse} onChange={event => void updateAssistant({ ...assistantAccess, computerUse: event.target.checked })} className="mt-0.5 accent-primary" /><span><span className="font-medium">Permitir uso do navegador</span><span className="mt-0.5 block text-xs text-muted-foreground">Ações no navegador respeitam a aprovação configurada.</span></span></label>
-        <label className="block space-y-1.5 text-sm">Aprovações para arquivos e navegador<select value={assistantAccess.approvalMode} onChange={event => void updateAssistant({ ...assistantAccess, approvalMode: event.target.value as 'ask' | 'automatic' })} className="h-10 w-full rounded-lg border border-input bg-background px-3"><option value="ask">Perguntar antes de agir (padrão)</option><option value="automatic">Executar automaticamente</option></select></label>
+        <label className="flex items-start gap-3 text-sm"><Checkbox checked={assistantAccess.canWrite} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, canWrite: checked === true })} className="mt-0.5" /><span><span className="font-medium">Permitir alterações em arquivos</span><span className="mt-0.5 block text-xs text-muted-foreground">Quando ativado, o Assistente pode propor alterações no workspace.</span></span></label>
+        <label className="flex items-start gap-3 text-sm"><Checkbox checked={assistantAccess.computerUse} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, computerUse: checked === true })} className="mt-0.5" /><span><span className="font-medium">Permitir uso do navegador</span><span className="mt-0.5 block text-xs text-muted-foreground">Ações no navegador respeitam a aprovação configurada.</span></span></label>
+        <label className="block space-y-1.5 text-sm">Aprovações para arquivos e navegador<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as 'ask' | 'automatic' })}><SelectTrigger aria-label="Aprovações para arquivos e navegador"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de agir (padrão)</SelectItem><SelectItem value="automatic">Executar automaticamente</SelectItem></SelectContent></Select></label>
         <p role="status" className="text-xs text-muted-foreground">{assistantFeedback}</p>
       </section>
       <section className="space-y-4 rounded-xl border border-border/70 bg-card p-5">
         <div className="flex items-start gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><KeyRound className="size-4" /></span><div><h2 className="text-sm font-medium">Claude Agent SDK</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Configure uma chave de API Anthropic. Ela é criptografada pelo sistema operacional e não é salva no banco de conversas.</p></div></div>
-        <label className="block space-y-1.5 text-xs font-medium">Chave de API<input aria-label="Chave de API Anthropic" type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={configured ? 'Chave configurada; digite outra para substituir' : 'sk-ant-…'} className="h-10 w-full rounded-lg border border-input bg-background px-3 font-mono text-xs" /></label>
+        <label className="block space-y-1.5 text-xs font-medium">Chave de API<Input aria-label="Chave de API Anthropic" type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={configured ? 'Chave configurada; digite outra para substituir' : 'sk-ant-…'} className="h-10 w-full rounded-lg border border-input bg-background px-3 font-mono text-xs" /></label>
         <div className="flex items-center justify-between gap-3"><span role="status" className="text-xs text-muted-foreground">{feedback || (configured ? 'Claude configurado' : 'Claude ainda não configurado')}</span><Button disabled={saving || !apiKey.trim()} onClick={() => void saveKey()}>{saving ? 'Salvando…' : 'Salvar chave'}</Button></div>
       </section>
     </div>

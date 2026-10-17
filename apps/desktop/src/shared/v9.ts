@@ -2,6 +2,7 @@ export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'interr
 export interface Agent {
   id: string; name: string; alias: string; description: string; instructions: string
   runtime: 'codex' | 'claude'; model: string; color: string; avatar: string
+  role?: 'agent' | 'chief'
   pitsShape?: 'round' | 'flat' | 'long'
   pitsCheekColor?: string; pitsEyeColor?: string; pitsAura?: boolean; pitsBlush?: boolean; pitsAnimate?: boolean
   pitsEyeSize?: number; pitsEyeSpacing?: number; pitsSpeed?: number; pitsAmplitude?: number
@@ -13,6 +14,7 @@ export interface Workspace {
   id: string; name: string; kind: 'local' | 'worktree' | 'free'; path: string
   branch: string | null; baseBranch: string | null; parentWorkspaceId: string | null
   instructions: string; defaultAgentIds: string[]; changes: number
+  permissions?: { chiefCreateAgents: boolean; chiefEditAgents: boolean; chiefManageTeam: boolean; chiefCreateSessions: boolean; filesWrite: 'inherit' | 'deny'; computerUse: 'inherit' | 'deny' }
   archived: boolean; createdAt: string
 }
 export interface Conversation {
@@ -31,8 +33,8 @@ export interface FileChange {
   additions: number; deletions: number; truncated: boolean; binary: boolean; createdAt: string
 }
 export interface Approval {
-  id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser'
-  details: { path?: string; action?: string; before?: string; after?: string; truncated?: boolean }
+  id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser' | 'delegation' | 'agent-change'
+  details: { path?: string; action?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string }
   status: 'pending' | 'approved' | 'denied' | 'interrupted'; createdAt: string; resolvedAt: string | null
 }
 export interface Run {

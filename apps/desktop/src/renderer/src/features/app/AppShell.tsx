@@ -54,14 +54,38 @@ export default function AppShell() {
   useEffect(() => { void refreshBrowser() }, [refreshBrowser])
   useEffect(() => { if (!selected?.workspaceId) { setWorkspaceDiff(''); return } window.appAPI.workspaceDiff(selected.workspaceId).then(setWorkspaceDiff).catch(error => setNotice(errorText(error))) }, [selected?.workspaceId, snapshot.workspaces, snapshot.fileChanges])
   useEffect(() => { const timeout = window.setTimeout(() => setNotice(''), 6000); return () => window.clearTimeout(timeout) }, [notice])
-  const saveAgent = async (data: EditorData) => { const agent = await window.appAPI.saveAgent(data as Partial<Agent>); await refresh(); if (!data.id) setNotice(`${agent.name} já pode participar de uma conversa.`) }
+  const saveAgent = async (data: EditorData) => {
+    const agentInput = data as Partial<Agent>
+    const agent = await window.appAPI.saveAgent(agentInput)
+    if (agentInput.role && agent.role !== agentInput.role) throw new Error('O papel do agente não foi salvo. Reinicie o Politron para atualizar o processo principal.')
+    await refresh()
+    setNotice(!data.id ? `${agent.name} já pode participar de uma conversa.` : agent.role === 'chief' ? `${agent.name} agora é Chief.` : `Alterações de ${agent.name} salvas.`)
+  }
   const saveConversation = async (data: EditorData) => { const conversation = await window.appAPI.saveConversation(data as Partial<Conversation> & { workspacePath?: string | null }); await refresh(); selectConversation(conversation.id) }
-  const updateParticipants = async (agentIds: string[]) => { if (!selected) return; try { await window.appAPI.saveConversation({ id: selected.id, agentIds, kind: agentIds.length > 1 ? 'group' : 'direct' }); await refresh() } catch (error) { setNotice(errorText(error)) } }
+  const updateParticipants = async (agentIds: string[]) => {
+    if (!selected) return
+    const previousAgentNames = selected.agentIds.map(id => snapshot.agents.find(agent => agent.id === id)?.name).filter((name): name is string => !!name)
+    const nameWasDerivedFromAgent = previousAgentNames.includes(selected.name)
+    const nextName = !nameWasDerivedFromAgent ? selected.name : agentIds.length === 0 ? 'Nova conversa' : agentIds.length === 1 ? snapshot.agents.find(agent => agent.id === agentIds[0])?.name || 'Nova conversa' : 'Conversa em equipe'
+    const update: Partial<Conversation> = { id: selected.id, agentIds, kind: agentIds.length > 1 ? 'group' : 'direct' }
+    if (nameWasDerivedFromAgent) update.name = nextName
+    try { await window.appAPI.saveConversation(update); await refresh() } catch (error) { setNotice(errorText(error)) }
+  }
   const saveWorkspace = async (data: EditorData) => { const workspace = await window.appAPI.saveWorkspace(data as Partial<Workspace> & { path?: string | null }); await refresh(); selectWorkspace(workspace.id) }
   const startConversation = async (workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ workspaceId }); await refresh(); selectConversation(conversation.id) } catch (error) { setNotice(errorText(error)) } }
   const deleteWorkspace = async (id: string) => { try { await window.appAPI.deleteWorkspace(id); await refresh() } catch (error) { setNotice(errorText(error)) } }
   const deleteConversation = async (id: string) => { try { await window.appAPI.deleteConversation(id); if (selectedId === id) setSelectedId(''); await refresh() } catch (error) { setNotice(errorText(error)) } }
   const deleteAgent = async (id: string) => { try { await window.appAPI.deleteAgent(id); await refresh() } catch (error) { setNotice(errorText(error)) } }
+  const setAgentChief = async (agent: Agent, chief: boolean) => {
+    if (chief && snapshot.agents.some(item => item.id !== agent.id && item.role === 'chief')) { setNotice('Já existe um Chief. Remova esse papel antes de promover outro agente.'); return }
+    try {
+      const role = chief ? 'chief' : 'agent'
+      const updated = await window.appAPI.saveAgent({ ...agent, role })
+      if (updated.role !== role) throw new Error('O papel do agente não foi salvo. Reinicie o Politron para atualizar o processo principal.')
+      await refresh()
+      setNotice(chief ? `${updated.name} agora é Chief.` : `${updated.name} voltou a ser um agente da equipe.`)
+    } catch (error) { setNotice(errorText(error)) }
+  }
   const openAgent = async (agent: Agent, newConversation = false) => {
     const previous = snapshot.conversations.filter(item => !item.archived && item.kind === 'direct' && item.agentIds.length === 1 && item.agentIds[0] === agent.id && snapshot.workspaces.some(workspace => workspace.id === item.workspaceId && workspace.kind === 'free')).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
     if (previous && !newConversation) { selectConversation(previous.id); return }
@@ -105,6 +129,7 @@ export default function AppShell() {
         onDeleteWorkspace={deleteWorkspace}
         onDeleteConversation={deleteConversation}
         onDeleteAgent={deleteAgent}
+        onSetChief={setAgentChief}
         onNotice={setNotice}
       />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">

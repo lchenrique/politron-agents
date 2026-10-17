@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+beforeEach(() => { Element.prototype.scrollIntoView = vi.fn() })
 import type { Agent } from '../../../../shared/v9'
 import { Editor } from './Editor'
 
@@ -37,6 +39,16 @@ describe('criação simples de conversa', () => {
 })
 
 describe('editor de agentes com Poli Studio', () => {
+  it('envia o papel de Chief ao salvar um agente existente', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<Editor kind="agent" agents={[]} models={[]} initial={agent('agent-1', 'Atlas')} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)
+    const role = screen.getByRole('combobox', { name: /Papel deste agente/ })
+    fireEvent.keyDown(role, { key: 'ArrowDown' })
+    fireEvent.click(await screen.findByRole('option', { name: 'Chief coordenador' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-1', name: 'Atlas', role: 'chief' })))
+  })
+
   it('envia configurações personalizadas junto com o agente', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<Editor kind="agent" agents={[]} models={[]} initial={agent('poli-1', 'Poli')} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)

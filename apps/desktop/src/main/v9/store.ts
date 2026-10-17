@@ -240,7 +240,10 @@ export class WorkspaceStore {
     if (approvalMode !== 'ask' && approvalMode !== 'automatic') throw new Error('Modo de aprovação inválido.')
     const effort = input.effort ?? previous?.effort ?? 'medium'
     if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço do agente inválido.')
-    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : '#6366f1', avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round',
+    const role = input.role ?? previous?.role ?? 'agent'
+    if (role !== 'agent' && role !== 'chief') throw new Error('Papel de agente inválido.')
+    if (role === 'chief' && this.agents().some(agent => agent.id !== input.id && agent.role === 'chief')) throw new Error('Já existe um Chief. Remova esse papel do agente atual antes de transferi-lo.')
+    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, role, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : '#6366f1', avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round',
       pitsEyeColor: /^#[\da-f]{6}$/i.test(input.pitsEyeColor || '') ? input.pitsEyeColor : previous?.pitsEyeColor || '#ffffff',
       pitsCheekColor: /^#[\da-f]{6}$/i.test(input.pitsCheekColor || '') ? input.pitsCheekColor : previous?.pitsCheekColor || '#f5a5d1',
       pitsEyeSize: typeof input.pitsEyeSize === 'number' && Number.isFinite(input.pitsEyeSize) ? Math.max(4, Math.min(15, input.pitsEyeSize)) : previous?.pitsEyeSize ?? 8,
@@ -280,7 +283,25 @@ export class WorkspaceStore {
       kind = 'free'
     }
     const name = String(input.name ?? previous?.name ?? '').trim().slice(0, 100)
-    const value: Workspace = { id, name, kind, path, branch: input.branch ?? previous?.branch ?? null, baseBranch: input.baseBranch ?? previous?.baseBranch ?? null, parentWorkspaceId, instructions: instructions.trim(), defaultAgentIds, changes: Math.max(0, input.changes ?? previous?.changes ?? 0), archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
+    const permissionInput: Partial<NonNullable<Workspace['permissions']>> = input.permissions || {}
+    const oldPermissions = previous?.permissions
+    const filesWrite = permissionInput.filesWrite ?? oldPermissions?.filesWrite ?? 'inherit'
+    const computerUse = permissionInput.computerUse ?? oldPermissions?.computerUse ?? 'inherit'
+    if (!['inherit', 'deny'].includes(filesWrite) || !['inherit', 'deny'].includes(computerUse)) throw new Error('Política de acesso do workspace inválida.')
+    const chiefCreateAgents = permissionInput.chiefCreateAgents ?? oldPermissions?.chiefCreateAgents ?? false
+    const chiefEditAgents = permissionInput.chiefEditAgents ?? oldPermissions?.chiefEditAgents ?? false
+    const chiefManageTeam = permissionInput.chiefManageTeam ?? oldPermissions?.chiefManageTeam ?? false
+    const chiefCreateSessions = permissionInput.chiefCreateSessions ?? oldPermissions?.chiefCreateSessions ?? false
+    if ([chiefCreateAgents, chiefEditAgents, chiefManageTeam, chiefCreateSessions].some(value => typeof value !== 'boolean')) throw new Error('Permissões do Chief inválidas.')
+    const permissions = {
+      chiefCreateAgents,
+      chiefEditAgents,
+      chiefManageTeam,
+      chiefCreateSessions,
+      filesWrite: filesWrite as NonNullable<Workspace['permissions']>['filesWrite'],
+      computerUse: computerUse as NonNullable<Workspace['permissions']>['computerUse']
+    }
+    const value: Workspace = { id, name, kind, path, branch: input.branch ?? previous?.branch ?? null, baseBranch: input.baseBranch ?? previous?.baseBranch ?? null, parentWorkspaceId, instructions: instructions.trim(), defaultAgentIds, permissions, changes: Math.max(0, input.changes ?? previous?.changes ?? 0), archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_workspaces', value)
     return value
   }

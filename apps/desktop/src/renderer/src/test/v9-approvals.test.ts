@@ -100,6 +100,7 @@ describe('aprovações inline V9', () => {
 
   it('pede aprovação antes de abrir o navegador', async () => {
     const { service, context } = setup()
+    context.agent.computerUse = true
     const open = vi.spyOn(service.browser, 'open').mockResolvedValue({ key: 'browser-test', url: 'https://example.com', title: 'Example', text: '', screenshot: '' } as any)
     const pendingNavigation = (service as any).callTool(context, 'browser_open', { url: 'https://example.com' }, 'browser-call') as Promise<string>
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
@@ -108,6 +109,14 @@ describe('aprovações inline V9', () => {
     await service.respondApproval(service.store.approvals()[0].id, false)
     await expect(pendingNavigation).resolves.toContain('negada')
     expect(open).not.toHaveBeenCalled()
+  })
+
+  it('bloqueia navegação antes de pedir aprovação quando o agente não tem permissão', async () => {
+    const { service, context } = setup()
+    const opened = vi.spyOn(service.browser, 'open')
+    await expect((service as unknown as { callTool: (context: unknown, tool: string, args: Record<string, unknown>, id: string) => Promise<unknown> }).callTool(context, 'browser_open', { url: 'https://example.com' }, 'browser-denied')).rejects.toThrow('bloqueado')
+    expect(service.store.approvals()).toHaveLength(0)
+    expect(opened).not.toHaveBeenCalled()
   })
 
   it('converte aprovações pendentes em interrompidas ao reiniciar, sem repetir a escrita', () => {

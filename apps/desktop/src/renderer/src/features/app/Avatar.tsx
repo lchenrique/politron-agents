@@ -11,8 +11,8 @@ export function AgentPresence({ state }: { state: AgentAvatarState }) {
   </span>
 }
 
-export function Avatar({ agent, size = 'sm', state = 'idle' }: { agent?: Agent; size?: 'sm' | 'md' | 'lg'; state?: AgentAvatarState }) {
-  const pixels = size === 'lg' ? 88 : size === 'md' ? 56 : 42
+export function Avatar({ agent, size = 'sm', state = 'idle' }: { agent?: Agent; size?: 'xs' | 'sm' | 'md' | 'lg'; state?: AgentAvatarState }) {
+  const pixels = size === 'lg' ? 88 : size === 'md' ? 56 : size === 'sm' ? 42 : 30
   return <span className="inline-flex shrink-0 items-center justify-center" style={{ width: pixels, height: pixels }}>
     {agent?.avatar
       ? <span className="inline-flex size-full overflow-hidden rounded-full border border-border/60" style={{ backgroundColor: agent.color }}><img className="size-full object-cover" src={agent.avatar} alt={`Avatar de ${agent.name}`} /></span>

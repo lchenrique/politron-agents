@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+beforeEach(() => localStorage.clear())
 import { emptySnapshot } from '../app/appShellShared'
 import type { Agent, Conversation, Snapshot, Workspace } from '../../../../shared/v9'
 import { Sidebar } from './Sidebar'
@@ -9,20 +11,50 @@ const workspace: Workspace = { id: 'workspace-1', name: 'Instruções de Paz', k
 const snapshot: Snapshot = { ...emptySnapshot, agents: [agent], workspaces: [workspace] }
 
 function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
-  return render(<Sidebar snapshot={snapshot} selected={undefined} unreadCounts={{}} agentStates={{}} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} onOpenSettings={vi.fn()} onDeleteWorkspace={vi.fn()} onDeleteConversation={vi.fn()} onDeleteAgent={vi.fn()} onNotice={vi.fn()} {...overrides} />)
+  return render(<Sidebar snapshot={snapshot} selected={undefined} unreadCounts={{}} agentStates={{}} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} onOpenSettings={vi.fn()} onDeleteWorkspace={vi.fn()} onDeleteConversation={vi.fn()} onDeleteAgent={vi.fn()} onSetChief={vi.fn()} onNotice={vi.fn()} {...overrides} />)
 }
 
 describe('contatos de agentes na barra lateral', () => {
   it('abre a conversa direta ao selecionar um agente', () => {
     const onOpenAgent = vi.fn()
     renderSidebar({ onOpenAgent })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
     fireEvent.click(screen.getByRole('button', { name: /Lyra @lyra/ }))
     expect(onOpenAgent).toHaveBeenCalledWith(agent)
   })
 
-  it('exibe Pits como mascote leve do Politron', () => {
+  it('mantém a navegação compacta sem repetir o símbolo antigo do Politron', () => {
     renderSidebar()
-    expect(screen.getByRole('img', { name: 'Pits, mascote do Politron' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Nova sessão livre' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
+  })
+
+  it('oferece uma única busca para projetos e agentes', () => {
+    renderSidebar()
+    expect(screen.getAllByRole('combobox')).toHaveLength(1)
+    expect(screen.queryByRole('textbox', { name: 'Filtrar lista' })).not.toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
+    expect(screen.getAllByRole('combobox')).toHaveLength(1)
+  })
+
+  it('reserva altura para a busca sem sobrepor as abas', () => {
+    renderSidebar()
+    const palette = screen.getByRole('combobox', { name: 'Busca rápida' })
+    const container = palette.closest('div.relative')
+    expect(container).toHaveClass('h-[46px]')
+    expect(container).not.toHaveClass('!h-auto')
+    expect(screen.getByRole('tab', { name: /Projetos/ })).toBeVisible()
+    expect(screen.getByRole('tab', { name: /Agentes/ })).toBeVisible()
+  })
+
+  it('encontra um projeto pela busca rápida do Kokonut UI', () => {
+    const onSelectWorkspace = vi.fn()
+    renderSidebar({ onSelectWorkspace })
+    const palette = screen.getByRole('combobox', { name: 'Busca rápida' })
+    fireEvent.focus(palette)
+    fireEvent.change(palette, { target: { value: 'Instruções de Paz' } })
+    fireEvent.keyDown(palette, { key: 'Enter' })
+    expect(onSelectWorkspace).toHaveBeenCalledWith(workspace.id)
   })
 
   it('inicia uma conversa no workspace pelo atalho da árvore', () => {
@@ -30,6 +62,35 @@ describe('contatos de agentes na barra lateral', () => {
     renderSidebar({ onStartConversation })
     fireEvent.click(screen.getByRole('button', { name: `Nova conversa em ${workspace.name}` }))
     expect(onStartConversation).toHaveBeenCalledWith(workspace.id)
+  })
+
+  it('fixa um Chief com coroa no topo sem duplicá-lo na lista de agentes', () => {
+    const chief: Agent = { ...agent, role: 'chief' }
+    renderSidebar({ snapshot: { ...snapshot, agents: [chief] } })
+    const section = screen.getByRole('region', { name: 'Chief' })
+    expect(section).toHaveTextContent('Lyra')
+    expect(section.querySelector('svg[aria-label="Chief"]')).not.toBeNull()
+    expect(screen.getAllByText('Lyra')).toHaveLength(1)
+    fireEvent.contextMenu(section.querySelector('button')!)
+    expect(screen.getByRole('menuitem', { name: /Remover papel de Chief/ })).toBeInTheDocument()
+  })
+
+  it('promove agente a Chief pelo menu de contexto', () => {
+    const onSetChief = vi.fn()
+    renderSidebar({ onSetChief })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Lyra @lyra/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Promover a Chief' }))
+    expect(onSetChief).toHaveBeenCalledExactlyOnceWith(agent, true)
+  })
+
+  it('remove o papel Chief pelo menu de contexto', () => {
+    const chief: Agent = { ...agent, role: 'chief' }
+    const onSetChief = vi.fn()
+    renderSidebar({ snapshot: { ...snapshot, agents: [chief] }, onSetChief })
+    fireEvent.contextMenu(screen.getByRole('region', { name: 'Chief' }).querySelector('button')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remover papel de Chief' }))
+    expect(onSetChief).toHaveBeenCalledExactlyOnceWith(chief, false)
   })
 
   it('marca a conversa e o workspace quando há aprovação pendente', () => {
@@ -56,10 +117,12 @@ describe('colapso e exclusão da barra lateral', () => {
     const onDeleteConversation = vi.fn()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     renderSidebar({ snapshot: { ...snapshot, conversations: [conversation] }, onDeleteConversation })
-    const deleteButton = screen.getByRole('button', { name: 'Excluir conversa Apagar teste' })
-    fireEvent.click(deleteButton)
+    const actions = screen.getByRole('button', { name: 'Ações da conversa Apagar teste' })
+    fireEvent.contextMenu(actions.parentElement!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir conversa' }))
     expect(onDeleteConversation).not.toHaveBeenCalled()
-    fireEvent.click(deleteButton)
+    fireEvent.contextMenu(actions.parentElement!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir conversa' }))
     expect(onDeleteConversation).toHaveBeenCalledExactlyOnceWith(conversation.id)
     confirm.mockRestore()
   })
@@ -90,10 +153,12 @@ describe('navegação orientada a workspaces', () => {
 
   it('permite recolher independentemente agentes e workspaces', () => {
     renderSidebar()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
     fireEvent.click(screen.getByRole('button', { name: 'Recolher agentes' }))
     expect(screen.queryByRole('button', { name: /Lyra @lyra/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Expandir agentes' }))
     expect(screen.getByRole('button', { name: /Lyra @lyra/ })).toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Projetos/ }), { button: 0 })
     fireEvent.click(screen.getByRole('button', { name: 'Recolher workspaces' }))
     expect(screen.queryByRole('button', { name: `Recolher ${workspace.name}` })).not.toBeInTheDocument()
   })
