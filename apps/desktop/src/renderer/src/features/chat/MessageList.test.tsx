@@ -19,7 +19,7 @@ describe('diffs e aprovações no chat', () => {
     render(<MessageList messages={[message]} fileChanges={[change]} approvals={[approval]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(screen.getByRole('region', { name: 'Arquivos alterados neste turno' })).toHaveTextContent('notes.md')
     expect(screen.getByRole('region', { name: 'Aprovação de ferramenta' })).toHaveTextContent('Aguardando sua decisão')
-    expect(screen.getByRole('button', { name: 'Mantenha pressionado para aprovar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirmar e aprovar' })).toBeInTheDocument()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Negar' })).toBeInTheDocument()
   })
@@ -51,5 +51,15 @@ describe('estado vazio da conversa', () => {
     render(<MessageList messages={[]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(screen.getByRole('img', { name: 'Pits — idle' })).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
+  })
+})
+
+describe('identificação de agentes no chat', () => {
+  it('usa menção colorida e nome em negrito sem renderizar avatar por mensagem', () => {
+    const agent = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as import('../../../../shared/v9').Agent
+    render(<MessageList messages={[message]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} selectedAgents={[agent, { ...agent, id: 'agent-2', name: 'Atlas', alias: 'atlas' }]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    expect(screen.getByText('@lyra')).toHaveClass('font-bold')
+    expect(screen.getByText('Lyra')).toHaveClass('font-semibold')
+    expect(screen.queryByRole('img', { name: /Avatar de Lyra/ })).not.toBeInTheDocument()
   })
 })

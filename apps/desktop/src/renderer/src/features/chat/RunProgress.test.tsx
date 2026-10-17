@@ -3,22 +3,21 @@ import { render, screen } from '@testing-library/react'
 import { RunProgress } from './RunProgress'
 
 describe('andamento real dos agentes', () => {
-  it('mostra apenas uma etapa verificada, sem dados da demo', () => {
-    render(<RunProgress status="running" agentName="Atlas" hasText={false} />)
-    expect(screen.getByRole('region', { name: 'Estado de execução do agente' })).toHaveTextContent('Atlas está executando a tarefa')
-    expect(screen.getByText('Aguardando resposta do agente')).toBeInTheDocument()
-    expect(screen.queryByText(/Searching the web|Reading 4 sources/i)).not.toBeInTheDocument()
+  it('mostra que o agente está respondendo enquanto a execução roda', () => {
+    render(<RunProgress status="running" agentName="Atlas" />)
+    expect(screen.getByRole('status')).toHaveTextContent('Atlas está respondendo…')
   })
 
   it('apresenta falha sem indicar conclusão', () => {
-    render(<RunProgress status="failed" agentName="Atlas" hasText />)
-    expect(screen.getByRole('region', { name: 'Estado de execução do agente' })).toHaveTextContent('Execução falhou')
+    render(<RunProgress status="failed" agentName="Atlas" />)
+    expect(screen.getByRole('status')).toHaveTextContent('Execução falhou')
   })
 
-  it('não mostra progresso animado após execução ou durante aprovação', () => {
-    const { container, rerender } = render(<RunProgress status="completed" agentName="Atlas" hasText />)
-    expect(container).toBeEmptyDOMElement()
-    rerender(<RunProgress status="waiting" agentName="Atlas" hasText={false} />)
-    expect(container).toBeEmptyDOMElement()
+  it('não mostra nada fora de execução ou falha: fila, espera, interrompida ou concluída ficam mudas aqui', () => {
+    for (const status of ['completed', 'queued', 'waiting', 'interrupted'] as const) {
+      const { container, unmount } = render(<RunProgress status={status} agentName="Atlas" />)
+      expect(container).toBeEmptyDOMElement()
+      unmount()
+    }
   })
 })

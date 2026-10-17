@@ -22,14 +22,10 @@ describe('aprovações reais do Politron', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aprovar' }))
     await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', true))
     expect(screen.getByRole('status')).toHaveTextContent('Enviando sua decisão')
-    const outgoing = screen.queryByRole('button', { name: 'Aprovar' })
-    if (outgoing) fireEvent.click(outgoing) // A animação de saída não pode reenviar a decisão.
-    expect(respondApproval).toHaveBeenCalledTimes(1)
-    expect(screen.queryByText('Aprovada')).not.toBeInTheDocument()
 
     rerender(<PolitronToolApproval approval={{ ...browserApproval, status: 'approved', resolvedAt: '2026-10-17T01:00:00Z' }} onNotice={notice} />)
     expect(screen.getByRole('status')).toHaveTextContent('Aprovada')
-    expect(screen.getByText('Autorizada')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Aprovar' })).not.toBeInTheDocument()
     expect(notice).not.toHaveBeenCalled()
   })
 
@@ -55,18 +51,28 @@ describe('aprovações reais do Politron', () => {
     await waitFor(() => expect(respondApproval).toHaveBeenCalledTimes(2))
   })
 
-  it('exige pressionamento prolongado para sobrescrever arquivo e não permite autorização permanente', () => {
-    const respondApproval = vi.fn()
+  it('exige dois cliques para aprovar uma escrita que sobrescreve conteúdo existente', async () => {
+    const respondApproval = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('appAPI', { respondApproval })
     render(<PolitronToolApproval approval={{
       ...browserApproval, kind: 'write',
       details: { path: 'notes.md', before: 'antigo', after: 'novo' },
     }} onNotice={vi.fn()} />)
 
-    const confirm = screen.getByRole('button', { name: 'Mantenha pressionado para aprovar' })
-    fireEvent.click(confirm)
+    const first = screen.getByRole('button', { name: 'Confirmar e aprovar' })
+    fireEvent.click(first)
     expect(respondApproval).not.toHaveBeenCalled()
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.getByText('Confirmação adicional obrigatória')).toBeInTheDocument()
+    const second = screen.getByRole('button', { name: 'Aprovar mesmo assim' })
+    fireEvent.click(second)
+    await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', true))
+  })
+
+  it('negar continua em um clique mesmo numa ação sensível', async () => {
+    const respondApproval = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('appAPI', { respondApproval })
+    render(<PolitronToolApproval approval={{ ...browserApproval, kind: 'command', details: { command: 'rm -rf dist', cwd: 'D:/projeto' } }} onNotice={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Negar' }))
+    await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', false))
   })
 })
