@@ -34,29 +34,76 @@ describe('criação simples de conversa', () => {
     expect(screen.getByRole('button', { name: 'Criar grupo' })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Nome da conversa'), { target: { value: 'Revisão' } })
     fireEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: 'group', name: 'Revisão', agentIds: ['a', 'b'] })))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: 'group', name: 'Revisão', agentIds: ['a', 'b'], responseMode: 'leader', leaderAgentId: 'a' })))
+  })
+
+  it('permite escolher o Jev para responder sem menção e mantém o líder como fallback', async () => {
+    const onSave = renderEditor([agent('a', 'Alice'), agent('b', 'Beto')])
+    fireEvent.click(screen.getAllByRole('checkbox')[0])
+    fireEvent.click(screen.getAllByRole('checkbox')[1])
+    fireEvent.change(screen.getByLabelText('Nome da conversa'), { target: { value: 'Equipe' } })
+    const mode = screen.getByRole('combobox', { name: 'Quem responde sem menção?' })
+    fireEvent.click(mode)
+    fireEvent.click(await screen.findByRole('option', { name: 'Automático · Jev pelo OpenRouter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ responseMode: 'auto', leaderAgentId: 'a' })))
   })
 })
 
 describe('editor de agentes com Poli Studio', () => {
+  it('oculta esforço em Haiku sem essa capacidade e salva sem esforço', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    const initial: Agent = { ...agent('haiku-agent', 'Haiku'), runtime: 'claude', model: 'haiku', effort: 'max' }
+    render(<Editor kind="agent" agents={[]} models={[
+      { id: 'claude:haiku', name: 'Haiku', runtime: 'claude', isDefault: false, supportedEfforts: [] },
+    ]} initial={initial} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Modelo e permissões' }))
+    expect(screen.queryByRole('combobox', { name: 'Esforço' })).not.toBeInTheDocument()
+    expect(onSave).not.toHaveBeenCalled()
+    expect(initial.effort).toBe('max')
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ model: 'haiku', effort: undefined })))
+  })
+
+  it('limita esforço ao modelo padrão do motor e normaliza o valor incompatível ao salvar', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    const initial: Agent = { ...agent('codex-agent', 'Codex'), effort: 'max' }
+    render(<Editor kind="agent" agents={[]} models={[
+      { id: 'codex:gpt', name: 'GPT', runtime: 'codex', isDefault: true, supportedEfforts: ['low', 'high'], defaultEffort: 'high' },
+    ]} initial={initial} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Modelo e permissões' }))
+    const effort = screen.getByRole('combobox', { name: 'Esforço' })
+    expect(effort).toHaveTextContent('Alto')
+    fireEvent.click(effort)
+    expect(await screen.findByRole('option', { name: 'Baixo' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Alto' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Máximo' })).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('option', { name: 'Alto' }), { key: 'Escape' })
+    expect(onSave).not.toHaveBeenCalled()
+    expect(initial.effort).toBe('max')
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ model: '', effort: 'high' })))
+  })
+
   it('envia o papel de Chief ao salvar um agente existente', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<Editor kind="agent" agents={[]} models={[]} initial={agent('agent-1', 'Atlas')} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)
-    const role = screen.getByRole('combobox', { name: /Papel deste agente/ })
-    fireEvent.keyDown(role, { key: 'ArrowDown' })
+    const role = screen.getByRole('combobox', { name: 'Papel do agente' })
+    fireEvent.click(role)
     fireEvent.click(await screen.findByRole('option', { name: 'Chief coordenador' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-1', name: 'Atlas', role: 'chief' })))
   })
 
   it('envia configurações personalizadas junto com o agente', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<Editor kind="agent" agents={[]} models={[]} initial={agent('poli-1', 'Poli')} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue(null)} />)
-    expect(screen.getByText('Poli Studio')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'Aparência' }))
+    expect(screen.getByText('Boo Studio')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Escolher cor #4098eb' }))
     fireEvent.click(screen.getByRole('tab', { name: 'Animação' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Ativar animações' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       id: 'poli-1', color: '#4098eb', pitsAnimate: false, pitsShape: 'round',
     })))

@@ -7,6 +7,8 @@ import { ZoomController } from "@/hooks/useZoom";
 import NotFound from "./pages/NotFound.tsx";
 import { ThemeProvider } from "@/components/theme-provider";
 import AppShell from "@/features/app/AppShell";
+import FloatingMascotPage from "@/features/panels/FloatingMascotPage";
+import { RemoteFolderDialog } from "@/features/hosts/RemoteFolderDialog";
 
 const queryClient = new QueryClient();
 const AppRouter = typeof window !== "undefined" && "vibeAPI" in window ? HashRouter : BrowserRouter;
@@ -17,11 +19,13 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <RemoteFolderDialog />
         <ZoomController>
           <AppRouter>
             <Routes>
               <Route path="/" element={<AppShell />} />
               <Route path="/settings" element={<AppShell />} />
+              <Route path="/mascot" element={<FloatingMascotPage />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

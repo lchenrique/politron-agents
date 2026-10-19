@@ -1,0 +1,12 @@
+# Código relevante à arquitetura do Politron
+.git/
+node_modules/
+**/node_modules/
+**/out/
+**/dist/
+**/build/
+**/coverage/
+graphify-out/
+docs/arquivo/
+**/package-lock.json
+**/*.log

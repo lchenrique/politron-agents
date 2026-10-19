@@ -1,13 +1,20 @@
 /// <reference types="vite/client" />
 import type { AppAPI } from '../../shared/v9'
+import type { RealtimeAPI } from '../../shared/realtime'
+import type { ProvidersAPI } from '../../shared/providers'
+import type { SkillsAPI } from '../../shared/skills'
 
 declare global {
 interface Window {
+  hostsAPI?: import('../../shared/hosts').HostsAPI
  vibeAPI: {
  windowControls: {
  minimize: () => Promise<void>;
  maximize: () => Promise<void>;
  close: () => Promise<void>;
+ showMain: () => Promise<void>;
+ showMascot: () => Promise<void>;
+ closeMascot: () => Promise<void>;
  setZoom: (level: number) => Promise<void>;
  getZoom: () => Promise<number>;
  };
@@ -22,5 +29,8 @@ interface Window {
  };
  };
   appAPI: AppAPI;
+  realtimeAPI: RealtimeAPI;
+  providersAPI: ProvidersAPI;
+  skillsAPI: SkillsAPI;
 }
 }

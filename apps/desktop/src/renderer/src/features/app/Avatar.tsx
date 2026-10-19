@@ -1,23 +1,24 @@
+import { memo } from 'react'
 import type { Agent } from '../../../../shared/v9'
 import { PitsMark } from './PitsMark'
 import { PoliAvatar } from './PoliAvatar'
 
-export type AgentAvatarState = 'idle' | 'working' | 'waiting'
+export type AgentAvatarState = 'idle' | 'working' | 'waiting' | 'speaking'
 
 export function AgentPresence({ state }: { state: AgentAvatarState }) {
-  const label = state === 'working' ? 'Trabalhando' : state === 'waiting' ? 'Aguardando aprovação' : 'Ocioso'
+  const label = state === 'speaking' ? 'Falando' : state === 'working' ? 'Trabalhando' : state === 'waiting' ? 'Aguardando aprovação' : 'Ocioso'
   return <span role="img" aria-label={label} className="agent-presence" data-state={state}>
-    {state === 'working' ? <><i /><i /><i /></> : <i />}
+    <i />
   </span>
 }
 
-export function Avatar({ agent, size = 'sm', state = 'idle' }: { agent?: Agent; size?: 'xs' | 'sm' | 'md' | 'lg'; state?: AgentAvatarState }) {
+export const Avatar = memo(function Avatar({ agent, size = 'sm', state = 'idle' }: { agent?: Agent; size?: 'xs' | 'sm' | 'md' | 'lg'; state?: AgentAvatarState }) {
   const pixels = size === 'lg' ? 88 : size === 'md' ? 56 : size === 'sm' ? 42 : 30
-  return <span className="inline-flex shrink-0 items-center justify-center" style={{ width: pixels, height: pixels }}>
+  return <span data-slot="avatar" data-size={size} className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full" style={{ width: pixels, height: pixels }}>
     {agent?.avatar
       ? <span className="inline-flex size-full overflow-hidden rounded-full border border-border/60" style={{ backgroundColor: agent.color }}><img className="size-full object-cover" src={agent.avatar} alt={`Avatar de ${agent.name}`} /></span>
       : agent
-        ? <PoliAvatar agent={agent} size={pixels} state={state} />
+        ? <PoliAvatar agent={agent} size={pixels} state={state} motionPolicy={size === 'lg' ? 'hover' : 'never'} />
         : <span className="inline-flex size-full items-center justify-center overflow-hidden rounded-full border border-border/60"><PitsMark className="size-full p-1" /></span>}
   </span>
-}
+})

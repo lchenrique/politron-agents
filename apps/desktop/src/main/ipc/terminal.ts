@@ -5,8 +5,9 @@ import os from 'os'
 let ptyProcess: pty.IPty | null = null
 let terminalWorkspaceId: string | null = null
 
-export function registerTerminalHandlers(resolveWorkspacePath: (workspaceId: string) => string): void {
+export function registerTerminalHandlers(resolveWorkspacePath: (workspaceId: string) => string, isRemote = () => false): void {
   ipcMain.handle('vibe:terminal:create', (event, { rows, cols, workspaceId }) => {
+    if (isRemote()) throw new Error('O terminal interativo remoto ainda não está disponível. Peça ao agente para executar os comandos no chat do host.')
     if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Selecione um workspace para abrir o terminal.')
     const cwd = resolveWorkspacePath(workspaceId)
     if (ptyProcess && terminalWorkspaceId === workspaceId) {
@@ -42,6 +43,7 @@ export function registerTerminalHandlers(resolveWorkspacePath: (workspaceId: str
   })
 
   ipcMain.handle('vibe:terminal:close', () => {
+    if (isRemote()) return false
     const running = ptyProcess
     ptyProcess = null
     terminalWorkspaceId = null
@@ -50,10 +52,12 @@ export function registerTerminalHandlers(resolveWorkspacePath: (workspaceId: str
   })
 
   ipcMain.on('vibe:terminal:write', (_, data) => {
+    if (isRemote()) return
     ptyProcess?.write(data)
   })
 
   ipcMain.on('vibe:terminal:resize', (_, { cols, rows }) => {
+    if (isRemote()) return
     if (ptyProcess) {
       ptyProcess.resize(cols, rows)
     }

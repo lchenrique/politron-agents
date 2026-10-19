@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { basename, extname, isAbsolute, relative, resolve, sep, join } from 'node:path'
 import { app, dialog, shell, Notification, BrowserWindow } from 'electron'
 import { EventEmitter } from 'node:events'
@@ -7,56 +8,147 @@ import { listProjectDirectory, readProjectText, writeProjectText } from './proje
 import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type Model, type Run, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import { BrowserService } from './browser'
 import { GitWorkspaceService } from './git-workspaces'
-import { WorkspaceQueue, recipients } from './routing'
+import { WorkspaceQueue, mentionedRecipients, recipients, type WorkspaceLease } from './routing'
+import { OpenRouterDecisionService } from './decision-routing'
 import { CodexRuntime, type DynamicTool } from './codex'
 import { ClaudeRuntime } from './claude'
+import { PiRuntime } from './pi'
+import { HeadlessCliRuntime } from './headless-cli'
+import { chooseBooIdentity } from './boo-identity'
+import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
 import type { AgentRuntime } from './agent-runtime'
 import { ClaudeCredentialStore } from './credentials'
 import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
+import { SkillsService } from './skills/service'
 
-type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; flushTimer?: ReturnType<typeof setTimeout> }
+type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
+const MAX_COMMAND_OUTPUT = 32_000
+async function runWorkspaceCommand(command: string, cwd: string, signal?: AbortSignal): Promise<string> {
+  if (signal?.aborted) throw new Error('Execução interrompida.')
+  const env: NodeJS.ProcessEnv = {}
+  const allowedEnv = process.platform === 'win32'
+    ? ['PATH', 'PATHEXT', 'COMSPEC', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramFiles', 'ProgramFiles(x86)']
+    : ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TERM']
+  for (const key of allowedEnv) if (process.env[key]) env[key] = process.env[key]
+  const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
+  const args = process.platform === 'win32'
+    ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command]
+    : ['--noprofile', '--norc', '-c', command]
+  return new Promise((resolveOutput, rejectOutput) => {
+    const child = spawn(shell, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    let output = ''
+    let truncated = false
+    let timedOut = false
+    let settled = false
+    const append = (chunk: Buffer) => {
+      const remaining = MAX_COMMAND_OUTPUT - output.length
+      if (remaining > 0) output += chunk.toString('utf8').slice(0, remaining)
+      if (chunk.length > remaining) truncated = true
+    }
+    child.stdout.on('data', append)
+    child.stderr.on('data', append)
+    const terminate = () => {
+      if (process.platform === 'win32' && child.pid) {
+        // child.kill() termina só o PowerShell; npm/node podem continuar executando.
+        const killer = spawn(join(process.env.SYSTEMROOT || 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+        killer.once('error', () => child.kill())
+        killer.once('exit', code => { if (code !== 0) child.kill() })
+      } else child.kill()
+    }
+    const timer = setTimeout(() => { timedOut = true; terminate() }, 120_000)
+    const abort = () => terminate()
+    signal?.addEventListener('abort', abort, { once: true })
+    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
+    child.once('error', error => { if (settled) return; settled = true; cleanup(); rejectOutput(new Error(`Não foi possível iniciar o terminal: ${error.message}`)) })
+    child.once('close', (code, exitSignal) => {
+      if (settled) return
+      settled = true; cleanup()
+      if (signal?.aborted) { rejectOutput(new Error('Execução interrompida.')); return }
+      const ending = timedOut ? '\nComando encerrado após 120 segundos.' : `\nCódigo de saída: ${code ?? exitSignal ?? 'desconhecido'}.`
+      resolveOutput(`${output}${truncated ? '\n[Saída truncada em 32 KB.]' : ''}${ending}`)
+    })
+  })
+}
 /** Como e onde habilitar cada permissão do Chief, para a mensagem de recusa orientar o usuário em vez de só negar. */
 const howToEnablePermission = (label: string) => ` Para habilitar, abra o menu (⋯) deste workspace, escolha Editar e marque "${label}" em Permissões do workspace.`
 
 export class AppService extends EventEmitter {
   readonly store: WorkspaceStore
-  readonly runtime: CodexRuntime
+  readonly runtime: AgentRuntime
   readonly claudeRuntime: AgentRuntime
+  readonly piRuntime: AgentRuntime
+  readonly openCodeRuntime: AgentRuntime
+  readonly antigravityRuntime: AgentRuntime
   readonly credentials: ClaudeCredentialStore
+  readonly decisionRouting: OpenRouterDecisionService
   readonly browser = new BrowserService()
   readonly gitWorkspaces: GitWorkspaceService
+  // Mesma pasta de dados do app; tools de skill (list_skills/read_skill/save_skill) usam esta instância direto, sem passar por IPC.
+  private readonly skills: SkillsService
   private readonly queue = new WorkspaceQueue()
   private readonly active = new Map<string, AbortController>()
   private readonly contexts = new Map<string, RunContext>()
-  private readonly completedTurns = new Set<string>()
+  private readonly completedTurns = new WeakMap<AgentRuntime, Map<string, { status: string; error?: string }>>()
   private readonly delegationTasks = new Map<string, Promise<string>>()
+  private readonly groupRounds = new Map<string, Promise<void>>()
+  private readonly groupRoundSignals = new Map<string, Set<AbortController>>()
   private readonly approvalWaiters = new Map<string, (approved: boolean) => void>()
   private visibleConversationId: string | null = null
+  private cachedModels: ((runtime: Agent['runtime']) => Promise<Model[]>) | null = null
   private readonly statusTimer: ReturnType<typeof setInterval>
-  constructor(dataDirectory: string, runtime: CodexRuntime = new CodexRuntime(), claudeRuntime?: AgentRuntime) {
+  private readonly statusSignal = new AbortController()
+  private statusRefresh: Promise<void> | null = null
+  constructor(dataDirectory: string, runtime: AgentRuntime = new CodexRuntime(), claudeRuntime?: AgentRuntime) {
     super()
     this.runtime = runtime
     this.store = new WorkspaceStore(dataDirectory)
+    // Após reinício, delegações antigas foram interrompidas: não deixar Boos temporários presos em "working".
+    for (const boo of this.store.agents().filter(item => item.temporary && item.temporaryStatus === 'working'))
+      this.store.saveAgent({ ...boo, temporaryStatus: 'retired' })
     this.credentials = new ClaudeCredentialStore(dataDirectory)
+    this.decisionRouting = new OpenRouterDecisionService(dataDirectory)
     this.claudeRuntime = claudeRuntime || new ClaudeRuntime(dataDirectory, () => this.credentials.load())
+    this.piRuntime = new PiRuntime(join(dataDirectory, 'pi-runtime'))
+    this.openCodeRuntime = new HeadlessCliRuntime('opencode', join(dataDirectory, 'opencode-chat'))
+    this.antigravityRuntime = new HeadlessCliRuntime('antigravity', join(dataDirectory, 'antigravity-chat'))
     this.gitWorkspaces = new GitWorkspaceService(join(dataDirectory, 'worktrees'))
+    this.skills = new SkillsService(dataDirectory)
     this.statusTimer = setInterval(() => void this.refreshWorkspaceStatuses(), 5000)
     this.statusTimer.unref?.()
     this.runtime.on('event', (event: any) => void this.onRuntimeEvent(event, this.runtime))
     this.claudeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.claudeRuntime))
+    this.piRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.piRuntime))
+    this.openCodeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.openCodeRuntime))
+    this.antigravityRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.antigravityRuntime))
     this.browser.on('frame', frame => this.emitEvent({ type: 'browser', frame }))
-    this.runtime.on('disconnected', (error: Error) => {
-      for (const context of this.contexts.values()) void this.finish(context, 'failed', `Conexão com Codex encerrada: ${error.message}`)
-    })
+    for (const [name, runtime] of [['Codex', this.runtime], ['Claude', this.claudeRuntime], ['Pi', this.piRuntime], ['OpenCode', this.openCodeRuntime], ['Antigravity', this.antigravityRuntime]] as const) {
+      runtime.on('disconnected', (error: Error) => {
+        for (const context of this.contexts.values()) {
+          if (context.runtime !== runtime) continue
+          void this.finish(context, 'failed', `Conexão com ${name} encerrada: ${error.message}`)
+          // Libera a espera do turno, as aprovações e a vaga da fila deste runtime.
+          this.active.get(context.run.id)?.abort()
+        }
+      })
+    }
   }
-  snapshot() { return this.store.snapshot() }
-  private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : this.runtime }
-  private async refreshWorkspaceStatuses() {
+  snapshot() { return { ...this.store.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function') } }
+  private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : name === 'antigravity' ? this.antigravityRuntime : this.runtime }
+  /** Usa o inventário validado na inicialização ou atualizado manualmente; envio não varre CLI. */
+  setCachedModelResolver(resolver: (runtime: Agent['runtime']) => Promise<Model[]>): void { this.cachedModels = resolver }
+  private refreshWorkspaceStatuses(): Promise<void> {
+    if (this.statusSignal.signal.aborted) return Promise.resolve()
+    if (!this.statusRefresh) this.statusRefresh = this.scanWorkspaceStatuses().finally(() => { this.statusRefresh = null })
+    return this.statusRefresh
+  }
+  private async scanWorkspaceStatuses() {
     for (const workspace of this.store.workspaces()) {
+      if (this.statusSignal.signal.aborted) return
       if (workspace.archived) continue
       try {
-        const info = await this.gitWorkspaces.inspect(workspace.path)
+        const info = await this.gitWorkspaces.inspect(workspace.path, this.statusSignal.signal)
+        if (this.statusSignal.signal.aborted) return
         if (info.branch !== workspace.branch || info.changes !== workspace.changes) {
           this.store.updateWorkspace({ ...workspace, ...info }); this.emitEvent({ type: 'changed' })
         }
@@ -65,6 +157,7 @@ export class AppService extends EventEmitter {
   }
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.emitEvent({ type: 'changed' }); return agent }
   saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.emitEvent({ type: 'changed' }); return assistant }
+  saveTerminalAccess(enabled: boolean) { this.store.saveTerminalAccess(enabled); this.emitEvent({ type: 'changed' }) }
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }) { const conversation = this.store.saveConversation(input); this.emitEvent({ type: 'changed' }); return conversation }
   async saveWorkspace(input: Partial<Workspace> & { path?: string | null }) {
     let info: { branch?: string | null; changes?: number } = {}
@@ -110,7 +203,21 @@ export class AppService extends EventEmitter {
     this.store.deleteConversation(conversationId)
     this.emitEvent({ type: 'changed' })
   }
-  deleteAgent(agentId: string) {
+  async deleteAgent(agentId: string) {
+    if (agentId === ASSISTANT_ID) throw new Error('O Assistente padrão não pode ser excluído.')
+    const runs = this.store.runs().filter(run => run.agentId === agentId && ['queued', 'running', 'waiting'].includes(run.status))
+    for (const run of runs) {
+      this.active.get(run.id)?.abort()
+      if (run.threadId && run.turnId) await this.runtimeFor(run.agent.runtime).interrupt(run.threadId, run.turnId).catch(() => undefined)
+      const context = this.contexts.get(run.id)
+      if (context) await this.finish(context, 'interrupted', context.message.text || 'Agente excluído pelo usuário.')
+      else {
+        this.store.putRun({ ...run, status: 'interrupted' })
+        const message = this.store.message(run.messageId)
+        if (message) { const next = { ...message, status: 'interrupted' as const, text: message.text || 'Agente excluído pelo usuário.' }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next }) }
+      }
+      this.active.delete(run.id)
+    }
     this.store.deleteAgent(agentId)
     this.emitEvent({ type: 'changed' })
   }
@@ -120,6 +227,7 @@ export class AppService extends EventEmitter {
   readProjectFile(workspaceId: string, path: string) { return readProjectText(this.workspacePath(workspaceId), path) }
   writeProjectFile(workspaceId: string, path: string, content: string, expectedHash: string) { return writeProjectText(this.workspacePath(workspaceId), path, content, expectedHash) }
   setVisibleConversation(conversationId: string | null) { if (conversationId !== null) this.store.conversation(conversationId); this.visibleConversationId = conversationId }
+  getVisibleConversation() { return this.visibleConversationId }
   private notifyWhenAway(conversationId: string, title: string, body: string) {
     const focusedConversation = this.visibleConversationId === conversationId && BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.isFocused())
     if (!focusedConversation && Notification.isSupported()) new Notification({ title, body }).show()
@@ -128,6 +236,8 @@ export class AppService extends EventEmitter {
     const approval = this.store.approval(approvalId)
     if (!approval || approval.status !== 'pending') throw new Error('Esta aprovação não está mais pendente.')
     if (typeof approved !== 'boolean') throw new Error('Decisão de aprovação inválida.')
+    const resolveApproval = this.approvalWaiters.get(approvalId)
+    if (!resolveApproval) throw new Error('A execução desta aprovação não está ativa. Ela não será repetida automaticamente.')
     const updated = { ...approval, status: approved ? 'approved' as const : 'denied' as const, resolvedAt: new Date().toISOString() }
     this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
     const context = this.contexts.get(approval.runId)
@@ -135,8 +245,6 @@ export class AppService extends EventEmitter {
       context.run.status = 'running'; this.store.putRun(context.run)
       this.updateMessage(context.message, 'running', context.message.text)
     }
-    const resolveApproval = this.approvalWaiters.get(approvalId)
-    if (!resolveApproval) throw new Error('A execução desta aprovação não está ativa. Ela não será repetida automaticamente.')
     this.approvalWaiters.delete(approvalId); resolveApproval(approved)
   }
   private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], forceAsk = false): Promise<boolean> {
@@ -145,9 +253,7 @@ export class AppService extends EventEmitter {
     this.store.putApproval(approval)
     context.run.status = 'waiting'; this.store.putRun(context.run)
     this.updateMessage(context.message, 'waiting', context.message.text)
-    this.emitEvent({ type: 'approval', approval })
-    const action = kind === 'write' ? 'alterar um arquivo' : kind === 'browser' ? 'usar o navegador' : kind === 'delegation' ? 'delegar uma tarefa' : 'alterar um agente ou uma equipe'
-    this.notifyWhenAway(context.conversation.id, 'Politron precisa da sua atenção', `${context.agent.name} aguarda aprovação para ${action}.`)
+    const action = kind === 'write' ? 'alterar um arquivo' : kind === 'browser' ? 'usar o navegador' : kind === 'command' ? 'executar um comando no terminal' : kind === 'delegation' ? 'delegar uma tarefa' : 'alterar um agente ou uma equipe'
     if (context.signal?.aborted) {
       const interrupted = { ...approval, status: 'interrupted' as const, resolvedAt: new Date().toISOString() }
       this.store.putApproval(interrupted); this.emitEvent({ type: 'approval', approval: interrupted }); return false
@@ -161,53 +267,179 @@ export class AppService extends EventEmitter {
         }
         this.approvalWaiters.delete(approval.id); resolveApproval(false)
       }
-      this.approvalWaiters.set(approval.id, resolveApproval)
+      this.approvalWaiters.set(approval.id, approved => {
+        context.signal?.removeEventListener('abort', abort)
+        resolveApproval(approved)
+      })
       context.signal?.addEventListener('abort', abort, { once: true })
+      // O consumidor pode decidir no próprio callback do evento. A espera precisa
+      // existir antes da publicação, inclusive para clientes locais muito rápidos.
+      this.emitEvent({ type: 'approval', approval })
+      if (this.store.approval(approval.id)?.status === 'pending') this.notifyWhenAway(context.conversation.id, 'Boobot precisa da sua atenção', `${context.agent.name} aguarda aprovação para ${action}.`)
     })
   }
   history(id: string) { this.store.conversation(id); return this.store.history(id) }
+  historyPage(id: string, beforeCursor?: number | string | null, limit?: number) { this.store.conversation(id); return this.store.historyPage(id, beforeCursor, limit) }
+  searchHistory(id: string, query: string, limit?: number) { this.store.conversation(id); return this.store.searchHistory(id, text(query, 200), limit) }
+  historyAround(id: string, cursor: number, limit?: number) { this.store.conversation(id); return this.store.historyAround(id, cursor, limit) }
   private emitEvent(event: WorkspaceEvent) { this.emit('workspace-event', event) }
   private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null) {
     const message: Message = { id: randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, createdAt: new Date().toISOString() }
     this.store.putMessage(message); this.emitEvent({ type: 'message', message }); return message
   }
-  async send(conversationId: string, value: string, model?: string, effort?: Agent['effort']): Promise<void> {
+  async send(conversationId: string, value: string, model?: string, effort?: Agent['effort'], preferredAgentId?: string, voiceReply = false, recordInput = true): Promise<void> {
     const input = text(value, 100000).trim()
     if (!input) return
     const conversation = this.store.conversation(conversationId)
     if (conversation.archived) throw new Error('Esta conversa está arquivada.')
     const workspace = this.store.workspace(conversation.workspaceId)
     if (workspace.archived) throw new Error('O workspace desta conversa está arquivado.')
-    const agents = (conversation.agentIds.length ? conversation.agentIds : [ASSISTANT_ID]).map(id => this.store.agent(id))
+    const conversationAgentIds = conversation.agentIds.length ? conversation.agentIds : [ASSISTANT_ID]
+    if (preferredAgentId && preferredAgentId !== ASSISTANT_ID && !conversationAgentIds.includes(preferredAgentId)) throw new Error('O agente escolhido não participa desta conversa.')
+    const agents = (preferredAgentId ? [preferredAgentId] : conversationAgentIds).map(id => this.store.agent(id))
     const selectedRuntime = model?.includes(':') ? model.slice(0, model.indexOf(':')) as Agent['runtime'] : undefined
     const selectedModel = selectedRuntime ? model!.slice(model!.indexOf(':') + 1) : model
-    if (selectedRuntime && selectedRuntime !== 'codex' && selectedRuntime !== 'claude') throw new Error('Motor selecionado inválido.')
+    let selectedCatalog: Model | undefined
+    if (selectedRuntime && !['codex', 'claude', 'pi', 'opencode', 'antigravity'].includes(selectedRuntime)) throw new Error('Motor selecionado inválido.')
     if (selectedModel) {
-      const available = await this.runtimeFor(selectedRuntime || agents[0]?.runtime || 'codex').models()
-      if (!available.some(item => item.id === selectedModel)) throw new Error(`O modelo selecionado não está disponível no ${selectedRuntime === 'claude' ? 'Claude' : 'Codex'}.`)
+      const modelRuntime = selectedRuntime || agents[0]?.runtime || 'codex'
+      const available = await (this.cachedModels ? this.cachedModels(modelRuntime) : this.runtimeFor(modelRuntime).models())
+      selectedCatalog = available.find(item => item.id === selectedModel)
+      if (!selectedCatalog) throw new Error(`O modelo selecionado não está disponível no ${selectedRuntime === 'claude' ? 'Claude' : 'Codex'}.`)
     }
     if (effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço selecionado inválido.')
-    const selected = recipients(input, agents)
+    if (effort && selectedCatalog?.supportedEfforts && !selectedCatalog.supportedEfforts.includes(effort)) throw new Error('O modelo selecionado não aceita esse nível de esforço.')
+    const mode = conversation.responseMode || 'leader'
+    const mentioned = preferredAgentId ? undefined : mentionedRecipients(input, agents)
+    let selected = preferredAgentId ? agents : mentioned || recipients(input, agents, mode, conversation.leaderAgentId)
     if (!selected.length) throw new Error('Não há agentes para responder nesta conversa.')
     const turnAlreadyActive = this.store.runs().some(run => run.conversationId === conversationId && ['queued', 'running', 'waiting'].includes(run.status))
-    const userMessage = this.addMessage(conversationId, null, 'user', input, turnAlreadyActive ? 'queued' : 'completed', null)
-    if (conversation.titleAuto) { this.store.autoTitle(conversationId, input); this.emitEvent({ type: 'changed' }) }
+    if (recordInput && !preferredAgentId && !mentioned && mode === 'auto' && agents.length > 1) {
+      const responding = agents.filter(agent => [...this.contexts.values()].some(context => context.run.conversationId === conversationId && context.agent.id === agent.id && ['running', 'waiting'].includes(context.run.status)))
+      if (responding.length === 1) selected = responding
+      else {
+        const history = this.store.history(conversationId).slice(-8).map(message => ({ author: message.author, text: message.text }))
+        const decision = await this.decisionRouting.choose({ message: input, conversation: conversation.name, agents: agents.map(agent => ({ id: agent.id, name: agent.name, description: agent.description })), history })
+        if (decision) selected = agents.filter(agent => agent.id === decision.agentId)
+      }
+    }
+    const steeringTargets = recordInput && !voiceReply ? selected.flatMap(agent => {
+      const context = [...this.contexts.values()].find(context => context.run.conversationId === conversationId && context.agent.id === agent.id && !context.run.parentId && ['running', 'waiting'].includes(context.run.status))
+      return context ? [context] : []
+    }) : []
+    for (const target of steeringTargets) {
+      if (!target.runtime?.steer) throw new Error(`${target.agent.name}: este provedor não aceita novas instruções durante a execução. Aguarde a resposta ou interrompa a tarefa.`)
+      if (!target.run.threadId || !target.run.turnId) throw new Error('A tarefa ainda está iniciando. Tente enviar a instrução novamente em instantes.')
+      if (selectedRuntime && selectedRuntime !== target.agent.runtime || selectedModel && selectedModel !== target.agent.model) throw new Error('Mantenha o modelo da tarefa atual para enviar instruções durante a execução.')
+    }
+    const createdAt = new Date().toISOString()
+    const userMessage: Message = recordInput
+      ? this.addMessage(conversationId, null, 'user', input, turnAlreadyActive ? 'queued' : 'completed', null)
+      : { id: randomUUID(), conversationId, agentId: null, author: 'Você', role: 'user', text: input, status: turnAlreadyActive ? 'queued' : 'completed', runId: null, createdAt }
+    if (recordInput && conversation.titleAuto) { this.store.autoTitle(conversationId, input); this.emitEvent({ type: 'changed' }) }
+    if (steeringTargets.length) {
+      try {
+        for (const target of steeringTargets) await target.runtime!.steer!(target.run.threadId!, target.run.turnId!, input)
+        const delivered = { ...userMessage, status: 'completed' as const }
+        this.store.putMessage(delivered); this.emitEvent({ type: 'message', message: delivered })
+      } catch (error) {
+        const failed = { ...userMessage, status: 'failed' as const }
+        this.store.putMessage(failed); this.emitEvent({ type: 'message', message: failed })
+        throw error
+      }
+      selected = selected.filter(agent => !steeringTargets.some(target => target.agent.id === agent.id))
+      if (!selected.length) return
+    }
     const tasks: Promise<void>[] = []
-    for (const agent of selected) {
-      const runAgent = selectedModel || effort ? { ...agent, ...(selectedRuntime ? { runtime: selectedRuntime } : {}), ...(selectedModel ? { model: selectedModel } : {}), ...(effort ? { effort } : {}) } : agent
-      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
+    const roundTranscript: string[] = []
+    const roundStartedAt = userMessage.createdAt
+    const roundSignal = mode === 'discussion' ? new AbortController() : undefined
+    if (roundSignal) { const signals = this.groupRoundSignals.get(conversationId) || new Set<AbortController>(); signals.add(roundSignal); this.groupRoundSignals.set(conversationId, signals) }
+    const scheduleSelectedAgents = async () => {
+      for (const agent of selected) {
+      if (roundSignal?.signal.aborted) return
+      const runAgent = { ...agent, ...(selectedRuntime ? { runtime: selectedRuntime } : {}), ...(selectedModel ? { model: selectedModel } : {}), ...(effort ? { effort } : {}), ...(voiceReply ? { instructions: `${agent.instructions}\n\nNesta resposta por voz, converse em português brasileiro, com frases curtas e naturais. Responda primeiro à pergunta; execute pedidos de trabalho com as ferramentas deste agente e relate o resultado sem markdown.` } : {}) }
+      const catalog = selectedCatalog || (this.cachedModels
+        ? (await this.cachedModels(runAgent.runtime).catch(() => [])).find(item => runAgent.model ? item.id === runAgent.model : item.isDefault)
+        : undefined)
+      if (catalog?.supportedEfforts) {
+        const allowed = catalog.supportedEfforts
+        const preferred = effort || agent.effort
+        runAgent.effort = preferred && allowed.includes(preferred) ? preferred
+          : catalog.defaultEffort && allowed.includes(catalog.defaultEffort) ? catalog.defaultEffort : allowed[0]
+      }
+      const previousRoundRaw = roundTranscript.join('\n\n')
+      const previousRoundText = previousRoundRaw.slice(-9000)
+      const corrections = mode === 'discussion'
+        ? this.store.history(conversationId).filter(message => message.role === 'user' && message.id !== userMessage.id && message.createdAt >= roundStartedAt).slice(-5).map(message => message.text).join('\n\n').slice(-3000)
+        : ''
+      const runInput = mode === 'discussion' && (roundTranscript.length || corrections)
+        ? `${input}${corrections ? `\n\nNovas mensagens humanas durante a rodada:\n${corrections}` : ''}${roundTranscript.length ? `\n\nRespostas anteriores desta rodada, em ordem${previousRoundRaw.length > 9000 ? ' (trecho final; início omitido)' : ''}:\n${previousRoundText}` : ''}`
+        : input
+      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: runInput, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
       const message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
       run.messageId = message.id
       this.store.putRun(run)
       const controller = new AbortController()
       this.active.set(run.id, controller)
-      tasks.push(this.queue.enqueue(workspace.path, controller.signal, () => this.execute({ run, message, conversation, agent: runAgent }, controller.signal)))
+      const abortRound = () => controller.abort()
+      roundSignal?.signal.addEventListener('abort', abortRound, { once: true })
+      const task = this.queue.enqueue(workspace.path, controller.signal, lease => this.execute({ run, message, conversation, agent: runAgent, lease }, controller.signal))
+        if (mode === 'discussion') {
+          try { await task } finally { roundSignal?.signal.removeEventListener('abort', abortRound) }
+          roundTranscript.push(`${agent.name}: ${this.store.message(message.id)?.text || '(sem resposta)'}`)
+        } else { tasks.push(task); roundSignal?.signal.removeEventListener('abort', abortRound) }
+      }
+    }
+    if (mode === 'discussion') {
+      const previous = this.groupRounds.get(conversationId) || Promise.resolve()
+      const round = previous.catch(() => undefined).then(scheduleSelectedAgents)
+      this.groupRounds.set(conversationId, round)
+      try { await round } finally {
+        const signals = this.groupRoundSignals.get(conversationId)
+        signals?.delete(roundSignal!)
+        if (signals && !signals.size) this.groupRoundSignals.delete(conversationId)
+        if (this.groupRounds.get(conversationId) === round) this.groupRounds.delete(conversationId)
+      }
+    } else {
+      await scheduleSelectedAgents()
+      await Promise.all(tasks)
     }
     void userMessage
-    await Promise.all(tasks)
+  }
+  async respondVoice(conversationId: string, input: string, agentId: string): Promise<string> {
+    const previous = new Set(this.store.history(conversationId).filter(message => message.role === 'assistant' && message.agentId === agentId).map(message => message.id))
+    await this.send(conversationId, input, undefined, undefined, agentId, true)
+    const response = this.store.history(conversationId).slice().reverse().find(message => message.role === 'assistant' && message.agentId === agentId && !previous.has(message.id))
+    if (!response?.text.trim()) throw new Error('O agente terminou sem uma resposta falada.')
+    if (response.status === 'failed') throw new Error(response.text)
+    return response.text
+  }
+  async respondToAgent(conversationId: string, input: string, agentId: string): Promise<string> {
+    const previous = new Set(this.store.history(conversationId).filter(message => message.role === 'assistant' && message.agentId === agentId).map(message => message.id))
+    await this.send(conversationId, input, undefined, undefined, agentId)
+    const response = this.store.history(conversationId).slice().reverse().find(message => message.role === 'assistant' && message.agentId === agentId && !previous.has(message.id))
+    if (!response?.text.trim()) throw new Error('O agente terminou sem uma resposta.')
+    if (response.status === 'failed') throw new Error(response.text)
+    return response.text
+  }
+  recordRealtimeTranscript(conversationId: string, agentId: string, role: 'user' | 'assistant', value: string, final: boolean, messageId: string): Message {
+    const conversation = this.store.conversation(conversationId)
+    const previous = this.store.message(messageId)
+    const agent = role === 'assistant' ? this.store.agent(agentId) : null
+    const message: Message = {
+      id: messageId, conversationId, agentId: agent?.id || null, author: agent?.name || 'Você', role,
+      text: value.slice(0, 100000), status: final ? 'completed' : 'running', runId: null,
+      createdAt: previous?.createdAt || new Date().toISOString(),
+    }
+    this.store.putMessage(message)
+    this.emitEvent({ type: 'message', message })
+    if (role === 'user' && final && conversation.titleAuto) { this.store.autoTitle(conversationId, value); this.emitEvent({ type: 'changed' }) }
+    return message
   }
   async stop(conversationId: string): Promise<void> {
+    for (const round of this.groupRoundSignals.get(conversationId) || []) round.abort()
     const runs = this.store.runs().filter(run => run.conversationId === conversationId && ['queued', 'running', 'waiting'].includes(run.status))
     for (const run of runs) {
       this.active.get(run.id)?.abort()
@@ -245,14 +477,35 @@ export class AppService extends EventEmitter {
     }
   }
   async hasClaudeCredential() { return this.credentials.has() }
-  async saveClaudeCredential(apiKey: string) { await this.credentials.save(apiKey) }
+  async saveClaudeCredential(apiKey: string) { await this.credentials.save(apiKey); this.emit('provider-auth-changed') }
+  async clearClaudeCredential() { await this.credentials.clear(); this.emit('provider-auth-changed') }
+  async openRouterDecisionStatus() { return { ...await this.decisionRouting.status() } }
+  async openRouterDecisionModels(key?: string) { return this.decisionRouting.models(key) }
+  async saveOpenRouterDecision(key: string, modelId: string) { await this.decisionRouting.testKey(key, modelId); await this.decisionRouting.save(key, modelId) }
+  async saveOpenRouterDecisionModel(modelId: string) { await this.decisionRouting.saveModel(modelId) }
+  async clearOpenRouterDecision() { await this.decisionRouting.clear() }
   async models(runtimeName?: Agent['runtime']): Promise<Model[]> {
-    const withProvider = (name: Agent['runtime'], models: Model[]) => models.map(model => ({ ...model, runtime: name, id: `${name}:${model.id}`, name: `${model.name} · ${name === 'claude' ? 'Claude' : 'Codex'}` }))
-    if (runtimeName) return withProvider(runtimeName, await this.runtimeFor(runtimeName).models())
-    const codexModels = withProvider('codex', await this.runtime.models())
-    if (!await this.credentials.has()) return codexModels
-    try { return [...codexModels, ...withProvider('claude', await this.claudeRuntime.models())] }
-    catch { return codexModels }
+    const withProvider = (name: Agent['runtime'], models: Model[]) => models.map(model => ({ ...model, runtime: name, id: `${name}:${model.id}`, name: `${model.name} · ${name === 'claude' ? 'Claude' : name === 'pi' ? 'Pi' : 'Codex'}` }))
+    // Prazo de espera de 12 s; não fecha o runtime compartilhado por conversas ativas.
+    const load = async (name: Agent['runtime']) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        const models = await Promise.race([
+          Promise.resolve().then(() => this.cachedModels ? this.cachedModels(name) : this.runtimeFor(name).models()),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`Tempo limite ao consultar modelos do ${name === 'claude' ? 'Claude' : 'Codex'}.`)), 12_000) }),
+        ])
+        return withProvider(name, models)
+      } finally { if (timer) clearTimeout(timer) }
+    }
+    if (runtimeName) return load(runtimeName)
+    const names: Agent['runtime'][] = this.cachedModels ? ['codex', 'claude', 'pi', 'opencode', 'antigravity'] : ['codex', 'claude']
+    const results = await Promise.allSettled(names.map(load))
+    const models = results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
+    if (results.every(result => result.status === 'rejected')) {
+      const failure = results.find(result => result.status === 'rejected')
+      if (failure?.status === 'rejected') throw failure.reason
+    }
+    return models
   }
   browserFrames(conversationId: string) { this.store.conversation(conversationId); return this.browser.frames(conversationId) }
   browserControl(key: string, human: boolean) { return this.browser.control(key, human) }
@@ -282,23 +535,39 @@ export class AppService extends EventEmitter {
       // Retomar uma sessão existente não atualiza as ferramentas do Codex/Claude: se a lista mudou (permissão, papel, ou código), força uma sessão nova em vez de reaproveitar uma com ferramentas desatualizadas.
       const toolsKey = createHash('sha256').update(tools.map(tool => tool.name).sort().join(',')).digest('hex').slice(0, 12)
       const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:t${toolsKey}`
-      const threadId = await runtime.thread(agent, directory, tools, this.store.binding(bindingKey), workspaceInstructions)
+      const existingThread = this.store.binding(bindingKey)
+      if (!existingThread) {
+        const checkpoint = this.store.latestCheckpoint(conversation.id, agent.id)
+        if (checkpoint) {
+          const recentUserMessages = this.store.history(conversation.id).filter(item => item.role === 'user').slice(-3)
+          run.input = `[Checkpoint anterior de ${checkpoint.createdAt}]\nResumo: ${checkpoint.summary}\nDecisões: ${checkpoint.decisions.join(' | ') || 'nenhuma registrada'}\nPendências: ${checkpoint.pending.join(' | ') || 'nenhuma registrada'}\nMensagens recentes do usuário, preservadas literalmente:\n${recentUserMessages.map(item => item.text).join('\n---\n')}\n\nPedido atual:\n${run.input}`
+        }
+      }
+      const threadId = await runtime.thread(agent, directory, tools, existingThread, workspaceInstructions)
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
       const result = await runtime.send(threadId, run.input, agent.model || undefined, 600000)
       if (result.thread?.id) { run.threadId = result.thread.id; this.store.putRun(run) }
       const turnId = result.turn.id as string
       run.turnId = turnId; this.store.putRun(run)
+      this.emitEvent({ type: 'changed' })
       this.store.bind(bindingKey, run.threadId || threadId)
       if (signal.aborted) { await runtime.interrupt(run.threadId || threadId, turnId).catch(() => undefined); throw new Error('Execução interrompida.') }
       await new Promise<void>((resolve, reject) => {
         const turnKey = `${run.threadId || threadId}:${turnId}`
         if (signal.aborted) { reject(new Error('Execução interrompida.')); return }
-        if (this.completedTurns.has(turnKey) || this.completedTurns.has(`${threadId}:${turnId}`)) { resolve(); return }
+        const completed = this.completedTurns.get(runtime)?.get(turnKey) || this.completedTurns.get(runtime)?.get(`${threadId}:${turnId}`)
+        if (completed) {
+          if (completed.status === 'failed') reject(new Error(completed.error || 'O agente não concluiu a resposta.'))
+          else if (completed.status === 'interrupted') reject(new Error('Execução interrompida pelo agente.'))
+          else resolve()
+          return
+        }
         if (result.turn.status === 'failed') { reject(new Error(result.turn.error?.message || 'Codex não conseguiu iniciar a resposta.')); return }
         if (result.turn.status === 'interrupted') { reject(new Error('Execução interrompida pelo Codex.')); return }
         const done = (event: any) => {
           if (event.method !== 'turn/completed') return
+          if (event.params?.threadId !== run.threadId) return
           if (event.params?.turn?.id !== run.turnId) return
           runtime.off('event', done)
           signal.removeEventListener('abort', abort)
@@ -333,6 +602,7 @@ export class AppService extends EventEmitter {
       tool('workspace_list', 'Lista arquivos e pastas dentro da pasta deste grupo.', { path: { type: 'string', description: 'Caminho relativo; use . para a raiz.' } }, ['path']),
       tool('workspace_read', 'Lê um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' } }, ['path']),
       ...(canWrite ? [tool('workspace_write', 'Cria ou substitui um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
+      ...(canWrite && this.store.terminalEnabled() ? [tool('workspace_run_command', 'Executa um comando não interativo no terminal com diretório de trabalho nesta conversa. Não há sandbox do sistema operacional: o comando aprovado pode acessar outros caminhos. Cada execução exige aprovação do usuário. Comandos podem ler ou alterar arquivos e usar programas instalados; não use para comandos interativos.', { command: { type: 'string', description: 'Comando de shell a executar.' } }, ['command'])] : []),
       ...(canUseComputer ? [
         tool('browser_open', 'Abre um endereço HTTP ou HTTPS na sessão privada deste agente.', { url: { type: 'string' } }, ['url']),
         tool('browser_observe', 'Lê o conteúdo visível e os controles da página aberta pelo agente.', {}, []),
@@ -341,18 +611,46 @@ export class AppService extends EventEmitter {
         tool('browser_key', 'Pressiona uma tecla comum na página, como Enter, Tab ou Escape.', { key: { type: 'string' } }, ['key']),
         tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY'])
       ] : []),
-      tool('group_members', context.agent.role === 'chief' ? 'Lista todos os Pits cadastrados no aplicativo, não só os desta conversa. Use para saber quem existe antes de propor equipe, sessão ou delegação.' : 'Mostra os agentes desta conversa e a equipe padrão do workspace.', {}, []),
+      ...(context.agent.id !== ASSISTANT_ID ? [tool('propose_self_profile', 'Edite SEU PRÓPRIO perfil cadastrado no Boobot, inclusive se você é o Chief. Use quando perguntarem se você consegue se editar, personalizar aparência, nome, especialidade, instruções, personalidade ou comportamento. O corpo do modelo/pesos não podem ser alterados. Sugira mudanças específicas, preservando campos omitidos. SEMPRE requer aprovação explícita antes de salvar. NÃO permite alterar runtime, modelo, permissões, papel, menção, chaves, ferramentas ou acesso ao computador.', {
+        name: { type: 'string', description: 'Novo nome visível (opcional).' },
+        description: { type: 'string', description: 'Especialidade ou descrição (opcional).' },
+        instructions: { type: 'string', description: 'Novo conjunto COMPLETO das instruções/personalidade. Se quiser alterar só uma frase, preserve as demais instruções atuais.' },
+        color: { type: 'string', description: 'Cor do corpo no formato #RRGGBB.' },
+        pitsShape: { type: 'string', enum: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'] },
+        pitsAccessory: { type: 'string', enum: ['none', 'antenna', 'horns', 'glasses', 'cap'] },
+        pitsHeadAccessory: { type: 'string', enum: ['none', 'antenna', 'horns', 'cap', 'cap-flat', 'cap-back', 'beanie', 'bucket', 'top-hat', 'witch-hat', 'headphones', 'crown'] },
+        pitsFaceAccessory: { type: 'string', enum: ['none', 'glasses', 'round-glasses', 'sunglasses'] },
+        pitsEyeColor: { type: 'string' }, pitsCheekColor: { type: 'string' },
+        pitsEyeSize: { type: 'number' }, pitsEyeSpacing: { type: 'number' },
+        pitsBodyWidth: { type: 'number' }, pitsBodyHeight: { type: 'number' },
+        pitsMouthSize: { type: 'number' }, pitsBlushStrength: { type: 'number' },
+        pitsBlush: { type: 'boolean' }, pitsAura: { type: 'boolean' }, pitsAnimate: { type: 'boolean' },
+        pitsSpeed: { type: 'number' }, pitsAmplitude: { type: 'number' },
+      }, [])] : []),
+      tool('group_members', context.agent.role === 'chief' ? 'Lista todos os Boos ativos cadastrados, inclusive Boos temporários deste workspace. Reutilize especialistas antes de criar novos.' : 'Mostra os agentes desta conversa e a equipe padrão do workspace.', {}, []),
+      tool('search_history', 'Busca mensagens antigas nesta conversa para recuperar decisões e contexto que não estão no histórico recente. A busca é limitada à conversa atual.', { query: { type: 'string', description: 'Termos concretos para pesquisar no histórico.' } }, ['query']),
+      tool('save_context_checkpoint', 'Salva um resumo de continuidade deste trabalho para uma futura sessão nova. Use em trabalhos longos ou antes de uma troca de contexto; não substitui os registros originais nem repete ações.', { summary: { type: 'string', description: 'Objetivo, progresso com evidências e próximos passos.' }, decisions: { type: 'array', items: { type: 'string' }, maxItems: 20 }, pending: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, ['summary']),
+      tool('list_skills', 'Lista as skills disponíveis (nome e quando usar cada uma): as já instaladas no Codex/Claude Code desta máquina, as que o usuário adicionou e as que você ou outro agente já aprenderam. Use antes de uma tarefa para ver se já existe um procedimento conhecido; chame read_skill para ler o conteúdo completo de uma antes de segui-la.', {}, []),
+      tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id devolvido por list_skills.', { id: { type: 'string' } }, ['id']),
+      ...(canWrite ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
       ...(context.agent.role === 'chief' ? [
-        tool('propose_agent', 'Propõe criar um agente novo (um "Pits" novo) ou alterar o perfil de um agente que já participa desta equipe. Nada será salvo sem aprovação explícita do usuário. Agentes novos começam sem acesso a arquivos e navegador. Se o usuário pedir para "criar um Pits", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
+        tool('propose_agent', 'Propõe criar um agente novo (um "Boo" novo) ou alterar o perfil de um agente que já participa desta equipe. Nada será salvo sem aprovação explícita do usuário. Agentes novos começam sem acesso a arquivos e navegador. Se o usuário pedir para "criar um Boo", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
+        tool('propose_agent_model', 'Propõe mudar o runtime/modelo/esforço de um Boo da equipe. Use quando o usuário pedir para trocar GPT por Claude, Codex por outro motor ou definir outro modelo para front-end/back-end. SEMPRE pede aprovação explícita; NÃO muda permissões, papel, nome nem avatar. Modelo vazio seleciona o padrão do runtime.', { agent: { type: 'string', description: 'Nome ou @menção do Boo a reconfigurar.' }, runtime: { type: 'string', enum: ['codex','claude','pi','opencode','antigravity'] }, model: { type: 'string', description: 'Identificador exato do modelo; vazio usa o padrão do motor.' }, effort: { type: 'string', enum: ['low','medium','high','xhigh','max'] } }, ['agent','runtime']),
+        tool('propose_boos', 'Propõe 1 a 5 Boos com UMA aprovação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Nunca cria agentes sem aprovação; não libera escrita nem computador.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário proposto espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' } }, required: ['instructions'] } } }, ['agents']),
         tool('propose_team', 'Propõe alterar a equipe padrão deste workspace. Só persiste após aprovação explícita do usuário.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents']),
         tool('propose_session', 'Propõe criar uma nova sessão neste workspace, com a equipe informada ou o Assistente padrão. Só cria após aprovação do usuário.', { name: { type: 'string' }, agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['name', 'agents']),
       ] : []),
-      tool('ask_agent', context.agent.role === 'chief' ? 'Propõe uma delegação para um agente da equipe deste workspace. O usuário precisa aprovar antes de o destinatário receber a tarefa.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário, e o resultado voltará diretamente a você.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido concreto. Inclua somente o contexto necessário; a conversa de origem não será compartilhada.' } }, ['agent', 'task'])
+      tool('ask_agent', context.agent.role === 'chief' ? 'Propõe uma delegação para um agente da equipe deste workspace. O usuário precisa aprovar antes de o destinatário receber a tarefa.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido concreto. Inclua somente o contexto necessário; a conversa de origem não será compartilhada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação deste agente nesta conversa.' } }, ['agent', 'task'])
     ]
   }
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
     const params = event?.params || {}
-    if (event.method === 'turn/completed' && params.threadId && params.turn?.id) this.completedTurns.add(`${params.threadId}:${params.turn.id}`)
+    if (event.method === 'turn/completed' && params.threadId && params.turn?.id) {
+      const outcomes = this.completedTurns.get(runtime) || new Map<string, { status: string; error?: string }>()
+      outcomes.set(`${params.threadId}:${params.turn.id}`, { status: params.turn.status, error: typeof params.turn.error === 'string' ? params.turn.error : params.turn.error?.message })
+      if (outcomes.size > 1000) outcomes.delete(outcomes.keys().next().value!)
+      this.completedTurns.set(runtime, outcomes)
+    }
     if (event.method === 'item/tool/call') {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (!context) { runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: 'Execução não encontrada.' }] }); return }
@@ -364,9 +662,17 @@ export class AppService extends EventEmitter {
     }
     if (event.method === 'item/agentMessage/delta') {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
-      if (context && typeof params.delta === 'string') {
+      if (context && typeof params.delta === 'string' && params.delta.length) {
+        const firstToken = !context.message.text
         context.message.text += params.delta
-        if (!context.flushTimer) context.flushTimer = setTimeout(() => { context.flushTimer = undefined; this.updateMessage(context.message, 'running', context.message.text) }, 45)
+        if (firstToken) {
+          // Never hold the first real model output behind a streaming batch timer.
+          if (context.flushTimer) { clearTimeout(context.flushTimer); context.flushTimer = undefined }
+          this.updateMessage(context.message, 'running', context.message.text)
+        } else if (!context.flushTimer) {
+          // Coalesce later deltas at display-frame cadence to avoid saturating IPC.
+          context.flushTimer = setTimeout(() => { context.flushTimer = undefined; this.updateMessage(context.message, 'running', context.message.text) }, 16)
+        }
       }
     }
     if (event.method === 'item/completed' && params.item?.type === 'agentMessage') {
@@ -392,6 +698,15 @@ export class AppService extends EventEmitter {
       return target
     }
     const workspace = this.store.workspace(context.run.workspaceId)
+    if (name === 'workspace_run_command') {
+      if (!this.store.terminalEnabled()) throw new Error('A execução de comandos no terminal está desativada nas configurações globais.')
+      if (!context.agent.canWrite) throw new Error('Este agente não tem permissão de escrita para executar comandos.')
+      if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia comandos que podem alterar arquivos.')
+      const command = text(args.command, 8000).trim()
+      if (!command) throw new Error('Informe um comando para executar.')
+      if (!await this.requestApproval(context, 'command', { command, cwd: root }, true)) return 'O usuário não aprovou a execução do comando.'
+      return runWorkspaceCommand(command, root, context.signal)
+    }
     if (name === 'workspace_list') {
       const target = inside(args.path || '.')
       const actual = await fs.realpath(target)
@@ -409,7 +724,7 @@ export class AppService extends EventEmitter {
       return data.toString('utf8')
     }
     if (name === 'workspace_write') {
-      if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para escrever arquivos.')
+      if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para alterar arquivos.')
       if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia alterações em arquivos.')
       let relativePath = typeof args.path === 'string' ? args.path.slice(0, 1000).replace(/\\/g, '/') : '(caminho inválido)'
       const toolCallId = callId || randomUUID()
@@ -472,8 +787,114 @@ export class AppService extends EventEmitter {
     }
     if (name === 'group_members') {
       // O Chief coordena o aplicativo inteiro: precisa enxergar todo o catálogo, não só quem já está nesta conversa.
-      const ids = context.agent.role === 'chief' ? this.store.agents().map(item => item.id) : [...new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])]
-      return ids.map(id => { const agent = this.store.agent(id); return { name: agent.name, alias: `@${agent.alias}`, description: agent.description } })
+      const ids = context.agent.role === 'chief' ? this.store.agents().filter(item => item.temporaryStatus !== 'retired' && (!item.temporary || item.temporaryWorkspaceId === workspace.id)).map(item => item.id) : [...new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])]
+      const busyIds = new Set(this.store.runs().filter(run => ['queued', 'running', 'waiting'].includes(run.status)).map(run => run.agentId))
+      return ids.map(id => {
+        const agent = this.store.agent(id)
+        return { name: agent.name, alias: `@${agent.alias}`, description: agent.description, runtime: agent.runtime,
+          temporary: agent.temporary === true, availability: agent.temporaryStatus === 'working' || busyIds.has(id) ? 'busy' : 'available' }
+      })
+    }
+    if (name === 'search_history') {
+      const query = text(args.query, 200)
+      const hits = this.store.searchHistory(context.conversation.id, query, 8)
+      return hits.length ? JSON.stringify(hits.map(hit => ({ author: hit.message.author, createdAt: hit.message.createdAt, snippet: hit.snippet, messageId: hit.message.id }))) : 'Nenhuma mensagem correspondente nesta conversa.'
+    }
+    if (name === 'save_context_checkpoint') {
+      const asList = (value: unknown, label: string) => {
+        if (value === undefined) return []
+        if (!Array.isArray(value) || value.length > 20) throw new Error(`${label} precisa ser uma lista com até vinte itens.`)
+        return value.map(item => text(item, 500))
+      }
+      const checkpoint = { id: randomUUID(), conversationId: context.conversation.id, agentId: context.agent.id, runId: context.run.id, summary: text(args.summary, 8000), decisions: asList(args.decisions, 'Decisões'), pending: asList(args.pending, 'Pendências'), createdAt: new Date().toISOString() }
+      this.store.saveCheckpoint(checkpoint)
+      return `Checkpoint salvo (${checkpoint.id}). Será recuperado quando uma sessão nova deste agente for iniciada nesta conversa.`
+    }
+    if (name === 'list_skills') {
+      const skills = await this.skills.list()
+      return skills.length ? JSON.stringify(skills.map(skill => ({ id: skill.id, name: skill.name, description: skill.description, source: skill.source }))) : 'Nenhuma skill encontrada.'
+    }
+    if (name === 'read_skill') return this.skills.readContent(text(args.id, 500))
+    if (name === 'save_skill') {
+      if (workspace.permissions?.filesWrite === 'deny' || !context.agent.canWrite) throw new Error('Este Boo não tem permissão para criar ou alterar skills.')
+      const operation = args.operation === 'update' ? 'update' : args.operation === 'create' ? 'create' : null
+      if (!operation) throw new Error('Escolha create ou update.')
+      const saved = await this.skills.save({ operation, slug: text(args.slug, 100), name: text(args.name ?? args.slug, 100), description: text(args.description, 500), content: text(args.content, 20000) })
+      this.emitEvent({ type: 'changed' })
+      return `Skill "${saved.name}" ${operation === 'create' ? 'criada' : 'atualizada'} (${saved.id}). Aparece em Configurações → Skills.`
+    }
+    if (name === 'propose_self_profile') {
+      if (context.agent.id === ASSISTANT_ID) throw new Error('O Assistente padrão não tem perfil cadastrado para autoedição.')
+      const original = this.store.agent(context.agent.id)
+      const next = buildSelfProfileUpdate(original, args)
+      const changedKeys = SELF_PROFILE_FIELDS.filter(key => next[key] !== original[key])
+      if (!changedKeys.length) return 'Seu perfil já possui esses valores; nenhuma alteração necessária.'
+      const proposal = {
+        operation: 'self-profile', agentId: original.id, agent: original.name,
+        changes: Object.fromEntries(changedKeys.map(key => [key, next[key]])),
+      }
+      const description = changedKeys.map(key => key === 'instructions' ? 'instruções/personalidade' : key).join(', ')
+      if (!await this.requestApproval(context, 'agent-change', {
+        action: 'Editar meu perfil no Boobot: ' + original.name,
+        task: 'Alterar: ' + description,
+        proposal: JSON.stringify(proposal),
+      }, true)) return 'Autoedição cancelada: o usuário não aprovou a proposta.'
+      // Reaplicar sobre a versão mais recente evita sobrescrever outras edições enquanto a aprovação estava pendente.
+      const current = this.store.agent(context.agent.id)
+      const saved = this.store.saveAgent(buildSelfProfileUpdate(current, args))
+      this.emitEvent({ type: 'changed' })
+      return 'Perfil de ' + saved.name + ' atualizado com aprovação. As alterações de personalidade/instruções passam a valer em novas respostas; nenhuma permissão, modelo ou runtime foi alterado.'
+    }
+    if (name === 'propose_boos') {
+      if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode criar equipes de Boos.')
+      if (!workspace.permissions?.chiefCreateAgents) throw new Error('O Chief não pode criar agentes neste workspace ainda.' + howToEnablePermission('Chief pode propor novos agentes'))
+      if (args.purpose !== undefined && args.purpose !== 'team' && args.purpose !== 'task') throw new Error('Finalidade inválida: use team ou task.')
+      const purpose = args.purpose === 'task' ? 'task' : 'team'
+      if (!Array.isArray(args.agents) || !args.agents.length || args.agents.length > 5) throw new Error('Informe entre um e cinco Boos.')
+      const existingAgents = this.store.agents()
+      const currentTemp = existingAgents.filter(agent => agent.temporary && agent.temporaryWorkspaceId === workspace.id && agent.temporaryStatus !== 'retired').length
+      const proposed: Partial<Agent>[] = []
+      for (const item of args.agents) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Cada Boo precisa de uma especialidade válida.')
+        const input = item as Record<string, unknown>
+        const instructions = text(input.instructions, 20000).trim()
+        const description = text(input.description ?? '', 500).trim()
+        if (!instructions) throw new Error('Cada Boo precisa de instruções de trabalho.')
+        const identity = chooseBooIdentity({ name: text(input.name ?? '', 80), color: text(input.color ?? '', 7), description, instructions }, [...existingAgents, ...(proposed as Agent[])])
+        if (existingAgents.some(agent => agent.name.toLocaleLowerCase('pt-BR') === identity.name.toLocaleLowerCase('pt-BR')) && typeof input.name === 'string' && input.name.trim()) throw new Error('Já existe um Boo com esse nome. Reutilize-o ou escolha outro.')
+        if (input.temporary !== undefined && typeof input.temporary !== 'boolean') throw new Error('temporary deve ser verdadeiro ou falso.')
+        const temporary = typeof input.temporary === 'boolean' ? input.temporary : purpose === 'task'
+        proposed.push({ ...identity, description, instructions, temporary, temporaryStatus: temporary ? 'available' : undefined, temporaryWorkspaceId: temporary ? workspace.id : undefined, temporaryTask: temporary ? description || instructions.slice(0, 500) : undefined, runtime: 'codex', role: 'agent', canWrite: false, computerUse: false, approvalMode: 'ask' })
+      }
+      if (currentTemp + proposed.filter(item => item.temporary).length > 10) throw new Error('Limite de dez Boos temporários ativos por workspace.')
+      const taskLabel = proposed.map(item => String(item.name) + ': ' + String(item.description || item.instructions)).join('\n').slice(0, 5000)
+      const proposal = { workspaceId: workspace.id, purpose, agents: proposed.map(item => ({ name: item.name, alias: item.alias, color: item.color, temporary: item.temporary, description: item.description, instructions: item.instructions })) }
+      if (!await this.requestApproval(context, 'agent-change', { action: (purpose === 'team' ? 'Criar equipe de ' : 'Criar reforço de ') + proposed.length + (proposed.length === 1 ? ' Boo' : ' Boos'), task: taskLabel, proposal: JSON.stringify(proposal) }, true)) return 'Criação dos Boos negada pelo usuário.'
+      this.store.db.exec('BEGIN IMMEDIATE')
+      let saved: Agent[]
+      try { saved = proposed.map(agent => this.store.saveAgent(agent)); this.store.db.exec('COMMIT') }
+      catch (error) { this.store.db.exec('ROLLBACK'); throw error }
+      this.emitEvent({ type: 'changed' })
+      return 'Boos criados: ' + saved.map(agent => agent.name + ' (@' + agent.alias + ', ' + agent.color + (agent.temporary ? ', temporário' : ', permanente') + ')').join('; ') + '.' + (saved.some(agent => agent.temporary) ? ' Os temporários estão disponíveis via ask_agent neste workspace e serão aposentados após uma tarefa, sem apagar o histórico.' : ' Os Boos são permanentes. Para associá-los à equipe do workspace, use propose_team com aprovação.')
+    }
+    if (name === 'propose_agent_model') {
+      if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor troca de modelos.')
+      if (!workspace.permissions?.chiefEditAgents) throw new Error('O Chief não pode editar agentes neste workspace ainda.' + howToEnablePermission('Chief pode propor alterações de agentes'))
+      const requested = text(args.agent, 100).trim().replace(/^@/, '').toLocaleLowerCase('pt-BR')
+      const candidate = this.store.agents().find(item => item.temporaryStatus !== 'retired' && [...context.conversation.agentIds, ...workspace.defaultAgentIds].includes(item.id) && (item.alias.toLocaleLowerCase('pt-BR') === requested || item.name.toLocaleLowerCase('pt-BR') === requested))
+      if (!candidate) throw new Error('Boo não encontrado na equipe deste workspace.')
+      const runtime = args.runtime
+      if (!['codex','claude','pi','opencode','antigravity'].includes(String(runtime))) throw new Error('Motor inválido.')
+      const model = args.model === undefined ? '' : text(args.model, 150)
+      const effort = args.effort === undefined ? candidate.effort || 'medium' : String(args.effort)
+      if (!['low','medium','high','xhigh','max'].includes(effort)) throw new Error('Esforço inválido.')
+      const proposal = { agentId: candidate.id, agent: candidate.name, previous: { runtime: candidate.runtime, model: candidate.model, effort: candidate.effort }, next: { runtime, model, effort } }
+      const approved = await this.requestApproval(context, 'agent-change', { action: 'Trocar modelo de ' + candidate.name, recipientName: candidate.name, proposal: JSON.stringify(proposal) }, true)
+      if (!approved) return 'Troca de modelo não aprovada.'
+      const current = this.store.agent(candidate.id)
+      this.store.saveAgent({ ...current, runtime: runtime as Agent['runtime'], model, effort: effort as Agent['effort'] })
+      this.emitEvent({ type: 'changed' })
+      return 'Modelo de ' + candidate.name + ' alterado para ' + runtime + (model ? '/' + model : ' (padrão)') + '.'
     }
     if (name === 'propose_agent') {
       if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor alterações no catálogo de agentes.')
@@ -505,7 +926,7 @@ export class AppService extends EventEmitter {
       if (!workspace.permissions?.chiefManageTeam) throw new Error('O Chief não pode alterar a equipe deste workspace ainda.' + howToEnablePermission('Chief pode propor mudanças na equipe'))
       if (!Array.isArray(args.agents) || args.agents.length > 10 || args.agents.some(id => typeof id !== 'string')) throw new Error('Informe até dez nomes ou menções de agentes.')
       const requestedNames = args.agents.map(value => String(value).replace(/^@/, '').trim())
-      const team = requestedNames.map(value => this.store.agents().find(agent => agent.id === value || agent.alias.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR')))
+      const team = requestedNames.map(value => this.store.agents().find(agent => agent.temporaryStatus !== 'retired' && (agent.id === value || agent.alias.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR'))))
       if (team.some(agent => !agent)) throw new Error('A proposta inclui um agente que não existe.')
       const agentIds = [...new Set(team.map(agent => agent!.id))]
       const proposal = { workspaceId: workspace.id, workspace: workspace.name, agentIds, agents: team.map(agent => agent!.name) }
@@ -522,7 +943,7 @@ export class AppService extends EventEmitter {
       if (!Array.isArray(args.agents) || args.agents.length > 10 || args.agents.some(id => typeof id !== 'string')) throw new Error('Informe até dez agentes para a sessão.')
       const requestedNames = args.agents.map(value => String(value).replace(/^@/, '').trim())
       const eligibleIds = new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])
-      const team = requestedNames.map(value => this.store.agents().find(agent => eligibleIds.has(agent.id) && (agent.id === value || agent.alias.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR'))))
+      const team = requestedNames.map(value => this.store.agents().find(agent => agent.temporaryStatus !== 'retired' && (eligibleIds.has(agent.id) || (agent.temporary && agent.temporaryWorkspaceId === workspace.id && agent.temporaryStatus === 'available')) && (agent.id === value || agent.alias.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR'))))
       if (team.some(agent => !agent)) throw new Error('A sessão proposta só pode incluir agentes desta equipe.')
       const agentIds = [...new Set(team.map(agent => agent!.id))]
       const proposal = { workspaceId: workspace.id, workspace: workspace.name, name: sessionName, kind: agentIds.length > 1 ? 'group' : 'direct', agentIds, agents: team.map(agent => agent!.name) }
@@ -548,36 +969,64 @@ export class AppService extends EventEmitter {
     if (name === 'ask_agent') {
       const requested = text(args.agent, 100).replace(/^@/, '').toLocaleLowerCase('pt-BR')
       const task = text(args.task, 5000)
+      const mode = args.mode === undefined ? 'wait' : text(args.mode, 20)
+      if (mode !== 'wait' && mode !== 'background') throw new Error('Modo de delegação inválido. Use wait ou background.')
+      const continueOnResult = args.continue_on_result === true
+      if (args.continue_on_result !== undefined && typeof args.continue_on_result !== 'boolean') throw new Error('continue_on_result precisa ser verdadeiro ou falso.')
+      if (continueOnResult && mode !== 'background') throw new Error('continue_on_result só pode ser usado com mode=background.')
       const workspace = this.store.workspace(context.run.workspaceId)
       const eligibleIds = new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])
-      const candidate = this.store.agents().find(agent => (context.agent.role !== 'chief' || eligibleIds.has(agent.id)) && agent.id !== context.agent.id && (agent.alias.toLocaleLowerCase('pt-BR') === requested || agent.name.toLocaleLowerCase('pt-BR') === requested))
+      const candidate = this.store.agents().find(agent => (context.agent.role !== 'chief' || eligibleIds.has(agent.id) || (agent.temporary && agent.temporaryWorkspaceId === workspace.id && agent.temporaryStatus === 'available')) && agent.temporaryStatus !== 'retired' && agent.id !== context.agent.id && (agent.alias.toLocaleLowerCase('pt-BR') === requested || agent.name.toLocaleLowerCase('pt-BR') === requested))
       if (!candidate) throw new Error(context.agent.role === 'chief' ? 'Esse agente não está na equipe desta conversa ou do workspace, ou você pediu ao Chief para delegar a si mesmo.' : 'Esse agente não existe ou não pode receber um pedido de si mesmo.')
+      if (candidate.temporary && candidate.temporaryStatus !== 'available') throw new Error('Esse Boo temporário já está em execução ou foi aposentado.')
       if (context.run.ancestry.includes(candidate.id)) throw new Error('Essa delegação criaria um ciclo de agentes.')
       if (context.run.ancestry.length >= 4) throw new Error('A delegação atingiu o limite de profundidade.')
       if (context.agent.role === 'chief' && !await this.requestApproval(context, 'delegation', { action: `Enviar uma tarefa para ${candidate.name}`, recipientName: candidate.name, task }, true)) return `Delegação para ${candidate.name} negada pelo usuário.`
       const idempotencyKey = `${context.run.id}:${callId || `${candidate.id}:${task}`}`
       const existing = this.store.delegationByKey(idempotencyKey)
       if (existing) {
-        if (existing.status === 'completed') return existing.result
+        if (existing.status === 'completed') {
+          if (continueOnResult && !existing.continuationRunId) await this.continueAfterDelegation(context, existing, existing.result)
+          return existing.result
+        }
         if (existing.status === 'failed' || existing.status === 'interrupted') throw new Error(existing.error || `O pedido anterior terminou como ${existing.status}.`)
         const pending = this.delegationTasks.get(idempotencyKey)
-        if (pending) return pending
+        if (pending) return mode === 'background' ? `Pedido ${existing.id} para ${candidate.name} continua em andamento. O resultado aparecerá nesta conversa.` : pending
         throw new Error('Este pedido está persistido como em andamento, mas não há execução ativa. Não será repetido automaticamente.')
       }
-      const pending = this.delegate(context, candidate, task, idempotencyKey)
+      if (candidate.temporary) this.store.saveAgent({ ...candidate, temporaryStatus: 'working' })
+      const pending = this.delegate(context, candidate, task, idempotencyKey, mode === 'wait').finally(() => {
+        if (candidate.temporary) {
+          const latest = this.store.agent(candidate.id)
+          if (latest.temporaryStatus === 'working') {
+            this.store.saveAgent({ ...latest, temporaryStatus: 'retired' })
+            this.emitEvent({ type: 'changed' })
+          }
+        }
+      })
       this.delegationTasks.set(idempotencyKey, pending)
+      if (mode === 'background') {
+        void pending.then(async result => {
+          if (continueOnResult) {
+            const delegation = this.store.delegationByKey(idempotencyKey)
+            if (delegation && !delegation.continuationRunId) await this.continueAfterDelegation(context, delegation, result)
+          }
+        }).catch(() => undefined).finally(() => this.delegationTasks.delete(idempotencyKey))
+        const delegation = this.store.delegationByKey(idempotencyKey)
+        return `Pedido ${delegation?.id || ''} enviado para ${candidate.name}. Vou continuar e publicarei o resultado nesta conversa quando terminar.`.trim()
+      }
       try { return await pending } finally { this.delegationTasks.delete(idempotencyKey) }
     }
     throw new Error(`Ferramenta desconhecida: ${name}`)
   }
-  private async delegate(parent: RunContext, recipient: Agent, task: string, idempotencyKey: string): Promise<string> {
+  private async delegate(parent: RunContext, recipient: Agent, task: string, idempotencyKey: string, inheritLease = false): Promise<string> {
     const now = new Date().toISOString()
     const taskLabel = task.replace(/\s+/g, ' ').slice(0, 52)
     this.store.db.exec('BEGIN IMMEDIATE')
     let targetConversation: Conversation
     let request: Message, resultMessage: Message, originMessage: Message, child: Run, delegation: Delegation
     try {
-    targetConversation = this.store.saveConversation({ kind: 'direct', name: `Pedido: ${recipient.name} · ${taskLabel}`, agentIds: [recipient.id] })
+    targetConversation = this.store.saveConversation({ kind: 'direct', name: `Pedido: ${recipient.name} · ${taskLabel}`, agentIds: [recipient.id], workspaceId: parent.run.workspaceId })
     request = { id: randomUUID(), conversationId: targetConversation.id, agentId: parent.agent.id, author: `Pedido de ${parent.agent.name}`, role: 'activity', text: task, status: 'queued', runId: null, createdAt: now }
     resultMessage = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, author: recipient.name, role: 'assistant', text: '', status: 'queued', runId: null, createdAt: now }
     originMessage = { id: randomUUID(), conversationId: parent.conversation.id, agentId: recipient.id, author: recipient.name, role: 'activity', text: `Pedido para ${recipient.name}: ${task}\nAguardando execução na conversa privada do agente.`, status: 'queued', runId: null, relatedConversationId: targetConversation.id, createdAt: now }
@@ -602,15 +1051,16 @@ export class AppService extends EventEmitter {
     else parentController?.signal.addEventListener('abort', abortFromParent, { once: true })
     this.active.set(child.id, controller)
     const signal = controller.signal
-    const context = { run: child, message: resultMessage, conversation: targetConversation, agent: recipient }
-    try { await this.queue.enqueue(`delegation:${delegation.id}`, signal, async () => {
+    const context: RunContext = { run: child, message: resultMessage, conversation: targetConversation, agent: recipient }
+    try { await this.queue.enqueueDelegation(child.workspacePath, signal, async lease => {
+      context.lease = lease
       if (signal.aborted) return
       delegation.status = 'running'; delegation.updatedAt = new Date().toISOString(); this.store.putDelegation(delegation)
       child.status = 'running'; this.store.putRun(child)
       this.store.putMessage(runningOrigin); this.emitEvent({ type: 'message', message: runningOrigin })
       this.store.putMessage(runningRequest); this.emitEvent({ type: 'message', message: runningRequest })
       await this.execute(context, signal)
-    }) }
+    }, inheritLease ? parent.lease : undefined) }
     finally { parentController?.signal.removeEventListener('abort', abortFromParent); this.active.delete(child.id) }
     if (signal.aborted && child.status === 'queued') {
       child.status = 'interrupted'; this.store.putRun(child)
@@ -625,9 +1075,33 @@ export class AppService extends EventEmitter {
     if (completed.status !== 'completed') throw new Error(delegation.error || `${recipient.name} não concluiu o pedido.`)
     return result
   }
+  private async continueAfterDelegation(parent: RunContext, delegation: Delegation, result: string): Promise<void> {
+    const latest = this.store.delegation(delegation.id)
+    if (!latest || latest.continuationRunId) return
+    delegation = latest
+    const conversation = this.store.conversation(delegation.sourceConversationId)
+    if (conversation.agentIds.length && !conversation.agentIds.includes(delegation.requesterAgentId)) return
+    const workspace = this.store.workspace(conversation.workspaceId)
+    const recipient = this.store.agent(delegation.recipientAgentId)
+    const requester = this.store.agent(delegation.requesterAgentId)
+    const now = new Date().toISOString()
+    const input = `O pedido delegado a ${recipient.name} foi concluído. Resultado:\n\n${result.slice(0, 12000)}\n\nContinue a solicitação original do usuário usando esse resultado. Esta continuação pertence somente a você nesta conversa.`
+    const message: Message = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, author: requester.name, role: 'assistant', text: '', status: 'queued', runId: null, delegationId: delegation.id, relatedConversationId: delegation.targetConversationId, createdAt: now }
+    const run: Run = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: parent.run.ancestry, status: 'queued', threadId: null, turnId: null, messageId: message.id, input, agent: requester, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now }
+    message.runId = run.id
+    const updated = { ...delegation, continuationRunId: run.id, updatedAt: now }
+    this.store.db.exec('BEGIN IMMEDIATE')
+    try { this.store.putDelegation(updated); this.store.putRun(run); this.store.putMessage(message); this.store.db.exec('COMMIT') }
+    catch (error) { this.store.db.exec('ROLLBACK'); throw error }
+    this.emitEvent({ type: 'message', message }); this.emitEvent({ type: 'changed' })
+    const controller = new AbortController(); this.active.set(run.id, controller)
+    await this.queue.enqueue(workspace.path, controller.signal, lease => this.execute({ run, message, conversation, agent: requester, lease }, controller.signal))
+  }
   dispose() {
+    if (this.statusSignal.signal.aborted) return
     clearInterval(this.statusTimer)
+    this.statusSignal.abort()
     for (const context of this.contexts.values()) if (context.flushTimer) clearTimeout(context.flushTimer)
-    void this.browser.close(); this.runtime.close(); this.claudeRuntime.close(); this.store.close()
+    void this.browser.close(); this.runtime.close(); this.claudeRuntime.close(); this.piRuntime.close(); this.openCodeRuntime.close(); this.antigravityRuntime.close(); this.store.close()
   }
 }

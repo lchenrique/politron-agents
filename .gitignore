@@ -76,3 +76,6 @@ vite.config.ts.timestamp-*
 # Project specific
 .vibecoding
 .vendor/
+
+# Graphify - extração local, sem versionar artefatos
+graphify-out/

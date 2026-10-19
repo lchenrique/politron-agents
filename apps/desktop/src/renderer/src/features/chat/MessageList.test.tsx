@@ -47,9 +47,10 @@ describe('scroll automático da conversa', () => {
 })
 
 describe('estado vazio da conversa', () => {
-  it('mostra apenas o Pits ilustrado, sem a marca antiga no centro', () => {
+  it('mantém o estado vazio sem duplicar o avatar que já aparece no cabeçalho', () => {
     render(<MessageList messages={[]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(screen.getByRole('img', { name: 'Pits — idle' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Como posso ajudar?' })).toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
   })
 })
@@ -59,7 +60,8 @@ describe('identificação de agentes no chat', () => {
     const agent = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as import('../../../../shared/v9').Agent
     render(<MessageList messages={[message]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} selectedAgents={[agent, { ...agent, id: 'agent-2', name: 'Atlas', alias: 'atlas' }]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(screen.getByText('@lyra')).toHaveClass('font-bold')
-    expect(screen.getByText('Lyra')).toHaveClass('font-semibold')
+    expect(screen.getByTitle('Lyra')).toHaveTextContent('@lyra')
+    expect(screen.queryByText('Lyra')).not.toBeInTheDocument()
     expect(screen.queryByRole('img', { name: /Avatar de Lyra/ })).not.toBeInTheDocument()
   })
 })

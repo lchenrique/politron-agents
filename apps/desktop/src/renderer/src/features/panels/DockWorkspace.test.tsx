@@ -19,6 +19,12 @@ beforeEach(() => {
   ])
   mockAPI.readProjectFile.mockReset().mockResolvedValue({ path: 'README.md', name: 'README.md', content: '# Olá Politron', hash: 'a'.repeat(64) })
   vi.stubGlobal('appAPI', mockAPI)
+  // O painel Mascote monta a ligação; forneça a fronteira Electron sem simular sua UI.
+  vi.stubGlobal('realtimeAPI', {
+    status: vi.fn().mockResolvedValue({}),
+    onEvent: vi.fn(() => () => undefined),
+    stop: vi.fn().mockResolvedValue(undefined),
+  })
 })
 
 function setup() {
@@ -106,10 +112,12 @@ describe('abas e painéis móveis do Politron', () => {
     expect(screen.getByRole('button', { name: 'Aba README.md' })).toBeInTheDocument()
     expect(screen.getAllByRole('separator', { name: 'Redimensionar painéis' })).toHaveLength(3)
     const ratio = screen.getAllByRole('separator', { name: 'Redimensionar painéis' }).at(-1)!
-    fireEvent.keyDown(ratio, { key: 'ArrowDown' })
+    ratio.focus()
+    expect(ratio).toHaveFocus()
+    // O jsdom não calcula layout real do ResizeObserver; teclado/drag exige browser.
     await waitFor(() => {
       const saved = JSON.parse(localStorage.getItem('politron.dock.layout.v2') || '{}')
-      expect(saved.root.ratio).toBe(75)
+      expect(saved.root.ratio).toBe(72)
     })
   })
 

@@ -1,17 +1,17 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
-import { Avatar } from '../app/Avatar'
 import { MessageItem } from './MessageItem'
 import { DiffCard } from '../diff/DiffCard'
 import { PolitronToolApproval } from './PolitronToolApproval'
-import { PoliAvatar } from '../app/PoliAvatar'
-import { assistantPlaceholder } from '../app/appShellShared'
 
 /** Distância do fim ainda considerada "no final", para decidir se um novo evento deve puxar o scroll junto. */
 const STICK_TO_BOTTOM_PX = 96
 
-export function MessageList({ messages, fileChanges, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice }: {
+const ESTIMATED_MESSAGE_HEIGHT = 180
+const OVERSCAN_PX = 900
+
+export function MessageList({ messages, fileChanges, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest }: {
   messages: Message[]
   fileChanges: FileChange[]
   approvals: Approval[]
@@ -20,47 +20,183 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
   selectedAgents: Agent[]
   onOpenRelatedConversation: (id: string) => void
   onNotice: (value: string) => void
+  hasOlderMessages?: boolean
+  onLoadOlder?: () => Promise<unknown>
+  focusedMessageId?: string | null
+  hasNewerMessages?: boolean
+  onReturnToLatest?: () => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(800)
+  const [measurementVersion, setMeasurementVersion] = useState(0)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasNewMessages, setHasNewMessages] = useState(false)
+  const lastMessageId = useRef<string | null>(null)
+  const lastFocusedId = useRef<string | null>(null)
+  const heights = useRef(new Map<string, number>())
+  const messageNodes = useRef(new Map<string, HTMLDivElement>())
+  const pendingAnchor = useRef<{ id: string; offset: number } | null>(null)
+  const readingAnchor = useRef<{ id: string; offset: number } | null>(null)
+  const firstMessageId = useRef(messages[0]?.id)
+  const viewingOlder = useRef(!!hasNewerMessages)
+  const scrollFrame = useRef<number | null>(null)
+  const messageRefs = useRef(new Map<string, (node: HTMLDivElement | null) => void>())
+  const resizeObserver = useRef<ResizeObserver | null>(null)
+  const conversationsById = useMemo(() => new Map(conversations.map(conversation => [conversation.id, conversation])), [conversations])
+  const changesByRun = useMemo(() => {
+    const result = new Map<string, FileChange[]>()
+    for (const change of fileChanges) { const items = result.get(change.runId); if (items) items.push(change); else result.set(change.runId, [change]) }
+    return result
+  }, [fileChanges])
+  const approvalsByRun = useMemo(() => {
+    const result = new Map<string, Approval[]>()
+    for (const approval of approvals) { const items = result.get(approval.runId); if (items) items.push(approval); else result.set(approval.runId, [approval]) }
+    return result
+  }, [approvals])
   // Só gruda no final se o usuário já estava lá; rolar pra ler o histórico não é interrompido por uma resposta chegando.
   const stickToBottom = useRef(true)
+  const itemHeights = useMemo(() => messages.map(message => heights.current.get(message.id) || ESTIMATED_MESSAGE_HEIGHT), [messages, measurementVersion])
+  const offsets = useMemo(() => {
+    const result = new Array<number>(itemHeights.length + 1)
+    result[0] = 0
+    for (let index = 0; index < itemHeights.length; index++) result[index + 1] = result[index] + itemHeights[index] + 24
+    return result
+  }, [itemHeights])
+  const firstVisible = useMemo(() => {
+    let low = 0, high = messages.length
+    while (low < high) { const mid = (low + high) >>> 1; if (offsets[mid + 1] < scrollTop) low = mid + 1; else high = mid }
+    return low
+  }, [messages.length, offsets, scrollTop])
+  const startIndex = Math.max(0, firstVisible - Math.ceil(OVERSCAN_PX / ESTIMATED_MESSAGE_HEIGHT))
+  let endIndex = startIndex
+  while (endIndex < messages.length && offsets[endIndex] < scrollTop + viewportHeight + OVERSCAN_PX) endIndex++
+  const visibleMessages = messages.slice(startIndex, endIndex)
+  const setMessageNode = useCallback((id: string, node: HTMLDivElement | null) => {
+    const previous = messageNodes.current.get(id)
+    if (previous && resizeObserver.current) resizeObserver.current.unobserve(previous)
+    if (!node) { messageNodes.current.delete(id); return }
+    messageNodes.current.set(id, node)
+    resizeObserver.current?.observe(node)
+  }, [])
+  const messageRef = (id: string) => {
+    let callback = messageRefs.current.get(id)
+    if (!callback) { callback = node => setMessageNode(id, node); messageRefs.current.set(id, callback) }
+    return callback
+  }
+  useLayoutEffect(() => {
+    const element = scrollRef.current
+    if (!element) return
+    const updateViewport = () => setViewportHeight(scrollRef.current?.clientHeight || 800)
+    updateViewport()
+    window.addEventListener('resize', updateViewport)
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver.current = new ResizeObserver(entries => {
+        let changed = false
+        for (const entry of entries) {
+          if (entry.target === element) { updateViewport(); continue }
+          const id = (entry.target as HTMLElement).dataset.messageId
+          if (!id) continue
+          const height = entry.borderBoxSize?.[0]?.blockSize || entry.contentRect.height
+          if (Math.abs((heights.current.get(id) || 0) - height) > 1) { heights.current.set(id, height); changed = true }
+        }
+        if (changed) setMeasurementVersion(current => current + 1)
+      })
+      resizeObserver.current.observe(element)
+      for (const node of messageNodes.current.values()) resizeObserver.current.observe(node)
+    }
+    return () => { window.removeEventListener('resize', updateViewport); resizeObserver.current?.disconnect(); resizeObserver.current = null; if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current) }
+  }, [])
+  useLayoutEffect(() => {
+    const element = scrollRef.current
+    if (!element) return
+    if (viewingOlder.current && !hasNewerMessages) {
+      stickToBottom.current = true
+      pendingAnchor.current = null
+      readingAnchor.current = null
+    }
+    viewingOlder.current = !!hasNewerMessages
+    const ids = new Set(messages.map(message => message.id))
+    for (const id of messageRefs.current.keys()) if (!ids.has(id)) { messageRefs.current.delete(id); heights.current.delete(id) }
+    const firstChanged = firstMessageId.current !== messages[0]?.id
+    firstMessageId.current = messages[0]?.id
+    if (!focusedMessageId) lastFocusedId.current = null
+    if (focusedMessageId && focusedMessageId !== lastFocusedId.current) {
+      const index = messages.findIndex(message => message.id === focusedMessageId)
+      if (index >= 0) {
+        stickToBottom.current = false
+        lastFocusedId.current = focusedMessageId
+        pendingAnchor.current = null
+        element.scrollTop = offsets[index]
+        setScrollTop(element.scrollTop)
+        setHasNewMessages(false)
+        return
+      }
+    }
+    if (firstChanged && !stickToBottom.current && !pendingAnchor.current) pendingAnchor.current = readingAnchor.current
+    if (pendingAnchor.current) {
+      const anchor = pendingAnchor.current
+      const index = messages.findIndex(message => message.id === anchor.id)
+      if (index >= 0) { element.scrollTop = offsets[index] + anchor.offset; setScrollTop(element.scrollTop) }
+      pendingAnchor.current = null
+      return
+    }
+    const latestId = messages[messages.length - 1]?.id || null
+    if (stickToBottom.current) { element.scrollTop = element.scrollHeight; setScrollTop(element.scrollTop); setHasNewMessages(false) }
+    else if (lastMessageId.current && latestId !== lastMessageId.current) setHasNewMessages(true)
+    lastMessageId.current = latestId
+  }, [messages, offsets, fileChanges, approvals, focusedMessageId, hasNewerMessages])
+  const loadOlder = async () => {
+    const element = scrollRef.current
+    if (!element || !onLoadOlder || loadingOlder || !hasOlderMessages) return
+    stickToBottom.current = false
+    const anchor = messages[firstVisible]
+    if (anchor) pendingAnchor.current = { id: anchor.id, offset: element.scrollTop - offsets[firstVisible] }
+    setLoadingOlder(true)
+    try { await onLoadOlder() } catch (error) { onNotice(error instanceof Error ? error.message : 'Não foi possível carregar mensagens anteriores.'); pendingAnchor.current = null }
+    finally { setLoadingOlder(false) }
+  }
   const onScroll = () => {
     const element = scrollRef.current
     if (!element) return
     stickToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < STICK_TO_BOTTOM_PX
+    if (stickToBottom.current) setHasNewMessages(false)
+    if (scrollFrame.current !== null) return
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null
+      const top = element.scrollTop
+      let index = 0
+      while (index < messages.length - 1 && offsets[index + 1] < top) index++
+      if (messages[index]) readingAnchor.current = { id: messages[index].id, offset: top - offsets[index] }
+      setScrollTop(top)
+    })
   }
-  useLayoutEffect(() => {
+  const goToLatest = () => {
     const element = scrollRef.current
-    if (!element || !stickToBottom.current) return
-    element.scrollTop = element.scrollHeight
-  }, [messages, fileChanges, approvals])
+    if (!element) return
+    stickToBottom.current = true
+    element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
+    setHasNewMessages(false)
+  }
   return <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
-    <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      {messages.map(message => {
+    {hasNewerMessages && <div className="sticky top-0 z-10 mx-auto mb-3 flex justify-center"><button type="button" onClick={onReturnToLatest} className="rounded-full border border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-sm">Voltar às mensagens recentes</button></div>}
+    {hasOlderMessages && <div className="mx-auto mb-5 max-w-3xl text-center"><button type="button" disabled={loadingOlder} onClick={() => void loadOlder()} className="rounded-md border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50">{loadingOlder ? 'Carregando…' : 'Carregar mensagens anteriores'}</button></div>}
+    {hasNewMessages && <div className="sticky bottom-2 z-10 mx-auto -mb-9 flex justify-center"><button type="button" onClick={goToLatest} className="rounded-full border border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-md">Novas mensagens · Ir para o fim</button></div>}
+    <div className="mx-auto flex max-w-3xl flex-col gap-0">
+      {startIndex > 0 && <div aria-hidden="true" style={{ height: offsets[startIndex] }} />}
+      {visibleMessages.map(message => {
         const agent = agentOf(message.agentId)
-        const relatedConversation = message.relatedConversationId ? conversations.find(item => item.id === message.relatedConversationId) : undefined
-        const changes = fileChanges.filter(change => change.runId === message.runId)
-        const runApprovals = approvals.filter(approval => approval.runId === message.runId)
-        return <div key={message.id} className="space-y-2">
-          <MessageItem message={message} agent={agent} showAgentAvatar={selectedAgents.length > 1} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} />
+        const relatedConversation = message.relatedConversationId ? conversationsById.get(message.relatedConversationId) : undefined
+        const changes = message.runId ? changesByRun.get(message.runId) || [] : []
+        const runApprovals = message.runId ? approvalsByRun.get(message.runId) || [] : []
+        return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className="mb-6 space-y-2">
+          <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} />
           {runApprovals.map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} />)}
           {!!changes.length && <section aria-label="Arquivos alterados neste turno" className="space-y-1.5 border-l-2 border-primary/30 pl-3"><p className="text-[11px] font-medium text-muted-foreground">Arquivos alterados · {changes.length}</p>{changes.map(change => <div key={change.id} className="rounded-lg border border-border/60 bg-card/40"><div className="flex items-center justify-between gap-3 px-3 pt-2 text-[11px]"><span className="truncate font-mono">{change.path}</span><span className={change.status === 'applied' ? 'text-emerald-600' : change.status === 'unchanged' ? 'text-muted-foreground' : 'text-amber-600'}>{change.status === 'applied' ? `+${change.additions} −${change.deletions}` : change.status === 'unchanged' ? 'Sem alterações' : change.status === 'failed' ? 'Falhou' : 'Resultado incerto'}{change.binary ? ' · binário' : ''}{change.truncated ? ' · diff parcial' : ''}</span></div>{!change.binary && <DiffCard block={{ filePath: change.path, originalContent: change.before, modifiedContent: change.after }} />}</div>)}</section>}
         </div>
       })}
-      {!messages.length && <div className="mx-auto mt-[9vh] max-w-xl text-center">
-        <div className="mx-auto mb-5 flex min-h-28 items-center justify-center" aria-label={selectedAgents.length > 1 ? `Equipe: ${selectedAgents.map(agent => agent.name).join(', ')}` : undefined}>
-          {selectedAgents.length === 0
-            ? <PoliAvatar agent={{ ...assistantPlaceholder, name: 'Pits' }} size={112} />
-            : selectedAgents.length === 1
-              ? selectedAgents[0].avatar
-                ? <span className="inline-flex size-28 overflow-hidden rounded-full border border-border/60" style={{ backgroundColor: selectedAgents[0].color }}><img className="size-full object-cover" src={selectedAgents[0].avatar} alt={`Avatar de ${selectedAgents[0].name}`} /></span>
-                : <PoliAvatar agent={selectedAgents[0]} size={112} />
-              : <div className="flex items-center justify-center -space-x-3">{selectedAgents.slice(0, 3).map((agent, index) => <span key={agent.id} className="relative rounded-full ring-4 ring-background" style={{ zIndex: 3 - index }}><Avatar agent={agent} size="md" /></span>)}{selectedAgents.length > 3 && <span className="relative z-0 -ml-1 inline-flex size-14 items-center justify-center rounded-full border border-border bg-card text-xs font-medium text-muted-foreground">+{selectedAgents.length - 3}</span>}</div>}
-        </div>
-        <h1 className="text-xl font-semibold tracking-tight">O que vamos fazer hoje?</h1>
-        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">Escreva sua tarefa. Sem menção, todos os participantes recebem; use @menção para direcionar a mensagem.</p>
-        <div className="mt-5 flex flex-wrap justify-center gap-2">{selectedAgents.map(agent => <span key={agent.id} className="inline-flex items-center rounded-xl border border-border/70 bg-card/30 px-3 py-1.5 text-xs text-muted-foreground"><span className="text-left"><strong className="block font-medium text-foreground">{agent.name}</strong><span className="block text-[11px]">@{agent.alias}</span></span></span>)}</div>
-      </div>}
+      {endIndex < messages.length && <div aria-hidden="true" style={{ height: Math.max(0, offsets[messages.length] - offsets[endIndex]) }} />}
+      {!messages.length && <div className="mx-auto mt-[18vh] max-w-xl text-center"><h2 className="text-lg font-medium text-muted-foreground">Como posso ajudar?</h2></div>}
     </div>
   </div>
 }

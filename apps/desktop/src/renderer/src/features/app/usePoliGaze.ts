@@ -17,6 +17,7 @@ export const SLEEP_AFTER_MS = 45_000
 export const STARTLE_EVENT = 'poli-startle'
 
 function reset(element: HTMLElement) {
+  if (element.dataset.near === 'false') return
   element.style.setProperty('--poli-look-x', '0')
   element.style.setProperty('--poli-look-y', '0')
   element.style.setProperty('--poli-lean', '0deg')
@@ -24,8 +25,7 @@ function reset(element: HTMLElement) {
 }
 
 /** Olhos apontam para o cursor e o corpo inclina mais quanto mais perto ele está. */
-export function applyGaze(element: HTMLElement, x: number, y: number, pointerSpeed = 0) {
-  const box = element.getBoundingClientRect()
+export function applyGaze(element: HTMLElement, x: number, y: number, pointerSpeed = 0, box = element.getBoundingClientRect()) {
   if (!box.width) return reset(element)
   const dx = x - (box.left + box.width / 2)
   const dy = y - (box.top + box.height / 2)
@@ -45,7 +45,10 @@ export function applyGaze(element: HTMLElement, x: number, y: number, pointerSpe
 
 function flush() {
   frame = 0
-  for (const element of tracked) pointer ? applyGaze(element, pointer.x, pointer.y, speed) : reset(element)
+  // Ler todas as posições antes de alterar estilos evita reflows entre avatares.
+  const elements = [...tracked]
+  const boxes = pointer ? elements.map(element => element.getBoundingClientRect()) : []
+  elements.forEach((element, index) => pointer ? applyGaze(element, pointer.x, pointer.y, speed, boxes[index]) : reset(element))
 }
 
 /* Sonolência compartilhada: um relógio só para todos os avatares. */
@@ -113,9 +116,10 @@ export function usePoliGaze(ref: RefObject<HTMLElement | null>, enabled: boolean
 }
 
 function subscribeDrowsy(notify: () => void) { sleepers.add(notify); return () => { sleepers.delete(notify) } }
+const subscribeInactive = () => () => undefined
+const awakeSnapshot = () => false
 
 /** Verdadeiro quando o usuário ficou parado tempo suficiente para os avatares cochilarem. */
 export function usePoliDrowsy(enabled: boolean) {
-  const value = useSyncExternalStore(subscribeDrowsy, () => drowsy, () => false)
-  return enabled && value
+  return useSyncExternalStore(enabled ? subscribeDrowsy : subscribeInactive, enabled ? () => drowsy : awakeSnapshot, awakeSnapshot)
 }

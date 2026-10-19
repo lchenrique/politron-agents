@@ -64,7 +64,7 @@ O usuário começa uma conversa com o Assistente padrão ou escolhe um bot. Proj
 ### Grupos e colaboração
 
 - Criar grupos livres, escolher participantes e associar uma pasta.
-- Uma mensagem do usuário sem menções deve ser enviada automaticamente a todos os agentes ativos do grupo, conforme decisão já confirmada.
+- Uma mensagem do usuário sem menções recebe resposta única do líder configurado ou do agente selecionado pelo modo automático via OpenRouter. Menções direcionam somente aos citados; broadcast é explícito. Rodadas colaborativas são opt-in.
 - Com menções, direcionar aos agentes mencionados.
 - Agentes podem pedir informação e delegar trabalho a outros participantes. A troca deve produzir execução real e ser visível na conversa.
 - Não exigir CEO, RH, tech lead ou hierarquia empresarial. Um coordenador opcional pode ser um agente comum escolhido pelo usuário.
@@ -102,11 +102,15 @@ A aparência do Politron foi trabalhada pelo usuário e é um ativo a preservar.
 
 ## Evidence on Hand
 
+Ainda em 18/10/2026, o usuário pediu que os modelos fossem navegados por CLI dentro do mesmo seletor. A raiz agora mostra Codex, Claude, Antigravity, OpenCode e Pi; cada entrada abre seus modelos com busca e Voltar no mesmo popup shadcn. OpenCode/Pi expõem seus catálogos para consulta, sem habilitar execução inexistente; Antigravity mostra seu diagnóstico quando não há catálogo. Typecheck e build passaram; o Electron em desenvolvimento recebeu o recarregamento. As asserções existentes foram ajustadas; testes e nova aceitação visual não foram executados nesta rodada. A evidência dos 57 testes e capturas a seguir pertence à versão anterior do seletor.
+
+Em 18/10/2026, a continuação foi limitada pelo usuário à detecção de modelos e aos seletores. A descoberta usa os catálogos dos CLIs Codex/Claude e as configurações locais de OpenCode/Pi, com cache e falhas independentes. Os seletores shadcn/Radix agrupam por CLI e respeitam os esforços de cada modelo. Passaram 57 testes focados (um smoke condicional ignorado), typecheck e build. Em Electron compilado com perfil isolado, foram consultados 7 modelos Codex e 11 Claude; troca de modelo, menu de esforço, Haiku sem esforço e preservação de rascunho foram verificados sem enviar mensagem nem criar execução, sem erro no renderer. OpenCode/Pi ainda não têm adaptadores de execução; Antigravity não expõe catálogo nesta integração. Evidências e limites: [docs/provider-inventory.md](docs/provider-inventory.md).
+
 Na inspeção do OpenMausBot instalado e aberto em 16/10/2026, selecionar Lyra na lista de bots abriu a tela de conversa direta com sua identidade, descrição, modelo e campo “Mensagem para Lyra”. O perfil abriu em painel separado. A lateral expõe novas conversas e históricos por bot, além dos grupos. O código instalado separa bot e thread e permite enviar ao thread principal do bot quando um thread específico não é informado. Na inspeção inicial, clicar no agente ainda abria o formulário de edição, e a criação de conversa começava em modo grupo. Essa divergência foi corrigida posteriormente: o clique atual abre conversa direta, e a edição do agente fica em ação separada.
 
 Há código de chat, sessões, temas, SQLite, terminal e integrações de agentes. A inspeção encontrou um módulo de grupos ainda desacoplado da execução e da tela principal, além de regras antigas de hierarquia. O plano de execução vigente está em [ESTRATEGIA_POLITRON.md](<D:/projetos pessoais/politron/ESTRATEGIA_POLITRON.md>); o histórico de evidências anterior está arquivado em [docs/arquivo/PLANO_V9.md](<D:/projetos pessoais/politron/docs/arquivo/PLANO_V9.md>).
 
-Em 16/10/2026 começou a implementação da primeira fatia integrada. Em perfis temporários do Electron, foram confirmados: resposta e streaming reais do Codex; envio sem menção a todos os participantes de um grupo; delegação de um agente para outro com retorno visível; navegação e clique reais pelo Playwright em uma sessão de navegador isolada, com o agente identificado por um cursor próprio. A interface Electron abriu com a ponte IPC e o tema preservado.
+Em 16/10/2026 começou a implementação da primeira fatia integrada. Em perfis temporários do Electron, foram confirmados: resposta e streaming reais do Codex; envio sem menção a todos os participantes de um grupo; delegação de um agente para outro com retorno visível; navegação e clique reais pelo Playwright em uma sessão de navegador isolada, com o agente identificado por um cursor próprio. A interface Electron abriu com a ponte IPC e o tema preservado. A regra de broadcast sem menção foi substituída em 17/10/2026: o padrão atual é resposta única pelo líder ou modo automático, com envio a todos apenas por escolha explícita.
 
 Em 16/10/2026, `ask_agent` foi estendido para alcançar qualquer outro agente cadastrado. Cada pedido cria uma conversa privada para o destinatário, usa suas próprias instruções/modelo/permissões e uma pasta privada, e mantém mensagens relacionadas nos históricos de origem e destino. O pedido tem estado durável, resultado/erro, vínculo com execuções e chave de deduplicação; a UI oferece navegação entre conversas e cancelamento direcionado. Se o aplicativo fecha durante a execução, o pedido é marcado como interrompido e não é repetido automaticamente. Seis testes automatizados com runtime simulado passaram para retorno, deduplicação, falha, cancelamento individual, cancelamento herdado da origem, persistência após reabertura e bloqueio de ciclos. Um teste adicional passou com Codex real: agente em grupo delegou a outro agente em conversa privada, recebeu o token esperado e o pedido/resultado apareceram nos dois históricos.
 
@@ -132,3 +136,9 @@ Essas provas pontuais não certificam falha/cancelamento com Codex real, retomad
 - Metas numéricas de desempenho, a definir após medir a base.
 
 As decisões abertas não bloqueiam o planejamento nem a implementação das entregas de chat, grupos e navegador.
+
+## Auditoria funcional de 19/10/2026
+
+O fluxo Chief → implementador Codex → edição real → testes → conclusão foi demonstrado em Electron com perfil e projeto descartáveis. O agente corrigiu um contador React/TypeScript; dois testes e typecheck passaram também na conferência independente. Troca aprovada para Claude, navegação Chromium isolada e negação/interrupção pela UI também foram verificadas. Foram corrigidos bugs de permissão, isolamento e falhas de runtime/turno, terminal Windows, aprovações e inicialização do navegador.
+
+Isso não certifica operação desassistida geral: a fila ainda entra em impasse em delegação aninhada/concorrente; terminal aprovado não é sandbox; os demais motores não tiveram edição real certificada. Typecheck/build passaram, mas lint e timeouts em testes Git/workspaces permanecem pendentes. Relatório e evidências: [Auditoria funcional do Boobot](docs/AUDITORIA-FUNCIONAL-BOOBOT.md).

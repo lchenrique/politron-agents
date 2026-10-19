@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { getAppWindow } from '../windows/manager'
 
-export function registerWindowControlHandlers(): void {
+export function registerWindowControlHandlers(controls: { showMain: () => void; showMascot: () => void; closeMascot: () => void }): void {
   ipcMain.handle('vibe:window:minimize', () => {
     getAppWindow()?.minimize()
   })
@@ -26,4 +26,7 @@ export function registerWindowControlHandlers(): void {
   ipcMain.handle('vibe:window:getZoom', () => {
     return getAppWindow()?.webContents.getZoomLevel() ?? 0
   })
+  ipcMain.handle('vibe:window:showMain', controls.showMain)
+  ipcMain.handle('vibe:window:showMascot', controls.showMascot)
+  ipcMain.handle('vibe:window:closeMascot', controls.closeMascot)
 }

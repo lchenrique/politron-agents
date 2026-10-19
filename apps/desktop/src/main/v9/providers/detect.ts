@@ -1,0 +1,149 @@
+import { execFile } from 'node:child_process'
+import { promises as fs } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+import { BrowserWindow, ipcMain } from 'electron'
+import { parse, type ParseError } from 'jsonc-parser'
+import type { ProviderId, ProviderInfo, ProviderModel, ProviderModelCatalog, ProviderSnapshot } from '../../../shared/providers'
+
+const execFileAsync = promisify(execFile)
+
+type ConfigResult = { value: unknown; reason?: string; missing?: boolean }
+const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+const nonempty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
+
+async function readJson(path: string, jsonc = false): Promise<ConfigResult> {
+  try {
+    const content = await fs.readFile(path, 'utf8')
+    if (!jsonc) return { value: JSON.parse(content) as unknown }
+    const errors: ParseError[] = []
+    const value: unknown = parse(content, errors, { allowTrailingComma: true })
+    if (errors.length) return { value: null, reason: 'Arquivo de configuração inválido.' }
+    return { value }
+  } catch (error: unknown) {
+    if (record(error) && error.code === 'ENOENT') return { value: null, missing: true, reason: 'Arquivo de configuração não encontrado.' }
+    return { value: null, reason: 'Arquivo de configuração inválido ou ilegível.' }
+  }
+}
+
+async function piModels(home: string): Promise<ProviderModelCatalog> {
+  const config = await readJson(join(home, '.pi', 'agent', 'models.json'))
+  const providers = record(config.value) ? config.value.providers : undefined
+  if (!record(providers)) return { models: null, reason: config.reason || 'Catálogo de provedores ausente ou inválido na configuração.' }
+  const models: ProviderModel[] = []
+  for (const provider of Object.values(providers)) {
+    if (!record(provider) || !Array.isArray(provider.models)) continue
+    for (const model of provider.models as unknown[]) {
+      if (record(model) && nonempty(model.id)) models.push({ id: model.id, name: nonempty(model.name) ? model.name : model.id })
+    }
+  }
+  return { models, source: 'configuration' }
+}
+
+async function openCodeModels(home: string): Promise<ProviderModelCatalog> {
+  let config = await readJson(join(home, '.config', 'opencode', 'opencode.json'))
+  if (config.missing) config = await readJson(join(home, '.config', 'opencode', 'opencode.jsonc'), true)
+  const providers = record(config.value) ? config.value.provider : undefined
+  if (!record(providers)) return { models: null, reason: config.reason || 'Catálogo de provedores ausente ou inválido na configuração.' }
+  const models: ProviderModel[] = []
+  for (const provider of Object.values(providers)) {
+    if (!record(provider) || !record(provider.models)) continue
+    for (const [id, model] of Object.entries(provider.models)) {
+      if (nonempty(id) && record(model)) models.push({ id, name: nonempty(model.name) ? model.name : id })
+    }
+  }
+  return { models, source: 'configuration' }
+}
+
+const MODEL_READERS: Partial<Record<ProviderId, (home: string) => Promise<ProviderModelCatalog>>> = { pi: piModels, opencode: openCodeModels }
+
+export interface ProviderDetectionOptions {
+  runtimeModels?: Partial<Record<ProviderId, (binaryPath?: string) => Promise<ProviderModelCatalog>>>
+  modelTimeoutMs?: number
+}
+
+/** Limita a espera sem encerrar runtimes que podem estar atendendo conversas. */
+async function readModels(provider: ProviderId, home: string, options: ProviderDetectionOptions, binaryPath?: string): Promise<ProviderModelCatalog> {
+  const runtimeLoader = options.runtimeModels?.[provider]
+  const localLoader = MODEL_READERS[provider]
+  const load = runtimeLoader ? () => runtimeLoader(binaryPath) : localLoader ? () => localLoader(home) : undefined
+  if (!load) return { models: null, reason: 'Consulta de modelos indisponível para este CLI no Boobot.' }
+  const timeoutMs = Number.isFinite(options.modelTimeoutMs) ? Math.max(1, Math.min(options.modelTimeoutMs!, 12_000)) : 12_000
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      Promise.resolve().then(load),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Tempo limite ao consultar modelos.')), timeoutMs) }),
+    ])
+  } catch (error: unknown) {
+    return { models: null, reason: error instanceof Error ? error.message : 'Não foi possível consultar os modelos.' }
+  } finally { if (timer) clearTimeout(timer) }
+}
+
+/** Binário e nome de exibição de cada CLI que o Politron sabe procurar, no estilo do Paseo. */
+const PROVIDERS: { id: ProviderId; name: string; binary: string }[] = [
+  { id: 'codex', name: 'Codex', binary: 'codex' },
+  { id: 'claude', name: 'Claude Code', binary: 'claude' },
+  { id: 'antigravity', name: 'Antigravity', binary: 'agy' },
+  { id: 'opencode', name: 'OpenCode', binary: 'opencode' },
+  { id: 'pi', name: 'Pi', binary: 'pi' },
+]
+
+/** Onde o shell acharia o binário, sem precisar de uma subshell: `where` no Windows, `which` nos outros. */
+async function resolvePath(binary: string): Promise<string | null> {
+  const [command, args] = process.platform === 'win32' ? ['where', [binary]] : ['which', [binary]]
+  try {
+    const { stdout } = await execFileAsync(command, args, { timeout: 5_000, windowsHide: true })
+    return stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean) || null
+  } catch { return null }
+}
+
+/** Primeira linha de `<binário> --version`; CLIs instalados sem terminar a configuração ainda contam como encontrados. */
+async function probe(provider: (typeof PROVIDERS)[number], home: string, options: ProviderDetectionOptions): Promise<ProviderInfo> {
+  const path = await resolvePath(provider.binary)
+  if (!path) return { ...provider, found: false, version: null, path: null, models: null }
+  let version: string | null = null
+  try {
+    // No Windows, muitos desses CLIs são shims .cmd/.ps1 do npm: rodar sem shell lança EINVAL em vez de ENOENT.
+    const { stdout, stderr } = await execFileAsync(provider.binary, ['--version'], { timeout: 8_000, windowsHide: true, shell: process.platform === 'win32' })
+    version = (stdout || stderr).split(/\r?\n/).map(line => line.trim()).find(Boolean) || null
+  } catch { /* binário presente, mas --version falhou (ex.: instalação incompleta); ainda assim foi encontrado */ }
+  const catalog = await readModels(provider.id, home, options, path)
+  const executable = !!version && !!catalog.models?.length && (catalog.source === 'runtime' || (provider.id === 'opencode' && catalog.source === 'configuration'))
+  return { ...provider, found: true, operational: !!version, executable, version, path, models: catalog.models, modelSource: catalog.source, modelReason: catalog.reason || (!version ? 'Executável localizado, mas o comando não respondeu corretamente.' : undefined) }
+}
+
+export async function detectProviders(home = homedir(), options: ProviderDetectionOptions = {}): Promise<ProviderInfo[]> {
+  return Promise.all(PROVIDERS.map(provider => probe(provider, home, options)))
+}
+
+/** A consulta normal devolve o cache; somente refresh/detect refaz a varredura. */
+export function registerProviderDetectionIpc(
+  options: ProviderDetectionOptions = {},
+  registry?: { list(): Promise<ProviderSnapshot>; refresh(): Promise<ProviderSnapshot>; onChanged(listener: (snapshot: ProviderSnapshot) => void): () => void },
+  routing?: import('../../hosts/rpc').HostRouting,
+): () => void {
+  const load = registry || {
+    list: async () => ({ providers: await detectProviders(homedir(), options), checkedAt: new Date().toISOString() }),
+    refresh: async () => ({ providers: await detectProviders(homedir(), options), checkedAt: new Date().toISOString() }),
+    onChanged: () => () => undefined,
+  }
+  const authorized = (event: Electron.IpcMainInvokeEvent) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window || window.isDestroyed?.()) throw new Error('Janela do Politron indisponível.')
+  }
+  const handlers = { 'providers:list': () => load.list(), 'providers:refresh': () => load.refresh(), 'providers:detect': () => load.refresh().then(snapshot => snapshot.providers) }
+  for (const [method, handler] of Object.entries(handlers)) {
+    routing?.register(method, handler)
+    ipcMain.handle(method, event => { authorized(event); return routing ? routing.invoke(method, [], handler) : handler() })
+  }
+  const off = load.onChanged(snapshot => {
+    if (routing && !routing.publish({ channel: 'providers:changed', data: snapshot })) return
+    for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('providers:changed', snapshot)
+  })
+  return () => {
+    off()
+    for (const channel of ['providers:list', 'providers:refresh', 'providers:detect']) ipcMain.removeHandler(channel)
+  }
+}

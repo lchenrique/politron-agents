@@ -33,6 +33,8 @@ interface AILoadingStateProps {
   steps?: AgentStep[];
   /** Collapse the list once every step is done. Defaults to true. */
   collapseWhenDone?: boolean;
+  /** Optional compact heading when the running step is already shown below. */
+  runningTitle?: string;
   className?: string;
 }
 
@@ -461,6 +463,7 @@ function StepRow({
 export default function AILoadingState({
   steps: stepsProp,
   collapseWhenDone = true,
+  runningTitle,
   className,
 }: AILoadingStateProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -489,7 +492,7 @@ export default function AILoadingState({
   } else if (isDone) {
     title = `Worked for ${formatDuration(seconds)}`;
   } else if (running) {
-    title = running.label;
+    title = runningTitle ?? running.label;
   }
 
   return (

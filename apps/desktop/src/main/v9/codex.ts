@@ -50,7 +50,7 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     }
     child.on('error', error => fail(new Error(`Não foi possível iniciar o Codex: ${error.message}`)))
     child.on('exit', code => fail(new Error(`Codex foi encerrado (${code ?? 'sem código'}). ${this.stderr}`)))
-    await this.request('initialize', { clientInfo: { name: 'politron', title: 'Politron', version: '0.0.0' }, capabilities: { experimentalApi: true } })
+    await this.request('initialize', { clientInfo: { name: 'politron', title: 'Boobot', version: '0.0.0' }, capabilities: { experimentalApi: true } })
     this.write({ method: 'initialized', params: {} })
   }
   private write(message: RpcMessage): void { if (!this.process?.stdin.writable) throw new Error('Codex não está conectado.'); this.process.stdin.write(JSON.stringify(message) + '\n') }
@@ -72,8 +72,31 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
   }
   async models(): Promise<Model[]> {
     await this.start()
-    const result = await this.request('model/list', {})
-    return (result.data || []).map((model: any) => ({ id: model.id, name: model.displayName || model.model || model.id, runtime: 'codex' as const, isDefault: model.isDefault === true }))
+    const models = new Map<string, Model>()
+    const seenCursors = new Set<string>()
+    let cursor: string | undefined
+    const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
+    const validEffort = (value: unknown): value is NonNullable<Agent['effort']> => typeof value === 'string' && ['low', 'medium', 'high', 'xhigh', 'max'].includes(value)
+    for (let page = 0; page < 20; page++) {
+      const result: unknown = await this.request('model/list', cursor ? { cursor } : {})
+      if (!isRecord(result) || !Array.isArray(result.data)) throw new Error('O Codex devolveu um catálogo de modelos inválido.')
+      for (const value of result.data) {
+        if (!isRecord(value) || typeof value.id !== 'string' || !value.id.trim() || value.hidden === true) continue
+        const supportedEfforts = Array.isArray(value.supportedReasoningEfforts)
+          ? value.supportedReasoningEfforts.map(item => isRecord(item) ? item.reasoningEffort : item).filter(validEffort)
+          : []
+        models.set(value.id, {
+          id: value.id, name: typeof value.displayName === 'string' ? value.displayName : typeof value.model === 'string' ? value.model : value.id,
+          runtime: 'codex', isDefault: value.isDefault === true,
+          description: typeof value.description === 'string' ? value.description : undefined,
+          supportedEfforts, defaultEffort: validEffort(value.defaultReasoningEffort) ? value.defaultReasoningEffort : undefined,
+        })
+      }
+      if (typeof result.nextCursor !== 'string' || !result.nextCursor || seenCursors.has(result.nextCursor)) break
+      cursor = result.nextCursor
+      seenCursors.add(cursor)
+    }
+    return [...models.values()]
   }
   async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string): Promise<string> {
     await this.start()
@@ -89,7 +112,7 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       'features.apply_patch_freeform': false
     }
     for (const name of await this.configuredMcpNames(join(directory, '.codex', 'config.toml'))) config[`mcp_servers.${name}.enabled`] = false
-    const params = { cwd: directory, model: agent.model || null, reasoningEffort: agent.effort || 'medium', sandbox: 'read-only', approvalPolicy: 'on-request', config, developerInstructions: buildAgentSystemPrompt(agent, projectInstructions) }
+    const params = { cwd: directory, model: agent.model || null, ...(agent.effort ? { reasoningEffort: agent.effort } : {}), sandbox: 'read-only', approvalPolicy: 'on-request', config, developerInstructions: buildAgentSystemPrompt(agent, projectInstructions) }
     const result = threadId
       ? await this.request('thread/resume', { ...params, threadId })
       : await this.request('thread/start', { ...params, dynamicTools: tools })
@@ -99,6 +122,9 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     return this.request('turn/start', { threadId, input: [{ type: 'text', text: input }], ...(model ? { model } : {}) }, timeout)
   }
   async interrupt(threadId: string, turnId: string): Promise<void> { await this.request('turn/interrupt', { threadId, turnId }) }
+  async steer(threadId: string, turnId: string, input: string): Promise<void> {
+    await this.request('turn/steer', { threadId, expectedTurnId: turnId, input: [{ type: 'text', text: input }] })
+  }
   close(): void {
     const child = this.process
     this.process = null; this.ready = null

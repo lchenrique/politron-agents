@@ -13,23 +13,35 @@ const httpUrl = (value: unknown) => {
 
 export class BrowserService extends EventEmitter {
   private browser: Browser | null = null
+  private browserStart: Promise<Browser> | null = null
   private sessions = new Map<string, Session>()
+  private sessionStarts = new Map<string, Promise<Session>>()
   private latest = new Map<string, BrowserFrame>()
   private async getBrowser() {
-    if (!this.browser || !this.browser.isConnected()) this.browser = await chromium.launch({ headless: true, args: ['--disable-background-networking', '--disable-default-apps', '--no-first-run'] })
-    return this.browser
+    if (this.browser?.isConnected()) return this.browser
+    if (!this.browserStart) this.browserStart = chromium.launch({ headless: true, args: ['--disable-background-networking', '--disable-default-apps', '--no-first-run'] }).then(browser => { this.browser = browser; return browser }).finally(() => { this.browserStart = null })
+    return this.browserStart
   }
   private async session(conversationId: string, agentId: string): Promise<Session> {
     const key = `${conversationId}:${agentId}`
     const current = this.sessions.get(key)
     if (current && !current.page.isClosed()) return current
+    const pending = this.sessionStarts.get(key)
+    if (pending) return pending
+    const start = this.createSession(key, conversationId, agentId).finally(() => { this.sessionStarts.delete(key) })
+    this.sessionStarts.set(key, start)
+    return start
+  }
+  private async createSession(key: string, conversationId: string, agentId: string): Promise<Session> {
     const context = await (await this.getBrowser()).newContext({ viewport, acceptDownloads: false, serviceWorkers: 'block' })
+    try {
     const page = await context.newPage()
     const value: Session = { key, conversationId, agentId, context, page, x: null, y: null, human: false, action: 'Navegador pronto' }
     page.on('close', () => { if (this.sessions.get(key) === value) { this.sessions.delete(key); this.latest.delete(key) } })
     this.sessions.set(key, value)
     await this.capture(value)
     return value
+    } catch (error) { await context.close().catch(() => undefined); this.sessions.delete(key); throw error }
   }
   private async capture(session: Session): Promise<BrowserFrame> {
     const page = session.page
@@ -122,6 +134,8 @@ export class BrowserService extends EventEmitter {
     await this.capture(session)
   }
   async close() {
+    await Promise.allSettled([...this.sessionStarts.values()])
+    await this.browserStart?.catch(() => undefined)
     await Promise.all([...this.sessions.values()].map(session => session.context.close().catch(() => undefined)))
     this.sessions.clear(); this.latest.clear(); await this.browser?.close().catch(() => undefined); this.browser = null
   }

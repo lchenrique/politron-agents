@@ -81,7 +81,7 @@ describe('motores múltiplos', () => {
     const runtime = new ClaudeRuntime(temp(), async () => 'test-api-key', sdk)
     const agent = { id: 'claude-1', name: 'Claude', alias: 'claude', instructions: 'Ajude.', runtime: 'claude', model: 'sonnet', effort: 'medium' } as Agent
     const models = await runtime.models()
-    expect(models).toContainEqual({ id: 'sonnet', name: 'Claude Sonnet', runtime: 'claude', isDefault: true })
+    expect(models).toContainEqual({ id: 'sonnet', name: 'Claude Sonnet', description: undefined, runtime: 'claude', isDefault: true, supportedEfforts: [] })
     const threadId = await runtime.thread(agent, temp(), [])
     const events: any[] = []; runtime.on('event', event => events.push(event))
     const first = await runtime.send(threadId, 'Primeira')

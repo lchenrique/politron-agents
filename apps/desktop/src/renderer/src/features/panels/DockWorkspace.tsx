@@ -1,6 +1,7 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Terminal, UserRound, X } from 'lucide-react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
+import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import TerminalPanel from '@/components/ide/TerminalPanel'
@@ -9,6 +10,10 @@ import { ProjectExplorer } from './ProjectExplorer'
 import { FilePreview, type FileDraft, type FileDraftChange } from './FilePreview'
 import { BrowserPanel } from './BrowserPanel'
 import { PoliAvatar } from '../app/PoliAvatar'
+import { MascotStatusBubble } from '../app/MascotStatusBubble'
+import { RealtimeCall } from '../realtime/RealtimeCall'
+import { useVoicePreferences } from '../realtime/preferences'
+import type { RealtimeMode, RealtimePhase } from '../../../../shared/realtime'
 import type { AgentAvatarState } from '../app/Avatar'
 import { changeActive, changeRatio, developmentDockLayout, deserializeDockLayout, fileTab, getGroup, groupWithTab, groups, initialDockLayout, placeTab, pruneEmpty, removeGroup, splitGroup, toolTab, type DockEdge, type DockGroup, type DockLayoutState, type DockNode, type DockTab, type DockTool, type DockZone } from './dock-layout'
 export type { DockTool, DockZone } from './dock-layout'
@@ -44,22 +49,32 @@ function DockAddMenu({ groupId, onOpen, label = 'Nova aba' }: { groupId: string;
   </DropdownMenu>
 }
 
-const MASCOT_STATE_LABEL: Record<AgentAvatarState, string> = { idle: 'Ocioso', working: 'Trabalhando', waiting: 'Aguardando aprovação' }
+const MASCOT_STATE_LABEL: Record<AgentAvatarState, string> = { idle: 'Ocioso', working: 'Trabalhando', waiting: 'Aguardando aprovação', speaking: 'Falando' }
+const CALL_STATUS_LABEL: Partial<Record<RealtimePhase, string>> = { connecting: 'Conectando…', listening: 'Ouvindo', hearing: 'Estou ouvindo você', transcribing: 'Entendendo…', thinking: 'Pensando…', speaking: 'Falando', error: 'Falha na ligação' }
 
-function MascotView({ agents, selectedAgents, agentStates }: { agents: Agent[]; selectedAgents: Agent[]; agentStates: Record<string, AgentAvatarState> }) {
-  const [agentId, setAgentId] = useState('')
-  const preferred = selectedAgents.find(agent => agents.some(item => item.id === agent.id))
-  const visible = agents.find(agent => agent.id === agentId) || preferred || agents[0] || selectedAgents[0]
-  const state = visible ? agentStates[visible.id] || 'idle' : 'idle'
-  return <section aria-label="Visualização do mascote" className="flex h-full min-h-0 flex-col items-center overflow-auto bg-card/20 p-4">
-    <div className="w-full max-w-xs">{agents.length > 0 && <Select value={visible?.id || ''} onValueChange={setAgentId}>
-      <SelectTrigger aria-label="Selecionar mascote"><SelectValue placeholder="Escolha um Poli" /></SelectTrigger>
-      <SelectContent>{agents.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent>
-    </Select>}</div>
-    <div className="flex min-h-60 flex-1 flex-col items-center justify-center gap-5 text-center">{visible ? <>
-      {visible.avatar ? <img src={visible.avatar} alt={'Avatar de ' + visible.name} className="size-52 max-w-full rounded-full object-cover shadow-xl" /> : <PoliAvatar agent={visible} size={215} state={state} />}
-      <div><h2 className="text-base font-semibold">{visible.name}</h2><p className="mt-1 max-w-xs text-xs text-muted-foreground">{visible.description || '@' + visible.alias}</p><p aria-live="polite" className="mt-2 text-[11px] font-medium text-muted-foreground">{MASCOT_STATE_LABEL[state]}</p></div>
-    </> : <p className="text-sm text-muted-foreground">Crie um Poli para exibi-lo aqui.</p>}</div>
+function MascotView({ assistant, agents, selectedAgents, agentStates, conversationId, voiceAgentId }: { assistant?: Agent; agents: Agent[]; selectedAgents: Agent[]; agentStates: Record<string, AgentAvatarState>; conversationId?: string; voiceAgentId?: string }) {
+  const [agentId, setAgentId] = useState(voiceAgentId || selectedAgents[0]?.id || '')
+  const { mode, headphones, refreshToken } = useVoicePreferences()
+  const [callPhase, setCallPhase] = useState<RealtimePhase>('idle')
+  const [callError, setCallError] = useState('')
+  const handleCallPhase = useCallback((phase: RealtimePhase) => { setCallPhase(phase); if (phase === 'connecting') setCallError('') }, [])
+  useEffect(() => { setAgentId(voiceAgentId || selectedAgents[0]?.id || '') }, [conversationId, voiceAgentId, selectedAgents])
+  const choices = (conversationId ? [...(assistant ? [assistant] : []), ...selectedAgents] : [...(assistant ? [assistant] : []), ...agents]).filter((agent, index, list) => list.findIndex(item => item.id === agent.id) === index)
+  const visible = choices.find(agent => agent.id === agentId) || choices[0]
+  const state: AgentAvatarState = callPhase === 'speaking' && visible?.id === agentId ? 'speaking' : visible ? agentStates[visible.id] || 'idle' : 'idle'
+  return <section aria-label="Visualização do mascote" className="flex h-full min-h-0 flex-col items-center gap-3 overflow-auto bg-card/20 p-4">
+    <div className="flex w-full max-w-xs gap-1.5">{choices.length > 0 && <Select value={visible?.id || ''} onValueChange={setAgentId}>
+      <SelectTrigger aria-label="Selecionar mascote" className="flex-1" disabled={callPhase !== 'idle'}><SelectValue placeholder="Escolha um Boo" /></SelectTrigger>
+      <SelectContent>{choices.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent>
+    </Select>}
+      <Button variant="outline" size="icon" className="size-9 shrink-0" aria-label="Configurar voz" title="Abrir configurações de voz do app" onClick={() => window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'voz' }))}><Settings2 className="size-4" /></Button>
+    </div>
+    <div className="flex min-h-60 flex-1 flex-col items-center justify-center gap-3 text-center">{visible ? <>
+      <MascotStatusBubble text={callError || (callPhase !== 'idle' ? CALL_STATUS_LABEL[callPhase] : MASCOT_STATE_LABEL[state])} />
+      {visible.avatar ? <img src={visible.avatar} alt={'Avatar de ' + visible.name} data-speaking={state === 'speaking'} className="mascot-custom-avatar size-52 max-w-full rounded-full object-cover" /> : <PoliAvatar agent={visible} size={215} state={state} motionPolicy="auto" />}
+      <div><h2 className="text-base font-semibold">{visible.name}</h2><p className="mt-1 max-w-xs text-xs text-muted-foreground">{visible.description || '@' + visible.alias}</p></div>
+    </> : <p className="text-sm text-muted-foreground">Crie um Boo para exibi-lo aqui.</p>}</div>
+    <RealtimeCall conversationId={conversationId} agentId={visible?.id} agentName={visible?.name || 'Assistente'} mode={mode} headphones={headphones} refreshToken={refreshToken} onPhaseChange={handleCallPhase} onErrorChange={setCallError} />
   </section>
 }
 
@@ -67,6 +82,9 @@ type DropLocation = { groupId: string; edge: DockEdge | 'center' }
 export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   children: ReactNode
   workspaceId?: string | null
+  conversationId?: string
+  voiceAgentId?: string
+  assistant?: Agent
   agents: Agent[]
   selectedAgents: Agent[]
   agentStates?: Record<string, AgentAvatarState>
@@ -74,7 +92,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   onRefreshBrowser: () => void
   onChanged: (value: string) => void
   workspaceDiff: string
-}>(function DockWorkspace({ children, workspaceId, agents, selectedAgents, agentStates = {}, browserFrames, onRefreshBrowser, onChanged, workspaceDiff }, ref) {
+}>(function DockWorkspace({ children, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, browserFrames, onRefreshBrowser, onChanged, workspaceDiff }, ref) {
   const [layout, setLayout] = useState<DockLayoutState>(loadLayout)
   const [drafts, setDrafts] = useState<Record<string, FileDraft>>({})
   const changeDraft = useCallback((id: string, updater: Parameters<FileDraftChange>[0]) => setDrafts(current => {
@@ -89,8 +107,17 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     return () => window.removeEventListener('beforeunload', guard)
   }, [drafts])
   const [drop, setDrop] = useState<DropLocation | null>(null)
-  const resizing = useRef<{ split: string; axis: 'horizontal' | 'vertical' } | null>(null)
+  const splitGroups = useRef<Record<string, { setLayout: (layout: Record<string, number>) => void } | null>>({})
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(layout)) } catch { /* manter em memória */ } }, [layout])
+  useEffect(() => {
+    const sync = (node: DockNode) => {
+      if (node.type === 'group') return
+      splitGroups.current[node.id]?.setLayout({ first: node.ratio, second: 100 - node.ratio })
+      sync(node.first)
+      sync(node.second)
+    }
+    sync(layout.root)
+  }, [layout])
   const mainGroup = (state: DockLayoutState) => groupWithTab(state.root, 'chat') || groups(state.root)[0]
   const toolGroup = (state: DockLayoutState, zone: DockZone) => {
     if (zone === 'main') return mainGroup(state)
@@ -147,18 +174,6 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     return splitGroup(current, groupId, edge, tab)
   })
   const resetLayout = () => { if (groups(layout.root).some(group => group.tabs.some(tab => tab.id === 'terminal'))) void window.vibeAPI.terminal.close().catch(() => undefined); setLayout(initialDockLayout()) }
-  const startResize = (event: PointerEvent<HTMLDivElement>, node: Extract<DockNode, { type: 'split' }>) => {
-    event.currentTarget.setPointerCapture(event.pointerId)
-    resizing.current = { split: node.id, axis: node.axis }
-  }
-  const resize = (event: PointerEvent<HTMLDivElement>, node: Extract<DockNode, { type: 'split' }>) => {
-    if (!resizing.current || resizing.current.split !== node.id) return
-    const parent = event.currentTarget.parentElement
-    if (!parent) return
-    const rect = parent.getBoundingClientRect()
-    const ratio = node.axis === 'horizontal' ? (event.clientX - rect.left) / rect.width : (event.clientY - rect.top) / rect.height
-    if (Number.isFinite(ratio)) setLayout(current => changeRatio(current, node.id, ratio * 100))
-  }
   const renderTab = (tab: DockTab): ReactNode => {
     switch (tab.kind) {
       case 'chat': return children
@@ -166,7 +181,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
       case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} /> : null
       case 'terminal': return <TerminalPanel workspaceId={workspaceId} showLogs={false} />
       case 'browser': return <BrowserPanel frames={browserFrames} agents={agents} onRefresh={onRefreshBrowser} onChanged={onChanged} />
-      case 'mascot': return <MascotView agents={agents} selectedAgents={selectedAgents} agentStates={agentStates} />
+      case 'mascot': return <MascotView assistant={assistant} agents={agents} selectedAgents={selectedAgents} agentStates={agentStates} conversationId={conversationId} voiceAgentId={voiceAgentId} />
       case 'diff': return <div className="h-full overflow-auto p-4"><h2 className="mb-3 text-xs font-semibold text-muted-foreground">Alterações versus HEAD</h2><pre className="min-w-max whitespace-pre font-mono text-[11px] leading-5">{workspaceDiff || 'Nenhuma alteração rastreada.'}</pre></div>
     }
   }
@@ -242,18 +257,18 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   const tree = (node: DockNode): ReactNode => {
     if (node.type === 'group') return pane(node)
     const horizontal = node.axis === 'horizontal'
-    return <div key={node.id} data-dock-split={node.id} className={'flex h-full min-h-0 min-w-0 flex-1 overflow-hidden ' + (horizontal ? 'flex-row' : 'flex-col')}>
-      <div className="min-h-0 min-w-0 shrink-0 overflow-hidden" style={horizontal ? { width: node.ratio + '%' } : { height: node.ratio + '%' }}>{tree(node.first)}</div>
-      <div role="separator" tabIndex={0} aria-label="Redimensionar painéis" aria-orientation={horizontal ? 'vertical' : 'horizontal'}
-        aria-valuemin={18} aria-valuemax={82} aria-valuenow={Math.round(node.ratio)}
-        onPointerDown={event => startResize(event, node)}
-        onPointerMove={event => resize(event, node)}
-        onPointerUp={() => { resizing.current = null }}
-        onLostPointerCapture={() => { resizing.current = null }}
-        onKeyDown={event => { if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) { event.preventDefault(); setLayout(current => changeRatio(current, node.id, node.ratio + (['ArrowRight','ArrowDown'].includes(event.key) ? 3 : -3))) } }}
-        className={'relative z-10 shrink-0 bg-border/60 transition-colors hover:bg-primary/60 focus-visible:bg-primary/60 focus-visible:outline-none ' + (horizontal ? 'w-1 cursor-col-resize' : 'h-1 cursor-row-resize')} title="Arraste para redimensionar" />
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{tree(node.second)}</div>
-    </div>
+    return <ResizablePanelGroup key={node.id} id={node.id} orientation={horizontal ? 'horizontal' : 'vertical'}
+      defaultLayout={{ first: node.ratio, second: 100 - node.ratio }} resizePreviewMode="separator"
+      groupRef={ref => { splitGroups.current[node.id] = ref }}
+      onLayoutChanged={(sizes, meta) => {
+        const ratio = sizes.first
+        if (meta.isUserInteraction && typeof ratio === 'number') setLayout(current => changeRatio(current, node.id, ratio))
+      }}
+      className="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <ResizablePanel id="first" defaultSize={`${node.ratio}%`} minSize="18%" maxSize="82%" className="min-h-0 min-w-0 overflow-hidden">{tree(node.first)}</ResizablePanel>
+      <ResizableHandle withHandle aria-label="Redimensionar painéis" title="Arraste para redimensionar" />
+      <ResizablePanel id="second" defaultSize={`${100 - node.ratio}%`} minSize="18%" maxSize="82%" className="min-h-0 min-w-0 overflow-hidden">{tree(node.second)}</ResizablePanel>
+    </ResizablePanelGroup>
   }
   return <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">{tree(layout.root)}</div>
 })

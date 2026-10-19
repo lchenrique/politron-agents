@@ -37,7 +37,7 @@ flowchart TD
 | **Alteração de arquivo** (`FileChange`) | Paseo | Registro persistido de cada escrita real com diff anterior/posterior, autor, run, estado. |
 | **Concessão Chief** | MausBot | Capacidade administrativa opcional dada a um bot, com escopo. Última fase. |
 
-Regras de conversa que já valem e não mudam: mensagem humana sem menção aciona todos os participantes ativos; com menção, só os citados; respostas de bots não iniciam nova rodada; mudar participantes vale para o próximo envio, nunca redireciona turno em andamento.
+Regras de conversa atuais: sem menção, responde um agente, escolhido pelo líder configurado ou pelo modo automático via OpenRouter; menções direcionam somente aos citados; envio a todos é explícito. Rodadas colaborativas são opt-in; respostas de bots não iniciam novas rodadas. Mudar participantes vale para o próximo envio, nunca redireciona turno em andamento.
 
 **Conflito de nomes:** hoje `WorkspaceService`, `WorkspaceAPI`, `workspaceAPI` e `features/workspace/Workspace.tsx` designam o app inteiro. Na Fase 0 renomear para `AppService`, `AppAPI`, `appAPI` e `features/app/AppShell.tsx`, liberando "Workspace" para o conceito do Paseo. **(Feito na Fase 0.)**
 
@@ -182,6 +182,12 @@ Agendamentos e heartbeats (Paseo), scripts de workspace com porta e proxy (`poli
 ## 7. Registro de progresso
 
 Atualizar a cada fase: data, commit, o que foi provado (testes, integração real, captura), o que ficou pendente.
+
+19/10/2026, auditoria funcional sem commit: Electron em perfil descartável comprovou Chief/implementador Codex criando equipe com aprovação, delegando, corrigindo um projeto React/TypeScript e executando dois testes e typecheck, confirmados independentemente. Troca aprovada para Claude e leitura real também verificadas. Chromium isolado abriu página pública e formulário local; negação/parada pela UI preservaram o arquivo e permitiram nova conversa. Corrigidos desvios de permissão, isolamento/falhas de turno/runtime, inicialização concorrente do navegador, ambiente npm, listeners de aprovação e cancelamento da árvore de comandos no Windows. Typecheck/build aprovados; lint permanece com erros e testes Git/workspaces apresentaram timeouts. Impasse da fila em delegação aninhada/concorrente e ausência de sandbox do terminal continuam abertos. Evidências, classificação real/simulada e plano mínimo de Computer Use em [docs/AUDITORIA-FUNCIONAL-BOOBOT.md](docs/AUDITORIA-FUNCIONAL-BOOBOT.md). Não certifica operação geral desassistida nem os demais runtimes.
+
+18/10/2026, complemento sem commit: seletor alterado a pedido do usuário para navegação interna por CLI, com raiz Codex/Claude/Antigravity/OpenCode/Pi, busca, Voltar e catálogo completo por página. A ausência de catálogo ou de execução não oculta a CLI. OpenCode/Pi permanecem somente para consulta; IDs duplicados de catálogo são consolidados na UI. Typecheck e build aprovados, recarregamento do Electron registrado; sem novos testes ou aceitação visual nesta rodada. O resultado anterior de 57 testes/capturas abaixo não cobre essa nova navegação.
+
+18/10/2026, sem commit: usuário restringiu esta continuação à descoberta de modelos das CLIs e à UX dos seletores, com referências no Paseo e no shadcn. Catálogos independentes, paginação Codex, login do Claude e capacidades de esforço integrados; seletores por CLI no composer/editor; esforço herdado normalizado somente para a execução. Evidência: 57 testes focados aprovados, um smoke condicional ignorado, typecheck e build aprovados; Electron compilado em perfil isolado consultou 7 modelos Codex e 11 Claude, verificou seleção/esforço/Haiku e preservou rascunho com zero mensagens/execuções e nenhum erro no renderer. Capturas e limites em `docs/provider-inventory.md`. Inferência em todos os modelos, adaptadores de OpenCode/Pi/Antigravity e performance geral não foram certificados nesta fatia.
 
 | Fase | Estado | Commit | Evidência | Pendências |
 | --- | --- | --- | --- | --- |

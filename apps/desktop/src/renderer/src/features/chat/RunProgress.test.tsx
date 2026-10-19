@@ -3,9 +3,9 @@ import { render, screen } from '@testing-library/react'
 import { RunProgress } from './RunProgress'
 
 describe('andamento real dos agentes', () => {
-  it('mostra que o agente está respondendo enquanto a execução roda', () => {
+  it('mostra que o agente está trabalhando enquanto a execução roda', () => {
     render(<RunProgress status="running" agentName="Atlas" />)
-    expect(screen.getByRole('status')).toHaveTextContent('Atlas está respondendo…')
+    expect(screen.getByRole('status')).toHaveTextContent('Atlas está trabalhando…')
   })
 
   it('apresenta falha sem indicar conclusão', () => {

@@ -1,4 +1,11 @@
 import "@testing-library/jest-dom";
+import { TestDOMRect } from './dom-rect'
+
+// jsdom 20 não fornece DOMRect; painéis usam geometria real para hit targets.
+if (typeof globalThis.DOMRect !== 'function') {
+  Object.defineProperty(globalThis, 'DOMRect', { configurable: true, writable: true, value: TestDOMRect })
+  if (typeof window !== 'undefined') Object.defineProperty(window, 'DOMRect', { configurable: true, writable: true, value: TestDOMRect })
+}
 
 // APIs de layout não existem no jsdom, mas são utilizadas pelo Radix/shadcn.
 if (typeof ResizeObserver === 'undefined') {

@@ -1,17 +1,6 @@
-import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
-import { promisify } from 'node:util'
+import { parseGitStatus, runGit } from './git-processes'
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
-
-const execFileAsync = promisify(execFile)
-const runGit = async (cwd: string, args: string[]) => {
-  const { stdout } = await execFileAsync('git', ['-C', cwd, ...args], {
-    windowsHide: true,
-    maxBuffer: 1024 * 1024,
-    encoding: 'utf8'
-  })
-  return stdout.trimEnd()
-}
 
 const isWithin = (parent: string, target: string) => {
   const rel = relative(parent, target)
@@ -36,16 +25,20 @@ export type CreatedGitWorktree = { path: string; branch: string; baseBranch: str
 /** Creates and removes Git worktrees beneath one controlled directory. */
 export class GitWorkspaceService {
   private readonly root: string
+  private readonly statusReads = new Map<string, Promise<GitWorkspaceInfo>>()
 
   constructor(worktreeRoot: string) {
     this.root = resolve(worktreeRoot)
   }
 
-  async inspect(path: string): Promise<GitWorkspaceInfo> {
+  async inspect(path: string, signal?: AbortSignal): Promise<GitWorkspaceInfo> {
     const directory = resolve(path)
-    const branchName = await runGit(directory, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => '')
-    const status = await runGit(directory, ['status', '--porcelain=v1', '--untracked-files=all'])
-    return { branch: branchName || null, changes: status ? status.split('\n').length : 0 }
+    const existing = !signal && this.statusReads.get(directory)
+    if (existing) return existing
+    const read = runGit(directory, ['status', '--porcelain=v1', '--branch', '--untracked-files=all'], signal, !!signal).then(parseGitStatus)
+    if (signal) return read
+    this.statusReads.set(directory, read)
+    try { return await read } finally { if (this.statusReads.get(directory) === read) this.statusReads.delete(directory) }
   }
 
   async diff(path: string): Promise<string> {
@@ -67,12 +60,7 @@ export class GitWorkspaceService {
     const source = resolve(input.sourcePath)
     const sourceRoot = resolve(await runGit(source, ['rev-parse', '--show-toplevel']))
     const branch = input.branch.trim()
-    const validBranch = await execFileAsync('git', ['check-ref-format', '--branch', branch], {
-      cwd: sourceRoot,
-      windowsHide: true,
-      maxBuffer: 1024 * 1024,
-      encoding: 'utf8'
-    }).then(() => true, () => false)
+    const validBranch = await runGit(sourceRoot, ['check-ref-format', '--branch', branch]).then(() => true, () => false)
     if (!validBranch) throw new Error('Nome de branch inválido.')
 
     await fs.mkdir(this.root, { recursive: true })

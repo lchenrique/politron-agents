@@ -7,6 +7,7 @@ export class ClaudeCredentialStore {
   private readonly path: string
   constructor(dataDirectory: string) { this.path = join(dataDirectory, 'claude-api-key.enc') }
   async has(): Promise<boolean> { try { return (await fs.stat(this.path)).isFile() } catch { return false } }
+  async clear(): Promise<void> { await fs.unlink(this.path).catch((error: unknown) => { if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) throw error }) }
   async save(apiKey: string): Promise<void> {
     const value = typeof apiKey === 'string' ? apiKey.trim() : ''
     if (value.length < 20 || value.length > 500) throw new Error('Informe uma chave de API Anthropic válida.')

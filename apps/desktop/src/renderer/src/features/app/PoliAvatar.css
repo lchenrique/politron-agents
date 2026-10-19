@@ -1,8 +1,11 @@
 .poli-avatar svg { display: block; }
-.poli-avatar__shape { transform-box: fill-box; transform-origin: center; }
-.poli-avatar[data-shape="flat"] .poli-avatar__shape { transform: scale(1.08, .88); }
-.poli-avatar[data-shape="long"] .poli-avatar__shape { transform: scale(.88, 1.08); }
+.poli-avatar__body-transform { transform-box: view-box; }
+.poli-avatar__aura, .poli-avatar__glow { pointer-events: none; }
+/* Silhueta, rosto, brilho e aura compartilham apenas a transformação SVG.
+   Não aplicar outro CSS transform na shape, pois ele anula a escala do corpo. */
 .poli-avatar__eyes { transform-box: fill-box; transform-origin: center; }
+.poli-avatar__mouth-speaking { transform-box: fill-box; transform-origin: center; animation: poli-avatar-talk 210ms ease-in-out infinite; }
+.mascot-custom-avatar[data-speaking="true"] { animation: poli-avatar-talk-bob 210ms ease-in-out infinite alternate; }
 .poli-avatar[data-animate="true"] .poli-avatar__float { animation: poli-avatar-float var(--poli-speed, 3s) ease-in-out infinite; }
 .poli-avatar[data-animate="true"] .poli-avatar__eyes { animation: poli-avatar-blink 4.6s ease-in-out infinite; }
 .poli-avatar[data-animate="true"] .poli-avatar__aura { animation: poli-avatar-pulse 2.4s ease-in-out infinite; }
@@ -11,11 +14,15 @@
 @keyframes poli-avatar-blink { 0%, 43%, 47%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.08); } }
 @keyframes poli-avatar-pulse { 0%, 100% { opacity: .12; } 50% { opacity: .28; } }
 @keyframes poli-avatar-think { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes poli-avatar-talk { 0%, 100% { transform: scaleY(.2); } 48% { transform: scaleY(1.25); } 75% { transform: scaleY(.45); } }
+@keyframes poli-avatar-talk-bob { from { transform: translateY(0) scale(1); } to { transform: translateY(-2px) scale(1.008); } }
 @media (prefers-reduced-motion: reduce) {
   .poli-avatar .poli-avatar__float,
   .poli-avatar .poli-avatar__eyes,
   .poli-avatar .poli-avatar__aura,
   .poli-avatar .poli-avatar__thought { animation: none !important; }
+  .poli-avatar .poli-avatar__mouth-speaking { animation: none !important; transform: scaleY(.8); }
+  .mascot-custom-avatar[data-speaking="true"] { animation: none !important; }
 }
 .poli-avatar__look { transform: translate(calc(var(--poli-look-x, 0) * 1px), calc(var(--poli-look-y, 0) * 1px)); transition: transform 140ms ease-out; }
 .poli-avatar__lean { transform-box: view-box; transform-origin: 120px 174px; transform: rotate(var(--poli-lean, 0deg)); transition: transform 220ms ease-out; }
@@ -24,6 +31,7 @@
 .poli-avatar[data-mood="boop"] svg { animation: poli-avatar-boop 480ms cubic-bezier(.3, 1.6, .5, 1); }
 .poli-avatar[data-mood="surprised"] svg { animation: poli-avatar-jump 450ms ease-out; }
 .poli-avatar[data-hover="true"] .poli-avatar__aura { opacity: .3; }
+.poli-avatar[data-hover="true"] .poli-avatar__glow { opacity: .85; }
 .poli-avatar[data-mood="dizzy"] .poli-avatar__float { animation: poli-avatar-wobble .9s ease-in-out infinite; }
 .poli-avatar[data-animate="true"][data-mood="sleep"] .poli-avatar__float { animation-duration: calc(var(--poli-speed, 3s) * 2); }
 .poli-avatar__spin { transform-box: fill-box; transform-origin: center; animation: poli-avatar-spin 1s linear infinite; }
@@ -50,6 +58,8 @@
 .poli-avatar__finger { transform-box: fill-box; transform-origin: bottom center; animation: poli-avatar-type-finger .5s ease-in-out infinite; }
 .poli-avatar__finger--2 { animation-delay: .15s; }
 .poli-avatar__finger--3 { animation-delay: .3s; }
+.poli-avatar[data-motion-active="false"] *,
+.poli-avatar[data-motion-active="false"] svg { animation-play-state: paused !important; }
 @keyframes poli-avatar-type-finger { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.45); } }
 @media (prefers-reduced-motion: reduce) {
   .poli-avatar__finger { animation: none !important; }

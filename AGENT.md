@@ -15,8 +15,8 @@ O usuário também quer promover opcionalmente um bot a Chief. Essa capacidade p
 - Codex é o primeiro motor do fluxo V9. Não use uma IA intermediária para comandar cada agente.
 - Mantenha a integração desacoplada para que outros motores possam ser conectados depois.
 - Cada agente mantém uma sessão por conversa e contexto. Não misture eventos ou histórico entre conversas.
-- Em grupos, mensagem do usuário sem menções é distribuída a todos os participantes ativos. Menções direcionam somente aos agentes citados.
-- Respostas de agentes e delegações não iniciam broadcasts automaticamente.
+- Em grupos, mensagem do usuário sem menções recebe uma única resposta: líder configurado ou agente selecionado pelo modo automático via OpenRouter. Menções direcionam somente aos agentes citados; enviar a todos é uma ação explícita.
+- Rodadas colaborativas são opt-in por conversa. Respostas de agentes e delegações não iniciam novas rodadas automaticamente.
 - Agentes só recebem permissões que o usuário habilitou. A pasta escolhida define o contexto do grupo.
 - Computer Use começa pelo navegador com sessão e cursor próprios. Programas nativos do Windows são etapa posterior.
 

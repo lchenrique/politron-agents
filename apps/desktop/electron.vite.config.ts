@@ -5,7 +5,9 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        external: ['node-pty', 'playwright'],
+        // ws carrega otimizações nativas opcionais via require. Bundling transforma
+        // essa detecção em um objeto sem mask(), quebrando o handshake no Electron.
+        external: ['node-pty', 'playwright', 'ws'],
         input: {
           index: resolve(__dirname, 'src/main/index.ts')
         }

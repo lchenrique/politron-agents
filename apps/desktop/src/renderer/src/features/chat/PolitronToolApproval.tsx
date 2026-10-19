@@ -73,6 +73,7 @@ export function PolitronToolApproval({ approval, onNotice }: { approval: Approva
         {approval.kind === 'agent-change' && <p className="text-xs text-muted-foreground">Alteração de configuração solicitada</p>}
       </div>
     </div>
+    {approval.kind === 'command' && <p className="text-xs text-muted-foreground">O diretório de trabalho é o projeto. Este terminal não possui isolamento do sistema operacional; o comando aprovado pode acessar outros caminhos deste computador.</p>}
     {details.task && <details className="rounded-md border border-border/60 p-2.5 text-xs">
       <summary className="cursor-pointer font-medium">Ver tarefa e instruções propostas</summary>
       <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{details.task}</p>

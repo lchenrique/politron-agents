@@ -88,7 +88,7 @@ describe('delegação entre conversas V9', () => {
     expect(result).toBe('Resultado do agente destinatário.')
     expect(runtime.started).toBe(1)
     expect(runtime.agents[0]).toMatchObject({ id: recipient.id, canWrite: false, instructions: 'Instruções próprias de B' })
-    expect(runtime.directories[0]).not.toBe(service.store.workspace(source.workspaceId).path)
+    expect(runtime.directories[0]).toBe(service.store.workspace(source.workspaceId).path)
     const delegation = service.store.delegations()[0]
     expect(delegation).toMatchObject({ status: 'completed', sourceConversationId: source.id, recipientAgentId: recipient.id, result })
     expect(service.store.history(source.id).find(message => message.delegationId === delegation.id)).toMatchObject({ status: 'completed', relatedConversationId: delegation.targetConversationId })
@@ -121,13 +121,16 @@ describe('delegação entre conversas V9', () => {
     const { service, context, recipient, controller } = setup(runtime)
     const first = (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Primeiro pedido' }, 'tool-first')
     const second = (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Segundo pedido' }, 'tool-second')
-    while (runtime.startedTurns < 2) await new Promise(resolve => setTimeout(resolve, 5))
+    await vi.waitFor(() => expect(runtime.startedTurns).toBe(1))
+    // A mesma pasta serializa os dois pedidos. Cancelar o primeiro deve liberar o segundo.
+    expect(service.store.delegationByKey('run-root:tool-second')?.status).toBe('queued')
     const firstDelegation = service.store.delegationByKey('run-root:tool-first')!
     const firstResult = service.cancelDelegation(firstDelegation.id)
     await expect(first).rejects.toThrow()
     await firstResult
     expect(controller.signal.aborted).toBe(false)
     expect(service.store.delegation(firstDelegation.id)?.status).toBe('interrupted')
+    await vi.waitFor(() => expect(runtime.startedTurns).toBe(2))
     runtime.complete(2)
     await expect(second).resolves.toBe('Resultado 2.')
   })

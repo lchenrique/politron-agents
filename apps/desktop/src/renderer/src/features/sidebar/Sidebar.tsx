@@ -8,6 +8,7 @@ import type { Agent, Conversation, Snapshot, Workspace } from '../../../../share
 import { AgentPresence, Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 import type { EditorKind } from '../editors/Editor'
+import { HostSelector } from '../hosts/HostSelector'
 
 function readSet(key: string): Set<string> {
   try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []) } catch { return new Set() }
@@ -88,7 +89,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     <button onClick={() => void onOpenAgent(agent)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Avatar agent={agent} size="xs" state={agentStates[agent.id] || 'idle'} />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-center gap-1 truncate text-xs font-semibold">{agent.name}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 fill-amber-500/20 text-amber-500" />}</span>
+        <span className="flex min-w-0 items-center gap-1 truncate text-xs font-semibold">{agent.name}{agent.temporary && <span className="rounded bg-muted px-1 text-[9px] font-normal text-muted-foreground" title={agent.temporaryStatus === 'working' ? 'Boo temporário em execução' : 'Boo temporário'}>Temp</span>}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 fill-amber-500/20 text-amber-500" />}</span>
         <span className="truncate text-[10px] text-muted-foreground">{pinnedChief ? 'Chief · Coordenação' : agent.description || '@' + agent.alias}</span>
       </span>
       <AgentPresence state={agentStates[agent.id] || 'idle'} />
@@ -109,7 +110,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   </div>
   const chiefAgent = snapshot.agents.find(agent => agent.role === 'chief')
   const showChief = !!chiefAgent
-  const regularAgents = snapshot.agents.filter(agent => agent.role !== 'chief')
+  const regularAgents = snapshot.agents.filter(agent => agent.role !== 'chief' && agent.temporaryStatus !== 'retired')
 
 
   const conversationButton = (conversation: Conversation) =>
@@ -166,7 +167,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const paletteItems: CommandItem[] = [
     { id: 'create:session', group: 'Criar', label: 'Nova sessão livre', icon: <MessageSquarePlus className="size-4" />, keywords: ['conversa', 'chat', 'livre'] },
     { id: 'create:workspace', group: 'Criar', label: 'Novo projeto', icon: <FolderPlus className="size-4" />, keywords: ['pasta', 'workspace'] },
-    { id: 'create:agent', group: 'Criar', label: 'Novo agente', icon: <Plus className="size-4" />, keywords: ['poli', 'pits', 'bot'] },
+    { id: 'create:agent', group: 'Criar', label: 'Novo Boo', icon: <Plus className="size-4" />, keywords: ['boo', 'boos', 'bot'] },
     ...snapshot.workspaces.filter(workspace => workspace.name && !workspace.archived).map(workspace => ({
       id: 'workspace:' + workspace.id, group: 'Projetos', label: workspace.name,
       keywords: [workspace.path, workspace.branch || '', 'workspace', 'projeto'],
@@ -177,9 +178,9 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       keywords: [workspaceOf(conversation.workspaceId)?.name || '', ...conversation.agentIds.map(id => snapshot.agents.find(a => a.id === id)?.name || ''), 'conversa'],
       icon: <MessageSquarePlus className="size-4" />
     })),
-    ...snapshot.agents.map(agent => ({
+    ...snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired').map(agent => ({
       id: 'agent:' + agent.id, group: 'Agentes', label: agent.name,
-      keywords: [agent.alias, agent.description, agent.role === 'chief' ? 'chief' : 'poli'],
+      keywords: [agent.alias, agent.description, agent.role === 'chief' ? 'chief' : 'boo'],
       icon: <Users className="size-4" />
     }))
   ]
@@ -199,7 +200,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const visibleAgents = regularAgents.sort((a, b) =>
     Number(isFavorite('agent', b.id)) - Number(isFavorite('agent', a.id)) || a.name.localeCompare(b.name, 'pt-BR'))
 
-  return <aside className="flex w-[296px] shrink-0 flex-col border-r border-border/60 bg-card/35" aria-label="Barra lateral do Politron">
+  return <aside className="flex h-full min-w-0 flex-col bg-card/35" aria-label="Barra lateral do Boobot">
     <header className="space-y-1.5 border-b border-border/40 px-3 pb-2 pt-2">
       <div className="flex h-7 items-center justify-between px-1">
         <h2 className="text-xs font-semibold tracking-tight">Espaço de trabalho</h2>
@@ -218,7 +219,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     <Tabs value={section} onValueChange={value => setSection(value as 'projects' | 'agents')} className="flex min-h-0 flex-1 flex-col">
       <TabsList className="mx-3 mt-2 grid h-8 grid-cols-2">
         <TabsTrigger value="projects" className="gap-1.5 text-xs"><FolderOpen className="size-3.5" />Projetos <span className="text-[10px] opacity-65">{rootWorkspaces.length}</span></TabsTrigger>
-        <TabsTrigger value="agents" className="gap-1.5 text-xs"><Users className="size-3.5" />Agentes <span className="text-[10px] opacity-65">{snapshot.agents.length}</span></TabsTrigger>
+        <TabsTrigger value="agents" className="gap-1.5 text-xs"><Users className="size-3.5" />Agentes <span className="text-[10px] opacity-65">{snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired').length}</span></TabsTrigger>
       </TabsList>
       <TabsContent value="projects" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
         {!!favorites.size && <section aria-label="Favoritos" className="space-y-0.5">
@@ -245,11 +246,12 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       <TabsContent value="agents" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
         <section aria-label="Catálogo de agentes" className="space-y-0.5">
           {visibleAgents.map(agent => agentRow(agent))}
-          {!visibleAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">{chiefAgent ? 'Nenhum outro agente cadastrado. Use o botão + para criar.' : 'Crie um Poli pelo botão + para começar.'}</p>}
+          {!visibleAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">{chiefAgent ? 'Nenhum outro agente cadastrado. Use o botão + para criar.' : 'Crie um Boo pelo botão + para começar.'}</p>}
         </section>
       </TabsContent>
     </Tabs>
-    <footer className="flex items-center gap-1 border-t border-border/60 px-2 py-1">
+    <div className="border-t border-border/60 px-2 py-1"><HostSelector /></div>
+    <footer className="flex items-center gap-1 px-2 py-1">
       <Button variant="ghost" disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><FolderOpen className="size-3.5" />Pasta</Button>
       <Button variant="ghost" onClick={onOpenSettings} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><Settings2 className="size-3.5" />Configurações</Button>
     </footer>

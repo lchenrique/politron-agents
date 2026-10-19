@@ -2,21 +2,27 @@ import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
-import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type Conversation, type Delegation, type FileChange, type Message, type Run, type Snapshot, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Run, type Snapshot, type Workspace } from '../../shared/v9'
 
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
-  instructions: 'Você é o Assistente padrão do Politron. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
+  instructions: 'Você é o Assistente padrão do Boobot. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
   runtime: 'codex', model: '', color: '#6366f1', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-01-01T00:00:00.000Z'
 }
 
 function normalizeConversation(value: Conversation): Conversation {
-  return { ...value, titleAuto: value.titleAuto ?? false }
+  const agentIds = Array.isArray(value.agentIds) ? value.agentIds.filter((id): id is string => typeof id === 'string') : []
+  const responseMode = value.responseMode ?? 'leader'
+  return { ...value, agentIds, titleAuto: value.titleAuto ?? false, responseMode, leaderAgentId: value.leaderAgentId ?? (responseMode === 'leader' ? agentIds[0] || null : null) }
+}
+function normalizeWorkspace(value: Workspace): Workspace {
+  const defaultAgentIds = Array.isArray(value.defaultAgentIds) ? value.defaultAgentIds.filter((id): id is string => typeof id === 'string') : []
+  return { ...value, defaultAgentIds }
 }
 export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>
 const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: false, computerUse: false, approvalMode: 'ask' }
-function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long'].includes(value.pitsShape || '') ? value.pitsShape : 'round', approvalMode: value.approvalMode === 'automatic' ? 'automatic' : 'ask' } }
+function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'round', approvalMode: value.approvalMode === 'automatic' ? 'automatic' : 'ask' } }
 
 export function requiredText(value: unknown, label: string, limit = 10000): string {
   if (typeof value !== 'string' || !value.trim() || value.length > limit) throw new Error(`${label}: informe um texto válido de até ${limit} caracteres.`)
@@ -56,6 +62,8 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS v9_approvals (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_sessions (key TEXT PRIMARY KEY, thread_id TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_delegations (id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, source_conversation_id TEXT NOT NULL, target_conversation_id TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS v9_checkpoints (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, agent_id TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS v9_checkpoint_scope ON v9_checkpoints(conversation_id, agent_id, created_at);
       CREATE INDEX IF NOT EXISTS v9_delegation_source ON v9_delegations(source_conversation_id);
       CREATE INDEX IF NOT EXISTS v9_delegation_target ON v9_delegations(target_conversation_id);
       INSERT OR IGNORE INTO v9_meta VALUES ('schema','${previousSchema ?? SCHEMA_VERSION}');`)
@@ -86,6 +94,7 @@ export class WorkspaceStore {
         if (result) this.putMessage({ ...result, status: 'interrupted', text: result.text || 'Execução interrompida ao fechar o aplicativo.' })
       }
     }
+    this.ensureMessageSearchIndex()
     for (const approval of this.approvals().filter(item => item.status === 'pending')) this.putApproval({ ...approval, status: 'interrupted', resolvedAt: new Date().toISOString() })
   }
   private schemaVersion(): number | null {
@@ -199,11 +208,15 @@ export class WorkspaceStore {
   }
   private tableExists(table: string): boolean { return !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table) }
   private all<T>(table: string): T[] { if (!this.tableExists(table)) return []; return (this.db.prepare(`SELECT data FROM ${table} ORDER BY rowid`).all() as { data: string }[]).map(row => JSON.parse(row.data) as T) }
+  private recent<T>(table: 'v9_runs' | 'v9_file_changes', limit: number): T[] {
+    const rows = this.db.prepare(`SELECT data FROM ${table} ORDER BY rowid DESC LIMIT ?`).all(limit) as { data: string }[]
+    return rows.reverse().map(row => JSON.parse(row.data) as T)
+  }
   private get<T>(table: string, id: string): T | undefined { const row = this.db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id) as { data: string } | undefined; return row ? JSON.parse(row.data) as T : undefined }
   private put<T extends { id: string }>(table: string, value: T): void { this.db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(value.id, JSON.stringify(value)) }
   agents(): Agent[] { return this.all<Agent>('v9_agents').map(normalizeAgent) }
-  workspaces(): Workspace[] { return this.all('v9_workspaces') }
-  workspace(id: string): Workspace { const value = this.get<Workspace>('v9_workspaces', id); if (!value) throw new Error('Workspace não encontrado.'); return value }
+  workspaces(): Workspace[] { return this.all<Workspace>('v9_workspaces').map(normalizeWorkspace) }
+  workspace(id: string): Workspace { const value = this.get<Workspace>('v9_workspaces', id); if (!value) throw new Error('Workspace não encontrado.'); return normalizeWorkspace(value) }
   conversations(): Conversation[] { return this.all<Conversation>('v9_conversations').map(normalizeConversation) }
   runs(): Run[] { return this.all('v9_runs') }
   delegations(): Delegation[] { return (this.db.prepare('SELECT data FROM v9_delegations ORDER BY rowid').all() as { data: string }[]).map(row => JSON.parse(row.data)) }
@@ -228,13 +241,73 @@ export class WorkspaceStore {
     for (const [key, setting] of Object.entries(value)) this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(`assistant_${key}`, String(setting))
     return { ...ASSISTANT, ...value }
   }
+  terminalEnabled(): boolean {
+    const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get('terminal_enabled') as { value: string } | undefined
+    return row ? row.value === 'true' : true
+  }
+  saveTerminalAccess(enabled: boolean): void {
+    if (typeof enabled !== 'boolean') throw new Error('A permissão global de terminal precisa ser booleana.')
+    this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('terminal_enabled', String(enabled))
+  }
   agent(id: string): Agent { if (id === ASSISTANT_ID) return { ...ASSISTANT, ...this.assistantPreferences() }; const value = this.get<Agent>('v9_agents', id); if (!value) throw new Error('Agente não encontrado.'); return normalizeAgent(value) }
   conversation(id: string): Conversation { const value = this.get<Conversation>('v9_conversations', id); if (!value) throw new Error('Conversa não encontrada.'); return normalizeConversation(value) }
   message(id: string): Message | undefined { return this.get('v9_messages', id) }
   history(id: string): Message[] {
     return (this.db.prepare('SELECT data FROM (SELECT rowid,data FROM v9_messages WHERE conversation_id=? ORDER BY rowid DESC LIMIT 500) ORDER BY rowid').all(id) as { data: string }[]).map(row => JSON.parse(row.data))
   }
-  snapshot(): Snapshot { return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.runs().slice(-100), fileChanges: this.fileChanges().slice(-500), approvals: this.approvals() } }
+  historyPage(id: string, beforeCursor?: number | string | null, limit = 100) {
+    const pageSize = Math.max(1, Math.min(200, Math.floor(limit)))
+    // A âncora por ID mantém a paginação correta quando o renderer descarta páginas da memória.
+    const cursor = typeof beforeCursor === 'string'
+      ? (this.db.prepare('SELECT rowid FROM v9_messages WHERE id=? AND conversation_id=?').get(beforeCursor, id) as { rowid: number } | undefined)?.rowid ?? 0
+      : beforeCursor
+    const rows = (cursor == null
+      ? this.db.prepare('SELECT rowid,data FROM v9_messages WHERE conversation_id=? ORDER BY rowid DESC LIMIT ?').all(id, pageSize + 1)
+      : this.db.prepare('SELECT rowid,data FROM v9_messages WHERE conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT ?').all(id, cursor, pageSize + 1)) as { rowid: number; data: string }[]
+    const hasMore = rows.length > pageSize
+    const page = rows.slice(0, pageSize).reverse()
+    return { messages: page.map(row => JSON.parse(row.data) as Message), hasMore, beforeCursor: page.length ? page[0].rowid : null }
+  }
+  searchHistory(id: string, query: string, limit = 25): MessageSearchHit[] {
+    const clean = query.normalize('NFC').trim().slice(0, 200)
+    if (!clean) return []
+    const pageSize = Math.max(1, Math.min(50, Math.floor(limit)))
+    try {
+      const match = clean.split(/\s+/).slice(0, 12).map(term => `"${term.split('"').join('""')}"`).join(' AND ')
+      const rows = this.db.prepare(`SELECT m.rowid AS cursor,m.data AS data,snippet(v9_message_fts,3,'','', ' … ',16) AS snippet FROM v9_message_fts JOIN v9_messages m ON m.id=v9_message_fts.message_id WHERE v9_message_fts MATCH ? AND v9_message_fts.conversation_id=? ORDER BY bm25(v9_message_fts) LIMIT ?`).all(match, id, pageSize) as { cursor: number; data: string; snippet: string }[]
+      return rows.map(row => ({ message: JSON.parse(row.data) as Message, cursor: row.cursor, snippet: row.snippet }))
+    } catch {
+      const rows = this.db.prepare('SELECT rowid AS cursor,data FROM v9_messages WHERE conversation_id=? AND data LIKE ? ORDER BY rowid DESC LIMIT ?').all(id, `%${clean}%`, pageSize) as { cursor: number; data: string }[]
+      return rows.map(row => { const message = JSON.parse(row.data) as Message; return { message, cursor: row.cursor, snippet: message.text.slice(0, 240) } })
+    }
+  }
+  historyAround(id: string, cursor: number, limit = 100) {
+    const pageSize = Math.max(20, Math.min(200, Math.floor(limit)))
+    const olderSize = Math.floor(pageSize / 2)
+    const newerSize = pageSize - olderSize - 1
+    const older = this.db.prepare('SELECT rowid,data FROM v9_messages WHERE conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT ?').all(id, cursor, olderSize + 1) as { rowid: number; data: string }[]
+    const target = this.db.prepare('SELECT rowid,data FROM v9_messages WHERE conversation_id=? AND rowid=?').get(id, cursor) as { rowid: number; data: string } | undefined
+    if (!target) return { messages: [], hasMore: false, beforeCursor: null }
+    const newer = this.db.prepare('SELECT rowid,data FROM v9_messages WHERE conversation_id=? AND rowid>? ORDER BY rowid ASC LIMIT ?').all(id, cursor, newerSize) as { rowid: number; data: string }[]
+    const rows = [...older.slice(0, olderSize).reverse(), target, ...newer]
+    return { messages: rows.map(row => JSON.parse(row.data) as Message), hasMore: older.length > olderSize, beforeCursor: rows[0]?.rowid ?? null }
+  }
+  latestCheckpoint(conversationId: string, agentId: string): ContextCheckpoint | undefined {
+    const row = this.db.prepare('SELECT data FROM v9_checkpoints WHERE conversation_id=? AND agent_id=? ORDER BY rowid DESC LIMIT 1').get(conversationId, agentId) as { data: string } | undefined
+    return row ? JSON.parse(row.data) as ContextCheckpoint : undefined
+  }
+  saveCheckpoint(checkpoint: ContextCheckpoint): void {
+    this.db.prepare('INSERT INTO v9_checkpoints(id,conversation_id,agent_id,created_at,data) VALUES(?,?,?,?,?)').run(checkpoint.id, checkpoint.conversationId, checkpoint.agentId, checkpoint.createdAt, JSON.stringify(checkpoint))
+    this.db.prepare('DELETE FROM v9_checkpoints WHERE conversation_id=? AND agent_id=? AND id NOT IN (SELECT id FROM v9_checkpoints WHERE conversation_id=? AND agent_id=? ORDER BY rowid DESC LIMIT 10)').run(checkpoint.conversationId, checkpoint.agentId, checkpoint.conversationId, checkpoint.agentId)
+  }
+  private ensureMessageSearchIndex(): void {
+    try {
+      this.db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS v9_message_fts USING fts5(message_id UNINDEXED, conversation_id UNINDEXED, author, text, tokenize='unicode61 remove_diacritics 2')")
+      this.db.exec('DELETE FROM v9_message_fts WHERE message_id NOT IN (SELECT id FROM v9_messages)')
+      this.db.exec("INSERT INTO v9_message_fts(message_id,conversation_id,author,text) SELECT m.id,m.conversation_id,json_extract(m.data,'$.author'),json_extract(m.data,'$.text') FROM v9_messages m WHERE (json_extract(m.data,'$.role') IN ('user','activity') OR json_extract(m.data,'$.status') IN ('completed','failed','interrupted')) AND NOT EXISTS (SELECT 1 FROM v9_message_fts f WHERE f.message_id=m.id)")
+    } catch { /* SQLite sem FTS5 mantém a busca limitada por LIKE. */ }
+  }
+  snapshot(): Snapshot { return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.recent<Run>('v9_runs', 100), fileChanges: this.recent<FileChange>('v9_file_changes', 500), approvals: this.approvals(), terminalEnabled: this.terminalEnabled() } }
   saveAgent(input: Partial<Agent>): Agent {
     const previous = input.id ? this.agent(input.id) : undefined
     const name = requiredText(input.name, 'Nome', 80)
@@ -242,7 +315,7 @@ export class WorkspaceStore {
     if (!/^[\p{L}\p{N}_-]+$/u.test(alias)) throw new Error('Use letras, números, hífen ou sublinhado na menção.')
     if (alias.toLowerCase() === ASSISTANT.alias || this.agents().some(agent => agent.id !== input.id && agent.alias.toLowerCase() === alias.toLowerCase())) throw new Error('Essa menção já pertence a outro agente.')
     const runtime = input.runtime ?? previous?.runtime ?? 'codex'
-    if (runtime !== 'codex' && runtime !== 'claude') throw new Error('Motor de agente inválido.')
+    if (!['codex', 'claude', 'pi', 'opencode', 'antigravity'].includes(runtime)) throw new Error('Motor de agente inválido.')
     const approvalMode = input.approvalMode ?? previous?.approvalMode ?? 'ask'
     if (approvalMode !== 'ask' && approvalMode !== 'automatic') throw new Error('Modo de aprovação inválido.')
     const effort = input.effort ?? previous?.effort ?? 'medium'
@@ -250,11 +323,24 @@ export class WorkspaceStore {
     const role = input.role ?? previous?.role ?? 'agent'
     if (role !== 'agent' && role !== 'chief') throw new Error('Papel de agente inválido.')
     if (role === 'chief' && this.agents().some(agent => agent.id !== input.id && agent.role === 'chief')) throw new Error('Já existe um Chief. Remova esse papel do agente atual antes de transferi-lo.')
-    const value: Agent = { id: previous?.id || randomUUID(), name, alias, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, role, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : previous?.color || randomPitColor(), avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round',
+    const temporary = input.temporary ?? previous?.temporary ?? false
+    const temporaryStatus = temporary ? input.temporaryStatus ?? previous?.temporaryStatus ?? 'available' : undefined
+    if (temporaryStatus && !['available', 'working', 'retired'].includes(temporaryStatus)) throw new Error('Estado de Boo temporário inválido.')
+    if (temporary && role === 'chief') throw new Error('O Chief não pode ser temporário.')
+    const temporaryWorkspaceId = temporary ? input.temporaryWorkspaceId ?? previous?.temporaryWorkspaceId : undefined
+    if (temporaryWorkspaceId) this.workspace(temporaryWorkspaceId)
+    const value: Agent = { id: previous?.id || randomUUID(), name, alias, temporary, temporaryStatus, temporaryWorkspaceId, temporaryTask: temporary ? String(input.temporaryTask ?? previous?.temporaryTask ?? '').slice(0, 5000) : undefined, description: String(input.description || '').slice(0, 500), instructions: requiredText(input.instructions, 'Instruções', 20000), runtime, model: String(input.model || '').slice(0, 150), effort, role, color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : previous?.color || randomPitColor(), avatar: typeof input.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(input.avatar) && input.avatar.length < 2_000_000 ? input.avatar : '', pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(input.pitsShape || '') ? input.pitsShape : previous?.pitsShape || 'round',
+      pitsAccessory: ['none', 'antenna', 'horns', 'glasses', 'cap'].includes(input.pitsAccessory || '') ? input.pitsAccessory : previous?.pitsAccessory || 'none',
+      pitsHeadAccessory: ['none', 'antenna', 'horns', 'cap', 'cap-flat', 'cap-back', 'beanie', 'bucket', 'top-hat', 'witch-hat', 'headphones', 'crown'].includes(input.pitsHeadAccessory || '') ? input.pitsHeadAccessory : previous?.pitsHeadAccessory ?? ((input.pitsAccessory || previous?.pitsAccessory) === 'glasses' ? 'none' : (input.pitsAccessory || previous?.pitsAccessory || 'none')) as Agent['pitsHeadAccessory'],
+      pitsFaceAccessory: ['none', 'glasses', 'round-glasses', 'sunglasses'].includes(input.pitsFaceAccessory || '') ? input.pitsFaceAccessory : previous?.pitsFaceAccessory ?? ((input.pitsAccessory || previous?.pitsAccessory) === 'glasses' ? 'glasses' : 'none'),
       pitsEyeColor: /^#[\da-f]{6}$/i.test(input.pitsEyeColor || '') ? input.pitsEyeColor : previous?.pitsEyeColor || '#ffffff',
       pitsCheekColor: /^#[\da-f]{6}$/i.test(input.pitsCheekColor || '') ? input.pitsCheekColor : previous?.pitsCheekColor || '#f5a5d1',
       pitsEyeSize: typeof input.pitsEyeSize === 'number' && Number.isFinite(input.pitsEyeSize) ? Math.max(4, Math.min(15, input.pitsEyeSize)) : previous?.pitsEyeSize ?? 8,
       pitsEyeSpacing: typeof input.pitsEyeSpacing === 'number' && Number.isFinite(input.pitsEyeSpacing) ? Math.max(16, Math.min(42, input.pitsEyeSpacing)) : previous?.pitsEyeSpacing ?? 26,
+      pitsMouthSize: typeof input.pitsMouthSize === 'number' && Number.isFinite(input.pitsMouthSize) ? Math.max(.65, Math.min(1.6, input.pitsMouthSize)) : previous?.pitsMouthSize ?? 1,
+      pitsBlushStrength: typeof input.pitsBlushStrength === 'number' && Number.isFinite(input.pitsBlushStrength) ? Math.max(0, Math.min(1, input.pitsBlushStrength)) : previous?.pitsBlushStrength ?? .45,
+      pitsBodyWidth: typeof input.pitsBodyWidth === 'number' && Number.isFinite(input.pitsBodyWidth) ? Math.max(.75, Math.min(1.25, input.pitsBodyWidth)) : previous?.pitsBodyWidth ?? 1,
+      pitsBodyHeight: typeof input.pitsBodyHeight === 'number' && Number.isFinite(input.pitsBodyHeight) ? Math.max(.75, Math.min(1.25, input.pitsBodyHeight)) : previous?.pitsBodyHeight ?? 1,
       pitsSpeed: typeof input.pitsSpeed === 'number' && Number.isFinite(input.pitsSpeed) ? Math.max(1, Math.min(6, input.pitsSpeed)) : previous?.pitsSpeed ?? 3,
       pitsAmplitude: typeof input.pitsAmplitude === 'number' && Number.isFinite(input.pitsAmplitude) ? Math.max(0, Math.min(24, input.pitsAmplitude)) : previous?.pitsAmplitude ?? 9,
       pitsAura: input.pitsAura ?? previous?.pitsAura ?? true,
@@ -333,7 +419,12 @@ export class WorkspaceStore {
     if (kind === 'group' && !agentIds.length) throw new Error('Selecione de um a dez agentes para um grupo.')
     const named = typeof input.name === 'string' && input.name.trim() !== ''
     const name = named ? requiredText(input.name, 'Nome', 100) : previous?.name || 'Nova conversa'
-    const value: Conversation = { id: previous?.id || randomUUID(), kind, name, agentIds, workspaceId: workspace.id, titleAuto: named ? false : previous?.titleAuto ?? true, revision: previous ? previous.revision + (workspace.id !== previous.workspaceId ? 1 : 0) : 1, archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
+    const responseMode = input.responseMode ?? previous?.responseMode ?? 'leader'
+    if (responseMode !== 'broadcast' && responseMode !== 'leader' && responseMode !== 'auto' && responseMode !== 'discussion') throw new Error('Modo de resposta do grupo inválido.')
+    // O líder também é o fallback do modo automático. Se o grupo ainda não tinha líder, o primeiro participante assume.
+    const leaderAgentId = kind === 'group' && responseMode !== 'broadcast' ? (input.leaderAgentId !== undefined ? input.leaderAgentId : previous?.leaderAgentId) || agentIds[0] || null : null
+    if (kind === 'group' && responseMode !== 'broadcast' && (!leaderAgentId || !agentIds.includes(leaderAgentId))) throw new Error('Escolha um líder que participe desta conversa.')
+    const value: Conversation = { id: previous?.id || randomUUID(), kind, name, agentIds, workspaceId: workspace.id, titleAuto: named ? false : previous?.titleAuto ?? true, responseMode, leaderAgentId, revision: previous ? previous.revision + (workspace.id !== previous.workspaceId ? 1 : 0) : 1, archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_conversations', value); return value
   }
   deleteConversation(id: string): void {
@@ -342,6 +433,8 @@ export class WorkspaceStore {
     this.db.exec('BEGIN IMMEDIATE')
     try {
       this.db.prepare('DELETE FROM v9_messages WHERE conversation_id=?').run(id)
+      this.db.prepare('DELETE FROM v9_checkpoints WHERE conversation_id=?').run(id)
+      try { this.db.prepare('DELETE FROM v9_message_fts WHERE conversation_id=?').run(id) } catch { /* Índice FTS5 pode não estar disponível. */ }
       for (const runId of runIds) {
         this.db.prepare('DELETE FROM v9_approvals WHERE run_id=?').run(runId)
         this.db.prepare('DELETE FROM v9_file_changes WHERE run_id=?').run(runId)
@@ -364,9 +457,19 @@ export class WorkspaceStore {
   deleteAgent(id: string): void {
     if (id === ASSISTANT_ID) throw new Error('O Assistente padrão não pode ser excluído.')
     this.agent(id)
-    for (const conversation of this.conversations().filter(item => item.agentIds.includes(id))) this.put('v9_conversations', { ...conversation, agentIds: conversation.agentIds.filter(agentId => agentId !== id) })
-    for (const workspace of this.workspaces().filter(item => item.defaultAgentIds.includes(id))) this.put('v9_workspaces', { ...workspace, defaultAgentIds: workspace.defaultAgentIds.filter(agentId => agentId !== id) })
+    for (const conversation of this.conversations()) {
+      const currentAgentIds = Array.isArray(conversation.agentIds) ? conversation.agentIds : []
+      if (!currentAgentIds.includes(id) && conversation.leaderAgentId !== id) continue
+      const agentIds = currentAgentIds.filter(agentId => agentId !== id)
+      this.put('v9_conversations', { ...conversation, agentIds, leaderAgentId: conversation.leaderAgentId === id ? agentIds[0] || null : conversation.leaderAgentId })
+    }
+    for (const workspace of this.workspaces()) {
+      const defaultAgentIds = Array.isArray(workspace.defaultAgentIds) ? workspace.defaultAgentIds : []
+      if (!defaultAgentIds.includes(id)) continue
+      this.put('v9_workspaces', { ...workspace, defaultAgentIds: defaultAgentIds.filter(agentId => agentId !== id) })
+    }
     this.db.prepare('DELETE FROM v9_agents WHERE id=?').run(id)
+    this.db.prepare('DELETE FROM v9_checkpoints WHERE agent_id=?').run(id)
   }
   autoTitle(conversationId: string, firstMessage: string): Conversation {
     const conversation = this.conversation(conversationId)
@@ -375,7 +478,15 @@ export class WorkspaceStore {
     const value = { ...conversation, name: title || conversation.name, titleAuto: false }
     this.put('v9_conversations', value); return value
   }
-  putMessage(value: Message): void { this.db.prepare('INSERT INTO v9_messages(id,conversation_id,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(value.id, value.conversationId, JSON.stringify(value)) }
+  putMessage(value: Message): void {
+    this.db.prepare('INSERT INTO v9_messages(id,conversation_id,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(value.id, value.conversationId, JSON.stringify(value))
+    if (value.role === 'user' || value.role === 'activity' || ['completed', 'failed', 'interrupted'].includes(value.status)) {
+      try {
+        this.db.prepare('DELETE FROM v9_message_fts WHERE message_id=?').run(value.id)
+        this.db.prepare('INSERT INTO v9_message_fts(message_id,conversation_id,author,text) VALUES(?,?,?,?)').run(value.id, value.conversationId, value.author, value.text)
+      } catch { /* A busca LIKE continua disponível se FTS5 não existir. */ }
+    }
+  }
   putRun(value: Run): void { this.put('v9_runs', value) }
   putFileChange(value: FileChange): boolean {
     const result = this.db.prepare('INSERT OR IGNORE INTO v9_file_changes(id,run_id,tool_call_id,workspace_id,data) VALUES(?,?,?,?,?)').run(value.id, value.runId, value.toolCallId, value.workspaceId, JSON.stringify(value))

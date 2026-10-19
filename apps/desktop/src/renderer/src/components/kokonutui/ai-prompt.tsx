@@ -99,6 +99,9 @@ interface AIPromptProps {
   /** Called with the files picked, dropped or pasted into the prompt. */
   onAttach?: (files: FileList | File[]) => void;
   className?: string;
+  /** Controles adicionais: gravação de áudio e ligação local. */
+  voiceControls?: ReactNode;
+  voiceInsert?: { id: number; text: string };
   /** Draft key for preserving unsent content when docking moves the chat. */
   draftKey?: string;
 }
@@ -760,6 +763,8 @@ export default function AI_Prompt({
   commands = DEFAULT_COMMANDS,
   className,
   draftKey,
+  voiceControls,
+  voiceInsert,
 }: AIPromptProps) {
   const [value, setValue] = useState(() => {
     try { return draftKey ? sessionStorage.getItem(draftKey) || "" : ""; } catch { return ""; }
@@ -791,6 +796,12 @@ export default function AI_Prompt({
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => {
+    if (!voiceInsert?.text) return;
+    setValue(current => [current, voiceInsert.text].filter(Boolean).join(current ? ' ' : ''));
+    textareaRef.current?.focus();
+    requestAnimationFrame(() => adjustHeight());
+  }, [voiceInsert?.id]);
   useEffect(() => {
     if (!draftKey) return;
     try { sessionStorage.setItem(draftKey, value); } catch { /* Continue without persistence. */ }
@@ -1136,6 +1147,7 @@ export default function AI_Prompt({
               />
             )}
             <div className="flex-1" />
+            {voiceControls}
             <SendButton
               canSend={canSend}
               onSend={submit}
