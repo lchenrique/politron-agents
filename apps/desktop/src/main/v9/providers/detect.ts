@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { BrowserWindow, ipcMain } from 'electron'
 import { parse, type ParseError } from 'jsonc-parser'
 import type { ProviderId, ProviderInfo, ProviderModel, ProviderModelCatalog, ProviderSnapshot } from '../../../shared/providers'
+import { execCli } from '../cli-launch'
 
 const execFileAsync = promisify(execFile)
 
@@ -32,10 +33,10 @@ async function piModels(home: string): Promise<ProviderModelCatalog> {
   const providers = record(config.value) ? config.value.providers : undefined
   if (!record(providers)) return { models: null, reason: config.reason || 'Catálogo de provedores ausente ou inválido na configuração.' }
   const models: ProviderModel[] = []
-  for (const provider of Object.values(providers)) {
+  for (const [providerId, provider] of Object.entries(providers)) {
     if (!record(provider) || !Array.isArray(provider.models)) continue
     for (const model of provider.models as unknown[]) {
-      if (record(model) && nonempty(model.id)) models.push({ id: model.id, name: nonempty(model.name) ? model.name : model.id })
+      if (record(model) && nonempty(model.id)) models.push({ id: `${providerId}/${model.id}`, name: nonempty(model.name) ? model.name : model.id })
     }
   }
   return { models, source: 'configuration' }
@@ -47,10 +48,10 @@ async function openCodeModels(home: string): Promise<ProviderModelCatalog> {
   const providers = record(config.value) ? config.value.provider : undefined
   if (!record(providers)) return { models: null, reason: config.reason || 'Catálogo de provedores ausente ou inválido na configuração.' }
   const models: ProviderModel[] = []
-  for (const provider of Object.values(providers)) {
+  for (const [providerId, provider] of Object.entries(providers)) {
     if (!record(provider) || !record(provider.models)) continue
     for (const [id, model] of Object.entries(provider.models)) {
-      if (nonempty(id) && record(model)) models.push({ id, name: nonempty(model.name) ? model.name : id })
+      if (nonempty(id) && record(model)) models.push({ id: `${providerId}/${id}`, name: nonempty(model.name) ? model.name : id })
     }
   }
   return { models, source: 'configuration' }
@@ -69,7 +70,7 @@ async function readModels(provider: ProviderId, home: string, options: ProviderD
   const localLoader = MODEL_READERS[provider]
   const load = runtimeLoader ? () => runtimeLoader(binaryPath) : localLoader ? () => localLoader(home) : undefined
   if (!load) return { models: null, reason: 'Consulta de modelos indisponível para este CLI no Boobot.' }
-  const timeoutMs = Number.isFinite(options.modelTimeoutMs) ? Math.max(1, Math.min(options.modelTimeoutMs!, 12_000)) : 12_000
+  const timeoutMs = Number.isFinite(options.modelTimeoutMs) ? Math.max(1, Math.min(options.modelTimeoutMs!, 30_000)) : 12_000
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
@@ -91,27 +92,36 @@ const PROVIDERS: { id: ProviderId; name: string; binary: string }[] = [
 ]
 
 /** Onde o shell acharia o binário, sem precisar de uma subshell: `where` no Windows, `which` nos outros. */
-async function resolvePath(binary: string): Promise<string | null> {
-  const [command, args] = process.platform === 'win32' ? ['where', [binary]] : ['which', [binary]]
+async function resolvePaths(binary: string): Promise<string[]> {
+  const [command, args] = process.platform === 'win32' ? ['where', [binary]] : ['which', ['-a', binary]]
   try {
     const { stdout } = await execFileAsync(command, args, { timeout: 5_000, windowsHide: true })
-    return stdout.split(/\r?\n/).map(line => line.trim()).find(Boolean) || null
-  } catch { return null }
+    return [...new Set(stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean))]
+  } catch { return [] }
 }
 
 /** Primeira linha de `<binário> --version`; CLIs instalados sem terminar a configuração ainda contam como encontrados. */
 async function probe(provider: (typeof PROVIDERS)[number], home: string, options: ProviderDetectionOptions): Promise<ProviderInfo> {
-  const path = await resolvePath(provider.binary)
+  const candidates = await resolvePaths(provider.binary)
+  let path = candidates[0]
   if (!path) return { ...provider, found: false, version: null, path: null, models: null }
   let version: string | null = null
-  try {
-    // No Windows, muitos desses CLIs são shims .cmd/.ps1 do npm: rodar sem shell lança EINVAL em vez de ENOENT.
-    const { stdout, stderr } = await execFileAsync(provider.binary, ['--version'], { timeout: 8_000, windowsHide: true, shell: process.platform === 'win32' })
-    version = (stdout || stderr).split(/\r?\n/).map(line => line.trim()).find(Boolean) || null
-  } catch { /* binário presente, mas --version falhou (ex.: instalação incompleta); ainda assim foi encontrado */ }
+  for (const candidate of candidates) {
+    try {
+      // O launcher resolve os shims npm sem concatenar argumentos em um comando de shell.
+      const { stdout, stderr } = await execCli(candidate, ['--version'], { timeout: 8_000, windowsHide: true })
+      version = (stdout || stderr).split(/\r?\n/).map(line => line.trim()).find(Boolean) || null
+      path = candidate
+      break
+    } catch { /* Uma instalação antiga no PATH não deve esconder a próxima instalação válida. */ }
+  }
   const catalog = await readModels(provider.id, home, options, path)
-  const executable = !!version && !!catalog.models?.length && (catalog.source === 'runtime' || (provider.id === 'opencode' && catalog.source === 'configuration'))
-  return { ...provider, found: true, operational: !!version, executable, version, path, models: catalog.models, modelSource: catalog.source, modelReason: catalog.reason || (!version ? 'Executável localizado, mas o comando não respondeu corretamente.' : undefined) }
+  // Uma resposta válida do protocolo do runtime comprova disponibilidade mesmo
+  // quando o comando auxiliar --version falha ou demora para iniciar.
+  const runtimeOperational = catalog.source === 'runtime' && Array.isArray(catalog.models)
+  const operational = !!version || runtimeOperational
+  const executable = operational && !!catalog.models?.length && (runtimeOperational || (provider.id === 'opencode' && catalog.source === 'configuration'))
+  return { ...provider, found: true, operational, executable, version, path, models: catalog.models, modelSource: catalog.source, modelReason: catalog.reason || (!operational ? 'Executável localizado, mas o comando não respondeu corretamente.' : undefined) }
 }
 
 export async function detectProviders(home = homedir(), options: ProviderDetectionOptions = {}): Promise<ProviderInfo[]> {

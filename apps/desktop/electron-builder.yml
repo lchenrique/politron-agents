@@ -15,6 +15,7 @@ npmRebuild: false
 asarUnpack:
   - "**/node_modules/node-pty/**"
   - "**/node_modules/sherpa-onnx-node/**"
+  - "**/node_modules/@anthropic-ai/claude-agent-sdk*/**"
 win:
   icon: branding/icon.ico
   target:

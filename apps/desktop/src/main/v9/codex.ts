@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { EventEmitter } from 'node:events'
 import { homedir } from 'node:os'
@@ -7,10 +7,12 @@ import { join } from 'node:path'
 import type { Agent, Model } from '../../shared/v9'
 import type { AgentRuntime } from './agent-runtime'
 import { buildAgentSystemPrompt } from './agent-prompt'
+import { spawnCli } from './cli-launch'
 
 type RpcMessage = { id?: number | string; method?: string; params?: Record<string, any>; result?: any; error?: { message: string } }
 export interface DynamicTool { type: 'function'; name: string; description: string; inputSchema: Record<string, unknown> }
 export class CodexRuntime extends EventEmitter implements AgentRuntime {
+  private executable: string | undefined
   private process: ChildProcessWithoutNullStreams | null = null
   private ready: Promise<void> | null = null
   private nextId = 0
@@ -37,7 +39,8 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       '-c', 'mcp_servers={}'
     ]
     for (const name of inheritedServers) args.push('-c', `mcp_servers.${name}.enabled=false`)
-    const child = spawn(process.env.POLITRON_CODEX_BINARY || (process.platform === 'win32' ? 'codex.exe' : 'codex'), args, { windowsHide: true, stdio: 'pipe' })
+    const binary = process.env.POLITRON_CODEX_BINARY || this.executable || 'codex'
+    const child = spawnCli(binary, args, { windowsHide: true, stdio: 'pipe' })
     this.process = child
     child.stderr.on('data', buffer => { this.stderr = (this.stderr + buffer.toString()).slice(-2000) })
     const reader = createInterface({ input: child.stdout })
@@ -70,7 +73,8 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     const pending = this.pending.get(Number(message.id))
     if (pending) { clearTimeout(pending.timer); this.pending.delete(Number(message.id)); if (message.error) pending.reject(new Error(message.error.message)); else pending.resolve(message.result) }
   }
-  async models(): Promise<Model[]> {
+  async models(binaryPath?: string): Promise<Model[]> {
+    if (binaryPath && !this.ready) this.executable = binaryPath
     await this.start()
     const models = new Map<string, Model>()
     const seenCursors = new Set<string>()

@@ -46,7 +46,7 @@ export class ProviderRegistry {
   private valid(input: unknown): input is ProviderSnapshot {
     if (!input || typeof input !== 'object') return false
     const data = input as Partial<ProviderSnapshot>
-    return data.catalogVersion === 4 && typeof data.checkedAt === 'string' && Number.isFinite(Date.parse(data.checkedAt)) &&
+    return data.catalogVersion === 7 && typeof data.checkedAt === 'string' && Number.isFinite(Date.parse(data.checkedAt)) &&
       Array.isArray(data.providers) && data.providers.length === IDS.length &&
       IDS.every(id => data.providers?.some(item => item && item.id === id &&
         typeof item.name === 'string' && typeof item.found === 'boolean' &&
@@ -58,7 +58,7 @@ export class ProviderRegistry {
     this.scanning = (async () => {
       const providers = await this.scan()
       const next: ProviderSnapshot = {
-        catalogVersion: 4,
+        catalogVersion: 7,
         providers: providers.map(provider => ({
           ...provider,
           models: provider.models?.filter(model => typeof model.id === 'string' &&

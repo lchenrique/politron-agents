@@ -1,22 +1,28 @@
 // @vitest-environment node
 import { tmpdir } from 'node:os'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import type { query } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '../../shared/v9'
 import { ClaudeRuntime } from './claude'
 import { CodexRuntime } from './codex'
 
-const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn() }))
+const { execFileMock, spawnMock, crossSpawnMock } = vi.hoisted(() => ({ execFileMock: vi.fn(), spawnMock: vi.fn(), crossSpawnMock: vi.fn() }))
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
   execFile: execFileMock,
+  spawn: spawnMock,
 }))
+vi.mock('cross-spawn', () => ({ default: crossSpawnMock }))
 
 afterEach(() => {
   if (vi.isFakeTimers()) vi.clearAllTimers()
   vi.useRealTimers()
   vi.unstubAllGlobals()
   execFileMock.mockReset()
+  spawnMock.mockReset()
+  crossSpawnMock.mockReset()
 })
 
 function windowsExecutableLookup(stdout: string) {
@@ -54,6 +60,29 @@ async function startClaudeWithoutDiscovery() {
 }
 
 describe('catálogo informado pelos CLIs', () => {
+  it('inicia o Codex pelo comando resolvido no PATH do Windows', async () => {
+    vi.stubGlobal('process', new Proxy(process, {
+      get: (target, key) => key === 'platform' ? 'win32' : Reflect.get(target, key),
+    }))
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(),
+    })
+    const fakeSpawn = (command: string, _args: string[], _options: unknown) => {
+      child.stdin.on('data', chunk => {
+        const message = JSON.parse(String(chunk)) as { id?: number; method?: string }
+        if (message.method === 'initialize') child.stdout.write(JSON.stringify({ id: message.id, result: {} }) + '\n')
+      })
+      return child
+    }
+    spawnMock.mockImplementation(fakeSpawn)
+    crossSpawnMock.mockImplementation(fakeSpawn)
+    const runtime = new CodexRuntime()
+    try {
+      await runtime.start()
+      expect(crossSpawnMock).toHaveBeenCalledWith('codex', expect.any(Array), expect.objectContaining({ stdio: 'pipe' }))
+    } finally { runtime.close() }
+  })
+
   it('percorre páginas do Codex e conserva capacidades reais sem modelos ocultos', async () => {
     const runtime = new CodexRuntime()
     vi.spyOn(runtime, 'start').mockResolvedValue(undefined)

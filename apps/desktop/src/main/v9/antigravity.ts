@@ -1,10 +1,8 @@
-import { execFile } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { promisify } from 'node:util'
 import type { Model } from '../../shared/v9'
 import type { AgentRuntime } from './agent-runtime'
+import { execCli } from './cli-launch'
 
-const execFileAsync = promisify(execFile)
 const EXECUTION_UNAVAILABLE = 'A integração do Antigravity ainda precisa limitar ferramentas, MCP e hooks antes de iniciar conversas no Boobot.'
 
 /** `agy models` retorna slug e nome separados por tabulação, sem executar uma conversa. */
@@ -31,7 +29,7 @@ export class AntigravityRuntime extends EventEmitter implements AgentRuntime {
     if (binaryPath) this.executable = binaryPath
     let output: string
     try {
-      const { stdout } = await execFileAsync(this.executable, ['models'], {
+      const { stdout } = await execCli(this.executable, ['models'], {
         timeout: 10_000, maxBuffer: 2 * 1024 * 1024, windowsHide: true,
       })
       output = stdout

@@ -26,12 +26,12 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
 })
 
-function setup() {
+function setup(runtime: Agent['runtime'] = 'codex') {
   const directory = mkdtempSync(join(tmpdir(), 'politron-chief-tools-'))
   directories.push(directory)
   const service = new AppService(directory, new FakeRuntime() as unknown as ConstructorParameters<typeof AppService>[1])
   services.push(service)
-  const chief = service.saveAgent({ name: 'Chief', alias: 'chief', role: 'chief', instructions: 'Coordene a equipe.' })
+  const chief = service.saveAgent({ name: 'Chief', alias: 'chief', role: 'chief', instructions: 'Coordene a equipe.', runtime })
   const workspace = service.store.saveWorkspace({ name: 'Projeto' })
   const names = (agent: Agent = chief) => ((service as unknown as { tools: (context: unknown) => { name: string }[] }).tools({ agent, run: { workspaceId: workspace.id } })).map(tool => tool.name)
   const propose = (name: string, args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent: chief, run: { workspaceId: workspace.id, workspacePath: workspace.path } }, name, args)
@@ -160,8 +160,29 @@ describe('visibilidade de agentes pelo group_members', () => {
 })
 
 describe('Boos temporários do Chief', () => {
-  it('propõe equipe numa única aprovação, escolhe nomes e cores e preserva escopo', async () => {
-    const { service, workspace, propose } = setup()
+  it('invalida aprovação pendente quando o motor falha, impedindo criação tardia', async () => {
+    const { service, chief, workspace } = setup('antigravity')
+    service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true } })
+    const conversation = service.store.saveConversation({ name: 'Chief', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
+    const controller = new AbortController()
+    const message = { id: 'timeout-message', conversationId: conversation.id, agentId: chief.id, author: chief.name, role: 'assistant' as const, text: '', status: 'running' as const, runId: 'timeout-run', createdAt: new Date().toISOString() }
+    const run = { id: 'timeout-run', status: 'running', workspaceId: workspace.id, workspacePath: workspace.path, conversationId: conversation.id, agentId: chief.id, messageId: message.id }
+    const context = { agent: chief, run, message, conversation, signal: controller.signal }
+    service.store.putMessage(message)
+    ;(service as any).active.set(run.id, controller)
+    const pending = (service as any).callTool(context, 'propose_boos', { agents: [{ instructions: 'Revise interfaces.' }] })
+    const approval = service.store.approvals().find(item => item.runId === run.id)!
+    expect(approval.status).toBe('pending')
+    await (service as any).finish(context, 'failed', 'O motor encerrou.')
+    expect(service.store.approval(approval.id)?.status).toBe('interrupted')
+    await expect(service.respondApproval(approval.id, true)).rejects.toThrow('não está mais pendente')
+    expect(String(await pending)).toContain('negada')
+    expect(service.store.agents().filter(item => item.role !== 'chief')).toHaveLength(0)
+  })
+
+  it.each(['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const)('propõe equipe com aprovação e preserva escopo em qualquer motor: %s', async runtime => {
+    const { service, workspace, propose, names } = setup(runtime)
+    expect(names()).toEqual(expect.arrayContaining(['group_members', 'propose_boos', 'propose_team', 'ask_agent']))
     const approval = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
     const reply = await propose('propose_boos', { agents: [
       { description: 'Arquitetura do projeto', instructions: 'Planeje a arquitetura.' },
@@ -218,8 +239,8 @@ describe('Boos temporários do Chief', () => {
     await expect(propose('propose_boos', { purpose: 'unknown', agents: [{ instructions: 'Pesquise' }] })).rejects.toThrow(/Finalidade inválida/)
   })
 
-  it('não cria Boos quando a proposta é negada', async () => {
-    const { service, propose } = setup()
+  it.each(['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const)('não cria Boos com proposta negada em qualquer motor: %s', async runtime => {
+    const { service, propose } = setup(runtime)
     vi.spyOn(service as any, 'requestApproval').mockResolvedValue(false)
     const reply = await propose('propose_boos', { agents: [{ instructions: 'Pesquise.' }] })
     expect(String(reply)).toMatch(/negada/)

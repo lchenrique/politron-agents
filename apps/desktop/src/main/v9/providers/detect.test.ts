@@ -1,15 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { PassThrough } from 'node:stream'
 import { join } from 'node:path'
 
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [], fromWebContents: vi.fn().mockReturnValue({}) }, ipcMain: { handle: vi.fn(), removeHandler: vi.fn() } }))
 
 const dirs: string[] = []
-afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }) })
+const { crossSpawnMock } = vi.hoisted(() => ({ crossSpawnMock: vi.fn() }))
+vi.mock('cross-spawn', () => ({ default: crossSpawnMock }))
+afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); crossSpawnMock.mockReset(); vi.unstubAllGlobals() })
 function installedClis() {
   execFileMock.mockImplementation((command: string, args: string[], _opts: unknown, callback: (error: unknown, result: { stdout: string; stderr: string }) => void) => {
-    callback(null, { stdout: command === 'where' || command === 'which' ? `C:/tools/${args[0]}.exe\n` : '1.0\n', stderr: '' })
+    callback(null, { stdout: command === 'where' || command === 'which' ? `C:/tools/${args.at(-1)}.exe\n` : '1.0\n', stderr: '' })
   })
 }
 function fakeHome() {
@@ -29,6 +33,37 @@ vi.mock('node:child_process', () => {
 })
 
 describe('detecção de CLIs de agente instaladas', () => {
+  it('tenta a próxima instalação no PATH quando a primeira está quebrada', async () => {
+    execFileMock.mockImplementation((command: string, args: string[], _opts: unknown, callback: (error: unknown, output: { stdout: string; stderr: string }) => void) => {
+      if (command === 'where' || command === 'which') return callback(null, { stdout: 'C:/antigo/cli.exe\nC:/Usuário Novo/cli.exe\n', stderr: '' })
+      if (command.includes('/antigo/')) return callback(new Error('ENOEXEC'), { stdout: '', stderr: '' })
+      callback(null, { stdout: '2.0\n', stderr: '' })
+    })
+    const { detectProviders } = await import('./detect')
+    const providers = await detectProviders(fakeHome())
+    expect(providers.every(provider => provider.path === 'C:/Usuário Novo/cli.exe' && provider.version === '2.0')).toBe(true)
+  })
+
+  it('sonda a versão pelo shim localizado no PATH do Windows', async () => {
+    vi.stubGlobal('process', new Proxy(process, {
+      get: (target, key) => key === 'platform' ? 'win32' : Reflect.get(target, key),
+    }))
+    execFileMock.mockImplementation((command: string, args: string[], _options: unknown, callback: (error: unknown, output: { stdout: string; stderr: string }) => void) => {
+      if (command === 'where' && args[0] === 'codex') return callback(null, { stdout: 'C:\\npm\\codex.cmd\r\n', stderr: '' })
+      if (command === 'where') return callback(new Error('not found'), { stdout: '', stderr: '' })
+      if (args[0] === '--version') return callback(null, { stdout: 'codex-cli 0.160.1\n', stderr: '' })
+      callback(new Error('unexpected call'), { stdout: '', stderr: '' })
+    })
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() })
+    crossSpawnMock.mockImplementation(() => {
+      setImmediate(() => { child.stdout.end('codex-cli 0.160.1\n'); child.stderr.end(); child.emit('close', 0, null) })
+      return child
+    })
+    const { detectProviders } = await import('./detect')
+    await detectProviders(fakeHome(), { runtimeModels: { codex: async () => ({ models: [{ id: 'gpt', name: 'GPT' }], source: 'runtime' }) } })
+    expect(crossSpawnMock).toHaveBeenCalledWith('C:\\npm\\codex.cmd', ['--version'], expect.objectContaining({ windowsHide: true, stdio: 'pipe' }))
+  })
+
   it('informa ausência dos arquivos de configuração sem inventar catálogo', async () => {
     installedClis()
     const home = fakeHome()
@@ -61,7 +96,7 @@ describe('detecção de CLIs de agente instaladas', () => {
     }`)
     const { detectProviders } = await import('./detect')
     expect((await detectProviders(home)).find(p => p.id === 'opencode')?.models).toEqual([
-      { id: 'modelo', name: 'https://example.test/a//b/*literal*/' },
+      { id: 'local/modelo', name: 'https://example.test/a//b/*literal*/' },
     ])
   })
 
@@ -72,8 +107,8 @@ describe('detecção de CLIs de agente instaladas', () => {
     writeFileSync(join(home, '.config', 'opencode', 'opencode.json'), JSON.stringify({ provider: { missing: null, broken: { models: 'oops' }, valid: { models: { okay: { name: 12 }, invalid: null } } } }))
     const { detectProviders } = await import('./detect')
     const providers = await detectProviders(home)
-    expect(providers.find(p => p.id === 'pi')?.models).toEqual([{ id: 'valid', name: 'valid' }])
-    expect(providers.find(p => p.id === 'opencode')?.models).toEqual([{ id: 'okay', name: 'okay' }])
+    expect(providers.find(p => p.id === 'pi')?.models).toEqual([{ id: 'local/valid', name: 'valid' }])
+    expect(providers.find(p => p.id === 'opencode')?.models).toEqual([{ id: 'valid/okay', name: 'okay' }])
   })
 
   it('recusa JSONC com erro de sintaxe em vez de aceitar o resultado parcial do parser', async () => {
@@ -119,32 +154,35 @@ describe('detecção de CLIs de agente instaladas', () => {
     expect(providers.find(p => p.id === 'pi')?.models).toHaveLength(1)
   })
 
-  it('reporta os cinco provedores, com versão para quem respondeu a --version', async () => {
+  it('reporta os cinco provedores e aceita RPC válido mesmo quando --version falha', async () => {
     execFileMock.mockImplementation((command: string, args: string[], _opts: unknown, callback: (error: unknown, result: { stdout: string; stderr: string }) => void) => {
       if (command === 'where' || command === 'which') {
-        const binary = args[0]
+        const binary = args.at(-1)!
         const known = ['codex', 'claude', 'agy', 'opencode', 'pi']
         callback(known.includes(binary) ? null : new Error('not found'), { stdout: known.includes(binary) ? `C:\\tools\\${binary}.exe\n` : '', stderr: '' })
         return
       }
       if (args[0] === '--version') {
-        if (command === 'codex') return callback(null, { stdout: 'codex-cli 0.160.1\n', stderr: '' })
-        if (command === 'claude') return callback(null, { stdout: '2.1.282 (Claude Code)\n', stderr: '' })
-        if (command === 'agy') return callback(null, { stdout: '1.4.0\n', stderr: '' })
-        if (command === 'pi') return callback(null, { stdout: '0.84.1\n', stderr: '' })
-        if (command === 'opencode') return callback(new Error('postinstall not run'), { stdout: '', stderr: '' })
+        const binary = command.split(/[\\/]/).at(-1)?.replace(/\.(?:exe|cmd|bat)$/i, '')
+        if (binary === 'codex') return callback(null, { stdout: 'codex-cli 0.160.1\n', stderr: '' })
+        if (binary === 'claude') return callback(null, { stdout: '2.1.282 (Claude Code)\n', stderr: '' })
+        if (binary === 'agy') return callback(null, { stdout: '1.4.0\n', stderr: '' })
+        if (binary === 'pi') return callback(new Error('version timeout'), { stdout: '', stderr: '' })
+        if (binary === 'opencode') return callback(new Error('postinstall not run'), { stdout: '', stderr: '' })
       }
       callback(new Error('unexpected call: ' + command), { stdout: '', stderr: '' })
     })
     const { detectProviders } = await import('./detect')
-    const providers = await detectProviders(fakeHome())
+    const providers = await detectProviders(fakeHome(), { runtimeModels: {
+      pi: async () => ({ models: [{ id: 'anthropic/claude-opus-4-6', name: 'claude-opus-4-6 (anthropic)' }], source: 'runtime' }),
+    } })
     expect(providers.find(p => p.id === 'codex')).toMatchObject({ found: true, version: 'codex-cli 0.160.1', models: null })
     expect(providers.find(p => p.id === 'claude')).toMatchObject({ found: true, version: '2.1.282 (Claude Code)', models: null })
     // Antigravity não tem fonte local conhecida de modelos ainda; listar exigiria chamar o CLI, que pode travar esperando login.
     expect(providers.find(p => p.id === 'antigravity')).toMatchObject({ found: true, version: '1.4.0', models: null })
     // Instalado mas com --version falhando continua "encontrado", só sem versão.
-    expect(providers.find(p => p.id === 'opencode')).toMatchObject({ found: true, version: null, models: [{ id: 'oc/big-pickle', name: 'oc/big-pickle' }] })
-    expect(providers.find(p => p.id === 'pi')).toMatchObject({ found: true, version: '0.84.1', models: [{ id: 'claude-opus-4-6', name: 'claude-opus-4-6 (anthropic)' }] })
+    expect(providers.find(p => p.id === 'opencode')).toMatchObject({ found: true, version: null, models: [{ id: '9router/oc/big-pickle', name: 'oc/big-pickle' }] })
+    expect(providers.find(p => p.id === 'pi')).toMatchObject({ found: true, operational: true, executable: true, version: null, modelReason: undefined, models: [{ id: 'anthropic/claude-opus-4-6', name: 'claude-opus-4-6 (anthropic)' }] })
   })
 
   it('marca como não encontrado quando o binário não está no PATH', async () => {

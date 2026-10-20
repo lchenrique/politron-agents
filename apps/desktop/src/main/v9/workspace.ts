@@ -21,6 +21,8 @@ import { ClaudeCredentialStore } from './credentials'
 import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
 import { SkillsService } from './skills/service'
 
+const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
+
 type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
 const MAX_COMMAND_OUTPUT = 32_000
@@ -305,7 +307,7 @@ export class AppService extends EventEmitter {
       const modelRuntime = selectedRuntime || agents[0]?.runtime || 'codex'
       const available = await (this.cachedModels ? this.cachedModels(modelRuntime) : this.runtimeFor(modelRuntime).models())
       selectedCatalog = available.find(item => item.id === selectedModel)
-      if (!selectedCatalog) throw new Error(`O modelo selecionado não está disponível no ${selectedRuntime === 'claude' ? 'Claude' : 'Codex'}.`)
+      if (!selectedCatalog) throw new Error(`O modelo selecionado não está disponível no ${RUNTIME_LABELS[modelRuntime]}.`)
     }
     if (effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço selecionado inválido.')
     if (effort && selectedCatalog?.supportedEfforts && !selectedCatalog.supportedEfforts.includes(effort)) throw new Error('O modelo selecionado não aceita esse nível de esforço.')
@@ -485,14 +487,14 @@ export class AppService extends EventEmitter {
   async saveOpenRouterDecisionModel(modelId: string) { await this.decisionRouting.saveModel(modelId) }
   async clearOpenRouterDecision() { await this.decisionRouting.clear() }
   async models(runtimeName?: Agent['runtime']): Promise<Model[]> {
-    const withProvider = (name: Agent['runtime'], models: Model[]) => models.map(model => ({ ...model, runtime: name, id: `${name}:${model.id}`, name: `${model.name} · ${name === 'claude' ? 'Claude' : name === 'pi' ? 'Pi' : 'Codex'}` }))
+    const withProvider = (name: Agent['runtime'], models: Model[]) => models.map(model => ({ ...model, runtime: name, id: `${name}:${model.id}`, name: `${model.name} · ${RUNTIME_LABELS[name]}` }))
     // Prazo de espera de 12 s; não fecha o runtime compartilhado por conversas ativas.
     const load = async (name: Agent['runtime']) => {
       let timer: ReturnType<typeof setTimeout> | undefined
       try {
         const models = await Promise.race([
           Promise.resolve().then(() => this.cachedModels ? this.cachedModels(name) : this.runtimeFor(name).models()),
-          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`Tempo limite ao consultar modelos do ${name === 'claude' ? 'Claude' : 'Codex'}.`)), 12_000) }),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`Tempo limite ao consultar modelos do ${RUNTIME_LABELS[name]}.`)), 12_000) }),
         ])
         return withProvider(name, models)
       } finally { if (timer) clearTimeout(timer) }
@@ -590,6 +592,9 @@ export class AppService extends EventEmitter {
     if (['completed', 'interrupted', 'failed'].includes(context.run.status)) return
     if (context.flushTimer) clearTimeout(context.flushTimer)
     context.run.status = status; this.store.putRun(context.run); this.updateMessage(context.message, status, value || (status === 'completed' ? '(Sem resposta em texto.)' : ''))
+    // Encerra também as esperas de aprovação: uma decisão tardia não pode executar
+    // uma ferramenta depois de timeout, falha de protocolo ou interrupção do motor.
+    if (status === 'failed' || status === 'interrupted') this.active.get(context.run.id)?.abort()
     if (status === 'completed') this.notifyWhenAway(context.conversation.id, 'Tarefa concluída', `${context.agent.name} concluiu a resposta.`)
     else if (status === 'failed') this.notifyWhenAway(context.conversation.id, 'Tarefa precisa de atenção', `${context.agent.name} não conseguiu concluir a resposta.`)
   }
