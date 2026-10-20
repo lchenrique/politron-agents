@@ -8,6 +8,10 @@ O Boobot está em desenvolvimento e ainda não possui instalador público nem li
 
 O nome público passou a ser **Boobot** e o personalizador de personagens chama-se **Boo Studio**. Identificadores históricos e o arquivo de banco `politron-v9.sqlite` continuam inalterados para preservar dados existentes.
 
+## Instalador Windows (beta privada)
+
+O projeto agora inclui empacotamento NSIS para Windows x64 com `npm run dist:win`. O instalador gerado é apenas para testes privados, sem assinatura digital e sem licença pública definida. Veja [Instalação e conexão entre dois computadores](docs/INSTALACAO-HOST-BOOBOT.md) para configurar o host pela rede local/VPN ou por SSH e conhecer as limitações.
+
 ## Começar
 
 ```powershell
@@ -32,3 +36,8 @@ Os comandos de qualidade disponíveis estão em [`docs/quality.md`](docs/quality
 - `docs/arquivo/`: registros e propostas históricas; consultar as fontes vigentes para decisões atuais.
 
 Os documentos descrevem requisitos, decisões ou evidências conforme indicado em cada fonte. A presença de um requisito não prova que a funcionalidade está concluída.
+
+
+## Website
+
+Landing page estática em `site/`, com identidade visual Boobot e instruções em [site/README.md](site/README.md). Ainda sem hospedagem ou downloads públicos.

@@ -1,6 +1,6 @@
 {
   "name": "boobot-desktop",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.1",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
@@ -17,7 +17,9 @@
     "test:models": "vitest run src/main/v9/providers/detect.test.ts src/main/v9/model-catalog.test.ts src/renderer/src/features/app/SettingsPage.test.tsx",
     "test:voice": "vitest run src/main/v9/voice src/main/v9/realtime src/main/v9/openrouter-voice src/main/v9/pit-voices",
     "test:performance": "set POLITRON_RUN_PERFORMANCE=1&& vitest run src/main/v9/snapshot.performance.test.ts",
-    "verify": "npm run quality:rules && npm run lint && npm run lint:typed && npm run typecheck && npm test && npm run build"
+    "verify": "npm run quality:rules && npm run lint && npm run lint:typed && npm run typecheck && npm test && npm run build",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "pack:win": "npm run build && electron-builder --win dir --x64 --publish never"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.301",
@@ -81,6 +83,7 @@
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "electron": "^40.0.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^3.0.0",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",

@@ -1,0 +1,32 @@
+appId: dev.boobot.desktop
+productName: Boobot
+directories:
+  output: dist
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.map"
+  - "!**/.env"
+  - "!**/.env.*"
+asar: true
+# As dependências nativas devem ser validadas no Electron empacotado.
+# O rebuild automático de node-pty falha no caminho original com espaços.
+npmRebuild: false
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+  - "**/node_modules/sherpa-onnx-node/**"
+win:
+  icon: branding/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  executableName: Boobot
+nsis:
+  artifactName: Boobot-Setup-${version}-${arch}.${ext}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: false

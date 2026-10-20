@@ -1,7 +1,8 @@
 import 'dotenv/config'
 import { app, BrowserWindow, shell, Tray, Menu, nativeImage, screen } from 'electron'
-import { join } from 'path'
-import { existsSync } from 'node:fs'
+import { join, resolve, sep } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerTerminalHandlers } from './ipc/terminal'
 import { registerWindowControlHandlers } from './ipc/window-controls'
@@ -45,7 +46,17 @@ let hosts: HostManager | null = null
 const previousUserData = join(app.getPath('appData'), 'politron-desktop')
 const currentUserData = join(app.getPath('appData'), 'boobot-desktop')
 app.setName('Boobot')
-app.setPath('userData', existsSync(previousUserData) ? previousUserData : currentUserData)
+// Somente a suíte Electron pode usar um perfil isolado dentro do TEMP.
+// O uso normal preserva os dados existentes de Politron/Boobot.
+const isolatedTestData = process.env.BOOBOT_E2E_USER_DATA_DIR?.trim()
+if (isolatedTestData) {
+  const testPath = resolve(isolatedTestData)
+  if (!testPath.toLowerCase().startsWith((resolve(tmpdir()) + sep).toLowerCase())) throw new Error('Perfil E2E fora da pasta temporária.')
+  mkdirSync(testPath, { recursive: true })
+  app.setPath('userData', testPath)
+} else {
+  app.setPath('userData', existsSync(previousUserData) ? previousUserData : currentUserData)
+}
 
 // Disable GPU acceleration for Windows sandbox compatibility
 app.disableHardwareAcceleration()

@@ -24,7 +24,10 @@ async function open(name) {
   const bootstrap = path.join(root, name + '.cjs')
   fs.writeFileSync(bootstrap, `const{app}=require('electron');app.setPath('appData',${JSON.stringify(profile)});require(${JSON.stringify(path.join(cwd,'out/main/index.js'))});`)
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL
-  const app = await _electron.launch({ executablePath: require('electron'), args: [bootstrap], cwd, env, timeout: 60_000 })
+  const packaged = name === 'client' && process.env.BOOBOT_TEST_PACKAGED_CLIENT === '1'
+  if (packaged) env.BOOBOT_E2E_USER_DATA_DIR = profile
+  const executablePath = packaged ? path.join(cwd, 'dist', 'win-unpacked', 'Boobot.exe') : require('electron')
+  const app = await _electron.launch({ executablePath, args: packaged ? [] : [bootstrap], cwd, env, timeout: 60_000 })
   apps.push(app)
   const page = await app.firstWindow()
   page.on('pageerror', error => log('renderer-error', error.message))

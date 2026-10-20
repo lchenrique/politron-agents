@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#090c1c">
+<meta name="description" content="Boobot é o aplicativo desktop para trabalhar com seus Boos, agentes de IA que ajudam a planejar, programar e evoluir seus projetos.">
+<meta property="og:title" content="Boobot — Crie mais com seus Boos">
+<meta property="og:description" content="Seus projetos. Seus agentes. Sua maneira de criar. Conheça o Boobot.">
+<meta property="og:type" content="website">
+<title>Boobot — Seus projetos. Seus Boos.</title>
+<link rel="icon" href="./assets/boobot-logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+<script src="./app.js" defer></script>
+</head>
+<body>
+<div class="site-glow" aria-hidden="true"></div>
+<div class="announcement"><span class="alive"></span> Estamos construindo algo especial. <a href="#beta">Conheça a beta privada <span aria-hidden="true">↗</span></a></div>
+<header class="site-header">
+<div class="container nav-wrap">
+<a href="#inicio" class="brand" aria-label="Boobot, início"><img src="./assets/boobot-logo.svg" alt="" width="43" height="43"><span>Boo<span>bot</span><i>.</i></span></a>
+<button class="menu-toggle" aria-controls="menu" aria-expanded="false" aria-label="Abrir menu"><span></span><span></span><span></span></button>
+<nav class="nav-menu" id="menu" aria-label="Navegação principal"><a href="#recursos">Recursos</a><a href="#como-funciona">Como funciona</a><a href="#boos">Os Boos</a><a href="#perguntas">Perguntas</a><a class="nav-cta" href="#beta">Conhecer o Boobot <span aria-hidden="true">↗</span></a></nav>
+</div>
+</header>
+<main>
+<section class="hero container" id="inicio">
+<div class="hero-copy">
+<div class="eyebrow"><span class="eyebrow-line"></span> SEU NOVO JEITO DE CRIAR COM IA <span class="eyebrow-spark">✳</span></div>
+<h1>Grandes ideias.<br>Pequenos <span class="gradient-text">Boos.</span><br>Projetos incríveis.</h1>
+<p>Conheça seus novos parceiros de criação. Uma equipe de agentes de IA que entende seu contexto, ajuda a escrever código e trabalha com você, do primeiro rascunho ao próximo deploy.</p>
+<div class="hero-actions"><a href="#beta" class="btn btn-primary">Conhecer a beta <span aria-hidden="true">↗</span></a><a href="#como-funciona" class="btn btn-ghost"><span class="play-icon">▶</span> Veja como funciona</a></div>
+<div class="hero-proof"><div class="tiny-avatars"><span>●</span><span>●</span><span>●</span></div><p>Um Boo para cada ideia.<br><strong>Um só lugar para criar.</strong></p></div>
+</div>
+<div class="hero-art" aria-label="Ilustração dos agentes Boobot interagindo com projetos">
+<div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+<div class="spark star-a">✦</div><div class="spark star-b">✳</div><div class="spark star-c">✦</div>
+<div class="floating-card code-mini"><div class="code-mini-top"><span class="window-dots"><b></b><b></b><b></b></span><span>projeto.tsx</span></div><div class="code-lines"><i></i><i></i><i></i><i></i><i></i></div><span class="mini-check">✓ Pronto</span></div>
+<div class="floating-card prompt-mini"><span class="prompt-icon">✦</span><span>Como posso ajudar?</span><span class="prompt-send">↗</span></div>
+<div class="mascot-halo"></div><img class="main-mascot" src="./assets/boobot-logo.svg" alt="Boobot: mascote robô sorridente com olhos azuis">
+<div class="side-buddy buddy-one">✴ <span>Seu time de IA</span></div><div class="side-buddy buddy-two"><span class="online-indicator"></span> 3 Boos ativos</div>
+<div class="art-bottom">MAIS IMAGINAÇÃO. MENOS LIMITES.</div>
+</div>
+</section>
+<div class="section-divider container"><span>CRIADO PARA QUEM TIRA IDEIAS DO PAPEL</span><span>✳</span></div>
+<section class="features container" id="recursos"><div class="section-kicker">✦ POR QUE BOOBOT?</div><div class="section-heading"><h2>Sua criatividade tem<br><span class="gradient-text">um novo time.</span></h2><p>Menos janelas, menos troca de contexto, mais tempo para criar o que realmente importa.</p></div>
+<div class="feature-grid">
+<article class="feature feature-wide"><div class="feature-copy"><span class="feature-index">01 / WORKSPACES</span><h3>Seus projetos.<br>Sem perder o fio.</h3><p>Organize conversas, contexto, arquivos e tarefas por projeto. Seus Boos trabalham com o código que você já tem.</p></div><div class="workspace-illustration" aria-label="Exemplo visual de um workspace"><div class="visual-sidebar"><div class="visual-circle purple"></div><span>Meus projetos</span><div class="project-selected">◈ &nbsp; Meu aplicativo</div><div>▱ &nbsp; Website</div><div>⌘ &nbsp; Automação</div></div><div class="visual-editor"><div class="editor-heading"><span>meu-projeto / src</span><span class="status-pill">● Em andamento</span></div><div class="file-tags"><span>App.tsx</span><span>styles.css</span></div><div class="fake-code"><div><em>01</em> <b>import</b> React <b>from</b> <strong>'react'</strong></div><div><em>02</em></div><div><em>03</em> <b>export default function</b> App() {</div><div><em>04</em> &nbsp;&nbsp;<b>return</b> &lt;<strong>MyBigIdea</strong> /&gt;</div><div><em>05</em> }</div></div></div></div></article>
+<article class="feature feature-small violet"><span class="feature-index">02 / EQUIPE</span><div class="feature-visual boo-stack"><img src="./assets/boobot-logo.svg" alt=""><div class="boo-bubble coral">✦</div><div class="boo-bubble lilac">⌘</div></div><h3>Um Boo não é<br>o bastante?</h3><p>Crie vários agentes, personalize suas funções e organize trabalhos em equipe.</p></article>
+<article class="feature feature-small blue"><span class="feature-index">03 / CONTROLE</span><div class="feature-visual action-visual"><span class="action-orbit"></span><span class="action-arrow">↗</span><span class="action-check">✓</span></div><h3>IA com você<br>no controle.</h3><p>Revise alterações, acompanhe os diffs e aprove as ações necessárias.</p></article>
+<article class="feature feature-full"><div><span class="feature-index">04 / HOSTS</span><h3>Suas ideias vão com você.<br><span class="muted-line">Seu trabalho fica onde precisa.</span></h3><p>Conecte o Boobot entre computadores via rede local, VPN ou SSH. Trabalhe de um lugar enquanto seus projetos ficam em outro.</p></div><div class="host-diagram" aria-label="Dois computadores conectados"><span class="device">⌘ <small>PC local</small></span><span class="connecting-line"><i></i><i></i><i></i> ↔ </span><span class="device">▣ <small>Host</small></span></div></article>
+</div></section>
+<section class="how-section" id="como-funciona"><div class="container how-inner"><div class="section-kicker">✦ SIMPLES ASSIM</div><h2>Da ideia ao código,<br><span class="gradient-text">com companhia.</span></h2><div class="steps"><div class="step"><span class="step-number">01</span><h3>Abra seu projeto</h3><p>Escolha uma pasta no computador e comece uma conversa.</p></div><div class="step"><span class="step-number">02</span><h3>Escolha seus Boos</h3><p>Configure agentes, modelos e permissões do seu jeito.</p></div><div class="step"><span class="step-number">03</span><h3>Crie em conjunto</h3><p>Peça ajuda, confira alterações e evolua uma tarefa de cada vez.</p></div></div></div></section>
+<section class="boos-section container" id="boos"><div class="boos-panel"><div class="boos-copy"><div class="section-kicker">✦ CONHEÇA A TURMA</div><h2>Um universo<br>de <span class="gradient-text">Boos.</span></h2><p>Dê nome, escolha a personalidade, mude as cores e monte sua própria equipe. Cada Boo pode ter um papel diferente na sua jornada.</p><div class="tag-row"><span>Design</span><span>Código</span><span>Pesquisa</span><span>Testes</span><span>E o que você imaginar</span></div><a href="#beta" class="text-link">Conhecer o Boo Studio <span>↗</span></a></div><div class="boos-visual"><div class="boo-shadow boo-purple"><img src="./assets/boobot-logo.svg" alt=""></div><div class="boo-shadow boo-blue"><img src="./assets/boobot-logo.svg" alt=""></div><div class="boo-shadow boo-pink"><img src="./assets/boobot-logo.svg" alt=""></div><span class="boo-caption">sua equipe, seu estilo ✦</span></div></div></section>
+<section class="faq container" id="perguntas"><div class="section-kicker">✦ PERGUNTAS FREQUENTES</div><h2>Uma ajudinha<br><span class="gradient-text">antes de começar?</span></h2><div class="faq-list"><details><summary>O que é o Boobot? <span>+</span></summary><p>É um aplicativo desktop para você conversar com agentes de IA chamados Boos e trabalhar com eles em projetos de programação e criação.</p></details><details><summary>Os Boos podem modificar meu código? <span>+</span></summary><p>Com um runtime configurado e as permissões certas, eles podem ajudar a ler, criar e alterar arquivos. Revise alterações e mantenha seus projetos versionados.</p></details><details><summary>Preciso usar vários agentes? <span>+</span></summary><p>Não. Você pode começar com uma única conversa e adicionar outros Boos quando fizer sentido.</p></details><details><summary>Posso usar em outro computador? <span>+</span></summary><p>O recurso de hosts permite conexões via rede local, VPN ou SSH. A versão está em beta e ainda precisa de mais testes entre computadores físicos.</p></details><details><summary>Já posso baixar o Boobot? <span>+</span></summary><p>Uma versão beta privada para Windows está sendo testada. Ainda não há um download público oficial; acompanhe esta página para a futura liberação.</p></details></div></section>
+<section class="beta-section container" id="beta"><div class="beta-panel"><div class="beta-glow"></div><img src="./assets/boobot-logo.svg" alt="" class="beta-mascot"><div class="section-kicker">✦ A JORNADA ESTÁ SÓ COMEÇANDO</div><h2>Ideias grandes merecem<br><span>bons companheiros.</span></h2><p>O Boobot está em beta privada para Windows. Estamos finalizando os últimos detalhes antes de abrir o acesso.</p><span class="beta-label"><span class="alive"></span> Windows • Beta privada • Em desenvolvimento</span><a href="#inicio" class="btn btn-white">Voltar ao início ↑</a></div></section>
+</main>
+<footer class="footer container"><a href="#inicio" class="brand footer-brand"><img src="./assets/boobot-logo.svg" alt="" width="36" height="36"><span>Boo<span>bot</span><i>.</i></span></a><p>Seus projetos. Seus Boos. Seu jeito.</p><span>© <span id="year">2026</span> Boobot. Feito para quem cria.</span></footer>
+</body>
+</html>
