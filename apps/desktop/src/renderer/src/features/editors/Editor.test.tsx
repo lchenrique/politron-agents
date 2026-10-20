@@ -105,7 +105,7 @@ describe('editor de agentes com Poli Studio', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Ativar animações' }))
     fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'poli-1', color: '#4098eb', pitsAnimate: false, pitsShape: 'round',
+      id: 'poli-1', color: '#4098eb', pitsAnimate: false, pitsShape: 'ghost-wave',
     })))
   })
 })

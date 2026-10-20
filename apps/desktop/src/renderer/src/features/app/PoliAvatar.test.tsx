@@ -79,7 +79,7 @@ describe('Poli / avatar de agente', () => {
     expect(screen.getByText('Intensidade do rosado')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Restaurar aparência' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      pitsShape: 'round', pitsBodyWidth: 1, pitsBodyHeight: 1, pitsMouthSize: 1,
+      pitsShape: 'ghost-wave', pitsBodyWidth: 1, pitsBodyHeight: 1, pitsMouthSize: 1,
       pitsBlushStrength: .45, pitsAura: true, pitsAccessory: 'none',
     }))
     expect(onReset).toHaveBeenCalledOnce()

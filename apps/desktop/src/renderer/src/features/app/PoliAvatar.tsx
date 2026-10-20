@@ -108,7 +108,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
   const stroke = { fill: 'none', stroke: eyeColor, strokeWidth: 5, strokeLinecap: 'round', strokeLinejoin: 'round' } as const
   const mouth = { fill: 'none', stroke: '#fff', strokeWidth: 5, strokeLinecap: 'round', strokeLinejoin: 'round' } as const
   const blushOpacity = mood === 'love' ? Math.max(.85, agent.pitsBlushStrength ?? .45) : Math.max(0, Math.min(1, agent.pitsBlushStrength ?? .45))
-  const shape = agent.pitsShape || 'round'
+  const shape = agent.pitsShape || 'ghost-wave'
 
   const headAccessory = agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')
   const faceAccessory = agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')

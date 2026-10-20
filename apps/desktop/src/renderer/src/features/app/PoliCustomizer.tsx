@@ -30,7 +30,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
     <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
       <div><h3 className="text-sm font-semibold">Boo Studio</h3><p className="text-[11px] text-muted-foreground">Personalize o seu agente em tempo real</p></div>
       <div className="flex shrink-0 items-center gap-2">
-        <button type="button" onClick={() => { onChange({ ...DEFAULT_BOO_APPEARANCE }); onReset?.() }} title="Volta ao formato bolinha e valores visuais originais. Clique em Salvar para confirmar." className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent">Restaurar aparência</button>
+        <button type="button" onClick={() => { onChange({ ...DEFAULT_BOO_APPEARANCE }); onReset?.() }} title="Volta ao formato Boo (ondinha) e valores visuais originais. Clique em Salvar para confirmar." className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent">Restaurar aparência</button>
         <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] text-primary">SVG animado</span>
       </div>
     </div>
@@ -60,9 +60,9 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
               <Range label="Altura do corpo" value={Math.round((agent.pitsBodyHeight ?? 1)*100)} min={75} max={125} step={5} unit="%" onChange={value => onChange({pitsBodyHeight:value/100})} />
               <div className="grid grid-cols-3 gap-2" role="group" aria-label="Formatos pré-definidos">
                 {BOO_SHAPE_PRESETS.map(({ value, label }) => (
-                  <button key={value} type="button" aria-pressed={(agent.pitsShape || 'round') === value}
+                  <button key={value} type="button" aria-pressed={(agent.pitsShape || 'ghost-wave') === value}
                     onClick={() => onChange({ pitsShape: value })}
-                    className={['flex flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-[11px] transition-colors', (agent.pitsShape || 'round') === value ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-accent'].join(' ')}>
+                    className={['flex flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-[11px] transition-colors', (agent.pitsShape || 'ghost-wave') === value ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-accent'].join(' ')}>
                     <svg viewBox="28 0 185 200" className="size-11" aria-hidden="true">
                       <path d={BOO_BODY_PATHS[value]} fill={agent.color || '#786bea'} />
                       <ellipse cx="94" cy="94" rx="8" ry="12" fill={agent.pitsEyeColor || '#fff'} />

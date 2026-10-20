@@ -39,7 +39,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
       : allowedEfforts[0]
   // Cada Pit novo sorteia uma cor da paleta; editar um agente existente preserva a cor já escolhida.
   const [color, setColor] = useState((initial as Agent | undefined)?.color || randomPitColor())
-  const [pitsShape, setPitsShape] = useState((initial as Agent | undefined)?.pitsShape || 'round')
+  const [pitsShape, setPitsShape] = useState((initial as Agent | undefined)?.pitsShape || 'ghost-wave')
   const [pits, setPits] = useState<Partial<Agent>>(() => {
     const agent = initial as Agent | undefined
     return { pitsAccessory: agent?.pitsAccessory, pitsHeadAccessory: agent?.pitsHeadAccessory, pitsFaceAccessory: agent?.pitsFaceAccessory, pitsBodyWidth: agent?.pitsBodyWidth, pitsBodyHeight: agent?.pitsBodyHeight, pitsMouthSize: agent?.pitsMouthSize, pitsBlushStrength: agent?.pitsBlushStrength, pitsEyeColor: agent?.pitsEyeColor, pitsEyeSize: agent?.pitsEyeSize, pitsEyeSpacing: agent?.pitsEyeSpacing, pitsCheekColor: agent?.pitsCheekColor, pitsBlush: agent?.pitsBlush, pitsAura: agent?.pitsAura, pitsAnimate: agent?.pitsAnimate, pitsSpeed: agent?.pitsSpeed, pitsAmplitude: agent?.pitsAmplitude }

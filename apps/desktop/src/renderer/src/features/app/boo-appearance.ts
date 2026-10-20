@@ -17,8 +17,8 @@ export const BOO_BODY_PATHS: Record<NonNullable<Agent['pitsShape']>, string> = {
 }
 
 export const BOO_SHAPE_PRESETS: { value: NonNullable<Agent['pitsShape']>; label: string }[] = [
-  { value: 'round', label: 'Bolinha' },
   { value: 'ghost-wave', label: 'Ondinha' },
+  { value: 'round', label: 'Bolinha' },
   { value: 'ghost-puff', label: 'Fofinho' },
   { value: 'ghost-peak', label: 'Pontudinho' },
   { value: 'drop', label: 'Gota' },
@@ -30,7 +30,7 @@ export const BOO_SHAPE_PRESETS: { value: NonNullable<Agent['pitsShape']>; label:
 /** Restaura somente o visual, mantendo identidade, instruções, modelo e permissões. */
 export const DEFAULT_BOO_APPEARANCE: Partial<Agent> = {
   color: '#786bea',
-  pitsShape: 'round',
+  pitsShape: 'ghost-wave',
   pitsAccessory: 'none',
   pitsHeadAccessory: 'none',
   pitsFaceAccessory: 'none',
