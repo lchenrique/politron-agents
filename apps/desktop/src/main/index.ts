@@ -17,6 +17,7 @@ import { readOpenCodeModels } from './v9/opencode-models'
 import { SkillsService, registerSkillsIpc } from './v9/skills/service'
 import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
+import { initAutoUpdater } from './v9/auto-updater'
 
 process.on('uncaughtException', (error) => {
   console.error('[Main] uncaughtException', error)
@@ -271,6 +272,7 @@ app.whenReady().then(async () => {
   mainWindow = createAppWindow(createWindow)
   createTray()
   console.log('[Main] Main window reference stored')
+  initAutoUpdater()
 
   app.on('activate', () => {
     showMainWindow()

@@ -8,6 +8,10 @@ files:
   - "!**/*.map"
   - "!**/.env"
   - "!**/.env.*"
+  # As CLIs são detectadas na máquina; não duplicar o executável Claude do SDK.
+  - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+  # O renderer já contém o editor e seus workers compilados pelo Vite.
+  - "!**/node_modules/monaco-editor/**"
 asar: true
 # As dependências nativas devem ser validadas no Electron empacotado.
 # O rebuild automático de node-pty falha no caminho original com espaços.
@@ -31,3 +35,11 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   runAfterFinish: false
+# Repositório é privado: o app rodando não consegue checar/baixar releases sem
+# um token, e não dá pra embutir token de acesso num instalador distribuído.
+# Só funciona de verdade se o repo virar público ou as releases saírem daqui
+# pra um host público (ex.: bucket HTTP com provider "generic").
+publish:
+  provider: github
+  owner: lchenrique
+  repo: politron-agents
