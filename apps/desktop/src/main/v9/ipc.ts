@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, dialog } from 'electron'
 import type { AppService } from './workspace'
 import { VoiceService } from './voice'
 import type { HostRouting } from '../hosts/rpc'
@@ -54,6 +54,18 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('pitVoices', () => voice.pitVoices())
   invoke('setPitVoice', (voiceId, agentId) => voice.setPitVoice(voiceId, agentId))
   invoke('pitVoiceSample', (voiceId) => voice.pitVoiceSample(voiceId))
+  invoke('pocketVoices', () => voice.pocketVoices())
+  invoke('setPocketVoice', (voiceId, agentId) => voice.setPocketVoice(voiceId, agentId))
+  invoke('optimizePocketVoice', (voiceId) => voice.optimizePocketVoice(voiceId))
+  invoke('importPocketVoice', async () => {
+    const selected = await dialog.showOpenDialog({
+      title: 'Importar uma voz local para Boo',
+      properties: ['openFile'],
+      filters: [{ name: 'Voz de referência', extensions: ['wav', 'mp3', 'safetensors'] }],
+    })
+    if (selected.canceled || selected.filePaths.length !== 1) return null
+    return voice.importPocketVoice(selected.filePaths[0])
+  })
   invoke('voiceInstall', (mode) => voice.install(mode))
   invoke('voiceTranscribe', (wav) => voice.transcribe(wav))
   invoke('voiceSpeak', (text, speed, agentId) => voice.speak(text, speed, agentId))
@@ -78,6 +90,6 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     service.off('workspace-event', send)
     voice.close()
     ipcMain.removeHandler('v9:clearClaudeCredential')
-    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

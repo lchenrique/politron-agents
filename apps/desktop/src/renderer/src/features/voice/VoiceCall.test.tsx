@@ -48,6 +48,30 @@ describe('ligação local com os Pits', () => {
     expect(await screen.findByText(/Somente Fish Audio S2.1 Pro Free será utilizado/)).toBeInTheDocument()
   })
 
+  it('exibe identidades PocketTTS offline por Boo e importa sem API externa', async () => {
+    const voices = {
+      installed: true, choices: [
+        { id: 'rafael', name: 'Rafael (referência padrão PT)' },
+        { id: 'boo_dora', name: 'Boo · Dora' }
+      ],
+      selection: { defaultVoiceId: 'rafael', agentVoiceIds: { 'agent-a': 'boo_dora' } }
+    }
+    const importVoice = vi.fn().mockResolvedValue(voices)
+    const pocketVoices = vi.fn().mockResolvedValue(voices)
+    vi.stubGlobal('appAPI', {
+      voiceStatus: vi.fn().mockResolvedValue({ transcription: true, speech: true, engine: 'pocket-tts',
+        language: 'pt-BR', pocketSpeechInstalled: true }),
+      pocketVoices, importPocketVoice: importVoice,
+    })
+    render(<VoiceCall open agents={[agent]} messages={[]} onSend={vi.fn()} onClose={vi.fn()} />)
+    expect(await screen.findByText(/Vozes locais dos Boos/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Voz geral PocketTTS')).toBeInTheDocument()
+    expect(screen.getByLabelText('Voz PocketTTS de Atlas')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Importar voz local' }))
+    await waitFor(() => expect(importVoice).toHaveBeenCalledTimes(1))
+    expect(pocketVoices).toHaveBeenCalledOnce()
+  })
+
   it('transcreve localmente e envia ao agente selecionado', async () => {
     const send = vi.fn().mockResolvedValue(undefined)
     render(<VoiceCall open agents={[agent]} messages={[]} onSend={send} onClose={vi.fn()} />)

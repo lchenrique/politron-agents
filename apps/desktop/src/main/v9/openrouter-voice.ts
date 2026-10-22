@@ -8,7 +8,7 @@ const SEED_TEXT = 'Olá! Sou uma voz do Boobot. Estou aqui para conversar com vo
 const PT_BR_INSTRUCTIONS = 'Speak only in native Brazilian Portuguese, with a consistent natural Brazilian accent and one single voice. Do not switch speakers or voices.'
 const MAX_AUDIO = 12_000_000
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,100}$/
-export type VoiceProvider = 'openrouter' | 'local' | 'pits'
+export type VoiceProvider = 'openrouter' | 'local' | 'pits' | 'pocket'
 
 function isMp3(data: Uint8Array): boolean {
   return (data[0] === 73 && data[1] === 68 && data[2] === 51) ||
@@ -26,13 +26,13 @@ export class OpenRouterVoiceService {
   async provider(): Promise<VoiceProvider> {
     try {
       const parsed: unknown = JSON.parse(await fs.readFile(this.settingsPath, 'utf8'))
-      if (parsed && typeof parsed === 'object' && 'provider' in parsed && (parsed.provider === 'local' || parsed.provider === 'pits')) return parsed.provider
+      if (parsed && typeof parsed === 'object' && 'provider' in parsed && (parsed.provider === 'local' || parsed.provider === 'pits' || parsed.provider === 'pocket')) return parsed.provider
     } catch { /* Use a voz gratuita como padrão. */ }
     return 'openrouter'
   }
 
   async setProvider(provider: VoiceProvider): Promise<void> {
-    if (provider !== 'openrouter' && provider !== 'local' && provider !== 'pits') throw new Error('Provedor de voz inválido.')
+    if (provider !== 'openrouter' && provider !== 'local' && provider !== 'pits' && provider !== 'pocket') throw new Error('Provedor de voz inválido.')
     await fs.mkdir(this.root, { recursive: true })
     await fs.writeFile(this.settingsPath, JSON.stringify({ provider }), { mode: 0o600 })
   }

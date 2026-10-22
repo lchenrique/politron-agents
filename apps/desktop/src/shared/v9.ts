@@ -84,9 +84,10 @@ export interface Model {
   defaultEffort?: ModelEffort
 }
 export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][] }
-export interface VoiceStatus { transcription: boolean; speech: boolean; engine: 'chatterbox-pt-br' | 'openrouter' | 'pit-voices'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }
+export interface VoiceStatus { transcription: boolean; speech: boolean; engine: 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }
 export type PitVoiceId = 'f1' | 'f2' | 'f3' | 'f4' | 'm1' | 'm1-young' | 'dora' | 'alex' | 'santa'
 export interface PitVoiceSelection { defaultVoiceId: PitVoiceId; agentVoiceIds: Record<string, PitVoiceId> }
+export interface PocketVoicesInfo { installed: boolean; choices: { id: string; name: string }[]; selection: { defaultVoiceId: string; agentVoiceIds: Record<string, string> } }
 export interface PitVoicesInfo { choices: { id: PitVoiceId; name: string; engine: string; sample: string }[]; selection: PitVoiceSelection }
 export interface DecisionModel { id: string; name: string; free?: boolean }
 export interface DecisionModelCatalog { source: 'openrouter'; models: DecisionModel[] }
@@ -137,12 +138,16 @@ export interface AppAPI {
   pitVoices(): Promise<PitVoicesInfo>
   setPitVoice(voiceId: PitVoiceId | null, agentId?: string): Promise<PitVoiceSelection>
   pitVoiceSample(voiceId: PitVoiceId): Promise<Uint8Array>
+  pocketVoices(): Promise<PocketVoicesInfo>
+  setPocketVoice(voiceId: string | null, agentId?: string): Promise<PocketVoicesInfo>
+  importPocketVoice(): Promise<PocketVoicesInfo | null>
+  optimizePocketVoice(voiceId: string): Promise<PocketVoicesInfo>
   voiceInstall(mode?: 'transcription' | 'local'): Promise<VoiceStatus>
   voiceTranscribe(wav: Uint8Array): Promise<string>
   voiceSpeak(text: string, speed?: number, agentId?: string): Promise<Uint8Array>
   voiceNew(agentId?: string): Promise<Uint8Array>
   voiceResetAgent(agentId: string): Promise<void>
-  voiceSetProvider(provider: 'openrouter' | 'local' | 'pits'): Promise<VoiceStatus>
+  voiceSetProvider(provider: 'openrouter' | 'local' | 'pits' | 'pocket'): Promise<VoiceStatus>
   voiceSaveOpenRouterKey(key: string): Promise<VoiceStatus>
   voiceClearOpenRouterKey(): Promise<VoiceStatus>
   cancelDelegation(delegationId: string): Promise<void>

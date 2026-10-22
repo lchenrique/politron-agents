@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { Agent, Message, VoiceStatus, PitVoicesInfo, PitVoiceId } from '../../../../shared/v9'
+import type { Agent, Message, VoiceStatus, PitVoicesInfo, PitVoiceId, PocketVoicesInfo } from '../../../../shared/v9'
 import { PoliAvatar } from '../app/PoliAvatar'
 import { errorText } from '../app/appShellShared'
 import { VoiceRecorder } from './voice-recorder'
@@ -22,6 +22,8 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
   const [savingKey, setSavingKey] = useState(false)
   const [apiKey, setApiKey] = useState('')
   const [pitVoices, setPitVoices] = useState<PitVoicesInfo | null>(null)
+  const [pocketVoices, setPocketVoices] = useState<PocketVoicesInfo | null>(null)
+  const [importingPocket, setImportingPocket] = useState(false)
   const [savingPreset, setSavingPreset] = useState(false)
   const [generatingVoice, setGeneratingVoice] = useState(false)
   const preview = useRef<{ player: HTMLAudioElement; url: string } | null>(null)
@@ -44,6 +46,10 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
       setStatus(value)
       if (value.engine === 'pit-voices') {
         try { const voices = await window.appAPI.pitVoices(); if (live) setPitVoices(voices) }
+        catch (cause) { if (live) setError(errorText(cause)) }
+      }
+      if (value.engine === 'pocket-tts') {
+        try { const voices = await window.appAPI.pocketVoices(); if (live) setPocketVoices(voices) }
         catch (cause) { if (live) setError(errorText(cause)) }
       }
     }, err => { if (live) setError(errorText(err)) })
@@ -96,7 +102,7 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
 
   const begin = () => {
     if (!status?.transcription) { setError('Instale o Whisper local para transcrever seu microfone.'); return }
-    if (!status.speech) { setError(status.engine === 'openrouter' ? 'Informe sua chave OpenRouter abaixo antes de ligar.' : status.engine === 'pit-voices' ? 'Instale os motores locais Supertonic e Kokoro.' : 'Instale o Chatterbox local antes de ligar.'); return }
+    if (!status.speech) { setError(status.engine === 'openrouter' ? 'Informe sua chave OpenRouter abaixo antes de ligar.' : status.engine === 'pit-voices' ? 'Instale os motores locais Supertonic e Kokoro.' : status.engine === 'pocket-tts' ? 'Instale o PocketTTS local e autorize os pesos do modelo.' : 'Instale o Chatterbox local antes de ligar.'); return }
     setError('')
     waitingFor.current = new Set(messages.filter(item => item.role === 'assistant').map(item => item.id))
     active.current = true
@@ -116,11 +122,12 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
     finally { setInstalling(false) }
   }
   const updateProvider = async (value: string) => {
-    if (value !== 'openrouter' && value !== 'local' && value !== 'pits') return
+    if (value !== 'openrouter' && value !== 'local' && value !== 'pits' && value !== 'pocket') return
     setError('')
     try {
       setStatus(await window.appAPI.voiceSetProvider(value))
       if (value === 'pits') setPitVoices(await window.appAPI.pitVoices())
+      if (value === 'pocket') setPocketVoices(await window.appAPI.pocketVoices())
     }
     catch (cause) { setError(errorText(cause)) }
   }
@@ -162,6 +169,43 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
     } catch (cause) { setError(errorText(cause)) }
     finally { setSavingPreset(false) }
   }
+  const choosePocket = async (voiceId: string, specific: boolean) => {
+    setError('')
+    try {
+      const selected = await window.appAPI.setPocketVoice(specific && voiceId === 'inherit' ? null : voiceId, specific ? agent?.id : undefined)
+      setPocketVoices(selected)
+    } catch (cause) { setError(errorText(cause)) }
+  }
+  const importPocket = async () => {
+    setImportingPocket(true); setError('')
+    try { const next = await window.appAPI.importPocketVoice(); if (next) setPocketVoices(next) }
+    catch (cause) { setError(errorText(cause)) }
+    finally { setImportingPocket(false) }
+  }
+  const optimizePocket = async () => {
+    const chosen = (agent && pocketVoices?.selection.agentVoiceIds[agent.id]) || pocketVoices?.selection.defaultVoiceId
+    if (!chosen || chosen === 'rafael') { setError('Importe uma voz própria antes de otimizar.'); return }
+    setGeneratingVoice(true); setError('')
+    try {
+      setPocketVoices(await window.appAPI.optimizePocketVoice(chosen))
+    } catch (cause) { setError(errorText(cause)) }
+    finally { setGeneratingVoice(false) }
+  }
+  const previewPocket = async () => {
+    setError('')
+    setGeneratingVoice(true)
+    try {
+      const bytes = await window.appAPI.voiceSpeak('Olá, eu sou um Boo. Vamos criar algo juntos!', 1, agent?.id)
+      const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+      preview.current?.player.pause()
+      if (preview.current) URL.revokeObjectURL(preview.current.url)
+      const url = URL.createObjectURL(new Blob([new Uint8Array(data)], { type: 'audio/wav' }))
+      const player = new Audio(url)
+      preview.current = { url, player }
+      await player.play()
+    } catch (cause) { setError(errorText(cause)) }
+    finally { setGeneratingVoice(false) }
+  }
   const previewPreset = async (voiceId: PitVoiceId) => {
     setError('')
     try {
@@ -201,10 +245,11 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
         {status && <div className="w-full space-y-2 rounded-lg border border-border/60 p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium">Motor de voz</span>
-            <Select value={status.engine === 'pit-voices' ? 'pits' : status.engine === 'openrouter' ? 'openrouter' : 'local'} onValueChange={value => void updateProvider(value)}>
+            <Select value={status.engine === 'pit-voices' ? 'pits' : status.engine === 'pocket-tts' ? 'pocket' : status.engine === 'openrouter' ? 'openrouter' : 'local'} onValueChange={value => void updateProvider(value)}>
               <SelectTrigger className="h-8 w-[190px] text-xs" aria-label="Motor de voz"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="pits">Vozes dos Boos · local</SelectItem>
+                <SelectItem value="pocket">PocketTTS · vozes próprias locais</SelectItem>
                 <SelectItem value="openrouter">OpenRouter · Fish Audio grátis</SelectItem>
                 <SelectItem value="local">Chatterbox · local</SelectItem>
               </SelectContent>
@@ -229,6 +274,32 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
               <Button type="button" size="sm" variant="outline" aria-label={'Ouvir voz de ' + agent.name} onClick={() => void previewPreset(pitVoices.selection.agentVoiceIds[agent.id] ?? pitVoices.selection.defaultVoiceId)}>Ouvir</Button>
             </div>}
             <p className="text-[11px] text-muted-foreground">Síntese no computador, sem OpenRouter. A primeira fala pode demorar enquanto carrega o modelo.</p>
+          </div>}
+          {status.engine === 'pocket-tts' && pocketVoices && <div className="space-y-2 border-t border-border/50 pt-3">
+            <p className="text-xs font-medium">Vozes locais dos Boos (experimental)</p>
+            <p className="text-[11px] text-muted-foreground">Sem servidor de voz. Importa WAV, MP3 ou identidade .safetensors de uma voz criada com autorização. O motor PocketTTS roda no computador.</p>
+            <div className="flex items-center gap-2">
+              <span className="w-20 shrink-0 text-xs">Voz geral</span>
+              <Select value={pocketVoices.selection.defaultVoiceId} onValueChange={value => void choosePocket(value, false)}>
+                <SelectTrigger aria-label="Voz geral PocketTTS" className="h-8 min-w-0 flex-1 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>{pocketVoices.choices.map(voice => <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            {agent && <div className="flex items-center gap-2">
+              <span className="w-20 shrink-0 truncate text-xs">{agent.name}</span>
+              <Select value={pocketVoices.selection.agentVoiceIds[agent.id] || 'inherit'} onValueChange={value => void choosePocket(value, true)}>
+                <SelectTrigger aria-label={'Voz PocketTTS de ' + agent.name} className="h-8 min-w-0 flex-1 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="inherit">Usar voz geral</SelectItem>{pocketVoices.choices.map(voice => <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>}
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" disabled={importingPocket} onClick={() => void importPocket()}>{importingPocket ? 'Importando…' : 'Importar voz local'}</Button>
+              <Button size="sm" variant="outline" disabled={generatingVoice || !pocketVoices.installed} onClick={() => void previewPocket()}>{generatingVoice ? 'Gerando…' : 'Testar voz'}</Button>
+              <Button size="sm" variant="ghost" disabled={generatingVoice || !pocketVoices.installed || ((agent && pocketVoices.selection.agentVoiceIds[agent.id]) || pocketVoices.selection.defaultVoiceId) === 'rafael'}
+                onClick={() => void optimizePocket()}>Preparar identidade</Button>
+            </div>
+            {!pocketVoices.installed && <p role="alert" className="text-xs text-destructive">Motor PocketTTS não instalado. Precisa do executável Windows local, sem serviço externo.</p>}
+            <p className="text-[11px] text-muted-foreground">As quatro vozes prontas geram português localmente. Para clonar uma gravação WAV/MP3 e criar nova identidade, os pesos adicionais exigem autorização no Hugging Face. A inicialização do motor pode levar vários segundos.</p>
           </div>}
           {status.engine === 'openrouter' && (status.voiceKeyConfigured ?
             <p className="text-xs text-emerald-600">Chave OpenRouter configurada. Somente Fish Audio S2.1 Pro Free será utilizado.</p> :
