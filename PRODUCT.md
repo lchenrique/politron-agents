@@ -1,5 +1,15 @@
 # Produto alvo da V9
 
+Publicação em 20/10/2026: instalador reduzido de 119,86 MB enviado à [release v0.1.0-beta.1](https://github.com/lchenrique/politron-agents/releases/tag/v0.1.0-beta.1), a pedido do usuário. Tamanho e SHA-256 confirmados pela API GitHub; instalador anterior preservado. Notas distinguem o pacote do checkout local das fontes do artefato anterior. Sem commit/push ou alteração de tag. [Evidência](docs/installer-size.md).
+
+Aceite do acesso remoto em 20/10/2026: usuário confirmou que o Boobot do escritório conectou pelo Tailscale e mostrou os projetos de casa. Conexão, autenticação e consulta entre os dois PCs comprovadas; execução de agentes e outras operações remotas não foram conferidas nesta rodada. [Evidência](docs/hosts-tailscale.md).
+
+Configuração de acesso em 20/10/2026: usuário escolheu Tailscale para casa/escritório, adiando relay próprio. Em casa, Serve encaminha TCP privado `6778` ao listener loopback do Boobot; endereço de pareamento corrigido para o IP Tailscale do host. Cliente real iniciado em casa pelo endereço VPN autenticou, recebeu snapshot e recusou token inválido. Conexão iniciada no escritório ainda depende da conferência do usuário. Sem novo instalador ou publicação de relay. [Procedimento e evidências](docs/hosts-tailscale.md).
+
+Empacotamento local em 20/10/2026: novo instalador `apps/desktop/dist/slim/Boobot-Setup-0.1.0-beta.1-slim-x64.exe`, 119,86 MB contra 224,28 MB, redução medida de 46,56%. Removidas cópias opcionais do Claude e Monaco completo já compilado; preservados editor, voz e terminal. CLI Claude externa necessária. Artefato anterior preservado; sem publicação ou instalação automática. [Medições](docs/installer-size.md).
+
+Atualização de execução em 20/10/2026: o gratuito nativo `opencode/big-pickle` (Zen/Console, sem Go ou 9router) consultou participantes, propôs um Boo, aguardou uma aprovação e persistiu `Íris QA` em perfil temporário, concluindo a resposta real. Teste aprovado em 169,72 s. A recusa anterior foi isolada à política que removia ferramentas nativas do catálogo da CLI. O adaptador exige aprovação nativa, recusada pelo `run` não interativo, e executa RPCs do Boobot pelo broker comum. Não certifica todos os modelos. Evidência: [inventário de provedores](docs/provider-inventory.md).
+
 <!-- impeccable:product-schema 1 -->
 
 Este documento registra os requisitos confirmados pelo usuário em 16/10/2026. Descreve o produto a construir; não certifica funcionalidades implementadas. O nome comercial permanece aberto. V9 é o nome desta evolução, sem decisão sobre a versão dos pacotes.
@@ -102,6 +112,8 @@ A aparência do Politron foi trabalhada pelo usuário e é um ativo a preservar.
 
 ## Evidence on Hand
 
+Em 20/10/2026, foi conferida no Electron compilado a seleção real de modelos OpenCode, Pi e Antigravity. A disponibilidade do Pi agora aceita catálogo RPC válido mesmo com falha de `--version`; IDs configurados preservam o provedor do CLI e o cache foi atualizado para a versão 6. A interface persistiu as três seleções e o backend reconheceu seus IDs, preservando rascunho, com zero mensagens/execuções e nenhum erro no renderer. Passaram 60 testes focados, typecheck e build; o backend foi recompilado após o ajuste final. Não houve inferência nesta rodada; OpenCode/Antigravity permanecem em modo conversa, sem ferramentas do Boobot. Evidências atuais em `docs/provider-inventory.md`.
+
 Ainda em 18/10/2026, o usuário pediu que os modelos fossem navegados por CLI dentro do mesmo seletor. A raiz agora mostra Codex, Claude, Antigravity, OpenCode e Pi; cada entrada abre seus modelos com busca e Voltar no mesmo popup shadcn. OpenCode/Pi expõem seus catálogos para consulta, sem habilitar execução inexistente; Antigravity mostra seu diagnóstico quando não há catálogo. Typecheck e build passaram; o Electron em desenvolvimento recebeu o recarregamento. As asserções existentes foram ajustadas; testes e nova aceitação visual não foram executados nesta rodada. A evidência dos 57 testes e capturas a seguir pertence à versão anterior do seletor.
 
 Em 18/10/2026, a continuação foi limitada pelo usuário à detecção de modelos e aos seletores. A descoberta usa os catálogos dos CLIs Codex/Claude e as configurações locais de OpenCode/Pi, com cache e falhas independentes. Os seletores shadcn/Radix agrupam por CLI e respeitam os esforços de cada modelo. Passaram 57 testes focados (um smoke condicional ignorado), typecheck e build. Em Electron compilado com perfil isolado, foram consultados 7 modelos Codex e 11 Claude; troca de modelo, menu de esforço, Haiku sem esforço e preservação de rascunho foram verificados sem enviar mensagem nem criar execução, sem erro no renderer. OpenCode/Pi ainda não têm adaptadores de execução; Antigravity não expõe catálogo nesta integração. Evidências e limites: [docs/provider-inventory.md](docs/provider-inventory.md).
@@ -138,6 +150,10 @@ Essas provas pontuais não certificam falha/cancelamento com Codex real, retomad
 As decisões abertas não bloqueiam o planejamento nem a implementação das entregas de chat, grupos e navegador.
 
 ## Auditoria funcional de 19/10/2026
+
+Correção de ferramentas em 20/10/2026: Antigravity e OpenCode deixaram de descartar as ferramentas oferecidas ao agente. Os cinco motores compartilham as regras de Chief e o broker de permissões/aprovação. Gemini real criou um Boo permanente em banco temporário após aprovação, com resultado confirmado; o transporte OpenCode também foi verificado com CLI real e servidor de modelo controlado. Falhas/interrupções invalidam aprovações pendentes. A API remota configurada do OpenCode falhou por conexão e o modelo gratuito foi recusado pelo serviço; isso não certifica todos os modelos nem melhoria de desempenho. Evidências e limites: [inventário de provedores](docs/provider-inventory.md).
+
+Atualização conferida em 20/10/2026: descoberta de modelos OpenCode pela CLI efetiva, resolução de múltiplas instalações no PATH e inventário versão 7. O Electron isolado permitiu selecionar modelos de OpenCode, Pi e Antigravity; a janela normal registrou os cinco provedores habilitados. Consulta OpenCode em outra pasta com espaços e acentos respeitou `OPENCODE_CONFIG`. Isso comprova descoberta e seleção nesses cenários Windows, sem certificar inferência de todos os modelos ou outros sistemas. Evidências: [inventário](docs/provider-inventory.md). O tamanho do instalador existente foi medido, com explicação de Claude embutido, Monaco e comparação Hermes/Paseo em [empacotamento](docs/installer-size.md); não houve redução ou novo instalador nesta rodada.
 
 O fluxo Chief → implementador Codex → edição real → testes → conclusão foi demonstrado em Electron com perfil e projeto descartáveis. O agente corrigiu um contador React/TypeScript; dois testes e typecheck passaram também na conferência independente. Troca aprovada para Claude, navegação Chromium isolada e negação/interrupção pela UI também foram verificadas. Foram corrigidos bugs de permissão, isolamento e falhas de runtime/turno, terminal Windows, aprovações e inicialização do navegador.
 

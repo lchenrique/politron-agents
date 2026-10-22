@@ -14,7 +14,7 @@ export function VirtualModelList({ models, providerName, value, search, onSearch
   value: string
   search: string
   onSearchChange: (search: string) => void
-  searchRef: RefObject<HTMLInputElement>
+  searchRef: RefObject<HTMLInputElement | null>
   onChoose: (value: string) => void
 }) {
   const listId = useId()

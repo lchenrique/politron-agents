@@ -2,7 +2,6 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
 import { MessageItem } from './MessageItem'
-import { DiffCard } from '../diff/DiffCard'
 import { PolitronToolApproval } from './PolitronToolApproval'
 
 /** Distância do fim ainda considerada "no final", para decidir se um novo evento deve puxar o scroll junto. */
@@ -44,11 +43,6 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
   const messageRefs = useRef(new Map<string, (node: HTMLDivElement | null) => void>())
   const resizeObserver = useRef<ResizeObserver | null>(null)
   const conversationsById = useMemo(() => new Map(conversations.map(conversation => [conversation.id, conversation])), [conversations])
-  const changesByRun = useMemo(() => {
-    const result = new Map<string, FileChange[]>()
-    for (const change of fileChanges) { const items = result.get(change.runId); if (items) items.push(change); else result.set(change.runId, [change]) }
-    return result
-  }, [fileChanges])
   const approvalsByRun = useMemo(() => {
     const result = new Map<string, Approval[]>()
     for (const approval of approvals) { const items = result.get(approval.runId); if (items) items.push(approval); else result.set(approval.runId, [approval]) }
@@ -63,6 +57,10 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
     for (let index = 0; index < itemHeights.length; index++) result[index + 1] = result[index] + itemHeights[index] + 24
     return result
   }, [itemHeights])
+  const offsetsRef = useRef(offsets)
+  offsetsRef.current = offsets
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
   const firstVisible = useMemo(() => {
     let low = 0, high = messages.length
     while (low < high) { const mid = (low + high) >>> 1; if (offsets[mid + 1] < scrollTop) low = mid + 1; else high = mid }
@@ -93,14 +91,25 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver.current = new ResizeObserver(entries => {
         let changed = false
+        let anchorCaptured = false
         for (const entry of entries) {
           if (entry.target === element) { updateViewport(); continue }
           const id = (entry.target as HTMLElement).dataset.messageId
           if (!id) continue
           const height = entry.borderBoxSize?.[0]?.blockSize || entry.contentRect.height
-          if (Math.abs((heights.current.get(id) || 0) - height) > 1) { heights.current.set(id, height); changed = true }
+          if (Math.abs((heights.current.get(id) || 0) - height) > 1) {
+            if (!changed && !stickToBottom.current) {
+              const currentOffsets = offsetsRef.current
+              const currentMessages = messagesRef.current
+              let index = 0
+              while (index < currentMessages.length - 1 && currentOffsets[index + 1] < element.scrollTop) index++
+              if (currentMessages[index]) pendingAnchor.current = { id: currentMessages[index].id, offset: element.scrollTop - currentOffsets[index] }
+              anchorCaptured = true
+            }
+            heights.current.set(id, height); changed = true
+          }
         }
-        if (changed) setMeasurementVersion(current => current + 1)
+        if (changed) { if (!anchorCaptured && !stickToBottom.current) pendingAnchor.current = readingAnchor.current; setMeasurementVersion(current => current + 1) }
       })
       resizeObserver.current.observe(element)
       for (const node of messageNodes.current.values()) resizeObserver.current.observe(node)
@@ -178,7 +187,7 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
     element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
     setHasNewMessages(false)
   }
-  return <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
+  return <div ref={scrollRef} onScroll={onScroll} style={{ overflowAnchor: 'none' }} className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
     {hasNewerMessages && <div className="sticky top-0 z-10 mx-auto mb-3 flex justify-center"><button type="button" onClick={onReturnToLatest} className="rounded-full border border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-sm">Voltar às mensagens recentes</button></div>}
     {hasOlderMessages && <div className="mx-auto mb-5 max-w-3xl text-center"><button type="button" disabled={loadingOlder} onClick={() => void loadOlder()} className="rounded-md border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50">{loadingOlder ? 'Carregando…' : 'Carregar mensagens anteriores'}</button></div>}
     {hasNewMessages && <div className="sticky bottom-2 z-10 mx-auto -mb-9 flex justify-center"><button type="button" onClick={goToLatest} className="rounded-full border border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-md">Novas mensagens · Ir para o fim</button></div>}
@@ -187,12 +196,11 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
       {visibleMessages.map(message => {
         const agent = agentOf(message.agentId)
         const relatedConversation = message.relatedConversationId ? conversationsById.get(message.relatedConversationId) : undefined
-        const changes = message.runId ? changesByRun.get(message.runId) || [] : []
         const runApprovals = message.runId ? approvalsByRun.get(message.runId) || [] : []
         return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className="mb-6 space-y-2">
           <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} />
           {runApprovals.map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} />)}
-          {!!changes.length && <section aria-label="Arquivos alterados neste turno" className="space-y-1.5 border-l-2 border-primary/30 pl-3"><p className="text-[11px] font-medium text-muted-foreground">Arquivos alterados · {changes.length}</p>{changes.map(change => <div key={change.id} className="rounded-lg border border-border/60 bg-card/40"><div className="flex items-center justify-between gap-3 px-3 pt-2 text-[11px]"><span className="truncate font-mono">{change.path}</span><span className={change.status === 'applied' ? 'text-emerald-600' : change.status === 'unchanged' ? 'text-muted-foreground' : 'text-amber-600'}>{change.status === 'applied' ? `+${change.additions} −${change.deletions}` : change.status === 'unchanged' ? 'Sem alterações' : change.status === 'failed' ? 'Falhou' : 'Resultado incerto'}{change.binary ? ' · binário' : ''}{change.truncated ? ' · diff parcial' : ''}</span></div>{!change.binary && <DiffCard block={{ filePath: change.path, originalContent: change.before, modifiedContent: change.after }} />}</div>)}</section>}
+
         </div>
       })}
       {endIndex < messages.length && <div aria-hidden="true" style={{ height: Math.max(0, offsets[messages.length] - offsets[endIndex]) }} />}

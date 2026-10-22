@@ -3,17 +3,18 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { VoiceCall } from './VoiceCall'
 import type { Agent, Message } from '../../../../shared/v9'
 
-const { speakVoice, stopVoice, recordMock } = vi.hoisted(() => ({
+const { speakVoice, stopVoice, recordMock, cancelMock } = vi.hoisted(() => ({
   speakVoice: vi.fn(() => new Promise<void>(() => {})),
   stopVoice: vi.fn(),
   recordMock: vi.fn().mockResolvedValue(new Uint8Array(48)),
+  cancelMock: vi.fn(),
 }))
 vi.mock('./voice-player', () => ({ speakVoice, stopVoice }))
 vi.mock('./voice-recorder', () => ({
   VoiceRecorder: class {
     record = recordMock
     stop = vi.fn()
-    cancel = vi.fn()
+    cancel = cancelMock
   },
 }))
 const agent = { id: 'agent-a', name: 'Atlas', alias: 'atlas', color: '#ff80ff' } as Agent
@@ -23,6 +24,7 @@ beforeEach(() => {
   speakVoice.mockClear()
   stopVoice.mockClear()
   recordMock.mockReset().mockResolvedValue(new Uint8Array(48))
+  cancelMock.mockClear()
   vi.stubGlobal('appAPI', {
     voiceStatus: vi.fn().mockResolvedValue({ speech: true, transcription: true, engine: 'sherpa-onnx', language: 'pt-BR' }),
     voiceTranscribe: vi.fn().mockResolvedValue('Abra o terminal'),
@@ -72,5 +74,21 @@ describe('ligação local com os Pits', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Desligar' }))
     expect(close).toHaveBeenCalledOnce()
     expect(stopVoice).toHaveBeenCalled()
+  })
+
+  it('cancela gravação pendente ao desmontar sem transcrever nem enviar o resultado tardio', async () => {
+    let resolveRecording!: (audio: Uint8Array) => void
+    recordMock.mockReturnValueOnce(new Promise(resolve => { resolveRecording = resolve }))
+    const send = vi.fn()
+    const transcribe = vi.fn().mockResolvedValue('texto atrasado')
+    vi.stubGlobal('appAPI', { ...window.appAPI, voiceTranscribe: transcribe })
+    const { unmount } = render(<VoiceCall open agents={[agent]} messages={[]} onSend={send} onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Ligar' }))
+    await waitFor(() => expect(recordMock).toHaveBeenCalledOnce())
+    unmount()
+    expect(cancelMock).toHaveBeenCalledOnce()
+    await act(async () => { resolveRecording(new Uint8Array(48)); await Promise.resolve() })
+    expect(transcribe).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 })

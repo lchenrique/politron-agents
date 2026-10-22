@@ -31,7 +31,7 @@ export function ModelSelector({ models, providers, value, onValueChange, disable
   const [providerId, setProviderId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [activeItem, setActiveItem] = useState('')
-  const searchRef = useRef<HTMLInputElement>(null)
+  const searchRef = useRef<HTMLInputElement | null>(null)
   const selected = models.find(model => (model.id || model.name) === value || model.name === value)
   const providerList = useMemo(() => {
     const entries = new Map((providers || []).map(provider => [provider.id, provider]))

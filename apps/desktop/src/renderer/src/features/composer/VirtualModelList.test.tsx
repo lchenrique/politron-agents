@@ -14,7 +14,7 @@ const models: ModelChoice[] = Array.from({ length: 565 }, (_, index) => ({
 function Harness({ onChoose = vi.fn() }: { onChoose?: (id: string) => void }) {
   const [search, setSearch] = useState('')
   return <VirtualModelList models={models} providerName="Pi" value=""
-    search={search} onSearchChange={setSearch} searchRef={createRef<HTMLInputElement>()} onChoose={onChoose} />
+    search={search} onSearchChange={setSearch} searchRef={createRef<HTMLInputElement | null>()} onChoose={onChoose} />
 }
 
 describe('lista virtualizada de modelos', () => {

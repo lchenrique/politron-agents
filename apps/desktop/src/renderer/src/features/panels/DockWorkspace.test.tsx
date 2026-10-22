@@ -40,10 +40,31 @@ describe('abas e painéis móveis do Politron', () => {
     act(() => ref.current!.openTool('files', 'side'))
     expect(screen.getByRole('region', { name: 'Painel auxiliar' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Aba Arquivos' })).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: 'README.md' }))
+    fireEvent.click(await screen.findByText('README.md'))
     expect(screen.getByRole('button', { name: 'Aba README.md' })).toBeInTheDocument()
+    expect(screen.getAllByRole('separator', { name: 'Redimensionar painéis' })).toHaveLength(1)
+    expect(screen.getByRole('region', { name: 'Área de trabalho principal' })).toContainElement(screen.getByRole('button', { name: 'Aba README.md' }))
     await waitFor(() => expect(mockAPI.readProjectFile).toHaveBeenCalledWith('workspace-1', 'README.md'))
     expect(await screen.findByRole('textbox', { name: 'Editor de código simulado' })).toHaveValue('# Olá Politron')
+  })
+
+  it('usa File Tree da Pasta UI e carrega pastas sob demanda, sem reler ao recolher', async () => {
+    mockAPI.listProjectFiles.mockImplementation(async (_workspace: string, path: string) => {
+      if (path === 'src') return [{ name: 'entry.ts', path: 'src/entry.ts', directory: false }]
+      return [{ name: 'src', path: 'src', directory: true }, { name: 'README.md', path: 'README.md', directory: false }]
+    })
+    const { ref } = setup()
+    act(() => ref.current!.openTool('files', 'side'))
+    expect(await screen.findByRole('tree', { name: 'Arquivos do projeto' })).toBeInTheDocument()
+    expect(mockAPI.listProjectFiles).toHaveBeenCalledWith('workspace-1', '')
+    expect(mockAPI.listProjectFiles).not.toHaveBeenCalledWith('workspace-1', 'src')
+    fireEvent.click(await screen.findByText('src'))
+    await waitFor(() => expect(mockAPI.listProjectFiles).toHaveBeenCalledWith('workspace-1', 'src'))
+    expect(await screen.findByRole('treeitem', { name: 'entry.ts' })).toBeInTheDocument()
+    fireEvent.click(screen.getByText('src'))
+    fireEvent.click(screen.getByText('src'))
+    expect(await screen.findByRole('treeitem', { name: 'entry.ts' })).toBeInTheDocument()
+    expect(mockAPI.listProjectFiles.mock.calls.filter(([, path]) => path === 'src')).toHaveLength(1)
   })
 
   it('preserva alterações ao mover a aba do arquivo e impede fechar sem confirmação', async () => {
@@ -108,7 +129,7 @@ describe('abas e painéis móveis do Politron', () => {
     expect(screen.getByRole('button', { name: 'Aba Chat' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Aba Arquivos' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Aba Terminal' })).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: 'README.md' }))
+    fireEvent.click(await screen.findByText('README.md'))
     expect(screen.getByRole('button', { name: 'Aba README.md' })).toBeInTheDocument()
     expect(screen.getAllByRole('separator', { name: 'Redimensionar painéis' })).toHaveLength(3)
     const ratio = screen.getAllByRole('separator', { name: 'Redimensionar painéis' }).at(-1)!

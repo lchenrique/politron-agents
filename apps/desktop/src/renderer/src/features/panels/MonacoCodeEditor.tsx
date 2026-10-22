@@ -58,6 +58,13 @@ export function installPolitronTheme() {
   })
   monaco.editor.setTheme('politron-adaptive')
 }
+/** Keep text models when an inactive file tab releases its editor view.
+ * Dispose them explicitly when that tab is closed to avoid unbounded caching. */
+export function disposePolitronFileModel(workspaceId: string, path: string) {
+  const uri = monaco.Uri.parse('file:///' + workspaceId + '/' + encodeURIComponent(path))
+  monaco.editor.getModel(uri)?.dispose()
+}
+
 export function MonacoCodeEditor(props: Omit<ComponentProps<typeof Editor>, 'theme'>) {
   useEffect(() => {
     const sync = () => installPolitronTheme()
@@ -68,9 +75,9 @@ export function MonacoCodeEditor(props: Omit<ComponentProps<typeof Editor>, 'the
     media?.addEventListener?.('change', sync)
     return () => { observer.disconnect(); media?.removeEventListener?.('change', sync) }
   }, [])
-  return <Editor {...props} theme="politron-adaptive" options={{
+  return <Editor {...props} keepCurrentModel theme="politron-adaptive" options={{
     automaticLayout: true,
-    fontSize: 13, lineHeight: 22, minimap: { enabled: true },
+    fontSize: 13, lineHeight: 22, minimap: { enabled: false },
     scrollBeyondLastLine: false, wordWrap: 'off', smoothScrolling: true,
     padding: { top: 12, bottom: 12 },
     ...props.options,

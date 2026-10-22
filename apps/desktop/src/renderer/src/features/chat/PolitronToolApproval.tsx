@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { FileEdit, Globe, Send, Settings2, Terminal } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { CheckCircle2, FileEdit, Globe, Send, Settings2, Terminal } from 'lucide-react'
 import type { Approval } from '../../../../shared/v9'
 import { DiffCard } from '../diff/DiffCard'
 import { errorText } from '../app/appShellShared'
+import { ApprovalCard } from '@/components/ai/approval-card'
 
 const approvalKind = {
   write: { title: 'Alteração de arquivo', icon: FileEdit },
@@ -12,10 +12,6 @@ const approvalKind = {
   delegation: { title: 'Delegação do Chief', icon: Send },
   'agent-change': { title: 'Proposta do Chief', icon: Settings2 },
 } as const
-
-const statusLabel: Record<Approval['status'], string> = {
-  pending: 'Aguardando sua decisão', approved: 'Aprovada', denied: 'Negada', interrupted: 'Interrompida',
-}
 
 /** Confirmação extra fica armada por esse tempo antes de voltar ao normal, pra não aprovar sem querer num clique tardio. */
 const ARM_TIMEOUT_MS = 4000
@@ -29,7 +25,6 @@ export function PolitronToolApproval({ approval, onNotice }: { approval: Approva
   useEffect(() => () => clearTimeout(armTimer.current), [])
 
   const definition = approvalKind[approval.kind]
-  const Icon = definition.icon
   const details = approval.details
   const sensitive = approval.kind === 'agent-change' || approval.kind === 'command' || (approval.kind === 'write' && Boolean(details.before))
   const pending = approval.status === 'pending'
@@ -50,30 +45,42 @@ export function PolitronToolApproval({ approval, onNotice }: { approval: Approva
   }
 
   function onApprove() {
+    if (lock.current) return
     if (!sensitive || armed) { void respond(true); return }
     setArmed(true)
     clearTimeout(armTimer.current)
     armTimer.current = setTimeout(() => setArmed(false), ARM_TIMEOUT_MS)
   }
 
-  const statusText = pending ? (submitting ? 'Enviando sua decisão…' : 'Aguardando sua decisão') : statusLabel[approval.status]
+  const statusText = pending ? (submitting ? 'Enviando sua decisão…' : 'Aguardando sua decisão') : approval.status === 'approved' ? 'Aprovada' : approval.status === 'denied' ? 'Negada' : 'Interrompida'
 
-  return <section aria-label="Aprovação de ferramenta" className="min-w-0 space-y-2 rounded-lg border border-border/60 bg-card/40 p-3">
-    <div className="flex items-start gap-2.5">
-      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-          <p className="text-sm font-medium">{definition.title}</p>
-          <p role="status" className="text-xs text-muted-foreground">{statusText}</p>
-        </div>
-        {approval.kind === 'write' && <p className="truncate font-mono text-xs text-muted-foreground">{details.path || '(caminho não fornecido)'}</p>}
-        {approval.kind === 'browser' && <p className="text-xs text-muted-foreground">{details.action || 'Operação no navegador'}</p>}
-        {approval.kind === 'command' && <p className="truncate font-mono text-xs text-muted-foreground">{details.command || ''}{details.cwd ? ` · ${details.cwd}` : ''}</p>}
-        {approval.kind === 'delegation' && <p className="text-xs text-muted-foreground">Para {details.recipientName || 'agente'}: {(details.task || '(sem resumo)').slice(0, 160)}</p>}
-        {approval.kind === 'agent-change' && <p className="text-xs text-muted-foreground">Alteração de configuração solicitada</p>}
-      </div>
-    </div>
-    {approval.kind === 'command' && <p className="text-xs text-muted-foreground">O diretório de trabalho é o projeto. Este terminal não possui isolamento do sistema operacional; o comando aprovado pode acessar outros caminhos deste computador.</p>}
+  const description = approval.kind === 'write' ? details.path || '(caminho não fornecido)'
+    : approval.kind === 'browser' ? details.action || 'Operação no navegador'
+    : approval.kind === 'command' ? `${details.command || ''}${details.cwd ? ` · ${details.cwd}` : ''}`
+    : approval.kind === 'delegation' ? `Para ${details.recipientName || 'agente'}: ${(details.task || '(sem resumo)').slice(0, 160)}`
+    : 'Alteração de configuração solicitada'
+  const options = pending ? [
+    { label: armed ? 'Aprovar mesmo assim' : sensitive ? 'Confirmar e aprovar' : 'Aprovar', value: 'approve', description: armed ? 'Confirmação adicional obrigatória' : undefined },
+    { label: 'Negar', value: 'deny' },
+  ] : []
+
+  if (!pending) return <section aria-label="Aprovação de ferramenta"
+    className="flex min-w-0 items-center gap-2 rounded-lg border border-border/40 bg-muted/10 px-2.5 py-1.5 text-xs text-muted-foreground">
+    <CheckCircle2 aria-hidden className="size-3.5 shrink-0" />
+    <span className="shrink-0 font-medium text-foreground">{definition.title}</span>
+    <span className="min-w-0 flex-1 truncate" title={description}>{description}</span>
+    <span role="status" className="shrink-0">{statusText}</span>
+  </section>
+
+  return <ApprovalCard aria-label="Aprovação de ferramenta" className="min-w-0 border border-border/60 !rounded-xl !p-3 shadow-none" title={definition.title} description={description}
+    status={pending ? 'pending' : approval.status === 'approved' ? 'approved' : approval.status === 'denied' ? 'denied' : 'interrupted'}
+    disabled={submitting}
+    options={options} onDecision={value => value === 'approve' ? onApprove() : void respond(false)}>
+    <div aria-live="polite" role="status" className="mt-2 text-xs text-muted-foreground">{statusText}</div>
+    {approval.kind === 'command' && <details className="mt-1 text-xs text-muted-foreground">
+      <summary className="cursor-pointer">Permissões deste comando</summary>
+      <p className="mt-1">O terminal não é isolado do sistema operacional. Comandos podem acessar arquivos fora do workspace.</p>
+    </details>}
     {details.task && <details className="rounded-md border border-border/60 p-2.5 text-xs">
       <summary className="cursor-pointer font-medium">Ver tarefa e instruções propostas</summary>
       <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{details.task}</p>
@@ -88,12 +95,6 @@ export function PolitronToolApproval({ approval, onNotice }: { approval: Approva
       filePath: details.path, originalContent: details.before || '', modifiedContent: details.after,
     }} />}
     {details.truncated && <p className="text-xs text-muted-foreground">Prévia limitada a 200 KB; examine o arquivo antes de aprovar.</p>}
-    {pending && <div className="flex items-center justify-end gap-2 pt-1">
-      {armed && <span className="mr-auto text-xs text-amber-600">Confirmação adicional obrigatória</span>}
-      <Button variant="outline" size="sm" disabled={submitting} onClick={() => void respond(false)}>Negar</Button>
-      <Button size="sm" variant={armed ? 'destructive' : 'default'} disabled={submitting} onClick={onApprove}>
-        {armed ? 'Aprovar mesmo assim' : sensitive ? 'Confirmar e aprovar' : 'Aprovar'}
-      </Button>
-    </div>}
-  </section>
+    {submitting && <p className="mt-3 text-xs text-muted-foreground">Enviando sua decisão…</p>}
+  </ApprovalCard>
 }

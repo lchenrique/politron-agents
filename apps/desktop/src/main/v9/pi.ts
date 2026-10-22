@@ -2,12 +2,12 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { promisify } from 'node:util'
 import type { Agent, Model } from '../../shared/v9'
-import type { AgentRuntime } from './agent-runtime'
+import type { AgentRuntime, RuntimeThread } from './agent-runtime'
 import type { DynamicTool } from './codex'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { CliToolBridge } from './cli-tool-bridge'
@@ -152,7 +152,7 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
     } finally { rpc.close() }
   }
 
-  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions = ''): Promise<string> {
+  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions = ''): Promise<RuntimeThread> {
     const id = threadId || randomUUID()
     if (!/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(id)) throw new Error('Identificador de sessão Pi inválido.')
     const previous = this.threads.get(id)
@@ -162,6 +162,7 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
     const { node, entry } = await this.resolveExecutable()
     const sessionDirectory = join(this.dataDirectory, 'pi', 'sessions', id)
     await mkdir(sessionDirectory, { recursive: true, mode: 0o700 })
+    const hasPersistedHistory = (await readdir(sessionDirectory)).some(name => name !== 'bridge.mjs')
     const extension = join(sessionDirectory, 'bridge.mjs')
     await writeFile(extension, BRIDGE_EXTENSION, { encoding: 'utf8', mode: 0o600 })
     let context: Thread | undefined
@@ -185,7 +186,7 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
         const path = relative(sessionDirectory, state.sessionFile)
         if (path.startsWith('..') || isAbsolute(path)) throw new Error('O Pi abriu uma sessão fora da pasta privada da conversa.')
       }
-      return id
+      return { id, history: hasPersistedHistory ? 'retained' : 'empty' }
     } catch (error) { this.dispose(context); throw error }
   }
 

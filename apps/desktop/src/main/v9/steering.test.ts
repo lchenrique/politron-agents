@@ -7,10 +7,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false }, safeStorage: { isEncryptionAvailable: () => false } }))
 import { AppService } from './workspace'
 import { CodexRuntime } from './codex'
+import { messageDigest } from './conversation-context'
 
 class Runtime extends EventEmitter {
   async models() { return [] }
-  async thread() { return 'thread-test' }
+  async thread() { return { id: 'thread-test', history: 'empty' as const } }
   send = vi.fn(async () => ({ turn: { id: 'turn-test', status: 'inProgress' } }))
   respond() {}
   async interrupt() {}
@@ -46,6 +47,9 @@ it('acrescenta a instrução à execução existente, sem iniciar outra tarefa o
   expect(service.store.runs()).toHaveLength(1)
   expect(service.store.history(conversation.id).filter(message => message.role === 'assistant')).toHaveLength(1)
   expect(service.store.history(conversation.id).find(message => message.text === 'Use o tema do projeto')?.status).toBe('completed')
+  const correction = service.store.history(conversation.id).find(message => message.text === 'Use o tema do projeto')!
+  const bindingKey = (service.store.db.prepare('SELECT key FROM v9_sessions LIMIT 1').get() as { key: string }).key
+  expect(service.store.sessionBinding(bindingKey)?.deliveredDigests[correction.id]).toBe(messageDigest(correction))
   complete(); await first
 })
 

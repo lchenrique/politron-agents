@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AudioLines, FolderPlus, GraduationCap, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench } from 'lucide-react'
-import type { DecisionModel, OpenRouterDecisionStatus } from '../../../../shared/v9'
+import type { Agent, DecisionModel, OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { SkillInfo } from '../../../../shared/skills'
 import { Button } from '@/components/ui/button'
@@ -136,7 +136,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   const [feedback, setFeedback] = useState('')
   const [assistantFeedback, setAssistantFeedback] = useState('')
   const [saving, setSaving] = useState(false)
-  const [assistantAccess, setAssistantAccess] = useState({ computerUse: false, approvalMode: 'ask' as 'ask' | 'automatic' })
+  const [assistantAccess, setAssistantAccess] = useState({ computerUse: false, approvalMode: 'ask' as Agent['approvalMode'] })
   const [terminalEnabled, setTerminalEnabled] = useState(true)
   const [terminalFeedback, setTerminalFeedback] = useState('')
   const [openRouterKey, setOpenRouterKey] = useState('')
@@ -146,9 +146,19 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   const [decisionFeedback, setDecisionFeedback] = useState('')
   const [savingDecision, setSavingDecision] = useState(false)
   useEffect(() => { if (!open) { setApiKey(''); setOpenRouterKey('') } }, [open])
-  useEffect(() => { if (!open) return; void window.appAPI.snapshot().then(snapshot => { setAssistantAccess({ computerUse: snapshot.assistant.computerUse, approvalMode: snapshot.assistant.approvalMode }); setTerminalEnabled(snapshot.terminalEnabled) }).catch(error => setFeedback(String(error))) }, [open])
-  useEffect(() => { if (!open) return; void window.appAPI.hasClaudeCredential().then(setConfigured).catch(error => setFeedback(String(error))) }, [open])
-  useEffect(() => { if (!open) return; void window.appAPI.openRouterDecisionStatus().then(status => { setDecisionStatus(status); setDecisionModelId(status.modelId) }).catch(error => setDecisionFeedback(error instanceof Error ? error.message : 'Não foi possível carregar as configurações do OpenRouter.')) }, [open])
+  useEffect(() => { if (!open || (section !== 'assistente' && section !== 'ferramentas')) return
+    let active = true
+    void window.appAPI.settingsPreferences().then(value => { if (!active) return; setAssistantAccess({ computerUse: value.computerUse, approvalMode: value.approvalMode }); setTerminalEnabled(value.terminalEnabled) }).catch(error => { if (active) setFeedback(String(error)) })
+    return () => { active = false }
+  }, [open, section])
+  useEffect(() => { if (!open || section !== 'provedores') return; let active = true
+    void window.appAPI.hasClaudeCredential().then(value => { if (active) setConfigured(value) }).catch(error => { if (active) setFeedback(String(error)) })
+    return () => { active = false }
+  }, [open, section])
+  useEffect(() => { if (!open || section !== 'provedores') return; let active = true
+    void window.appAPI.openRouterDecisionStatus().then(status => { if (!active) return; setDecisionStatus(status); setDecisionModelId(status.modelId) }).catch(error => { if (active) setDecisionFeedback(error instanceof Error ? error.message : 'Não foi possível carregar as configurações do OpenRouter.') })
+    return () => { active = false }
+  }, [open, section])
   const saveKey = async () => {
     setSaving(true); setFeedback('')
     try { await window.appAPI.saveClaudeCredential(apiKey); setApiKey(''); setConfigured(true); setFeedback('Chave protegida e salva neste computador.') }
@@ -198,7 +208,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   }
 
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="grid h-[min(44rem,85vh)] w-[min(64rem,92vw)] max-w-none grid-cols-[13rem_1fr] gap-0 overflow-hidden p-0">
+    <DialogContent overlayClassName="!backdrop-blur-none bg-black/55" className="grid h-[min(44rem,85vh)] w-[min(64rem,92vw)] max-w-none grid-cols-[13rem_1fr] gap-0 overflow-hidden p-0">
       <DialogTitle className="sr-only">Configurações</DialogTitle>
       <DialogDescription className="sr-only">Preferências do Boobot</DialogDescription>
       <nav aria-label="Seções de configurações" className="flex flex-col gap-0.5 overflow-y-auto border-r border-border/60 bg-muted/20 p-3">
@@ -216,14 +226,14 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         {section === 'assistente' && <>
           <h2 className="text-lg font-semibold">Assistente</h2>
           <Field title="Assistente padrão" description="Escolha as permissões específicas do Assistente. O acesso a arquivos é comum a todos os agentes e respeita a política do workspace.">
-            <label className="flex items-start gap-3 text-sm"><Checkbox checked={assistantAccess.computerUse} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, computerUse: checked === true })} className="mt-0.5" /><span><span className="font-medium">Permitir uso do navegador</span><span className="mt-0.5 block text-xs text-muted-foreground">Ações no navegador respeitam a aprovação configurada.</span></span></label>
-            <label className="block space-y-1.5 text-sm">Aprovações para arquivos e navegador<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as 'ask' | 'automatic' })}><SelectTrigger aria-label="Aprovações para arquivos e navegador"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de agir (padrão)</SelectItem><SelectItem value="automatic">Executar automaticamente</SelectItem></SelectContent></Select></label>
-            <p role="status" className="text-xs text-muted-foreground">{assistantFeedback}</p>
+            <label className="flex items-start gap-3 text-sm"><Checkbox checked={assistantAccess.computerUse} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, computerUse: checked === true })} className="mt-0.5" /><span><span className="font-medium">Permitir uso do navegador</span><span className="mt-0.5 block text-xs text-muted-foreground">Ações no navegador respeitam o modo de aprovação deste Assistente.</span></span></label>
+            <label className="block space-y-1.5 text-sm">Modo de aprovação do Assistente<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as Agent['approvalMode'] })}><SelectTrigger aria-label="Aprovações para arquivos e navegador"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de agir (padrão)</SelectItem><SelectItem value="automatic">Automático · arquivos e navegador</SelectItem><SelectItem value="bypass">Bypass · incluindo terminal (alto risco)</SelectItem></SelectContent></Select></label>
+            <p className="text-xs leading-5 text-muted-foreground">Esta configuração vale somente para o Assistente padrão. Para outros Boos, ajuste o modo no editor do agente. No Bypass, o terminal pode alterar outros caminhos do computador sem pedir confirmação; alterações administrativas continuam protegidas.</p><p role="status" className="text-xs text-muted-foreground">{assistantFeedback}</p>
           </Field>
         </>}
         {section === 'ferramentas' && <>
           <h2 className="text-lg font-semibold">Ferramentas</h2>
-          <Field title="Terminal · todos os agentes" description="Todos os agentes podem ler e alterar arquivos do workspace. O terminal executa comandos na pasta da conversa; cada comando precisa da sua aprovação, mesmo no modo automático. A execução não fica isolada pelo sistema operacional.">
+          <Field title="Terminal · todos os agentes" description="Todos os agentes podem ler e alterar arquivos do workspace. O terminal executa na pasta da conversa, mas não é isolado pelo sistema operacional. O modo Bypass de cada agente permite executar comandos sem confirmação.">
             <label className="flex items-start gap-3 text-sm"><Checkbox checked={terminalEnabled} onCheckedChange={checked => void updateTerminalAccess(checked === true)} className="mt-0.5" /><span><span className="font-medium">Habilitar terminal para todos os agentes</span><span className="mt-0.5 block text-xs text-muted-foreground">A alteração vale para o Assistente padrão e todos os agentes cadastrados.</span></span></label>
             <p role="status" className="text-xs text-muted-foreground">{terminalFeedback || (terminalEnabled ? 'Terminal habilitado para todos os agentes.' : 'Terminal desabilitado.')}</p>
           </Field>

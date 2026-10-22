@@ -44,6 +44,11 @@ it('roteia RPC para o host escolhido, revoga pareamento e não faz fallback loca
   const entry = await client.add({ pairing: ui.clipboard, name: 'Casa' })
   await client.select(entry.id)
   await vi.waitFor(() => expect(client.snapshot().hosts.find(item => item.id === entry.id)?.status).toBe('connected'))
+  const hostEvents = () => ui.send.mock.calls.filter(([channel]) => channel === 'v9:event').map(([, event]) => event as { type: string; reason?: string })
+  expect(hostEvents().some(event => event.reason === 'connection-restored')).toBe(false)
+  const internals = client as unknown as { generation: number; scheduleReconnect(generation: number): void }
+  internals.scheduleReconnect(internals.generation)
+  await vi.waitFor(() => expect(hostEvents().some(event => event.reason === 'connection-restored')).toBe(true), { timeout: 5000 })
   const local = vi.fn(() => 'local')
   expect(await client.invoke('v9:snapshot', [], local)).toEqual({ marker: 'host' }); expect(local).not.toHaveBeenCalled()
   expect(() => client.invoke('v9:voiceSpeak', ['oi'], local)).toThrow('host')

@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('vibeAPI', api)
 
 const appAPI: AppAPI = {
   snapshot: () => ipcRenderer.invoke('v9:snapshot'),
+  settingsPreferences: () => ipcRenderer.invoke('v9:settingsPreferences'),
   saveAgent: (input) => ipcRenderer.invoke('v9:saveAgent', input),
   saveAssistantPreferences: (input) => ipcRenderer.invoke('v9:saveAssistantPreferences', input),
   saveTerminalAccess: (enabled) => ipcRenderer.invoke('v9:saveTerminalAccess', enabled),

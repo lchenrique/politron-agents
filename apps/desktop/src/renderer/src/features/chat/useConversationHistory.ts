@@ -32,6 +32,8 @@ const emptyHistory = (): HistoryState => ({ messages: [], hasMore: false, hasNew
 
 export function useConversationHistory(conversationId: string | undefined, onError: (message: string) => void) {
   const [history, setHistory] = useState<HistoryState>(emptyHistory)
+  const historyRef = useRef(history)
+  historyRef.current = history
   const activeId = useRef(conversationId)
   activeId.current = conversationId
   const pending = useRef(new Map<string, Message>())
@@ -81,6 +83,57 @@ export function useConversationHistory(conversationId: string | undefined, onErr
     } finally { if (request === generation.current) requestUpdates.current = null }
   }, [])
 
+  const reconcileAfterReconnect = useCallback(async () => {
+    const id = activeId.current
+    if (!id) return
+    const request = ++generation.current
+    const before = historyRef.current
+    const updates = new Map<string, Message>()
+    requestUpdates.current = updates
+    try {
+      if (before.hasNewer) {
+        // Keep search/older reading position. Refresh only IDs in the visible window.
+        const latest = await window.appAPI.historyPage(id, null, 100)
+        if (request !== generation.current || id !== activeId.current) return
+        const visible = new Set(before.messages.map(message => message.id))
+        const changedVisible = latest.messages.filter(message => visible.has(message.id))
+        const liveVisible = [...updates.values()].filter(message => visible.has(message.id))
+        const merged = mergeChatMessages(before.messages, [...changedVisible, ...liveVisible], false)
+        const hasNewer = before.hasNewer || latest.messages.some(message => !visible.has(message.id)) || [...updates.values()].some(message => !visible.has(message.id))
+        setHistory({ ...before, messages: merged, hasNewer })
+        return
+      }
+
+      const known = new Set(before.messages.map(message => message.id))
+      const pages: Message[][] = []
+      let cursor: string | null = null
+      let overlap = false
+      let hasMore = false
+      let fetched = 0
+      do {
+        const page = await window.appAPI.historyPage(id, cursor, Math.min(100, MAX_CHAT_MESSAGES - fetched))
+        if (request !== generation.current || id !== activeId.current) return
+        if (!page.messages.length) { hasMore = page.hasMore; break }
+        pages.unshift(page.messages)
+        fetched += page.messages.length
+        overlap = page.messages.some(message => known.has(message.id))
+        hasMore = page.hasMore
+        cursor = page.messages[0].id
+      } while (!overlap && hasMore && fetched < MAX_CHAT_MESSAGES)
+
+      const recovered = pages.flat()
+      const firstOverlap = recovered.findIndex(message => known.has(message.id))
+      // Keep the contiguous older prefix only when the fetched range reaches it.
+      // Disjoint fragments must never be concatenated as if no messages were missing.
+      const prefix = firstOverlap >= 0
+        ? before.messages.slice(0, before.messages.findIndex(message => message.id === recovered[firstOverlap].id))
+        : []
+      const merged = mergeChatMessages([...prefix, ...recovered], [...updates.values()])
+      if (request !== generation.current || id !== activeId.current) return
+      setHistory({ messages: merged.slice(-MAX_CHAT_MESSAGES), hasMore: hasMore || merged.length > MAX_CHAT_MESSAGES, hasNewer: false, focusedId: before.focusedId })
+    } finally { if (request === generation.current) requestUpdates.current = null }
+  }, [])
+
   useEffect(() => {
     setHistory(emptyHistory())
     pending.current.clear()
@@ -122,5 +175,5 @@ export function useConversationHistory(conversationId: string | undefined, onErr
     } finally { if (request === generation.current) requestUpdates.current = null }
   }, [])
   const search = useCallback(async (query: string) => activeId.current ? window.appAPI.searchHistory(activeId.current, query, 25) : [], [])
-  return { messages: history.messages, hasOlderMessages: history.hasMore, hasNewerMessages: history.hasNewer, focusedMessageId: history.focusedId, queueMessage, loadOlder, search, openSearchHit, returnToLatest }
+  return { messages: history.messages, hasOlderMessages: history.hasMore, hasNewerMessages: history.hasNewer, focusedMessageId: history.focusedId, queueMessage, loadOlder, search, openSearchHit, returnToLatest, reconcileAfterReconnect }
 }

@@ -116,9 +116,10 @@ function createWindow(): BrowserWindow {
     frame: false,
     titleBarStyle: 'hidden',
     autoHideMenuBar: true,
-    backgroundColor: '#00000000',
+    // Avoid Windows native acrylic: it can render the window as an opaque blur
+    // even when Chromium has rendered the full React interface.
+    backgroundColor: process.platform === 'win32' ? '#101016' : '#00000000',
     transparent: process.platform !== 'win32',
-    ...(process.platform === 'win32' ? { backgroundMaterial: 'acrylic' } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

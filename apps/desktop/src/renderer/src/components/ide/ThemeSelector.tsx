@@ -1,71 +1,58 @@
-import { useTheme } from "@/components/theme-provider";
+import { useTheme } from '@/components/theme-provider'
+import { THEME_GROUPS } from '@/components/theme-catalog'
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Moon, Sun } from "lucide-react";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { Moon, Palette, Sun } from 'lucide-react'
 
-const THEMES = [
-    { id: "default", label: "Vibe Dark" },
-    { id: "cafeine", label: "Cafeine" },
-    { id: "candyland", label: "Candy Land" },
-    { id: "claude", label: "Claude" },
-    { id: "dark-matter", label: "Dark Matter" },
-    { id: "violet-bloom", label: "Violet Bloom" },
-    { id: "tangerine", label: "Tangerine" },
-    { id: "t3chat", label: "T3Chat" },
-    { id: "cyberpunk", label: "Cyberpunk" },
-    { id: "terminal-muted", label: "Terminal Muted" },
-    { id: "omegon", label: "Omegon" },
-    { id: "msn", label: "MSN" },
-    { id: "zen", label: "Zen" },
-    { id: "melancholik", label: "Melancholik" },
-];
-
-
+/** Compact, categorized selector. All entries have a light and a dark palette. */
 export function ThemeSelector() {
-    const { theme, setTheme, mode, setMode } = useTheme();
+  const { theme, setTheme, mode, setMode } = useTheme()
 
-    const toggleMode = () => {
-        setMode(mode === "dark" ? "light" : "dark");
-    };
-
-    return (
-        <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-            <Select value={theme} onValueChange={setTheme}>
-                <SelectTrigger className="h-7 w-[120px] text-[10px] uppercase tracking-wider font-bold border-border/10  transition-colors focus:ring-0 focus:ring-offset-0">
-                    <SelectValue placeholder="Tema" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border/50 shadow-xl">
-                    {THEMES.map((t) => (
-                        <SelectItem
-                            key={t.id}
-                            value={t.id}
-                            className="text-[11px] font-medium"
-                        >
-                            {t.label}
-                        </SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-
-            <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleMode}
-                className="h-7 w-7 rounded-sm hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-all duration-300"
-            >
-                {mode === "dark" ? (
-                    <Moon className="h-3.5 w-3.5 rotate-0 scale-100 transition-all" />
-                ) : (
-                    <Sun className="h-3.5 w-3.5 rotate-0 scale-100 transition-all underline-offset-1" />
-                )}
-                <span className="sr-only">Alternar modo</span>
-            </Button>
-        </div>
-    );
+  return (
+    <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <Select value={theme} onValueChange={setTheme}>
+        <SelectTrigger aria-label="Selecionar tema" className="h-8 w-[158px] gap-1.5 rounded-md border-border/70 bg-card/70 px-2 text-xs font-medium shadow-none transition-colors hover:bg-accent/50 focus:ring-1 focus:ring-ring/40">
+          <Palette aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+          <SelectValue placeholder="Tema" />
+        </SelectTrigger>
+        <SelectContent align="end" className="max-h-[min(75vh,490px)] min-w-[230px] border-border/70 bg-popover p-1 shadow-xl">
+          {THEME_GROUPS.map((group, index) => (
+            <SelectGroup key={group.label}>
+              {index > 0 && <SelectSeparator className="my-1.5" />}
+              <SelectLabel className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {group.label}
+              </SelectLabel>
+              {group.themes.map(item => (
+                <SelectItem key={item.id} value={item.id} className="min-h-9 rounded-md py-1.5 text-xs">
+                  <span className="flex items-center gap-2">
+                    <span aria-hidden="true" className="size-3.5 shrink-0 rounded-full border border-black/10 ring-1 ring-white/15" style={{ backgroundColor: item.swatch }} />
+                    <span className="truncate font-medium" title={item.description}>{item.label}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+        className="size-8 rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+        aria-label={mode === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+        title={mode === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+      >
+        {mode === 'dark' ? <Moon aria-hidden="true" className="size-4" /> : <Sun aria-hidden="true" className="size-4" />}
+      </Button>
+    </div>
+  )
 }

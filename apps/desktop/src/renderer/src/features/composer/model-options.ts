@@ -38,7 +38,7 @@ export function modelOptions(providers: ProviderInfo[]): { models: ModelChoice[]
         id: provider.id,
         name: PROVIDER_NAMES[provider.id],
         description: !provider.found ? 'Não instalado neste computador.'
-          : provider.executable === true ? `${catalogLabel} para conversar.${provider.id === 'antigravity' || provider.id === 'opencode' ? ' Modo limitado a chat, sem ferramentas do Boobot; alguns modelos podem exigir autenticação adicional.' : ''}`
+          : provider.executable === true ? `${catalogLabel} para conversar. As ferramentas do Boobot seguem o papel e as permissões da conversa.`
             : count ? `${catalogLabel} para consulta. Este provedor ainda não pode responder nas conversas.`
               : 'Este provedor ainda não pode responder nas conversas.',
         emptyMessage: provider.modelReason || (!provider.found

@@ -11,7 +11,7 @@ import { AppService } from './workspace'
 
 class CatalogRuntime extends EventEmitter implements AgentRuntime {
   models = vi.fn<() => Promise<Model[]>>()
-  async thread() { return 'thread' }
+  async thread() { return { id: 'thread', history: 'empty' as const } }
   async send() { return {} }
   respond() {}
   async interrupt() {}

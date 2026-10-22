@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+﻿import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SettingsPage } from './SettingsPage'
 
 const appAPI = {
   snapshot: vi.fn().mockResolvedValue({ assistant: { computerUse: false, approvalMode: 'ask' }, terminalEnabled: true }),
+  settingsPreferences: vi.fn().mockResolvedValue({ computerUse: false, approvalMode: 'ask', terminalEnabled: true }),
   hasClaudeCredential: vi.fn().mockResolvedValue(false),
   openRouterDecisionStatus: vi.fn().mockResolvedValue({ configured: false, modelId: 'typesafe/jev-1.13' }),
   saveAssistantPreferences: vi.fn().mockResolvedValue(undefined),
@@ -25,6 +26,46 @@ const skillsAPI = {
 }
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('carregamento leve das configurações', () => {
+  it('ao abrir Geral não pede snapshot completo nem consulta chaves desnecessárias', async () => {
+    vi.clearAllMocks()
+    vi.stubGlobal('appAPI', appAPI)
+    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Tema e modo de cor')).toBeInTheDocument()
+    expect(appAPI.snapshot).not.toHaveBeenCalled()
+    expect(appAPI.settingsPreferences).not.toHaveBeenCalled()
+    expect(appAPI.hasClaudeCredential).not.toHaveBeenCalled()
+    expect(appAPI.openRouterDecisionStatus).not.toHaveBeenCalled()
+  })
+
+  it('carrega apenas preferências pequenas quando entra em Assistente', async () => {
+    vi.clearAllMocks()
+    vi.stubGlobal('appAPI', appAPI)
+    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Assistente$/ }))
+    await waitFor(() => expect(appAPI.settingsPreferences).toHaveBeenCalledTimes(1))
+    expect(appAPI.snapshot).not.toHaveBeenCalled()
+    expect(appAPI.hasClaudeCredential).not.toHaveBeenCalled()
+    expect(appAPI.openRouterDecisionStatus).not.toHaveBeenCalled()
+    expect(screen.getByRole('checkbox', { name: /Permitir uso do navegador/ })).toBeInTheDocument()
+  })
+
+  it('carrega chaves apenas quando entra em Provedores', async () => {
+    vi.clearAllMocks()
+    vi.stubGlobal('appAPI', appAPI)
+    vi.stubGlobal('providersAPI', providersAPI)
+    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Provedores$/ }))
+    await waitFor(() => {
+      expect(appAPI.hasClaudeCredential).toHaveBeenCalledTimes(1)
+      expect(appAPI.openRouterDecisionStatus).toHaveBeenCalledTimes(1)
+    })
+    expect(appAPI.settingsPreferences).not.toHaveBeenCalled()
+    expect(appAPI.snapshot).not.toHaveBeenCalled()
+  })
+})
 
 describe('painel de configurações', () => {
   it('não renderiza nada fechado, e abre como diálogo (não substitui o chat)', () => {

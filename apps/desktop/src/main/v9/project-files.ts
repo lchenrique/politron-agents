@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs'
-import { createHash, randomUUID } from 'node:crypto'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { createHash } from 'node:crypto'
+import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
+import { captureFileVersion, commitFileWrite } from './guarded-write'
 
 export interface ProjectFileEntry { name: string; path: string; directory: boolean }
 
@@ -69,16 +70,10 @@ export async function writeProjectText(root: string, filePath: string, content: 
     throw new Error('O arquivo foi alterado no disco por outro processo ou agente. Compare as alterações e recarregue antes de salvar.')
   }
   const next = Buffer.from(content, 'utf8')
-  const temp = join(dirname(target), '.politron-save-' + randomUUID() + '.tmp')
-  try {
-    await fs.writeFile(temp, next, { flag: 'wx', mode: info.mode })
-    const latest = await fs.readFile(target)
-    if (fingerprint(latest) !== expectedHash) {
-      throw new Error('O arquivo mudou enquanto era salvo. Nenhuma alteração foi sobrescrita.')
-    }
-    await fs.rename(temp, target)
-  } finally {
-    await fs.rm(temp, { force: true }).catch(() => undefined)
-  }
-  return { path: filePath, hash: fingerprint(next) }
+  const canonicalRoot = await fs.realpath(root)
+  const actualPath = relative(canonicalRoot, target)
+  const current = await captureFileVersion(canonicalRoot, actualPath)
+  if (!current.exists || current.sha256 !== expectedHash) throw new Error('O arquivo foi alterado no disco por outro processo ou agente. Compare as alterações e recarregue antes de salvar.')
+  const saved = await commitFileWrite({ root: canonicalRoot, relativePath: actualPath, content: next, expectedVersion: { exists: true, sha256: expectedHash } })
+  return { path: filePath, hash: saved.sha256 }
 }

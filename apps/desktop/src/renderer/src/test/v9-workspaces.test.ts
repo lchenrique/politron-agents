@@ -17,13 +17,14 @@ type Thread = { id: string; agent: Agent; directory: string; projectInstructions
 class FakeRuntime extends EventEmitter {
   threads: Thread[] = []
   turns: Array<{ threadId: string; text: string }> = []
+  threadHistory?: 'retained' | 'empty' | 'resume-pending'
   private current = { threadId: '', turnId: '' }
   private turnCounter = 0
   async thread(agent: Agent, directory: string, _tools: unknown, threadId?: string, projectInstructions?: string) {
     const id = threadId || `thread-${this.threads.length + 1}`
     this.threads.push({ id, agent, directory, projectInstructions, resumedFrom: threadId })
     this.current.threadId = id
-    return id
+    return { id, history: this.threadHistory || (threadId ? 'retained' as const : 'empty' as const) }
   }
   async request(_method: string, params: { threadId: string; input: Array<{ text: string }> }) {
     const threadId = params.threadId
@@ -52,7 +53,7 @@ class ParallelWriteRuntime extends FakeRuntime {
   private activeWrites = 0
   async request(_method: string, params: { threadId: string; input: Array<{ text: string }> }) {
     const turnId = `parallel-${++this.parallelTurnCounter}`
-    const filename = params.input[0].text
+    const filename = params.input[0].text.split('Pedido atual:\n').at(-1) || params.input[0].text
     this.turns.push({ threadId: params.threadId, text: filename })
     this.requests++
     if (this.requests === 2) this.releasePair()
@@ -110,15 +111,16 @@ describe('Assistente padrão e conversas por workspace V9', () => {
     await service.archiveWorkspace(firstWorkspace.id, true)
     expect(service.store.workspace(firstWorkspace.id).archived).toBe(true)
     expect(readFileSync(join(firstWorkspace.path, 'primeira.txt'), 'utf8')).toBe('primeira')
-    rmSync(firstWorkspace.path, { recursive: true, force: true })
+    rmSync(firstWorkspace.path, { recursive: true, force: true, maxRetries: 4, retryDelay: 250 })
+    execFileSync('git', ['worktree', 'prune'], { cwd: sourcePath, windowsHide: true })
   }, 30000)
 
-  it('resolve o terminal pelo workspace selecionado e recusa um workspace arquivado', () => {
+  it('resolve o terminal pelo workspace selecionado e recusa um workspace arquivado', async () => {
     const { service } = open(tempDirectory())
     const folder = tempDirectory()
     const conversation = service.saveConversation({ workspacePath: folder })
     expect(service.workspacePath(conversation.workspaceId)).toBe(folder)
-    service.archiveWorkspace(conversation.workspaceId)
+    await service.archiveWorkspace(conversation.workspaceId)
     expect(() => service.workspacePath(conversation.workspaceId)).toThrow('arquivado')
   })
 
@@ -218,7 +220,7 @@ describe('Assistente padrão e conversas por workspace V9', () => {
     expect(service.snapshot().conversations.filter(item => item.workspaceId === workspace.id).map(item => item.name).sort()).toEqual(['Login', 'Planejamento'])
   })
 
-  it('persiste workspaces, conversas, histórico e sessões ao reiniciar e retoma a mesma sessão', async () => {
+  it('reconstrói o contexto quando um runtime headless reinicia sem histórico, preservando o binding', async () => {
     const directory = tempDirectory()
     const first = open(directory)
     const workspace = await first.service.saveWorkspace({ name: 'Persistente' })
@@ -226,19 +228,21 @@ describe('Assistente padrão e conversas por workspace V9', () => {
     const b = first.service.saveConversation({ workspaceId: workspace.id, name: 'B' })
     await first.service.send(a.id, 'antes-A')
     await first.service.send(b.id, 'antes-B')
-    const sessionA = first.runtime.turns.find(turn => turn.text === 'antes-A')!.threadId
-    const sessionB = first.runtime.turns.find(turn => turn.text === 'antes-B')!.threadId
+    const sessionA = first.runtime.turns.find(turn => turn.text.includes('antes-A'))!.threadId
+    const sessionB = first.runtime.turns.find(turn => turn.text.includes('antes-B'))!.threadId
     close(first.service)
 
     const second = open(directory)
+    second.runtime.threadHistory = 'empty'
     const snapshot = second.service.snapshot()
     expect(snapshot.workspaces.map(item => item.name)).toEqual(['Persistente'])
     expect(snapshot.conversations.map(item => [item.name, item.workspaceId])).toEqual([['A', workspace.id], ['B', workspace.id]])
     expect(second.service.history(a.id).map(message => message.text.includes('antes-A') || message.role === 'user')).toEqual([true, true])
     await second.service.send(a.id, 'depois-A')
     await second.service.send(b.id, 'depois-B')
-    expect(second.runtime.turns.find(turn => turn.text === 'depois-A')!.threadId).toBe(sessionA)
-    expect(second.runtime.turns.find(turn => turn.text === 'depois-B')!.threadId).toBe(sessionB)
+    expect(second.runtime.turns.find(turn => turn.text.includes('depois-A'))!.threadId).toBe(sessionA)
+    expect(second.runtime.turns.find(turn => turn.text.includes('depois-B'))!.threadId).toBe(sessionB)
+    expect(second.runtime.turns.find(turn => turn.text.includes('depois-A'))!.text).toContain('antes-A')
     expect(second.service.history(a.id).filter(message => message.role === 'user').map(message => message.text)).toEqual(['antes-A', 'depois-A'])
   })
 
@@ -297,24 +301,56 @@ describe('Assistente padrão e conversas por workspace V9', () => {
     expect(service.history(first.id).some(message => message.text.includes('conversa-2'))).toBe(false)
   })
 
+  it('separa bindings quando o runtime ou as permissões efetivas mudam', async () => {
+    const directory = tempDirectory()
+    const runtime = new FakeRuntime()
+    const service = new AppService(directory, runtime as any, runtime as any)
+    services.push(service)
+    const workspace = await service.saveWorkspace({ name: 'Contrato de ferramentas' })
+    let agent = service.saveAgent({ name: 'Leitora', alias: 'leitora', instructions: 'Leia sem modificar.', canWrite: false })
+    const conversation = service.saveConversation({ workspaceId: workspace.id, agentIds: [agent.id] })
+    await service.send(conversation.id, 'Primeiro pedido')
+    const firstThread = runtime.threads.at(-1)!.id
+
+    await service.saveWorkspace({ id: workspace.id, permissions: {
+      chiefCreateAgents: workspace.permissions?.chiefCreateAgents ?? true,
+      chiefEditAgents: workspace.permissions?.chiefEditAgents ?? true,
+      chiefManageTeam: workspace.permissions?.chiefManageTeam ?? true,
+      chiefCreateSessions: workspace.permissions?.chiefCreateSessions ?? true,
+      filesWrite: 'deny', computerUse: workspace.permissions?.computerUse ?? 'deny',
+    } })
+    await service.send(conversation.id, 'Após mudar a permissão')
+    const permissionThread = runtime.threads.at(-1)!.id
+    expect(permissionThread).not.toBe(firstThread)
+
+    agent = service.saveAgent({ ...agent, runtime: 'claude' })
+    await service.send(conversation.id, 'Após mudar o runtime')
+    expect(runtime.threads.at(-1)!.id).not.toBe(permissionThread)
+  })
+
   it('exclui conversa, agente e workspace em cascata de verdade', async () => {
     const { service } = open(tempDirectory())
+    const disposeConversation = vi.spyOn(service.browser, 'disposeConversation')
+    const disposeAgent = vi.spyOn(service.browser, 'disposeAgent')
     const agent = service.saveAgent({ name: 'Descartável', alias: 'descartavel', instructions: 'x' })
     const workspace = await service.saveWorkspace({ name: 'Temporário', defaultAgentIds: [agent.id] })
     const conversation = service.saveConversation({ workspaceId: workspace.id, agentIds: [agent.id] })
     await service.send(conversation.id, 'oi')
 
     await service.deleteConversation(conversation.id)
+    expect(disposeConversation).toHaveBeenCalledWith(conversation.id)
     expect(() => service.store.conversation(conversation.id)).toThrow('não encontrada')
     expect(service.store.fileChangesForWorkspace(workspace.id)).toEqual([])
 
     const other = service.saveConversation({ workspaceId: workspace.id, agentIds: [agent.id] })
-    service.deleteAgent(agent.id)
+    await service.deleteAgent(agent.id)
+    expect(disposeAgent).toHaveBeenCalledWith(agent.id)
     expect(() => service.store.agent(agent.id)).toThrow('não encontrado')
     expect(service.store.conversation(other.id).agentIds).toEqual([])
     expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
 
     await service.deleteWorkspace(workspace.id)
+    expect(disposeConversation).toHaveBeenCalledWith(other.id)
     expect(() => service.store.workspace(workspace.id)).toThrow('não encontrado')
     expect(() => service.store.conversation(other.id)).toThrow('não encontrada')
   })

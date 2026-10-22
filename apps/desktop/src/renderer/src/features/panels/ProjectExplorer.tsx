@@ -1,50 +1,113 @@
-import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, FileCode2, Folder, FolderOpen, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Folder, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { FileTree, type FileTreeItem } from '@/components/ai/file-tree'
 import type { ProjectFileEntry } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
 
-function ExplorerFolder({ workspaceId, path, name, depth, onOpenFile, refreshKey }: {
+// Monaco is large. Start downloading its chunk as the user heads toward a file,
+// not after the filesystem request has finished.
+let editorPreload: Promise<unknown> | undefined
+const prewarmEditor = () => {
+  editorPreload ??= import('./MonacoCodeEditor').catch(() => {
+    editorPreload = undefined
+  })
+}
+
+function ProjectTree({ workspaceId, refreshKey, onOpenFile }: {
   workspaceId: string
-  path: string
-  name: string
-  depth: number
-  onOpenFile: (workspaceId: string, path: string) => void
   refreshKey: number
+  onOpenFile: (workspaceId: string, path: string) => void
 }) {
-  const [expanded, setExpanded] = useState(!path)
-  const [entries, setEntries] = useState<ProjectFileEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [directories, setDirectories] = useState<Record<string, ProjectFileEntry[]>>({})
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set())
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [selected, setSelected] = useState<string>()
+  const inFlight = useRef(new Set<string>())
+  const alive = useRef(false)
+
+  const load = useCallback((path: string) => {
+    if (inFlight.current.has(path)) return
+    inFlight.current.add(path)
+    setPending(current => new Set([...current, path]))
+    void window.appAPI.listProjectFiles(workspaceId, path)
+      .then(result => {
+        if (!alive.current) return
+        setDirectories(current => ({ ...current, [path]: result }))
+        setErrors(current => {
+          if (!current[path]) return current
+          const next = { ...current }
+          delete next[path]
+          return next
+        })
+      })
+      .catch(cause => {
+        if (alive.current) setErrors(current => ({ ...current, [path]: errorText(cause) }))
+      })
+      .finally(() => {
+        inFlight.current.delete(path)
+        if (alive.current) setPending(current => {
+          const next = new Set(current)
+          next.delete(path)
+          return next
+        })
+      })
+  }, [workspaceId])
+
   useEffect(() => {
-    if (!expanded) return
-    let live = true
-    setLoading(true)
-    window.appAPI.listProjectFiles(workspaceId, path).then(items => {
-      if (live) { setEntries(items); setError('') }
-    }).catch(cause => { if (live) setError(errorText(cause)) })
-      .finally(() => { if (live) setLoading(false) })
-    return () => { live = false }
-  }, [workspaceId, path, expanded, refreshKey])
-  return <div className="min-w-0">
-    {path && <button type="button" aria-label={name + (expanded ? ' recolher pasta' : ' expandir pasta')} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}
-      className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded px-2 text-left text-xs text-foreground hover:bg-accent/70" style={{ paddingLeft: depth * 13 + 8 }}>
-      {expanded ? <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />}
-      {expanded ? <FolderOpen className="size-3.5 shrink-0 text-primary/80" /> : <Folder className="size-3.5 shrink-0 text-primary/80" />}
-      <span className="min-w-0 flex-1 truncate">{name}</span>
-    </button>}
-    {expanded && <div>
-      {loading && <p className="px-4 py-2 text-xs text-muted-foreground" style={{ paddingLeft: (depth + 1) * 13 }}>Lendo pasta…</p>}
-      {error && <p role="alert" className="px-4 py-2 text-xs text-destructive">{error}</p>}
-      {!loading && !error && entries.map(entry => entry.directory
-        ? <ExplorerFolder key={entry.path} workspaceId={workspaceId} path={entry.path} name={entry.name} depth={depth + 1} onOpenFile={onOpenFile} refreshKey={refreshKey} />
-        : <button key={entry.path} type="button" title={entry.path} onClick={() => onOpenFile(workspaceId, entry.path)}
-          className="flex h-7 w-full min-w-0 items-center gap-2 rounded px-2 text-left text-xs text-muted-foreground hover:bg-accent/70 hover:text-foreground" style={{ paddingLeft: (depth + 1) * 13 + 8 }}>
-          <FileCode2 className="size-3.5 shrink-0 text-primary/70" /><span className="min-w-0 truncate">{entry.name}</span>
-        </button>)}
-      {!loading && !error && !entries.length && <p className="px-3 py-1 text-[11px] text-muted-foreground">{path ? 'Pasta vazia' : 'Nenhum arquivo encontrado'}</p>}
+    alive.current = true
+    load('')
+    return () => { alive.current = false }
+  }, [load, refreshKey])
+
+  const nodes = useMemo<FileTreeItem[]>(() => {
+    const output: FileTreeItem[] = []
+    const visit = (directory: string, depth: number) => {
+      for (const item of directories[directory] || []) {
+        output.push({
+          id: item.path,
+          name: item.name,
+          kind: item.directory ? 'folder' : 'file',
+          depth,
+        })
+        if (item.directory && expanded.has(item.path)) visit(item.path, depth + 1)
+      }
+    }
+    visit('', 0)
+    return output
+  }, [directories, expanded])
+
+  const toggleFolder = (path: string, open: boolean) => {
+    setExpanded(current => {
+      const next = new Set(current)
+      if (open) next.add(path)
+      else next.delete(path)
+      return next
+    })
+    if (open && !Object.prototype.hasOwnProperty.call(directories, path)) load(path)
+  }
+  const chooseFile = (path: string) => {
+    prewarmEditor()
+    setSelected(path)
+    onOpenFile(workspaceId, path)
+  }
+  const firstError = Object.entries(errors)[0]
+  return <>
+    <FileTree title="Arquivos do projeto" aria-label="Árvore de arquivos do projeto"
+      className="!rounded-none !bg-transparent !p-1.5 !shadow-none"
+      hideHeader items={nodes} expandedIds={expanded} selectedId={selected}
+      onFolderToggle={toggleFolder} onSelect={chooseFile} onFileIntent={prewarmEditor}
+    />
+    {pending.size > 0 && <p role="status" className="px-3 py-1.5 text-xs text-muted-foreground">
+      Lendo {Array.from(pending).map(item => item || 'projeto').join(', ')}…
+    </p>}
+    {firstError && <div role="alert" className="mx-2 my-1 rounded-md border border-destructive/25 bg-destructive/5 p-2 text-xs text-destructive">
+      Não foi possível ler {firstError[0] || 'o projeto'}: {firstError[1]}
+      <Button size="sm" variant="ghost" className="ml-1 h-6 text-xs" onClick={() => load(firstError[0])}>Tentar novamente</Button>
     </div>}
-  </div>
+    {!pending.size && !firstError && nodes.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">Nenhum arquivo encontrado.</p>}
+  </>
 }
 
 export function ProjectExplorer({ workspaceId, onOpenFile }: {
@@ -62,6 +125,8 @@ export function ProjectExplorer({ workspaceId, onOpenFile }: {
       <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Arquivos do projeto</span>
       <Button size="icon" variant="ghost" className="size-7" aria-label="Atualizar árvore de arquivos" title="Atualizar arquivos" onClick={() => setRefreshKey(key => key + 1)}><RefreshCw className="size-3.5" /></Button>
     </header>
-    <div className="min-h-0 flex-1 overflow-auto py-2"><ExplorerFolder key={workspaceId} workspaceId={workspaceId} path="" name="" depth={0} onOpenFile={onOpenFile} refreshKey={refreshKey} /></div>
+    <div className="min-h-0 flex-1 overflow-auto py-1">
+      <ProjectTree key={workspaceId + ':' + refreshKey} workspaceId={workspaceId} refreshKey={refreshKey} onOpenFile={onOpenFile} />
+    </div>
   </section>
 }

@@ -10,7 +10,7 @@ import { AppService } from './workspace'
 
 class FakeRuntime extends EventEmitter {
   async models() { return [] }
-  async thread() { return 'thread-test' }
+  async thread() { return { id: 'thread-test', history: 'empty' as const } }
   async request() { return { turn: { id: 'turn-test', status: 'inProgress' } } }
   respond() {}
   async interrupt() {}

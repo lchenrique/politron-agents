@@ -10,6 +10,8 @@ describe('preâmbulo de sistema compartilhado entre Codex e Claude', () => {
     expect(prompt).toContain('Este aplicativo se chama Boobot.')
     expect(prompt).toContain('Cada agente é um Boo')
     expect(prompt).toContain('group_members e ask_agent')
+    expect(prompt).toContain('delegation_result')
+    expect(prompt).toContain('ask_agent com delegation_id')
     expect(prompt).toContain('Não afirme ter feito uma ação sem resultado real de ferramenta.')
     expect(prompt).toContain('@nina')
   })

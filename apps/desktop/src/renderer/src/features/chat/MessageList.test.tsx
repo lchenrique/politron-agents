@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+﻿import { act, fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import type { Approval, FileChange, Message } from '../../../../shared/v9'
 import { MessageList } from './MessageList'
 
@@ -17,11 +17,23 @@ const approval: Approval = { id: 'approval-1', runId: 'run-1', conversationId: m
 describe('diffs e aprovações no chat', () => {
   it('mostra o arquivo alterado ligado ao turno e a decisão pendente inline', () => {
     render(<MessageList messages={[message]} fileChanges={[change]} approvals={[approval]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(screen.getByRole('region', { name: 'Arquivos alterados neste turno' })).toHaveTextContent('notes.md')
+    // Applied changes are reviewed above the composer, not duplicated inside every message.
+    expect(screen.queryByRole('region', { name: 'Arquivos alterados neste turno' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Aprovação de ferramenta' })).toHaveTextContent('Aguardando sua decisão')
     expect(screen.getByRole('button', { name: 'Confirmar e aprovar' })).toBeInTheDocument()
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Negar' })).toBeInTheDocument()
+  })
+})
+
+describe('balão do usuário', () => {
+  it('usa superfície neutra em vez da cor primary dos temas', () => {
+    const userMessage: Message = { ...message, id: 'human-1', agentId: null, role: 'user', author: 'Você', text: 'Mensagem do usuário', runId: null }
+    render(<MessageList messages={[userMessage]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    const bubble = screen.getByText('Mensagem do usuário').closest('[data-slot="message-bubble"]')
+    expect(bubble).toHaveClass('boobot-user-bubble')
+    expect(bubble).not.toHaveClass('bg-primary')
+    expect(bubble).not.toHaveClass('text-primary-foreground')
   })
 })
 
@@ -43,6 +55,35 @@ describe('scroll automático da conversa', () => {
     fireEvent.scroll(scroller)
     rerender(<MessageList messages={[makeMessage('m1', 'Oi'), makeMessage('m2', 'Nova resposta')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(scroller.scrollTop).toBe(50)
+  })
+
+  it('desativa a ancoragem nativa para deixar o scroller controlar a âncora por ID', () => {
+    const { container } = render(<MessageList messages={[makeMessage('m1', 'Oi')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    expect((container.firstElementChild as HTMLElement).style.overflowAnchor).toBe('none')
+  })
+
+  it('corrige a âncora de leitura quando o ResizeObserver mede crescimento acima dela', () => {
+    const observers: Array<{ callback: ResizeObserverCallback; observed: Element[] }> = []
+    class TestResizeObserver {
+      observed: Element[] = []
+      constructor(callback: ResizeObserverCallback) { this.callback = callback; observers.push(this) }
+      callback: ResizeObserverCallback
+      observe = (element: Element) => { this.observed.push(element) }
+      unobserve = (element: Element) => { this.observed = this.observed.filter(item => item !== element) }
+      disconnect = () => { this.observed = [] }
+    }
+    vi.stubGlobal('ResizeObserver', TestResizeObserver)
+    const { container, rerender } = render(<MessageList messages={[makeMessage('m1', 'Um'), makeMessage('m2', 'Dois'), makeMessage('m3', 'Três')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    const scroller = container.firstElementChild as HTMLElement
+    mockScrollMetrics(scroller, { scrollHeight: 1000, clientHeight: 300, scrollTop: 220 })
+    fireEvent.scroll(scroller)
+    const observer = observers[0]
+    const firstMessage = observer.observed.find(element => (element as HTMLElement).dataset.messageId === 'm1')
+    expect(firstMessage).toBeTruthy()
+    act(() => observer.callback([{ target: firstMessage!, contentRect: { height: 260 }, borderBoxSize: [] } as unknown as ResizeObserverEntry], observer as unknown as ResizeObserver))
+    rerender(<MessageList messages={[makeMessage('m1', 'Um com conteúdo expandido'), makeMessage('m2', 'Dois'), makeMessage('m3', 'Três')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    expect(scroller.scrollTop).toBeGreaterThanOrEqual(220)
+    vi.unstubAllGlobals()
   })
 })
 

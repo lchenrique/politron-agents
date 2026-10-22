@@ -26,6 +26,7 @@ export function FilePreview({ workspaceId, path, draft, onDraftChange }: {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [revision, setRevision] = useState(0)
+  const [lineCount, setLineCount] = useState(0)
   const saveRef = useRef<() => void>(() => {})
   const draftChangeRef = useRef(onDraftChange)
   draftChangeRef.current = onDraftChange
@@ -57,6 +58,11 @@ export function FilePreview({ workspaceId, path, draft, onDraftChange }: {
   saveRef.current = () => { void save() }
   const onMount: OnMount = (instance, monaco) => {
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current())
+    setLineCount(instance.getModel()?.getLineCount() ?? 0)
+    instance.onDidChangeModelContent(() => {
+      const next = instance.getModel()?.getLineCount() ?? 0
+      setLineCount(current => current === next ? current : next)
+    })
   }
   const reload = () => {
     if (dirty && !window.confirm('Descartar as alterações não salvas e recarregar este arquivo do disco?')) return
@@ -82,7 +88,7 @@ export function FilePreview({ workspaceId, path, draft, onDraftChange }: {
     </Suspense></div>}
     <footer className="flex h-7 shrink-0 items-center justify-between border-t border-border/40 px-3 text-[10px] text-muted-foreground">
       <span>{dirty ? '● Alterações não salvas' : 'Monaco Editor · Ctrl+S para salvar'} · Até 1 MB</span>
-      <span>{draft ? draft.content.split('\n').length + ' linhas' : ''}</span>
+      <span>{draft && lineCount ? lineCount + ' linhas' : ''}</span>
     </footer>
   </section>
 }

@@ -17,8 +17,9 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
   it('preserva provedores de ambiente sem herdar permissões para ferramentas nativas', () => {
     const result = JSON.parse(openCodeToolConfig(JSON.stringify({ provider: { custom: { models: { exact: {} } } }, permission: { '*': 'allow' } })))
     expect(result.provider.custom.models).toEqual({ exact: {} })
-    expect(result.permission).toEqual({ '*': 'deny' })
-    expect(result.agent['politron-safe'].permission).toEqual({ '*': 'deny' })
+    expect(result.permission).toEqual({ '*': 'ask' })
+    expect(result.agent['politron-safe'].permission).toEqual({ '*': 'ask' })
+    expect(JSON.parse(openCodeToolConfig(undefined, 'opencode/big-pickle')).small_model).toBe('opencode/big-pickle')
     expect(() => openCodeToolConfig('{broken')).toThrow('OPENCODE_CONFIG_CONTENT deve conter um objeto JSON válido.')
   })
 
@@ -88,7 +89,8 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
     const runtime = new HeadlessCliRuntime(kind, directory)
     try {
       const thread = await runtime.thread({ ...agent, runtime: kind }, directory, [])
-      expect(thread).toMatch(/^[0-9a-f-]{36}$/)
+      expect(thread.id).toMatch(/^[0-9a-f-]{36}$/)
+      expect(thread.history).toBe('empty')
     } finally { runtime.close() }
   }, 18000)
 

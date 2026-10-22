@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 beforeEach(() => localStorage.clear())
@@ -126,18 +126,24 @@ describe('colapso e exclusão da barra lateral', () => {
     fireEvent.click(screen.getByRole('button', { name: `Expandir ${workspace.name}` }))
     expect(screen.getByText('Conversa no workspace')).toBeInTheDocument()
   })
-  it('pede confirmação antes de excluir conversa e respeita cancelamento', () => {
+  it('usa modal para cancelar ou confirmar exclusão sem chamar window.confirm', async () => {
     const conversation: Conversation = { id: 'thread-delete', kind: 'direct', name: 'Apagar teste', agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
     const onDeleteConversation = vi.fn()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const confirm = vi.spyOn(window, 'confirm')
     renderSidebar({ snapshot: { ...snapshot, conversations: [conversation] }, onDeleteConversation })
     const actions = screen.getByRole('button', { name: 'Ações da conversa Apagar teste' })
     fireEvent.contextMenu(actions.parentElement!)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir conversa' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Excluir a conversa “Apagar teste”?')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
     expect(onDeleteConversation).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     fireEvent.contextMenu(actions.parentElement!)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir conversa' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Excluir' }))
     expect(onDeleteConversation).toHaveBeenCalledExactlyOnceWith(conversation.id)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(confirm).not.toHaveBeenCalled()
     confirm.mockRestore()
   })
 })

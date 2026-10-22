@@ -12,6 +12,30 @@ const browserApproval: Approval = {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('aprovações reais do Politron', () => {
+  it('mostra a proposta de escrita antes da decisão e distingue interrupção de negação', async () => {
+    const approval: Approval = { ...browserApproval, kind: 'write', details: { path: 'notes.md', before: 'antigo', after: 'novo' } }
+    const { rerender } = render(<PolitronToolApproval approval={approval} onNotice={vi.fn()} />)
+    expect(screen.getByText('Aguardando sua decisão')).toBeInTheDocument()
+    expect(screen.getAllByText('notes.md').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Expand notes.md' }))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Aprovação de ferramenta' })).toHaveTextContent('novo'))
+    rerender(<PolitronToolApproval approval={{ ...approval, status: 'interrupted' }} onNotice={vi.fn()} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Interrompida')
+    expect(screen.queryByText('Negada')).not.toBeInTheDocument()
+  })
+
+  it('desabilita as decisões enquanto envia e evita uma segunda solicitação', async () => {
+    let resolve!: () => void
+    const respondApproval = vi.fn(() => new Promise<void>(done => { resolve = done }))
+    vi.stubGlobal('appAPI', { respondApproval })
+    render(<PolitronToolApproval approval={browserApproval} onNotice={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Aprovar' }))
+    expect(screen.getByRole('button', { name: 'Negar' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Negar' }))
+    expect(respondApproval).toHaveBeenCalledTimes(1)
+    resolve()
+  })
+
   it('encaminha a aprovação ao backend uma vez e aguarda evento antes de confirmar', async () => {
     const respondApproval = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('appAPI', { respondApproval })
@@ -63,7 +87,7 @@ describe('aprovações reais do Politron', () => {
     fireEvent.click(first)
     expect(respondApproval).not.toHaveBeenCalled()
     expect(screen.getByText('Confirmação adicional obrigatória')).toBeInTheDocument()
-    const second = screen.getByRole('button', { name: 'Aprovar mesmo assim' })
+    const second = screen.getByRole('button', { name: /Aprovar mesmo assim/ })
     fireEvent.click(second)
     await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', true))
   })

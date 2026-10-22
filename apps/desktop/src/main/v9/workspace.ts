@@ -5,6 +5,12 @@ import { basename, extname, isAbsolute, relative, resolve, sep, join } from 'nod
 import { app, dialog, shell, Notification, BrowserWindow } from 'electron'
 import { EventEmitter } from 'node:events'
 import { listProjectDirectory, readProjectText, writeProjectText } from './project-files'
+import { captureFileVersion, commitFileWrite, fileContentMatches, FileVersionConflictError } from './guarded-write'
+import { buildTurnContext, messageDigest } from './conversation-context'
+import { fingerprintTools, TOOL_BROKER_VERSION } from './tool-contract'
+import { delegationEligibility } from './delegation-eligibility'
+import { createCommandEvidence, formatCommandEvidence, runCommand } from './command-evidence'
+import { shouldAutoApprove } from './approval-policy'
 import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type Model, type Run, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import { BrowserService } from './browser'
 import { GitWorkspaceService } from './git-workspaces'
@@ -16,61 +22,26 @@ import { PiRuntime } from './pi'
 import { HeadlessCliRuntime } from './headless-cli'
 import { chooseBooIdentity } from './boo-identity'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
-import type { AgentRuntime } from './agent-runtime'
+import { SessionUnavailableError, type AgentRuntime, type RuntimeThread } from './agent-runtime'
 import { ClaudeCredentialStore } from './credentials'
 import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
 import { SkillsService } from './skills/service'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
 
-type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout> }
+type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
-const MAX_COMMAND_OUTPUT = 32_000
-async function runWorkspaceCommand(command: string, cwd: string, signal?: AbortSignal): Promise<string> {
-  if (signal?.aborted) throw new Error('Execução interrompida.')
+async function runWorkspaceCommand(command: string, cwd: string, context: RunContext, toolCallId: string, store: WorkspaceStore): Promise<string> {
   const env: NodeJS.ProcessEnv = {}
   const allowedEnv = process.platform === 'win32'
     ? ['PATH', 'PATHEXT', 'COMSPEC', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramFiles', 'ProgramFiles(x86)']
     : ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TERM']
   for (const key of allowedEnv) if (process.env[key]) env[key] = process.env[key]
-  const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash'
-  const args = process.platform === 'win32'
-    ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command]
-    : ['--noprofile', '--norc', '-c', command]
-  return new Promise((resolveOutput, rejectOutput) => {
-    const child = spawn(shell, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
-    let output = ''
-    let truncated = false
-    let timedOut = false
-    let settled = false
-    const append = (chunk: Buffer) => {
-      const remaining = MAX_COMMAND_OUTPUT - output.length
-      if (remaining > 0) output += chunk.toString('utf8').slice(0, remaining)
-      if (chunk.length > remaining) truncated = true
-    }
-    child.stdout.on('data', append)
-    child.stderr.on('data', append)
-    const terminate = () => {
-      if (process.platform === 'win32' && child.pid) {
-        // child.kill() termina só o PowerShell; npm/node podem continuar executando.
-        const killer = spawn(join(process.env.SYSTEMROOT || 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
-        killer.once('error', () => child.kill())
-        killer.once('exit', code => { if (code !== 0) child.kill() })
-      } else child.kill()
-    }
-    const timer = setTimeout(() => { timedOut = true; terminate() }, 120_000)
-    const abort = () => terminate()
-    signal?.addEventListener('abort', abort, { once: true })
-    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
-    child.once('error', error => { if (settled) return; settled = true; cleanup(); rejectOutput(new Error(`Não foi possível iniciar o terminal: ${error.message}`)) })
-    child.once('close', (code, exitSignal) => {
-      if (settled) return
-      settled = true; cleanup()
-      if (signal?.aborted) { rejectOutput(new Error('Execução interrompida.')); return }
-      const ending = timedOut ? '\nComando encerrado após 120 segundos.' : `\nCódigo de saída: ${code ?? exitSignal ?? 'desconhecido'}.`
-      resolveOutput(`${output}${truncated ? '\n[Saída truncada em 32 KB.]' : ''}${ending}`)
-    })
-  })
+  const createdAt = new Date().toISOString()
+  const result = await runCommand(command, cwd, context.signal, { env })
+  const evidence = createCommandEvidence({ runId: context.run.id, toolCallId, agentId: context.agent.id, conversationId: context.conversation.id, workspaceId: context.run.workspaceId, command, cwd }, result, createdAt)
+  const persisted = store.putCommandEvidence(evidence)
+  return formatCommandEvidence(persisted, persisted.id)
 }
 /** Como e onde habilitar cada permissão do Chief, para a mensagem de recusa orientar o usuário em vez de só negar. */
 const howToEnablePermission = (label: string) => ` Para habilitar, abra o menu (⋯) deste workspace, escolha Editar e marque "${label}" em Permissões do workspace.`
@@ -124,6 +95,7 @@ export class AppService extends EventEmitter {
     this.openCodeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.openCodeRuntime))
     this.antigravityRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.antigravityRuntime))
     this.browser.on('frame', frame => this.emitEvent({ type: 'browser', frame }))
+    this.browser.on('frameClosed', frame => this.emitEvent({ type: 'browserClosed', ...frame }))
     for (const [name, runtime] of [['Codex', this.runtime], ['Claude', this.claudeRuntime], ['Pi', this.piRuntime], ['OpenCode', this.openCodeRuntime], ['Antigravity', this.antigravityRuntime]] as const) {
       runtime.on('disconnected', (error: Error) => {
         for (const context of this.contexts.values()) {
@@ -136,6 +108,8 @@ export class AppService extends EventEmitter {
     }
   }
   snapshot() { return { ...this.store.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function') } }
+  // Small read for Settings; avoid materializing conversations, runs and file changes.
+  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, terminalEnabled: this.store.terminalEnabled() } }
   private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : name === 'antigravity' ? this.antigravityRuntime : this.runtime }
   /** Usa o inventário validado na inicialização ou atualizado manualmente; envio não varre CLI. */
   setCachedModelResolver(resolver: (runtime: Agent['runtime']) => Promise<Model[]>): void { this.cachedModels = resolver }
@@ -151,8 +125,10 @@ export class AppService extends EventEmitter {
       try {
         const info = await this.gitWorkspaces.inspect(workspace.path, this.statusSignal.signal)
         if (this.statusSignal.signal.aborted) return
-        if (info.branch !== workspace.branch || info.changes !== workspace.changes) {
-          this.store.updateWorkspace({ ...workspace, ...info }); this.emitEvent({ type: 'changed' })
+        const current = this.store.workspaces().find(item => item.id === workspace.id)
+        if (!current || current.archived) continue
+        if (info.branch !== current.branch || info.changes !== current.changes) {
+          if (this.store.updateWorkspaceGitStatus(workspace.id, info)) this.emitEvent({ type: 'changed' })
         }
       } catch { /* pasta removida ou inacessível: preserva o último estado salvo */ }
     }
@@ -195,13 +171,16 @@ export class AppService extends EventEmitter {
   async deleteWorkspace(workspaceId: string) {
     const workspace = this.store.workspace(workspaceId)
     const ids = this.descendantWorkspaceIds(workspaceId)
-    for (const conversation of this.store.conversations().filter(item => ids.includes(item.workspaceId))) await this.stop(conversation.id)
+    const conversations = this.store.conversations().filter(item => ids.includes(item.workspaceId))
+    for (const conversation of conversations) await this.stop(conversation.id)
+    await Promise.all(conversations.map(conversation => this.browser.disposeConversation(conversation.id)))
     if (workspace.kind === 'worktree') await this.gitWorkspaces.removeWorktree(workspace.path).catch(() => undefined)
     this.store.deleteWorkspace(workspaceId, { cascade: true })
     this.emitEvent({ type: 'changed' })
   }
   async deleteConversation(conversationId: string) {
     await this.stop(conversationId)
+    await this.browser.disposeConversation(conversationId)
     this.store.deleteConversation(conversationId)
     this.emitEvent({ type: 'changed' })
   }
@@ -220,6 +199,7 @@ export class AppService extends EventEmitter {
       }
       this.active.delete(run.id)
     }
+    await this.browser.disposeAgent(agentId)
     this.store.deleteAgent(agentId)
     this.emitEvent({ type: 'changed' })
   }
@@ -250,7 +230,7 @@ export class AppService extends EventEmitter {
     this.approvalWaiters.delete(approvalId); resolveApproval(approved)
   }
   private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], forceAsk = false): Promise<boolean> {
-    if (!forceAsk && context.agent.approvalMode === 'automatic') return true
+    if (shouldAutoApprove(context.agent.approvalMode, kind, forceAsk)) return true
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
     this.store.putApproval(approval)
     context.run.status = 'waiting'; this.store.putRun(context.run)
@@ -341,7 +321,18 @@ export class AppService extends EventEmitter {
     if (recordInput && conversation.titleAuto) { this.store.autoTitle(conversationId, input); this.emitEvent({ type: 'changed' }) }
     if (steeringTargets.length) {
       try {
-        for (const target of steeringTargets) await target.runtime!.steer!(target.run.threadId!, target.run.turnId!, input)
+        for (const target of steeringTargets) {
+          await target.runtime!.steer!(target.run.threadId!, target.run.turnId!, input)
+          if (target.sessionBindingKey) {
+            const binding = this.store.sessionBinding(target.sessionBindingKey)
+            if (binding) {
+              const delivered = { ...userMessage, status: 'completed' as const }
+              const digests = { ...binding.deliveredDigests, [delivered.id]: messageDigest(delivered) }
+              target.deliveredDigests = Object.fromEntries(Object.entries(digests).slice(-40))
+              this.store.putSessionBinding({ ...binding, deliveredDigests: target.deliveredDigests })
+            }
+          }
+        }
         const delivered = { ...userMessage, status: 'completed' as const }
         this.store.putMessage(delivered); this.emitEvent({ type: 'message', message: delivered })
       } catch (error) {
@@ -378,7 +369,7 @@ export class AppService extends EventEmitter {
       const runInput = mode === 'discussion' && (roundTranscript.length || corrections)
         ? `${input}${corrections ? `\n\nNovas mensagens humanas durante a rodada:\n${corrections}` : ''}${roundTranscript.length ? `\n\nRespostas anteriores desta rodada, em ordem${previousRoundRaw.length > 9000 ? ' (trecho final; início omitido)' : ''}:\n${previousRoundText}` : ''}`
         : input
-      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: runInput, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
+      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: runInput, inputMessageId: recordInput ? userMessage.id : undefined, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
       const message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
       run.messageId = message.id
@@ -535,25 +526,52 @@ export class AppService extends EventEmitter {
       const workspaceContext = createHash('sha256').update(workspaceInstructions).digest('hex').slice(0, 16)
       const tools = this.tools(context)
       // Retomar uma sessão existente não atualiza as ferramentas do Codex/Claude: se a lista mudou (permissão, papel, ou código), força uma sessão nova em vez de reaproveitar uma com ferramentas desatualizadas.
-      const toolsKey = createHash('sha256').update(tools.map(tool => tool.name).sort().join(',')).digest('hex').slice(0, 12)
-      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:t${toolsKey}`
-      const existingThread = this.store.binding(bindingKey)
-      if (!existingThread) {
-        const checkpoint = this.store.latestCheckpoint(conversation.id, agent.id)
-        if (checkpoint) {
-          const recentUserMessages = this.store.history(conversation.id).filter(item => item.role === 'user').slice(-3)
-          run.input = `[Checkpoint anterior de ${checkpoint.createdAt}]\nResumo: ${checkpoint.summary}\nDecisões: ${checkpoint.decisions.join(' | ') || 'nenhuma registrada'}\nPendências: ${checkpoint.pending.join(' | ') || 'nenhuma registrada'}\nMensagens recentes do usuário, preservadas literalmente:\n${recentUserMessages.map(item => item.text).join('\n---\n')}\n\nPedido atual:\n${run.input}`
-        }
+      const permissions = this.store.workspace(run.workspaceId).permissions
+      const permissionKey = createHash('sha256').update(JSON.stringify({
+        agentCanWrite: agent.canWrite, workspaceFilesWrite: permissions?.filesWrite || 'inherit',
+        agentComputerUse: agent.computerUse, workspaceComputerUse: permissions?.computerUse || 'deny',
+        approvalMode: agent.approvalMode, terminalEnabled: this.store.terminalEnabled(),
+      })).digest('hex').slice(0, 12)
+      const toolsKey = fingerprintTools(tools, TOOL_BROKER_VERSION).slice(0, 16)
+      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}`
+      let binding = this.store.sessionBinding(bindingKey)
+      if (binding?.runtime && binding.runtime !== agent.runtime) { this.store.deleteSessionBinding(bindingKey); binding = undefined }
+      let thread: RuntimeThread
+      let didRetryUnavailable = false
+      try { thread = await runtime.thread(agent, directory, tools, binding?.threadId, workspaceInstructions) }
+      catch (error) {
+        if (!(error instanceof SessionUnavailableError) || !binding?.threadId) throw error
+        this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
+        thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions)
       }
-      const threadId = await runtime.thread(agent, directory, tools, existingThread, workspaceInstructions)
+      const makeTurnContext = () => buildTurnContext({
+        history: this.store.history(conversation.id), checkpoint: this.store.latestCheckpoint(conversation.id, agent.id),
+        currentInput: run.input, inputMessageId: run.inputMessageId, responseMessageId: run.messageId,
+        agentId: agent.id, session: binding?.contextVersion === 0 ? { ...thread, history: 'empty' } : thread,
+        deliveredDigests: binding?.contextVersion ? binding.deliveredDigests : {},
+        delegatedRequestIds: this.delegatedRequestIds(run),
+      })
+      let turnContext = makeTurnContext()
+      let threadId = thread.id
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
-      const result = await runtime.send(threadId, run.input, agent.model || undefined, 600000)
+      let result
+      try { result = await runtime.send(threadId, turnContext.text, agent.model || undefined, 600000) }
+      catch (error) {
+        if (!(error instanceof SessionUnavailableError) || didRetryUnavailable || !binding?.threadId || thread.history !== 'resume-pending') throw error
+        this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
+        thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions)
+        threadId = thread.id; run.threadId = threadId; this.store.putRun(run)
+        turnContext = makeTurnContext()
+        result = await runtime.send(threadId, turnContext.text, agent.model || undefined, 600000)
+      }
       if (result.thread?.id) { run.threadId = result.thread.id; this.store.putRun(run) }
       const turnId = result.turn.id as string
       run.turnId = turnId; this.store.putRun(run)
       this.emitEvent({ type: 'changed' })
-      this.store.bind(bindingKey, run.threadId || threadId)
+      if (result.turn.status === 'failed' || result.turn.status === 'interrupted') throw new Error(result.turn.error?.message || `O runtime encerrou o turno como ${result.turn.status}.`)
+      this.store.putSessionBinding({ key: bindingKey, threadId: run.threadId || threadId, runtime: agent.runtime, contextVersion: 1, deliveredDigests: turnContext.deliveredDigests })
+      context.sessionBindingKey = bindingKey; context.deliveredDigests = turnContext.deliveredDigests
       if (signal.aborted) { await runtime.interrupt(run.threadId || threadId, turnId).catch(() => undefined); throw new Error('Execução interrompida.') }
       await new Promise<void>((resolve, reject) => {
         const turnKey = `${run.threadId || threadId}:${turnId}`
@@ -581,6 +599,12 @@ export class AppService extends EventEmitter {
         runtime.on('event', done); signal.addEventListener('abort', abort, { once: true })
       })
       await this.finish(context, 'completed', message.text)
+      const deliveredReply = this.store.message(message.id)
+      if (deliveredReply && context.sessionBindingKey && context.deliveredDigests) {
+        const nextDigests = { ...context.deliveredDigests, [deliveredReply.id]: messageDigest(deliveredReply) }
+        context.deliveredDigests = Object.fromEntries(Object.entries(nextDigests).slice(-40))
+        this.store.putSessionBinding({ key: context.sessionBindingKey, threadId: run.threadId || threadId, runtime: agent.runtime, contextVersion: 1, deliveredDigests: context.deliveredDigests })
+      }
     } catch (error) {
       await this.finish(context, signal.aborted ? 'interrupted' : 'failed', message.text || (error instanceof Error ? error.message : 'Erro ao executar o agente.'))
     } finally { this.contexts.delete(run.id); this.active.delete(run.id) }
@@ -632,8 +656,8 @@ export class AppService extends EventEmitter {
         pitsBlush: { type: 'boolean' }, pitsAura: { type: 'boolean' }, pitsAnimate: { type: 'boolean' },
         pitsSpeed: { type: 'number' }, pitsAmplitude: { type: 'number' },
       }, [])] : []),
-      tool('group_members', context.agent.role === 'chief' ? 'Lista todos os Boos ativos cadastrados, inclusive Boos temporários deste workspace. Reutilize especialistas antes de criar novos.' : 'Mostra os agentes desta conversa e a equipe padrão do workspace.', {}, []),
-      tool('search_history', 'Busca mensagens antigas nesta conversa para recuperar decisões e contexto que não estão no histórico recente. A busca é limitada à conversa atual.', { query: { type: 'string', description: 'Termos concretos para pesquisar no histórico.' } }, ['query']),
+      tool('group_members', context.agent.role === 'chief' ? 'Lista o catálogo de Boos e informa separadamente disponibilidade e se este Chief pode delegar para cada um neste workspace. Reutilize especialistas elegíveis antes de criar novos.' : 'Mostra os agentes desta conversa e a equipe padrão do workspace, com disponibilidade e elegibilidade para delegação.', {}, []),
+      tool('search_history', 'Busca mensagens nesta conversa para recuperar o pedido e o contexto antes de responder a um follow-up curto ou ambíguo, como “encaminha”, “faz isso” ou “continua”. Consulte o histórico antes de pedir ao usuário que repita algo já explicado. A busca é limitada à conversa atual.', { query: { type: 'string', description: 'Termos concretos do pedido anterior, da correção ou do assunto citado pelo usuário.' } }, ['query']),
       tool('save_context_checkpoint', 'Salva um resumo de continuidade deste trabalho para uma futura sessão nova. Use em trabalhos longos ou antes de uma troca de contexto; não substitui os registros originais nem repete ações.', { summary: { type: 'string', description: 'Objetivo, progresso com evidências e próximos passos.' }, decisions: { type: 'array', items: { type: 'string' }, maxItems: 20 }, pending: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, ['summary']),
       tool('list_skills', 'Lista as skills disponíveis (nome e quando usar cada uma): as já instaladas no Codex/Claude Code desta máquina, as que o usuário adicionou e as que você ou outro agente já aprenderam. Use antes de uma tarefa para ver se já existe um procedimento conhecido; chame read_skill para ler o conteúdo completo de uma antes de segui-la.', {}, []),
       tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id devolvido por list_skills.', { id: { type: 'string' } }, ['id']),
@@ -645,7 +669,8 @@ export class AppService extends EventEmitter {
         tool('propose_team', 'Propõe alterar a equipe padrão deste workspace. Só persiste após aprovação explícita do usuário.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents']),
         tool('propose_session', 'Propõe criar uma nova sessão neste workspace, com a equipe informada ou o Assistente padrão. Só cria após aprovação do usuário.', { name: { type: 'string' }, agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['name', 'agents']),
       ] : []),
-      tool('ask_agent', context.agent.role === 'chief' ? 'Propõe uma delegação para um agente da equipe deste workspace. O usuário precisa aprovar antes de o destinatário receber a tarefa.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido concreto. Inclua somente o contexto necessário; a conversa de origem não será compartilhada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação deste agente nesta conversa.' } }, ['agent', 'task'])
+      tool('ask_agent', context.agent.role === 'chief' ? 'Delegue apenas a candidatos com canDelegate=true em group_members, quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. A delegação proposta precisa ser aprovada pelo usuário. Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
+      tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
     ]
   }
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
@@ -710,7 +735,7 @@ export class AppService extends EventEmitter {
       const command = text(args.command, 8000).trim()
       if (!command) throw new Error('Informe um comando para executar.')
       if (!await this.requestApproval(context, 'command', { command, cwd: root }, true)) return 'O usuário não aprovou a execução do comando.'
-      return runWorkspaceCommand(command, root, context.signal)
+      return runWorkspaceCommand(command, root, context, callId || randomUUID(), this.store)
     }
     if (name === 'workspace_list') {
       const target = inside(args.path || '.')
@@ -753,39 +778,28 @@ export class AppService extends EventEmitter {
         relativePath = relative(root, target)
         content = text(args.content, 1_000_000)
       } catch (error) { record('failed', '', '', false, false); throw error }
-      const parentPath = resolve(target, '..')
-      let nearest = parentPath
-      while (true) {
-        try { await fs.lstat(nearest); break } catch (error: any) { if (error?.code !== 'ENOENT') throw error; const next = resolve(nearest, '..'); if (next === nearest) throw new Error('Não foi possível validar a pasta de destino.'); nearest = next }
-      }
-      const nearestReal = await fs.realpath(nearest)
-      if (nearestReal !== root && !nearestReal.startsWith(root + sep)) throw new Error('A pasta de destino aponta para fora do grupo.')
-      await fs.mkdir(parentPath, { recursive: true })
-      const parent = await fs.realpath(parentPath)
-      if (parent !== root && !parent.startsWith(root + sep)) throw new Error('A pasta de destino aponta para fora do grupo.')
+      let original = Buffer.alloc(0)
+      let expectedVersion: Awaited<ReturnType<typeof captureFileVersion>>
       try {
-        const existing = await fs.lstat(target)
-        if (existing.isSymbolicLink() || !existing.isFile()) throw new Error('O destino precisa ser um arquivo comum dentro da pasta do workspace.')
-        const original = await fs.readFile(target)
+        expectedVersion = await captureFileVersion(root, relativePath)
+        if (expectedVersion.exists) original = await fs.readFile(target)
         binary = original.includes(0)
         truncated = original.length > 200_000 || Buffer.byteLength(content) > 200_000
         if (!binary) before = original.subarray(0, 200_000).toString('utf8')
-      } catch (error: any) { if (error?.code !== 'ENOENT') { record('failed', before, '', binary, truncated); throw error } }
-      if (!binary && before === content) { record('unchanged', before, content.slice(0, 200_000), false, truncated); return `Sem alterações: ${relativePath}` }
+      } catch (error) { record('failed', before, '', binary, truncated); throw error }
+      const next = Buffer.from(content, 'utf8')
+      if (expectedVersion.exists && fileContentMatches(original, next)) { record('unchanged', before, binary ? '' : before, binary, truncated); return `Sem alterações: ${relativePath}` }
       if (!await this.requestApproval(context, 'write', { path: relativePath, before: binary ? '' : before, after: content.slice(0, 200_000), truncated: truncated || content.length > 200_000 })) {
         record('failed', before, before, binary, truncated)
         return `Alteração negada pelo usuário: ${relativePath}`
       }
-      let writeStarted = false
       try {
-        writeStarted = true
-        await fs.writeFile(target, content, { encoding: 'utf8', flag: 'w' })
-        const written = await fs.readFile(target)
-        const afterBinary = written.includes(0)
-        const after = afterBinary ? '' : written.subarray(0, 200_000).toString('utf8')
-        record('applied', before, after, binary || afterBinary, truncated || written.length > 200_000)
+        await commitFileWrite({ root, relativePath, content: next, expectedVersion, signal: this.active.get(context.run.id)?.signal })
+        const afterBinary = next.includes(0)
+        const after = afterBinary ? '' : next.subarray(0, 200_000).toString('utf8')
+        record('applied', before, after, binary || afterBinary, truncated || next.length > 200_000)
       } catch (error) {
-        record(writeStarted ? 'unknown' : 'failed', before, '', binary, truncated)
+        record(error instanceof FileVersionConflictError || this.active.get(context.run.id)?.signal.aborted ? 'failed' : 'unknown', before, '', binary, truncated)
         throw error
       }
       return `Arquivo salvo: ${relative(root, target)}`
@@ -794,10 +808,13 @@ export class AppService extends EventEmitter {
       // O Chief coordena o aplicativo inteiro: precisa enxergar todo o catálogo, não só quem já está nesta conversa.
       const ids = context.agent.role === 'chief' ? this.store.agents().filter(item => item.temporaryStatus !== 'retired' && (!item.temporary || item.temporaryWorkspaceId === workspace.id)).map(item => item.id) : [...new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])]
       const busyIds = new Set(this.store.runs().filter(run => ['queued', 'running', 'waiting'].includes(run.status)).map(run => run.agentId))
+      const eligibilityContext = { agentId: context.agent.id, role: context.agent.role, workspaceId: workspace.id, eligibleAgentIds: new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds]), ancestry: context.run.ancestry || [context.agent.id] }
       return ids.map(id => {
         const agent = this.store.agent(id)
+        const eligibility = delegationEligibility(eligibilityContext, agent)
         return { name: agent.name, alias: `@${agent.alias}`, description: agent.description, runtime: agent.runtime,
-          temporary: agent.temporary === true, availability: agent.temporaryStatus === 'working' || busyIds.has(id) ? 'busy' : 'available' }
+          temporary: agent.temporary === true, availability: agent.temporaryStatus === 'working' || busyIds.has(id) ? 'busy' : 'available',
+          canDelegate: eligibility.canDelegate, ...(eligibility.reason ? { reason: eligibility.reason } : {}) }
       })
     }
     if (name === 'search_history') {
@@ -971,6 +988,23 @@ export class AppService extends EventEmitter {
       if (!await this.requestApproval(context, 'browser', { action: `${name.replace('browser_', '')}: ${JSON.stringify(args).slice(0, 1000)}` })) return 'Ação de navegador negada pelo usuário.'
       return this.browser.act(context.conversation.id, context.agent.id, name.replace('browser_', ''), args)
     }
+    if (name === 'delegation_result') {
+      const id = text(args.delegation_id, 100)
+      const delegation = this.store.delegation(id)
+      if (!delegation) throw new Error('Delegação não encontrada.')
+      const isRequester = delegation.requesterAgentId === context.agent.id && delegation.sourceConversationId === context.conversation.id
+      const isRecipient = delegation.recipientAgentId === context.agent.id && delegation.targetConversationId === context.conversation.id
+      const source = this.store.conversation(delegation.sourceConversationId)
+      const target = this.store.conversation(delegation.targetConversationId)
+      if ((!isRequester && !isRecipient) || source.workspaceId !== target.workspaceId || source.workspaceId !== context.run.workspaceId || context.conversation.workspaceId !== context.run.workspaceId) throw new Error('Você não tem acesso ao resultado desta delegação neste workspace.')
+      return {
+        delegationId: delegation.id, status: delegation.status, recipientAgentId: delegation.recipientAgentId,
+        task: delegation.task, result: delegation.result, error: delegation.error,
+        previousDelegationId: delegation.previousDelegationId,
+        commandEvidence: this.store.commandEvidenceForRun(delegation.childRunId),
+        fileChanges: this.store.fileChangesForRun(delegation.childRunId),
+      }
+    }
     if (name === 'ask_agent') {
       const requested = text(args.agent, 100).replace(/^@/, '').toLocaleLowerCase('pt-BR')
       const task = text(args.task, 5000)
@@ -980,27 +1014,47 @@ export class AppService extends EventEmitter {
       if (args.continue_on_result !== undefined && typeof args.continue_on_result !== 'boolean') throw new Error('continue_on_result precisa ser verdadeiro ou falso.')
       if (continueOnResult && mode !== 'background') throw new Error('continue_on_result só pode ser usado com mode=background.')
       const workspace = this.store.workspace(context.run.workspaceId)
-      const eligibleIds = new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])
-      const candidate = this.store.agents().find(agent => (context.agent.role !== 'chief' || eligibleIds.has(agent.id) || (agent.temporary && agent.temporaryWorkspaceId === workspace.id && agent.temporaryStatus === 'available')) && agent.temporaryStatus !== 'retired' && agent.id !== context.agent.id && (agent.alias.toLocaleLowerCase('pt-BR') === requested || agent.name.toLocaleLowerCase('pt-BR') === requested))
-      if (!candidate) throw new Error(context.agent.role === 'chief' ? 'Esse agente não está na equipe desta conversa ou do workspace, ou você pediu ao Chief para delegar a si mesmo.' : 'Esse agente não existe ou não pode receber um pedido de si mesmo.')
-      if (candidate.temporary && candidate.temporaryStatus !== 'available') throw new Error('Esse Boo temporário já está em execução ou foi aposentado.')
-      if (context.run.ancestry.includes(candidate.id)) throw new Error('Essa delegação criaria um ciclo de agentes.')
-      if (context.run.ancestry.length >= 4) throw new Error('A delegação atingiu o limite de profundidade.')
-      if (context.agent.role === 'chief' && !await this.requestApproval(context, 'delegation', { action: `Enviar uma tarefa para ${candidate.name}`, recipientName: candidate.name, task }, true)) return `Delegação para ${candidate.name} negada pelo usuário.`
+      const eligibleAgentIds = new Set([...context.conversation.agentIds, ...workspace.defaultAgentIds])
+      const eligibilityContext = { agentId: context.agent.id, role: context.agent.role, workspaceId: workspace.id, eligibleAgentIds, ancestry: context.run.ancestry || [context.agent.id] }
+      let candidate = this.store.agents().find(agent => agent.alias.toLocaleLowerCase('pt-BR') === requested || agent.name.toLocaleLowerCase('pt-BR') === requested)
+      if (!candidate) throw new Error('Esse agente não existe no catálogo.')
+      const previousId = args.delegation_id === undefined ? undefined : text(args.delegation_id, 100)
+      let previousDelegation = previousId ? this.store.delegation(previousId) : undefined
+      if (previousId && !previousDelegation) throw new Error('A delegação indicada não existe ou não está disponível.')
+      if (previousDelegation) this.validateDelegationContinuation(context, candidate, previousDelegation)
+      let eligibility = delegationEligibility(eligibilityContext, candidate)
+      if (!eligibility.canDelegate) throw new Error(eligibility.reason || 'Esse agente não pode receber esta delegação.')
+      if (context.agent.role === 'chief' && !await this.requestApproval(context, 'delegation', { action: previousDelegation ? `Continuar a delegação ${previousDelegation.id} com ${candidate.name}` : `Enviar uma tarefa para ${candidate.name}`, recipientName: candidate.name, task }, true)) return `Delegação para ${candidate.name} negada pelo usuário.`
+      if (context.agent.role === 'chief') {
+        const latestConversation = this.store.conversation(context.conversation.id)
+        if (latestConversation.archived || latestConversation.workspaceId !== context.run.workspaceId) throw new Error('A conversa ou o workspace mudou durante a aprovação; a delegação foi cancelada.')
+        const latestRequester = this.store.agent(context.agent.id)
+        if (latestRequester.role !== context.agent.role || latestRequester.temporaryStatus === 'retired') throw new Error('A elegibilidade do solicitante mudou durante a aprovação; a delegação foi cancelada.')
+        candidate = this.store.agent(candidate.id)
+        const latestWorkspace = this.store.workspace(latestConversation.workspaceId)
+        if (latestWorkspace.archived) throw new Error('O workspace foi arquivado durante a aprovação; a delegação foi cancelada.')
+        eligibility = delegationEligibility({ agentId: latestRequester.id, role: latestRequester.role, workspaceId: latestWorkspace.id, eligibleAgentIds: new Set([...latestConversation.agentIds, ...latestWorkspace.defaultAgentIds]), ancestry: context.run.ancestry || [latestRequester.id] }, candidate)
+        if (!eligibility.canDelegate) throw new Error(eligibility.reason || 'A elegibilidade do destinatário mudou durante a aprovação.')
+        if (previousDelegation) {
+          previousDelegation = this.store.delegation(previousDelegation.id)
+          if (!previousDelegation) throw new Error('A delegação anterior foi removida durante a aprovação.')
+          this.validateDelegationContinuation(context, candidate, previousDelegation)
+        }
+      }
       const idempotencyKey = `${context.run.id}:${callId || `${candidate.id}:${task}`}`
       const existing = this.store.delegationByKey(idempotencyKey)
       if (existing) {
         if (existing.status === 'completed') {
           if (continueOnResult && !existing.continuationRunId) await this.continueAfterDelegation(context, existing, existing.result)
-          return existing.result
+          return this.delegationReceipt(existing.id, existing.result)
         }
         if (existing.status === 'failed' || existing.status === 'interrupted') throw new Error(existing.error || `O pedido anterior terminou como ${existing.status}.`)
         const pending = this.delegationTasks.get(idempotencyKey)
-        if (pending) return mode === 'background' ? `Pedido ${existing.id} para ${candidate.name} continua em andamento. O resultado aparecerá nesta conversa.` : pending
+        if (pending) return mode === 'background' ? `Pedido ${existing.id} para ${candidate.name} continua em andamento. O resultado aparecerá nesta conversa.` : this.delegationReceipt(existing.id, await pending)
         throw new Error('Este pedido está persistido como em andamento, mas não há execução ativa. Não será repetido automaticamente.')
       }
       if (candidate.temporary) this.store.saveAgent({ ...candidate, temporaryStatus: 'working' })
-      const pending = this.delegate(context, candidate, task, idempotencyKey, mode === 'wait').finally(() => {
+      const pending = this.delegate(context, candidate, task, idempotencyKey, mode === 'wait', previousDelegation).finally(() => {
         if (candidate.temporary) {
           const latest = this.store.agent(candidate.id)
           if (latest.temporaryStatus === 'working') {
@@ -1020,24 +1074,46 @@ export class AppService extends EventEmitter {
         const delegation = this.store.delegationByKey(idempotencyKey)
         return `Pedido ${delegation?.id || ''} enviado para ${candidate.name}. Vou continuar e publicarei o resultado nesta conversa quando terminar.`.trim()
       }
-      try { return await pending } finally { this.delegationTasks.delete(idempotencyKey) }
+      try { return this.delegationReceipt(this.store.delegationByKey(idempotencyKey)?.id || '', await pending) } finally { this.delegationTasks.delete(idempotencyKey) }
     }
     throw new Error(`Ferramenta desconhecida: ${name}`)
   }
-  private async delegate(parent: RunContext, recipient: Agent, task: string, idempotencyKey: string, inheritLease = false): Promise<string> {
+  private delegationReceipt(id: string, result: string): string { return id ? `${result}\n\nID da delegação: ${id}` : result }
+  private delegatedRequestIds(run: Run): string[] {
+    const delegations = this.store.delegations()
+    let current = delegations.find(item => item.childRunId === run.id)
+    const ids: string[] = [], seen = new Set<string>()
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id); ids.push(current.requestMessageId)
+      current = current.previousDelegationId ? this.store.delegation(current.previousDelegationId) : undefined
+    }
+    return ids
+  }
+  private validateDelegationContinuation(context: RunContext, recipient: Agent, previous: Delegation): void {
+    if (previous.status !== 'completed' || previous.requesterAgentId !== context.agent.id || previous.sourceConversationId !== context.conversation.id || previous.recipientAgentId !== recipient.id) throw new Error('Esta delegação não pode ser continuada por esta conversa, agente ou destinatário.')
+    const source = this.store.conversation(previous.sourceConversationId)
+    const target = this.store.conversation(previous.targetConversationId)
+    const workspace = this.store.workspace(context.run.workspaceId)
+    if (source.archived || target.archived || workspace.archived || source.workspaceId !== context.run.workspaceId || target.workspaceId !== context.run.workspaceId || source.workspaceId !== target.workspaceId || target.kind !== 'direct' || target.agentIds.length !== 1 || target.agentIds[0] !== recipient.id) throw new Error('O workspace ou a conversa privada mudou; não é possível elevar o escopo da delegação.')
+  }
+  private async delegate(parent: RunContext, recipient: Agent, task: string, idempotencyKey: string, inheritLease = false, previousDelegation?: Delegation): Promise<string> {
     const now = new Date().toISOString()
     const taskLabel = task.replace(/\s+/g, ' ').slice(0, 52)
     this.store.db.exec('BEGIN IMMEDIATE')
     let targetConversation: Conversation
     let request: Message, resultMessage: Message, originMessage: Message, child: Run, delegation: Delegation
     try {
-    targetConversation = this.store.saveConversation({ kind: 'direct', name: `Pedido: ${recipient.name} · ${taskLabel}`, agentIds: [recipient.id], workspaceId: parent.run.workspaceId })
+    targetConversation = previousDelegation
+      ? this.store.conversation(previousDelegation.targetConversationId)
+      : this.store.saveConversation({ kind: 'direct', name: `Pedido: ${recipient.name} · ${taskLabel}`, agentIds: [recipient.id], workspaceId: parent.run.workspaceId })
+    if (previousDelegation && (targetConversation.archived || targetConversation.workspaceId !== parent.run.workspaceId || targetConversation.agentIds.length !== 1 || targetConversation.agentIds[0] !== recipient.id)) throw new Error('A conversa privada da delegação mudou; a continuação foi cancelada.')
     request = { id: randomUUID(), conversationId: targetConversation.id, agentId: parent.agent.id, author: `Pedido de ${parent.agent.name}`, role: 'activity', text: task, status: 'queued', runId: null, createdAt: now }
     resultMessage = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, author: recipient.name, role: 'assistant', text: '', status: 'queued', runId: null, createdAt: now }
     originMessage = { id: randomUUID(), conversationId: parent.conversation.id, agentId: recipient.id, author: recipient.name, role: 'activity', text: `Pedido para ${recipient.name}: ${task}\nAguardando execução na conversa privada do agente.`, status: 'queued', runId: null, relatedConversationId: targetConversation.id, createdAt: now }
     const targetWorkspace = this.store.workspace(targetConversation.workspaceId)
-    child = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: [...parent.run.ancestry, recipient.id], status: 'queued', threadId: null, turnId: null, messageId: resultMessage.id, input: task, agent: recipient, workspaceId: targetWorkspace.id, workspacePath: targetWorkspace.path, createdAt: now }
-    delegation = { id: randomUUID(), idempotencyKey, rootRunId: parent.run.rootId, parentRunId: parent.run.id, childRunId: child.id, requesterAgentId: parent.agent.id, recipientAgentId: recipient.id, sourceConversationId: parent.conversation.id, targetConversationId: targetConversation.id, sourceMessageId: originMessage.id, requestMessageId: request.id, resultMessageId: resultMessage.id, task, status: 'queued', result: '', error: '', createdAt: now, updatedAt: now }
+    child = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: [...parent.run.ancestry, recipient.id], status: 'queued', threadId: null, turnId: null, messageId: resultMessage.id, input: task, inputMessageId: request.id, agent: recipient, workspaceId: targetWorkspace.id, workspacePath: targetWorkspace.path, createdAt: now }
+    resultMessage.runId = child.id
+    delegation = { id: randomUUID(), idempotencyKey, rootRunId: parent.run.rootId, parentRunId: parent.run.id, childRunId: child.id, requesterAgentId: parent.agent.id, recipientAgentId: recipient.id, sourceConversationId: parent.conversation.id, targetConversationId: targetConversation.id, sourceMessageId: originMessage.id, requestMessageId: request.id, resultMessageId: resultMessage.id, task, status: 'queued', result: '', error: '', createdAt: now, updatedAt: now, ...(previousDelegation ? { previousDelegationId: previousDelegation.id } : {}) }
     request.delegationId = delegation.id; request.relatedConversationId = parent.conversation.id
     resultMessage.delegationId = delegation.id; resultMessage.relatedConversationId = parent.conversation.id
     originMessage.delegationId = delegation.id
@@ -1073,6 +1149,7 @@ export class AppService extends EventEmitter {
     }
     const completed = this.store.runs().find(run => run.id === child.id)!
     const result = this.store.message(resultMessage.id)?.text || ''
+    if (!this.store.delegation(delegation.id) || !this.store.conversations().some(item => item.id === parent.conversation.id)) throw new Error('A conversa de origem foi excluída; o resultado não foi republicado nela.')
     delegation.status = completed.status; delegation.result = completed.status === 'completed' ? result : ''; delegation.error = completed.status === 'completed' ? '' : result || `O pedido terminou como ${completed.status}.`; delegation.updatedAt = new Date().toISOString(); this.store.putDelegation(delegation)
     const finalOrigin = { ...runningOrigin, status: completed.status, text: completed.status === 'completed' ? `Pedido concluído por ${recipient.name}. Resultado disponível na conversa relacionada.\n\n${result}` : `Pedido para ${recipient.name}: ${task}\n${completed.status === 'interrupted' ? 'Cancelado.' : `Falhou: ${delegation.error}`}` }
     const finalRequest = { ...runningRequest, status: completed.status }
@@ -1092,7 +1169,7 @@ export class AppService extends EventEmitter {
     const now = new Date().toISOString()
     const input = `O pedido delegado a ${recipient.name} foi concluído. Resultado:\n\n${result.slice(0, 12000)}\n\nContinue a solicitação original do usuário usando esse resultado. Esta continuação pertence somente a você nesta conversa.`
     const message: Message = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, author: requester.name, role: 'assistant', text: '', status: 'queued', runId: null, delegationId: delegation.id, relatedConversationId: delegation.targetConversationId, createdAt: now }
-    const run: Run = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: parent.run.ancestry, status: 'queued', threadId: null, turnId: null, messageId: message.id, input, agent: requester, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now }
+    const run: Run = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: parent.run.ancestry, status: 'queued', threadId: null, turnId: null, messageId: message.id, input, inputMessageId: message.id, agent: requester, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now }
     message.runId = run.id
     const updated = { ...delegation, continuationRunId: run.id, updatedAt: now }
     this.store.db.exec('BEGIN IMMEDIATE')

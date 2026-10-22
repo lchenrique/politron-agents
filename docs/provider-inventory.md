@@ -1,5 +1,15 @@
 # Detecção de provedores do Politron
 
+## Gratuitos nativos OpenCode: validação em 20/10/2026
+
+O catálogo nativo `opencode/*` oferece gratuitos pelo Zen/Console; Go é uma assinatura separada. Não é necessário iniciar 9router. A recusa observada antes foi reproduzida com nossa política que removia ferramentas nativas do catálogo, inclusive em Big Pickle. A CLI padrão respondeu normalmente. A política do processo filho agora exige aprovação (`ask`) para ferramentas nativas, e `opencode run` sem `--auto` recusa essas solicitações. Nenhuma configuração global ou credencial foi alterada. O modelo auxiliar também fica fixado no modelo escolhido.
+
+O protocolo textual explicita que ferramentas do Boobot são RPCs executadas pela aplicação, distintas do catálogo nativo. Inferência real com `opencode/big-pickle`: `group_members` → `propose_boos` → uma aprovação → Boo permanente `Íris QA` persistido → resposta final confirmada. Teste aprovado em 169,72 s em perfil temporário, sem escrita/computador habilitados no Boo. Log: `%TEMP%/boobot-free-real4.log`. Isso certifica esse fluxo nesse modelo; não todos os gratuitos ou melhoria de latência. A recusa anterior de `beam-free` não demonstra ausência de modelos gratuitos disponíveis.
+
+Referências: [modelos Console](https://opencode.ai/v2/docs/console/models/), [Go](https://opencode.ai/v2/docs/console/go/) e [relato upstream da recusa com ferramentas removidas](https://github.com/anomalyco/opencode/issues/50627).
+
+Verificação da política final: CLI real com servidor controlado passou nos dois casos, criação com aprovação (86,66 s) e tentativa deliberada de shell nativo (29,95 s). O shell foi oferecido pelo catálogo, recusado com `auto-rejecting`, sem criar o arquivo sentinela ou Boo, sem aprovação interna e com execução encerrada como falha. Log: `%TEMP%/boobot-free-security4.log`. O classificador de requisições auxiliares do teste foi corrigido: textos de ferramentas que mencionam geração de título não são pedidos reais de título. Mais 39 testes focados e `npm run typecheck` passaram.
+
 ## Ferramentas dos Boos em 20/10/2026
 
 Foi reproduzida a causa de um Chief com Gemini apresentar planos sem criar Boos: `HeadlessCliRuntime.thread` descartava as ferramentas recebidas e o prompt limitava a execução a texto. Isso afetava Antigravity e OpenCode. Agora ambos recebem o preâmbulo compartilhado `buildAgentSystemPrompt`, as descrições e os esquemas das ferramentas oferecidas por `AppService.tools`. Codex, Claude e Pi já recebiam esse contrato.

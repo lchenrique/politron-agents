@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Archive, ChevronDown, ChevronRight, Crown, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import ActionSearchBar, { type CommandItem } from '@/components/kokonutui/action-search-bar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -39,6 +40,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null)
   const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null)
   const [openWorkspaceMenuId, setOpenWorkspaceMenuId] = useState<string | null>(null)
+  const [deleteRequest, setDeleteRequest] = useState<{ kind: 'workspace' | 'conversation' | 'agent'; id: string; title: string; description: string } | null>(null)
   useEffect(() => { localStorage.setItem('politron.sidebar.collapsed-workspaces', JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { localStorage.setItem('politron.sidebar.favorites', JSON.stringify([...favorites])) }, [favorites])
   const toggle = (id: string) => setCollapsed(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
@@ -76,14 +78,15 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const warning = children || conversations
       ? `Excluir "${workspace.name}" também apaga ${conversations} conversa(s) e ${children} worktree(s) vinculado(s). Esta ação não pode ser desfeita.`
       : `Excluir o workspace "${workspace.name}"? Esta ação não pode ser desfeita.`
-    if (window.confirm(warning + (preserved ? ` As ${preserved} sessão(ões) antigas permanecem preservadas em seus workspaces originais.` : ''))) void onDeleteWorkspace(workspace.id)
+    setOpenWorkspaceMenuId(null)
+    setDeleteRequest({ kind: 'workspace', id: workspace.id, title: `Excluir workspace “${workspace.name}”?`, description: warning + (preserved ? ` As ${preserved} sessão(ões) antigas permanecem preservadas em seus workspaces originais.` : '') })
   }
-  const removeConversation = (conversation: Conversation) => { if (window.confirm(`Excluir a conversa "${conversation.name}"? Esta ação não pode ser desfeita.`)) void onDeleteConversation(conversation.id) }
-  const removeAgent = (agent: Agent) => { if (window.confirm(`Excluir o agente ${agent.name}? As conversas continuam, mas perdem este participante.`)) void onDeleteAgent(agent.id) }
+  const removeConversation = (conversation: Conversation) => { setOpenConversationMenuId(null); setDeleteRequest({ kind: 'conversation', id: conversation.id, title: `Excluir a conversa “${conversation.name}”?`, description: 'Esta ação não pode ser desfeita.' }) }
+  const removeAgent = (agent: Agent) => { setOpenAgentMenuId(null); setDeleteRequest({ kind: 'agent', id: agent.id, title: `Excluir o agente ${agent.name}?`, description: 'As conversas continuam, mas perdem este participante.' }) }
 
   const agentRow = (agent: Agent, pinnedChief = false) => <div
     key={agent.id}
-    className={'group flex items-center gap-1 rounded-md transition-colors ' + (pinnedChief ? 'border border-amber-500/25 bg-amber-500/5 hover:bg-amber-500/10' : 'hover:bg-accent/50')}
+    className={'group flex items-center gap-1 rounded-md transition-colors ' + (pinnedChief ? 'border-l-2 border-amber-500/60 bg-amber-500/[0.035] hover:bg-amber-500/[0.07]' : 'hover:bg-accent/50')}
     onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}
   >
     <button onClick={() => void onOpenAgent(agent)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -115,7 +118,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
 
   const conversationButton = (conversation: Conversation) =>
     <div key={conversation.id} className="group flex items-center gap-1 rounded-md hover:bg-accent/60" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
-      <button onClick={() => onSelectConversation(conversation.id)} className={'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors ' + (conversation.id === selected?.id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground')}>
+      <button onClick={() => onSelectConversation(conversation.id)} className={'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors ' + (conversation.id === selected?.id ? 'bg-sidebar-accent/75 text-foreground' : 'text-muted-foreground hover:text-foreground')}>
         <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">{conversation.agentIds.length > 1 ? <Users className="size-3.5" /> : <MessageSquarePlus className="size-3.5" />}</span>
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium" title={conversation.name}>{conversation.name}</span>
         {isFavorite('conversation', conversation.id) && <Star className="size-3 shrink-0 fill-amber-500 text-amber-500" aria-label="Favorito" />}
@@ -132,7 +135,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </DropdownMenu>
     </div>
 
-  const workspaceNode = (workspace: Workspace, depth = 0): JSX.Element => {
+  const workspaceNode = (workspace: Workspace, depth = 0) => {
     const isCollapsed = collapsed.has(workspace.id)
     const conversations = conversationsOf(workspace.id)
     const children = childWorkspaces(workspace.id)
@@ -200,8 +203,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const visibleAgents = regularAgents.sort((a, b) =>
     Number(isFavorite('agent', b.id)) - Number(isFavorite('agent', a.id)) || a.name.localeCompare(b.name, 'pt-BR'))
 
-  return <aside className="flex h-full min-w-0 flex-col bg-card/35" aria-label="Barra lateral do Boobot">
-    <header className="space-y-1.5 border-b border-border/40 px-3 pb-2 pt-2">
+  return <aside className="boobot-sidebar flex h-full min-w-0 flex-col border-r border-sidebar-border/75 bg-sidebar text-sidebar-foreground" aria-label="Barra lateral do Boobot">
+    <header className="space-y-1.5 border-b border-sidebar-border/65 px-3 pb-3 pt-2">
       <div className="flex h-7 items-center justify-between px-1">
         <h2 className="text-xs font-semibold tracking-tight">Espaço de trabalho</h2>
         <DropdownMenu>
@@ -213,13 +216,13 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <ActionSearchBar items={paletteItems} onSelect={openPaletteItem} shortcut label="Busca rápida" placeholder="Buscar projetos, agentes, comandos…" className="!max-w-none" />
+      <ActionSearchBar items={paletteItems} onSelect={openPaletteItem} shortcut label="Busca rápida" placeholder="Buscar projetos, agentes, comandos…" className="boobot-sidebar-search !max-w-none" surfaceClassName="!border-sidebar-border/80 !bg-sidebar !shadow-none dark:!border-sidebar-border/80 dark:!bg-sidebar" />
     </header>
-    {showChief && chiefAgent && <section aria-label="Chief" className="border-b border-border/40 px-2 py-1.5">{agentRow(chiefAgent, true)}</section>}
+    {showChief && chiefAgent && <section aria-label="Chief" className="border-b border-sidebar-border/65 px-3 py-2">{agentRow(chiefAgent, true)}</section>}
     <Tabs value={section} onValueChange={value => setSection(value as 'projects' | 'agents')} className="flex min-h-0 flex-1 flex-col">
-      <TabsList className="mx-3 mt-2 grid h-8 grid-cols-2">
-        <TabsTrigger value="projects" className="gap-1.5 text-xs"><FolderOpen className="size-3.5" />Projetos <span className="text-[10px] opacity-65">{rootWorkspaces.length}</span></TabsTrigger>
-        <TabsTrigger value="agents" className="gap-1.5 text-xs"><Users className="size-3.5" />Agentes <span className="text-[10px] opacity-65">{snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired').length}</span></TabsTrigger>
+      <TabsList className="mx-3 mt-2 grid h-9 grid-cols-2 rounded-none border-b border-sidebar-border/70 bg-transparent p-0">
+        <TabsTrigger value="projects" className="h-9 gap-1.5 rounded-none border-b-2 border-transparent bg-transparent text-xs text-muted-foreground shadow-none data-[state=active]:border-sidebar-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"><FolderOpen className="size-3.5" />Projetos <span className="text-[10px] opacity-65">{rootWorkspaces.length}</span></TabsTrigger>
+        <TabsTrigger value="agents" className="h-9 gap-1.5 rounded-none border-b-2 border-transparent bg-transparent text-xs text-muted-foreground shadow-none data-[state=active]:border-sidebar-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"><Users className="size-3.5" />Agentes <span className="text-[10px] opacity-65">{snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired').length}</span></TabsTrigger>
       </TabsList>
       <TabsContent value="projects" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
         {!!favorites.size && <section aria-label="Favoritos" className="space-y-0.5">
@@ -250,10 +253,26 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         </section>
       </TabsContent>
     </Tabs>
-    <div className="border-t border-border/60 px-2 py-1"><HostSelector /></div>
-    <footer className="flex items-center gap-1 px-2 py-1">
+    <div className="border-t border-sidebar-border/65 px-2 py-1.5"><HostSelector /></div>
+    <footer className="flex items-center gap-1 px-2 pb-2 pt-0.5">
       <Button variant="ghost" disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><FolderOpen className="size-3.5" />Pasta</Button>
       <Button variant="ghost" onClick={onOpenSettings} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><Settings2 className="size-3.5" />Configurações</Button>
     </footer>
+    <Dialog open={!!deleteRequest} onOpenChange={open => { if (!open) setDeleteRequest(null) }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{deleteRequest?.title}</DialogTitle><DialogDescription>{deleteRequest?.description}</DialogDescription></DialogHeader>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setDeleteRequest(null)}>Cancelar</Button>
+          <Button variant="destructive" onClick={() => {
+            const request = deleteRequest
+            setDeleteRequest(null)
+            if (!request) return
+            if (request.kind === 'workspace') void onDeleteWorkspace(request.id)
+            else if (request.kind === 'conversation') void onDeleteConversation(request.id)
+            else void onDeleteAgent(request.id)
+          }}>Excluir</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </aside>
 }

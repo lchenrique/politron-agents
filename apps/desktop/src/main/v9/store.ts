@@ -2,9 +2,9 @@ import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
-import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Run, type Snapshot, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Run, type Snapshot, type Workspace } from '../../shared/v9'
 
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 9
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
   instructions: 'Você é o Assistente padrão do Boobot. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
@@ -21,8 +21,9 @@ function normalizeWorkspace(value: Workspace): Workspace {
   return { ...value, defaultAgentIds }
 }
 export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>
+export type SessionBinding = { key: string; threadId: string; runtime: Agent['runtime'] | null; contextVersion: number; deliveredDigests: Record<string, string> }
 const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: false, computerUse: false, approvalMode: 'ask' }
-function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'ghost-wave', approvalMode: value.approvalMode === 'automatic' ? 'automatic' : 'ask' } }
+function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'ghost-wave', approvalMode: value.approvalMode === 'automatic' || value.approvalMode === 'bypass' ? value.approvalMode : 'ask' } }
 
 export function requiredText(value: unknown, label: string, limit = 10000): string {
   if (typeof value !== 'string' || !value.trim() || value.length > limit) throw new Error(`${label}: informe um texto válido de até ${limit} caracteres.`)
@@ -60,21 +61,26 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS v9_runs (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_file_changes (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, tool_call_id TEXT NOT NULL, workspace_id TEXT NOT NULL, data TEXT NOT NULL, UNIQUE(run_id, tool_call_id));
       CREATE TABLE IF NOT EXISTS v9_approvals (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS v9_sessions (key TEXT PRIMARY KEY, thread_id TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS v9_sessions (key TEXT PRIMARY KEY, thread_id TEXT NOT NULL, runtime TEXT, context_version INTEGER NOT NULL DEFAULT 0, delivered_digests TEXT NOT NULL DEFAULT '{}');
       CREATE TABLE IF NOT EXISTS v9_delegations (id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, source_conversation_id TEXT NOT NULL, target_conversation_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_checkpoints (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, agent_id TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS v9_command_evidence (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, tool_call_id TEXT NOT NULL, conversation_id TEXT NOT NULL REFERENCES v9_conversations(id) ON DELETE CASCADE, data TEXT NOT NULL, UNIQUE(run_id, tool_call_id));
+      CREATE INDEX IF NOT EXISTS v9_command_evidence_conversation ON v9_command_evidence(conversation_id, run_id);
       CREATE INDEX IF NOT EXISTS v9_checkpoint_scope ON v9_checkpoints(conversation_id, agent_id, created_at);
       CREATE INDEX IF NOT EXISTS v9_delegation_source ON v9_delegations(source_conversation_id);
       CREATE INDEX IF NOT EXISTS v9_delegation_target ON v9_delegations(target_conversation_id);
       INSERT OR IGNORE INTO v9_meta VALUES ('schema','${previousSchema ?? SCHEMA_VERSION}');`)
-    if (previousSchema !== null && previousSchema < SCHEMA_VERSION) this.migrateWorkspaces(previousSchema)
-    else this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
+    if (previousSchema !== null && previousSchema < 7) this.migrateWorkspaces(previousSchema)
+    if (previousSchema !== null && previousSchema < 8) this.migrateSessionBindings()
+    if (previousSchema !== null && previousSchema < 9) this.migrateCommandEvidence()
+    if (previousSchema === null) this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
     // Agrupar sessões livres antigas sem mover seus diretórios originais.
     const existingWorkspaces = this.workspaces()
     if (this.conversations().some(conversation => existingWorkspaces.some(workspace => workspace.id === conversation.workspaceId && !workspace.name && !workspace.archived)) &&
       !existingWorkspaces.some(workspace => workspace.kind === 'free' && workspace.name === 'Livre' && !workspace.archived)) {
       this.saveWorkspace({ name: 'Livre' })
     }
+    this.repairDelegatedMessageLinks()
     for (const run of this.runs()) {
       if (['queued', 'running', 'waiting'].includes(run.status)) {
         this.putRun({ ...run, status: 'interrupted' })
@@ -202,7 +208,7 @@ export class WorkspaceStore {
       for (const workspace of workspaceRecords.values()) this.put('v9_workspaces', workspace as { id: string })
       for (const conversation of legacyConversations) this.put('v9_conversations', conversation as { id: string })
       for (const run of legacyRuns) this.put('v9_runs', run as { id: string })
-      this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
+      this.db.prepare("UPDATE v9_meta SET value='7' WHERE key='schema'").run()
       this.db.exec('COMMIT')
     } catch (error) { this.db.exec('ROLLBACK'); throw error }
   }
@@ -219,6 +225,7 @@ export class WorkspaceStore {
   workspace(id: string): Workspace { const value = this.get<Workspace>('v9_workspaces', id); if (!value) throw new Error('Workspace não encontrado.'); return normalizeWorkspace(value) }
   conversations(): Conversation[] { return this.all<Conversation>('v9_conversations').map(normalizeConversation) }
   runs(): Run[] { return this.all('v9_runs') }
+  run(id: string): Run | undefined { return this.get('v9_runs', id) }
   delegations(): Delegation[] { return (this.db.prepare('SELECT data FROM v9_delegations ORDER BY rowid').all() as { data: string }[]).map(row => JSON.parse(row.data)) }
   delegation(id: string): Delegation | undefined { const row = this.db.prepare('SELECT data FROM v9_delegations WHERE id=?').get(id) as { data: string } | undefined; return row ? JSON.parse(row.data) as Delegation : undefined }
   delegationByKey(key: string): Delegation | undefined { const row = this.db.prepare('SELECT data FROM v9_delegations WHERE idempotency_key=?').get(key) as { data: string } | undefined; return row ? JSON.parse(row.data) as Delegation : undefined }
@@ -227,7 +234,7 @@ export class WorkspaceStore {
     return {
       canWrite: read('canWrite')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.canWrite : read('canWrite')?.value === 'true',
       computerUse: read('computerUse')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.computerUse : read('computerUse')?.value === 'true',
-      approvalMode: read('approvalMode')?.value === 'automatic' ? 'automatic' : 'ask'
+      approvalMode: read('approvalMode')?.value === 'automatic' || read('approvalMode')?.value === 'bypass' ? read('approvalMode')!.value as Agent['approvalMode'] : 'ask'
     }
   }
   saveAssistantPreferences(input: Partial<AssistantPreferences>): Agent {
@@ -237,7 +244,7 @@ export class WorkspaceStore {
       computerUse: input.computerUse ?? previous.computerUse,
       approvalMode: input.approvalMode ?? previous.approvalMode
     }
-    if (typeof value.canWrite !== 'boolean' || typeof value.computerUse !== 'boolean' || !['ask', 'automatic'].includes(value.approvalMode)) throw new Error('Preferências do Assistente inválidas.')
+    if (typeof value.canWrite !== 'boolean' || typeof value.computerUse !== 'boolean' || !['ask', 'automatic', 'bypass'].includes(value.approvalMode)) throw new Error('Preferências do Assistente inválidas.')
     for (const [key, setting] of Object.entries(value)) this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(`assistant_${key}`, String(setting))
     return { ...ASSISTANT, ...value }
   }
@@ -317,7 +324,7 @@ export class WorkspaceStore {
     const runtime = input.runtime ?? previous?.runtime ?? 'codex'
     if (!['codex', 'claude', 'pi', 'opencode', 'antigravity'].includes(runtime)) throw new Error('Motor de agente inválido.')
     const approvalMode = input.approvalMode ?? previous?.approvalMode ?? 'ask'
-    if (approvalMode !== 'ask' && approvalMode !== 'automatic') throw new Error('Modo de aprovação inválido.')
+    if (approvalMode !== 'ask' && approvalMode !== 'automatic' && approvalMode !== 'bypass') throw new Error('Modo de aprovação inválido.')
     const effort = input.effort ?? previous?.effort ?? 'medium'
     if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço do agente inválido.')
     const role = input.role ?? previous?.role ?? 'agent'
@@ -400,6 +407,32 @@ export class WorkspaceStore {
     return value
   }
   updateWorkspace(value: Workspace): Workspace { this.workspace(value.id); this.put('v9_workspaces', value); return value }
+  updateWorkspaceGitStatus(id: string, info: { branch: string | null; changes: number }): Workspace | undefined {
+    const current = this.get<Workspace>('v9_workspaces', id)
+    if (!current || current.archived) return undefined
+    const updated = { ...normalizeWorkspace(current), branch: info.branch, changes: Math.max(0, info.changes) }
+    this.put('v9_workspaces', updated)
+    return updated
+  }
+  private migrateSessionBindings(): void {
+    const columns = new Set((this.db.prepare('PRAGMA table_info(v9_sessions)').all() as { name: string }[]).map(column => column.name))
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      if (!columns.has('runtime')) this.db.exec('ALTER TABLE v9_sessions ADD COLUMN runtime TEXT')
+      if (!columns.has('context_version')) this.db.exec("ALTER TABLE v9_sessions ADD COLUMN context_version INTEGER NOT NULL DEFAULT 0")
+      if (!columns.has('delivered_digests')) this.db.exec("ALTER TABLE v9_sessions ADD COLUMN delivered_digests TEXT NOT NULL DEFAULT '{}'")
+      this.db.prepare("UPDATE v9_meta SET value='8' WHERE key='schema'").run()
+      this.db.exec('COMMIT')
+    } catch (error) { this.db.exec('ROLLBACK'); throw error }
+  }
+  private migrateCommandEvidence(): void {
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      this.db.exec('CREATE TABLE IF NOT EXISTS v9_command_evidence (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, tool_call_id TEXT NOT NULL, conversation_id TEXT NOT NULL REFERENCES v9_conversations(id) ON DELETE CASCADE, data TEXT NOT NULL, UNIQUE(run_id, tool_call_id)); CREATE INDEX IF NOT EXISTS v9_command_evidence_conversation ON v9_command_evidence(conversation_id, run_id);')
+      this.db.prepare("UPDATE v9_meta SET value='9' WHERE key='schema'").run()
+      this.db.exec('COMMIT')
+    } catch (error) { this.db.exec('ROLLBACK'); throw error }
+  }
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }): Conversation {
     const previous = input.id ? this.conversation(input.id) : undefined
     let workspace = input.workspaceId ? this.workspace(input.workspaceId) : previous ? this.workspace(previous.workspaceId) : undefined
@@ -436,6 +469,7 @@ export class WorkspaceStore {
       this.db.prepare('DELETE FROM v9_checkpoints WHERE conversation_id=?').run(id)
       try { this.db.prepare('DELETE FROM v9_message_fts WHERE conversation_id=?').run(id) } catch { /* Índice FTS5 pode não estar disponível. */ }
       for (const runId of runIds) {
+        this.db.prepare('DELETE FROM v9_command_evidence WHERE run_id=?').run(runId)
         this.db.prepare('DELETE FROM v9_approvals WHERE run_id=?').run(runId)
         this.db.prepare('DELETE FROM v9_file_changes WHERE run_id=?').run(runId)
         this.db.prepare('DELETE FROM v9_runs WHERE id=?').run(runId)
@@ -495,12 +529,63 @@ export class WorkspaceStore {
   fileChanges(): FileChange[] { return (this.db.prepare('SELECT data FROM v9_file_changes ORDER BY rowid').all() as { data: string }[]).map(row => JSON.parse(row.data)) }
   fileChangesForRun(runId: string): FileChange[] { return (this.db.prepare('SELECT data FROM v9_file_changes WHERE run_id=? ORDER BY rowid').all(runId) as { data: string }[]).map(row => JSON.parse(row.data)) }
   fileChangesForWorkspace(workspaceId: string): FileChange[] { return (this.db.prepare('SELECT data FROM v9_file_changes WHERE workspace_id=? ORDER BY rowid DESC LIMIT 200').all(workspaceId) as { data: string }[]).map(row => JSON.parse(row.data)).reverse() }
+  putCommandEvidence(value: CommandEvidence): CommandEvidence {
+    this.db.prepare('INSERT OR IGNORE INTO v9_command_evidence(id,run_id,tool_call_id,conversation_id,data) VALUES(?,?,?,?,?)').run(value.id, value.runId, value.toolCallId, value.conversationId, JSON.stringify(value))
+    const row = this.db.prepare('SELECT data FROM v9_command_evidence WHERE run_id=? AND tool_call_id=?').get(value.runId, value.toolCallId) as { data: string } | undefined
+    if (!row) throw new Error('A evidência do comando não foi persistida.')
+    return JSON.parse(row.data) as CommandEvidence
+  }
+  commandEvidenceForRun(runId: string): CommandEvidence[] { return (this.db.prepare('SELECT data FROM v9_command_evidence WHERE run_id=? ORDER BY rowid').all(runId) as { data: string }[]).map(row => JSON.parse(row.data)) }
   approvals(): Approval[] { return (this.db.prepare('SELECT data FROM v9_approvals ORDER BY rowid').all() as { data: string }[]).map(row => JSON.parse(row.data)) }
   approval(id: string): Approval | undefined { const row = this.db.prepare('SELECT data FROM v9_approvals WHERE id=?').get(id) as { data: string } | undefined; return row ? JSON.parse(row.data) as Approval : undefined }
   pendingApprovalForRun(runId: string): Approval | undefined { const row = this.db.prepare("SELECT data FROM v9_approvals WHERE run_id=? ORDER BY rowid DESC").all(runId) as { data: string }[]; return row.map(item => JSON.parse(item.data) as Approval).find(item => item.status === 'pending') }
   putApproval(value: Approval): void { this.db.prepare('INSERT INTO v9_approvals(id,run_id,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(value.id, value.runId, JSON.stringify(value)) }
   putDelegation(value: Delegation): void { this.db.prepare('INSERT INTO v9_delegations(id,idempotency_key,source_conversation_id,target_conversation_id,data) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, source_conversation_id=excluded.source_conversation_id, target_conversation_id=excluded.target_conversation_id').run(value.id, value.idempotencyKey, value.sourceConversationId, value.targetConversationId, JSON.stringify(value)) }
-  binding(key: string): string | undefined { return (this.db.prepare('SELECT thread_id FROM v9_sessions WHERE key=?').get(key) as { thread_id: string } | undefined)?.thread_id }
-  bind(key: string, threadId: string): void { this.db.prepare('INSERT OR REPLACE INTO v9_sessions VALUES(?,?)').run(key, threadId) }
+  repairDelegatedMessageLinks(): number {
+    const candidates = this.delegations().flatMap(delegation => {
+      const message = this.message(delegation.resultMessageId)
+      const run = this.run(delegation.childRunId)
+      if (!message || !run || message.runId !== null || message.role !== 'assistant') return []
+      if (run.messageId !== message.id || run.conversationId !== delegation.targetConversationId || run.agentId !== delegation.recipientAgentId) return []
+      if (message.conversationId !== delegation.targetConversationId || message.agentId !== delegation.recipientAgentId || (message.delegationId && message.delegationId !== delegation.id)) return []
+      return [{ message, run }]
+    })
+    const byMessage = new Map<string, typeof candidates>()
+    for (const candidate of candidates) byMessage.set(candidate.message.id, [...(byMessage.get(candidate.message.id) || []), candidate])
+    const unambiguous = [...byMessage.values()].filter(matches => matches.length === 1).map(matches => matches[0])
+    if (!unambiguous.length) return 0
+
+    const backup = join(this.dataDirectory, `politron-v9.backup-delegated-links-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.sqlite`)
+    this.db.prepare('VACUUM INTO ?').run(backup)
+    this.db.exec('BEGIN IMMEDIATE')
+    let repaired = 0
+    try {
+      for (const { message, run } of unambiguous) {
+        const current = this.message(message.id)
+        if (!current || current.runId !== null || current.conversationId !== run.conversationId || current.agentId !== run.agentId) continue
+        this.putMessage({ ...current, runId: run.id })
+        repaired++
+      }
+      this.db.exec('COMMIT')
+      return repaired
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+  sessionBinding(key: string): SessionBinding | undefined {
+    const row = this.db.prepare('SELECT key, thread_id, runtime, context_version, delivered_digests FROM v9_sessions WHERE key=?').get(key) as { key: string; thread_id: string; runtime: Agent['runtime'] | null; context_version: number; delivered_digests: string } | undefined
+    if (!row) return undefined
+    let deliveredDigests: Record<string, string> = {}
+    try { const parsed: unknown = JSON.parse(row.delivered_digests); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) deliveredDigests = Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string').slice(-40)) } catch { /* bindings antigos recebem replay de contexto */ }
+    return { key: row.key, threadId: row.thread_id, runtime: row.runtime, contextVersion: row.context_version, deliveredDigests }
+  }
+  putSessionBinding(value: SessionBinding): void {
+    const digests = Object.fromEntries(Object.entries(value.deliveredDigests).slice(-40))
+    this.db.prepare('INSERT OR REPLACE INTO v9_sessions(key,thread_id,runtime,context_version,delivered_digests) VALUES(?,?,?,?,?)').run(value.key, value.threadId, value.runtime, value.contextVersion, JSON.stringify(digests))
+  }
+  deleteSessionBinding(key: string): void { this.db.prepare('DELETE FROM v9_sessions WHERE key=?').run(key) }
+  binding(key: string): string | undefined { return this.sessionBinding(key)?.threadId }
+  bind(key: string, threadId: string): void { this.putSessionBinding({ key, threadId, runtime: null, contextVersion: 0, deliveredDigests: {} }) }
   close(): void { this.db.close() }
 }

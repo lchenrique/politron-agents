@@ -43,6 +43,7 @@ describe('Pi CLI real, sem envio de mensagens nem consumo de modelos', () => {
     execFileSync(process.execPath, ['--check', extension])
     // No Windows, subprocessos temporários podem manter o cwd travado após o encerramento.
     const thread = await runtime.thread(agent, process.cwd(), [])
-    expect(thread).toMatch(/^[\da-f]{8}-/)
+    expect(thread.id).toMatch(/^[\da-f]{8}-/)
+    expect(thread.history).toBe('empty')
   }, 30000)
 })

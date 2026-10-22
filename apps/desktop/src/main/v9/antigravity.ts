@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { Model } from '../../shared/v9'
-import type { AgentRuntime } from './agent-runtime'
+import type { AgentRuntime, RuntimeThread } from './agent-runtime'
 import { execCli } from './cli-launch'
 
 const EXECUTION_UNAVAILABLE = 'A integração do Antigravity ainda precisa limitar ferramentas, MCP e hooks antes de iniciar conversas no Boobot.'
@@ -41,7 +41,7 @@ export class AntigravityRuntime extends EventEmitter implements AgentRuntime {
     return models
   }
 
-  async thread(): Promise<string> { throw new Error(EXECUTION_UNAVAILABLE) }
+  async thread(): Promise<RuntimeThread> { throw new Error(EXECUTION_UNAVAILABLE) }
   async send(): Promise<never> { throw new Error(EXECUTION_UNAVAILABLE) }
   respond(): void { /* O protocolo headless não aceita control_response. */ }
   async interrupt(): Promise<void> { /* Nenhuma execução é iniciada neste estágio. */ }

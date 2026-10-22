@@ -5,18 +5,18 @@ import { homedir } from 'node:os'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Agent, Model } from '../../shared/v9'
-import type { AgentRuntime } from './agent-runtime'
+import { SessionUnavailableError, type AgentRuntime, type RuntimeThread } from './agent-runtime'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { spawnCli } from './cli-launch'
 
-type RpcMessage = { id?: number | string; method?: string; params?: Record<string, any>; result?: any; error?: { message: string } }
+type RpcMessage = { id?: number | string; method?: string; params?: Record<string, any>; result?: any; error?: { code?: number | string; message: string } }
 export interface DynamicTool { type: 'function'; name: string; description: string; inputSchema: Record<string, unknown> }
 export class CodexRuntime extends EventEmitter implements AgentRuntime {
   private executable: string | undefined
   private process: ChildProcessWithoutNullStreams | null = null
   private ready: Promise<void> | null = null
   private nextId = 0
-  private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  private pending = new Map<number, { method: string; resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
   private stderr = ''
   private async configuredMcpNames(file: string): Promise<string[]> {
     try {
@@ -61,7 +61,7 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     const id = ++this.nextId
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Codex não respondeu a ${method}.`)) }, timeout)
-      this.pending.set(id, { resolve, reject, timer })
+      this.pending.set(id, { method, resolve, reject, timer })
       try { this.write({ id, method, params }) } catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error) }
     })
   }
@@ -71,7 +71,13 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       this.emit('event', message); return
     }
     const pending = this.pending.get(Number(message.id))
-    if (pending) { clearTimeout(pending.timer); this.pending.delete(Number(message.id)); if (message.error) pending.reject(new Error(message.error.message)); else pending.resolve(message.result) }
+    if (pending) {
+      clearTimeout(pending.timer); this.pending.delete(Number(message.id))
+      if (message.error) {
+        const staleThread = pending.method === 'thread/resume' && message.error.code === -32600 && /(?:no rollout found for thread id|thread not found|thread not loaded: [\da-f-]+)/i.test(message.error.message) && !/failed to load configuration/i.test(message.error.message)
+        pending.reject(staleThread ? new SessionUnavailableError(message.error.message) : new Error(message.error.message))
+      } else pending.resolve(message.result)
+    }
   }
   async models(binaryPath?: string): Promise<Model[]> {
     if (binaryPath && !this.ready) this.executable = binaryPath
@@ -102,7 +108,7 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     }
     return [...models.values()]
   }
-  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string): Promise<string> {
+  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string): Promise<RuntimeThread> {
     await this.start()
     // File access is mediated by the workspace tools. Built-in command execution is disabled.
     const config: Record<string, unknown> = {
@@ -120,7 +126,8 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     const result = threadId
       ? await this.request('thread/resume', { ...params, threadId })
       : await this.request('thread/start', { ...params, dynamicTools: tools })
-    return result.thread.id
+    if (typeof result?.thread?.id !== 'string' || !result.thread.id) throw new Error('O Codex não confirmou a sessão solicitada.')
+    return { id: result.thread.id, history: threadId ? 'retained' : 'empty' }
   }
   async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<any> {
     return this.request('turn/start', { threadId, input: [{ type: 'text', text: input }], ...(model ? { model } : {}) }, timeout)

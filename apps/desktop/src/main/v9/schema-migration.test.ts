@@ -50,3 +50,19 @@ describe('migração de esquema 5 para 6', () => {
     } finally { store.close() }
   })
 })
+
+describe('migração direta do esquema 7 para 9', () => {
+  it('aplica ligações de sessão e evidências de comando na mesma abertura', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'politron-schema-7-9-'))
+    directories.push(directory)
+    const db = new DatabaseSync(join(directory, 'politron-v9.sqlite'))
+    db.exec("CREATE TABLE v9_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE v9_sessions (key TEXT PRIMARY KEY, thread_id TEXT NOT NULL); INSERT INTO v9_meta VALUES ('schema','7');")
+    db.close()
+    const store = new WorkspaceStore(directory)
+    try {
+      expect(store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get()).toEqual({ value: '9' })
+      expect((store.db.prepare('PRAGMA table_info(v9_sessions)').all() as { name: string }[]).map(column => column.name)).toEqual(expect.arrayContaining(['runtime', 'context_version', 'delivered_digests']))
+      expect(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='v9_command_evidence'").get()).toEqual({ name: 'v9_command_evidence' })
+    } finally { store.close() }
+  })
+})

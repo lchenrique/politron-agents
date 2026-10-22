@@ -24,6 +24,7 @@ export class HostManager implements HostRouting {
   private reconnect: ReturnType<typeof setTimeout> | undefined
   private generation = 0
   private attempts = 0
+  private connectedHostId: string | null = null
   private disposed = false
   private switching = false
   private folderRequests = new Map<string, { owner: number; resolve: (path: string | null) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -89,7 +90,7 @@ export class HostManager implements HostRouting {
     try {
       const previous = this.data.selectedId; this.data.selectedId = id
       try { await this.store.save(this.data) } catch (error) { this.data.selectedId = previous; throw error }
-      this.beforeSelect(); this.disconnect(); this.error = undefined
+      this.beforeSelect(); this.connectedHostId = null; this.disconnect(); this.error = undefined
       if (this.remote) void this.connectSelected()
       this.changed()
       // Componentes e caches de conversa não podem carregar dados do host anterior.
@@ -138,13 +139,15 @@ export class HostManager implements HostRouting {
       client.on('disconnected', () => this.scheduleReconnect(generation))
       await client.connect(tunnel?.endpoint)
       if (generation !== this.generation) { client.close(); tunnel?.close(); return }
+      const restored = this.connectedHostId === host.id
+      this.connectedHostId = host.id
       this.status = 'connected'; this.error = undefined; this.attempts = 0; this.changed()
       void client.call('providers:list').then(data => {
         if (generation !== this.generation) return
         for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('providers:changed', data)
       }).catch(() => undefined)
       // Recuperação por snapshot, sem reenviar comandos possivelmente executados.
-      for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('v9:event', { type: 'changed' })
+      for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('v9:event', restored ? { type: 'changed', reason: 'connection-restored' } : { type: 'changed' })
     } catch (error) {
       client.removeAllListeners(); client.close(); tunnel?.close()
       if (generation !== this.generation) return

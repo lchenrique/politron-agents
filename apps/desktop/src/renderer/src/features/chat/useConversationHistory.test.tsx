@@ -93,4 +93,58 @@ describe('histórico com memória limitada e respostas em streaming', () => {
     expect(result.current.messages.every(message => message.conversationId === 'chat-b')).toBe(true)
     expect(result.current.messages).toHaveLength(100)
   })
+
+  it('recupera páginas até sobrepor o histórico local e incorpora evento ao vivo durante a leitura', async () => {
+    const { result } = renderHook(() => useConversationHistory('chat-a', vi.fn()))
+    await act(async () => {})
+    const offline = Array.from({ length: 250 }, (_, index) => ({ ...makeMessage(5000 + index), text: `Offline ${index}` }))
+    records.push(...offline)
+    await act(async () => { await result.current.reconcileAfterReconnect() })
+    expect(result.current.messages.at(-1)).toMatchObject({ id: 'm5249', text: 'Offline 249' })
+    expect(result.current.messages.find(message => message.id === 'm5000')?.text).toBe('Offline 0')
+    expect(historyPage).toHaveBeenCalledTimes(4)
+
+    let resolvePage!: (value: { messages: Message[]; hasMore: boolean; beforeCursor: number }) => void
+    historyPage.mockImplementationOnce(() => new Promise(resolve => { resolvePage = resolve }))
+    const liveUpdate = { ...offline[249], text: 'Atualizada pelo evento ao vivo' }
+    // Exercise a live update while the history request is unresolved.
+    await act(async () => {
+      const reconciliation = result.current.reconcileAfterReconnect()
+      result.current.queueMessage(liveUpdate)
+      resolvePage({ messages: offline.slice(-100), hasMore: true, beforeCursor: 0 })
+      await reconciliation
+    })
+    expect(result.current.messages.find(message => message.id === 'm5249')?.text).toBe('Atualizada pelo evento ao vivo')
+  })
+
+  it('preserva janela e foco ao reconciliar uma busca e ignora reconciliação de conversa anterior', async () => {
+    const around = vi.fn().mockResolvedValue({ messages: records.slice(100, 200), hasMore: true, beforeCursor: 100 })
+    vi.stubGlobal('appAPI', { historyPage, searchHistory: vi.fn(), historyAround: around })
+    const { result, rerender } = renderHook(({ id }) => useConversationHistory(id, vi.fn()), { initialProps: { id: 'chat-a' } })
+    await act(async () => { await result.current.openSearchHit({ cursor: 150, message: makeMessage(150) } as never) })
+    const visibleIds = result.current.messages.map(message => message.id)
+    expect(result.current.focusedMessageId).toBe('m150')
+    await act(async () => { await result.current.reconcileAfterReconnect() })
+    expect(result.current.messages.map(message => message.id)).toEqual(visibleIds)
+    expect(result.current.focusedMessageId).toBe('m150')
+
+    let resolveOld!: (value: { messages: Message[]; hasMore: boolean; beforeCursor: number }) => void
+    historyPage.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    let reconciliation!: Promise<void>
+    act(() => { reconciliation = result.current.reconcileAfterReconnect() })
+    rerender({ id: 'chat-b' })
+    await act(async () => { resolveOld({ messages: [makeMessage(5000, 'chat-a')], hasMore: false, beforeCursor: 0 }); await reconciliation })
+    expect(result.current.messages.every(message => message.conversationId === 'chat-b')).toBe(true)
+  })
+
+  it('limita a reconciliação desconectada a 600 mensagens sem concatenar janelas sem sobreposição', async () => {
+    const { result } = renderHook(() => useConversationHistory('chat-a', vi.fn()))
+    await act(async () => {})
+    records.push(...Array.from({ length: 800 }, (_, index) => makeMessage(5000 + index)))
+    await act(async () => { await result.current.reconcileAfterReconnect() })
+    expect(result.current.messages).toHaveLength(MAX_CHAT_MESSAGES)
+    expect(result.current.messages[0].id).toBe('m5200')
+    expect(result.current.messages.at(-1)?.id).toBe('m5799')
+    expect(result.current.hasOlderMessages).toBe(true)
+  })
 })

@@ -15,7 +15,7 @@ class FakeRuntime extends EventEmitter {
   threads: Array<{ id: string; agent: Agent; directory: string }> = []
   turns: Array<{ threadId: string; text: string }> = []
   async models() { return [] }
-  async thread(agent: Agent, directory: string, _tools: unknown, threadId?: string) { const id = threadId || `${agent.runtime}-thread-${this.threads.length + 1}`; this.threads.push({ id, agent, directory }); return id }
+  async thread(agent: Agent, directory: string, _tools: unknown, threadId?: string) { const id = threadId || `${agent.runtime}-thread-${this.threads.length + 1}`; this.threads.push({ id, agent, directory }); return { id, history: 'empty' as const } }
   async request(_method: string, params: any) {
     const threadId = params.threadId as string; const turnId = `${threadId}-turn-${this.turns.length + 1}`; const text = params.input[0].text as string
     this.turns.push({ threadId, text })
@@ -82,12 +82,12 @@ describe('motores múltiplos', () => {
     const agent = { id: 'claude-1', name: 'Claude', alias: 'claude', instructions: 'Ajude.', runtime: 'claude', model: 'sonnet', effort: 'medium' } as Agent
     const models = await runtime.models()
     expect(models).toContainEqual({ id: 'sonnet', name: 'Claude Sonnet', description: undefined, runtime: 'claude', isDefault: true, supportedEfforts: [] })
-    const threadId = await runtime.thread(agent, temp(), [])
+    const threadId = (await runtime.thread(agent, temp(), [])).id
     const events: any[] = []; runtime.on('event', event => events.push(event))
     const first = await runtime.send(threadId, 'Primeira')
     expect(first.thread.id).toBe('claude-session-real')
     await vi.waitFor(() => expect(events.some(event => event.method === 'turn/completed')).toBe(true))
-    await runtime.thread(agent, temp(), [], 'claude-session-real')
+    expect((await runtime.thread(agent, temp(), [], 'claude-session-real')).history).toBe('resume-pending')
     await runtime.send('claude-session-real', 'Continuação')
     expect(captured.at(-1).options.resume).toBe('claude-session-real')
     expect(events.some(event => event.method === 'item/agentMessage/delta' && event.params.delta === 'Primeira')).toBe(true)

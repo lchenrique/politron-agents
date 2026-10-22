@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Composer } from './Composer'
+import type { Agent } from '../../../../shared/v9'
 
 vi.mock('../voice/voice-recorder', () => ({
   VoiceRecorder: class {
@@ -10,7 +11,7 @@ vi.mock('../voice/voice-recorder', () => ({
   },
 }))
 
-beforeEach(() => sessionStorage.clear())
+beforeEach(() => { sessionStorage.clear(); localStorage.clear() })
 
 function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
   const onSubmit = vi.fn().mockResolvedValue(undefined)
@@ -25,6 +26,17 @@ function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
 }
 
 describe('Composer compacto e elástico', () => {
+  it('preserva o rascunho se o envio falhar e não envia durante composição IME', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Falha de envio'))
+    const { textarea } = setup({ onSubmit })
+    fireEvent.change(textarea, { target: { value: 'Minha mensagem' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', isComposing: true, keyCode: 229 })
+    expect(onSubmit).not.toHaveBeenCalled()
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Falha de envio'))
+    expect(textarea).toHaveValue('Minha mensagem')
+  })
+
   it('grava, transcreve localmente e insere a fala como rascunho editável sem enviar automaticamente', async () => {
     const voiceTranscribe = vi.fn().mockResolvedValue('Abra meu projeto')
     vi.stubGlobal('appAPI', { voiceStatus: vi.fn().mockResolvedValue({ transcription: true, speech: true }), voiceTranscribe })
@@ -70,13 +82,55 @@ describe('Composer compacto e elástico', () => {
   })
 })
 
+describe('autocomplete de menções', () => {
+  const atlas = { id: 'atlas', name: 'Atlas', alias: 'atlas', color: '#786bea', avatar: '' } as Agent
+  const nina = { id: 'nina', name: 'Nina', alias: 'nina', color: '#4098eb', avatar: '' } as Agent
+
+  it('seleciona @atlas com Enter sem enviar e permite uma segunda menção', async () => {
+    const { textarea, onSubmit } = setup({ mentionAgents: [atlas, nina] })
+    fireEvent.change(textarea, { target: { value: 'Olá @at' } })
+    expect(screen.getByRole('listbox', { name: 'Mencionar agente' })).toBeInTheDocument()
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(textarea).toHaveValue('Olá @atlas ')
+    fireEvent.change(textarea, { target: { value: 'Olá @atlas e @ni' } })
+    fireEvent.keyDown(textarea, { key: 'Tab' })
+    expect(textarea).toHaveValue('Olá @atlas e @nina ')
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Olá @atlas e @nina', 'Modelo real', expect.any(Object)))
+  })
+
+  it('não sugere participantes dentro de e-mail e Escape fecha o menu', () => {
+    const { textarea } = setup({ mentionAgents: [atlas] })
+    fireEvent.change(textarea, { target: { value: 'a@atlas.com' } })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    fireEvent.change(textarea, { target: { value: 'Oi @at' } })
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    fireEvent.keyDown(textarea, { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(textarea).toHaveValue('Oi @at')
+  })
+
+  it('fecha as sugestões ao trocar de conversa', () => {
+    const props = { conversationId: 'one', mentionAgents: [atlas], models: [], onModelChange: vi.fn(), onSubmit: vi.fn().mockResolvedValue(undefined), onStop: vi.fn() }
+    const { rerender } = render(<Composer {...props} />)
+    const textarea = screen.getByRole('textbox', { name: 'Message' })
+    fireEvent.change(textarea, { target: { value: '@a' } })
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    rerender(<Composer {...props} conversationId="two" />)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+})
+
 describe('modelos por provedor no composer', () => {
   it('oferece somente esforços suportados e envia o identificador correto', async () => {
     const { textarea, onSubmit } = setup({ models: [{ id: 'codex:gpt', name: 'GPT', provider: 'Codex', efforts: ['low', 'high'], defaultEffort: 'low' }], defaultModelName: 'codex:gpt' })
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Nível de esforço' }), { key: 'Enter' })
-    expect(await screen.findByRole('menuitemradio', { name: 'Baixo' })).toBeInTheDocument()
-    expect(screen.queryByRole('menuitemradio', { name: 'Máximo' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Alto' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar modelo' }))
+    const effortSlider = await screen.findByRole('slider', { name: 'Esforço de raciocínio' })
+    expect(effortSlider).toHaveAttribute('aria-valuetext', 'Baixo')
+    expect(screen.queryByText('Máximo')).not.toBeInTheDocument()
+    fireEvent.keyDown(effortSlider, { key: 'ArrowRight' })
+    expect(effortSlider).toHaveAttribute('aria-valuetext', 'Alto')
     fireEvent.change(textarea, { target: { value: 'teste de esforço' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('teste de esforço', 'codex:gpt', expect.objectContaining({ effort: 'high' })))
@@ -84,7 +138,8 @@ describe('modelos por provedor no composer', () => {
 
   it('omite esforço quando o modelo não oferece essa capacidade', () => {
     setup({ models: [{ id: 'claude:plain', name: 'Modelo simples', provider: 'Claude', efforts: [] }], defaultModelName: 'claude:plain' })
-    expect(screen.queryByRole('button', { name: 'Nível de esforço' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar modelo' }))
+    expect(screen.queryByRole('slider', { name: 'Esforço de raciocínio' })).not.toBeInTheDocument()
   })
 
   it('agrupa as CLIs, desabilita catálogos sem executor e envia IDs com prefixo', async () => {
@@ -100,18 +155,18 @@ describe('modelos por provedor no composer', () => {
     fireEvent.click(selector)
     expect(selector).toHaveAttribute('aria-expanded', 'true')
     const popup = await screen.findByRole('dialog', { name: 'Modelos disponíveis' })
-    expect(await screen.findByRole('option', { name: /^OpenCode\s+1$/ })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /^Pi\s+1$/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('option', { name: /^OpenCode\s+1$/ }))
+    expect(await screen.findByRole('option', { name: /^OpenCode\s+1 modelos$/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /^Pi\s+1 modelos$/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: /^OpenCode\s+1 modelos$/ }))
     const localModel = await screen.findByRole('option', { name: /^Modelo local\s+local$/ })
     expect(localModel).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(localModel)
     expect(popup).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Voltar aos provedores' }))
-    fireEvent.click(await screen.findByRole('option', { name: /^Pi\s+1$/ }))
+    fireEvent.click(await screen.findByRole('option', { name: /^Pi\s+1 modelos$/ }))
     expect(await screen.findByRole('option', { name: /^Pi X\s+pi-x$/ })).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(screen.getByRole('button', { name: 'Voltar aos provedores' }))
-    fireEvent.click(await screen.findByRole('option', { name: /^Codex\s+1$/ }))
+    fireEvent.click(await screen.findByRole('option', { name: /^Codex\s+1 modelos$/ }))
     expect(screen.getByRole('dialog', { name: 'Modelos disponíveis' })).toBe(popup)
     expect(document.querySelectorAll('button[aria-label="Selecionar modelo"]')).toHaveLength(1)
     fireEvent.click(await screen.findByRole('option', { name: /^GPT X\s+gpt-x$/ }))
@@ -160,7 +215,7 @@ describe('instruções durante uma tarefa', () => {
     fireEvent.change(textarea, { target: { value: 'Nova instrução' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Enviar mensagem' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Parar geração' })).toBeEnabled()
     expect(textarea).toHaveValue('Nova instrução')
   })
 

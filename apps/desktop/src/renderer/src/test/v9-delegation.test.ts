@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,7 +8,8 @@ vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { ge
 
 import { AppService } from '../../../main/v9/workspace'
 import { WorkspaceStore } from '../../../main/v9/store'
-import type { Agent, Conversation, Delegation, Message, Run } from '../../../shared/v9'
+import { createCommandEvidence, runCommand } from '../../../main/v9/command-evidence'
+import type { Agent, Approval, Conversation, Delegation, Message, Run } from '../../../shared/v9'
 
 class FakeRuntime extends EventEmitter {
   started = 0
@@ -17,9 +18,10 @@ class FakeRuntime extends EventEmitter {
   hold = false
   directories: string[] = []
   agents: Agent[] = []
+  inputs: string[] = []
   async thread(agent: Agent, directory: string) {
     this.agents.push(agent); this.directories.push(directory); this.started++
-    return `thread-${this.started}`
+    return { id: `thread-${this.started}`, history: 'empty' as const }
   }
   async request(_method: string, params?: { threadId?: string }) {
     const threadId = params?.threadId || `thread-${this.started}`
@@ -31,7 +33,7 @@ class FakeRuntime extends EventEmitter {
     })
     return { turn: { id: turnId, status: 'inProgress' } }
   }
-  async send(threadId: string, _input: string) { return this.request('turn/start', { threadId }) }
+  async send(threadId: string, input: string) { this.inputs.push(input); return this.request('turn/start', { threadId }) }
   complete(index: number) {
     const threadId = `thread-${index}`, turnId = `turn-${index}`
     this.emit('event', { method: 'item/agentMessage/delta', params: { threadId, turnId, delta: `Resultado ${index}.` } })
@@ -85,15 +87,87 @@ describe('delegação entre conversas V9', () => {
     const runtime = new FakeRuntime()
     const { service, context, source, recipient } = setup(runtime)
     const result = await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Analise apenas este pedido' }, 'tool-1')
-    expect(result).toBe('Resultado do agente destinatário.')
+    expect(result).toContain('Resultado do agente destinatário.')
+    expect(result).toContain('ID da delegação:')
     expect(runtime.started).toBe(1)
     expect(runtime.agents[0]).toMatchObject({ id: recipient.id, canWrite: false, instructions: 'Instruções próprias de B' })
     expect(runtime.directories[0]).toBe(service.store.workspace(source.workspaceId).path)
     const delegation = service.store.delegations()[0]
-    expect(delegation).toMatchObject({ status: 'completed', sourceConversationId: source.id, recipientAgentId: recipient.id, result })
+    expect(delegation).toMatchObject({ status: 'completed', sourceConversationId: source.id, recipientAgentId: recipient.id, result: expect.stringContaining('Resultado do agente destinatário.') })
+    expect(service.store.message(delegation.resultMessageId)?.runId).toBe(delegation.childRunId)
     expect(service.store.history(source.id).find(message => message.delegationId === delegation.id)).toMatchObject({ status: 'completed', relatedConversationId: delegation.targetConversationId })
     expect(service.store.history(delegation.targetConversationId).map(message => message.delegationId)).toEqual([delegation.id, delegation.id])
     await expect((service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Analise apenas este pedido' }, 'tool-1')).resolves.toBe(result)
+    expect(runtime.started).toBe(1)
+  })
+
+  it('consulta resultado e stdout/código e continua no privado com a solicitação anterior, sem repetir o comando', async () => {
+    const runtime = new FakeRuntime()
+    const { service, context, requester, recipient, source } = setup(runtime)
+    const receipt = await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Execute o comando e confira a versão.' }, 'tool-initial') as string
+    const previous = service.store.delegations()[0]
+    expect(receipt).toContain(`ID da delegação: ${previous.id}`)
+    const child = service.store.run(previous.childRunId)!
+    expect(child.inputMessageId).toBe(previous.requestMessageId)
+    const commandResult = await runCommand('node --version', child.workspacePath)
+    const evidence = createCommandEvidence({ runId: child.id, toolCallId: 'shell-call', agentId: recipient.id, conversationId: previous.targetConversationId, workspaceId: child.workspaceId, command: 'node --version', cwd: child.workspacePath }, commandResult, new Date().toISOString(), 'command-proof')
+    service.store.putCommandEvidence(evidence)
+    const queried = await (service as any).callTool(context, 'delegation_result', { delegation_id: previous.id })
+    expect(queried).toMatchObject({ result: previous.result, commandEvidence: [evidence] })
+    const recipientContext = { run: { workspaceId: child.workspaceId }, conversation: service.store.conversation(previous.targetConversationId), agent: recipient }
+    await expect((service as any).callTool(recipientContext, 'delegation_result', { delegation_id: previous.id })).resolves.toMatchObject({ delegationId: previous.id, commandEvidence: [evidence] })
+
+    const nextReceipt = await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Informe o stdout e o código da versão anterior, sem reexecutar o comando.', delegation_id: previous.id }, 'tool-followup') as string
+    const next = service.store.delegations().find(item => item.previousDelegationId === previous.id)!
+    expect(nextReceipt).toContain(`ID da delegação: ${next.id}`)
+    expect(next).toMatchObject({ status: 'completed', targetConversationId: previous.targetConversationId, requesterAgentId: requester.id, recipientAgentId: recipient.id })
+    expect(next.childRunId).not.toBe(previous.childRunId)
+    expect(service.store.run(next.childRunId)?.inputMessageId).toBe(next.requestMessageId)
+    expect(runtime.inputs[1]).toContain('Execute o comando e confira a versão.')
+    expect(runtime.inputs[1]).toContain('Informe o stdout e o código da versão anterior')
+    expect(service.store.commandEvidenceForRun(previous.childRunId)).toEqual([evidence])
+    expect(runtime.started).toBe(2)
+    expect(service.store.conversations().filter(item => item.id === previous.targetConversationId)).toHaveLength(1)
+  }, 15000)
+
+  it('nega consulta e continuação por uma conversa não autorizada', async () => {
+    const runtime = new FakeRuntime()
+    const { service, context, recipient, source } = setup(runtime)
+    await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Pedido privado' }, 'tool-private')
+    const previous = service.store.delegations()[0]
+    const stranger = service.saveAgent({ name: 'Agente estranho', alias: 'estranho', instructions: 'Sem acesso.' })
+    const otherSource = service.saveConversation({ kind: 'group', name: 'Outra origem', agentIds: [stranger.id], workspaceId: source.workspaceId })
+    const otherWorkspace = await service.saveWorkspace({ name: 'Outro workspace' })
+    const wrongContext = { ...context, agent: stranger, conversation: otherSource, run: { ...context.run, workspaceId: source.workspaceId } }
+    const denied = await (service as any).callTool(wrongContext, 'delegation_result', { delegation_id: previous.id }).catch((error: Error) => error)
+    expect(denied).toMatchObject({ message: expect.stringContaining('não tem acesso') })
+    await expect((service as any).callTool(wrongContext, 'ask_agent', { agent: recipient.alias, task: 'Tente continuar', delegation_id: previous.id }, 'tool-unauthorized')).rejects.toThrow('não pode ser continuada')
+    const wrongFolderContext = { ...wrongContext, conversation: { ...otherSource, workspaceId: otherWorkspace.id }, run: { ...context.run, workspaceId: otherWorkspace.id } }
+    const wrongFolder = await (service as any).callTool(wrongFolderContext, 'delegation_result', { delegation_id: previous.id }).catch((error: Error) => error)
+    expect(wrongFolder).toMatchObject({ message: expect.stringContaining('não tem acesso') })
+    const wrongWorkspaceContext = { ...context, run: { ...context.run, workspaceId: otherWorkspace.id } }
+    await expect((service as any).callTool(wrongWorkspaceContext, 'ask_agent', { agent: recipient.alias, task: 'Tente expandir a pasta', delegation_id: previous.id }, 'tool-cross-workspace')).rejects.toThrow('workspace ou a conversa privada mudou')
+    service.saveAgent({ id: recipient.id, name: recipient.name, alias: recipient.alias, instructions: recipient.instructions, temporary: true, temporaryWorkspaceId: source.workspaceId, temporaryStatus: 'retired' })
+    await expect((service as any).callTool(context, 'delegation_result', { delegation_id: previous.id })).resolves.toMatchObject({ delegationId: previous.id, status: 'completed' })
+    await expect((service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Reative sem autorização', delegation_id: previous.id }, 'tool-retired')).rejects.toThrow('aposentado')
+    expect(runtime.started).toBe(1)
+  })
+
+  it('revalida a equipe do Chief após a aprovação da continuação', async () => {
+    const runtime = new FakeRuntime()
+    const { service, context, requester, recipient, source } = setup(runtime)
+    const chief = service.saveAgent({ id: requester.id, name: requester.name, alias: requester.alias, instructions: requester.instructions, role: 'chief' })
+    const teamConversation = service.saveConversation({ id: source.id, agentIds: [chief.id, recipient.id] })
+    const chiefContext = { ...context, agent: chief, conversation: teamConversation, run: { ...context.run, agentId: chief.id, agent: chief } }
+    const approve = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
+    await (service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Pedido aprovado inicialmente' }, 'tool-chief-first')
+    const previous = service.store.delegations()[0]
+    approve.mockImplementation(async () => {
+      service.saveConversation({ id: source.id, agentIds: [chief.id] })
+      return true
+    })
+    await expect((service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Complemento sem equipe', delegation_id: previous.id }, 'tool-chief-followup')).rejects.toThrow('não está na equipe')
+    expect(approve).toHaveBeenCalledTimes(2)
     expect(runtime.started).toBe(1)
   })
 
@@ -116,6 +190,46 @@ describe('delegação entre conversas V9', () => {
     expect(service.store.delegations()).toHaveLength(1)
   })
 
+  it('cancela delegação em background sem iniciar continuação ou repetir o trabalho', async () => {
+    const runtime = new FakeRuntime(); runtime.hold = true
+    const { service, context, recipient } = setup(runtime)
+    const receipt = await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Trabalho cancelável', mode: 'background', continue_on_result: true }, 'tool-background-cancel')
+    const delegation = service.store.delegations()[0]
+    expect(receipt).toContain(delegation.id)
+    await vi.waitFor(() => expect(runtime.startedTurns).toBe(1))
+    await service.cancelDelegation(delegation.id)
+    expect(service.store.delegation(delegation.id)).toMatchObject({ status: 'interrupted' })
+    expect(service.store.delegation(delegation.id)?.continuationRunId).toBeUndefined()
+    expect(runtime.startedTurns).toBe(1)
+  })
+
+  it('não ressuscita o recibo nem inicia continuação automática se a origem for excluída', async () => {
+    const runtime = new FakeRuntime(); runtime.hold = true
+    const { service, context, recipient, source } = setup(runtime)
+    await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Trabalho que perderá a origem', mode: 'background', continue_on_result: true }, 'tool-delete-origin')
+    const delegation = service.store.delegations()[0]
+    await vi.waitFor(() => expect(runtime.startedTurns).toBe(1))
+    await service.deleteConversation(source.id)
+    await vi.waitFor(() => expect(service.store.run(delegation.childRunId)?.status).toBe('interrupted'))
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(service.store.delegation(delegation.id)).toBeUndefined()
+    expect(service.store.runs().some(run => run.parentId === context.run.id && run.agentId === context.agent.id)).toBe(false)
+  })
+
+  it('cria somente uma continuação automática para um resultado background repetido', async () => {
+    const runtime = new FakeRuntime()
+    const { service, context, recipient } = setup(runtime)
+    const args = { agent: recipient.alias, task: 'Pedido com continuação automática', mode: 'background', continue_on_result: true }
+    await (service as any).callTool(context, 'ask_agent', args, 'tool-auto-once')
+    const delegation = service.store.delegations()[0]
+    await vi.waitFor(() => expect(service.store.delegation(delegation.id)?.continuationRunId).toBeTruthy())
+    await (service as any).callTool(context, 'ask_agent', args, 'tool-auto-once')
+    expect(service.store.delegation(delegation.id)?.continuationRunId).toBeTruthy()
+    expect(service.store.runs().filter(run => run.parentId === context.run.id && run.agentId === context.agent.id)).toHaveLength(1)
+    expect(runtime.started).toBe(2)
+    await vi.waitFor(() => expect(service.store.run(service.store.delegation(delegation.id)!.continuationRunId!)?.status).toBe('completed'))
+  })
+
   it('cancelar um pedido não interrompe o agente solicitante nem outra delegação', async () => {
     const runtime = new FakeRuntime(); runtime.hold = true
     const { service, context, recipient, controller } = setup(runtime)
@@ -132,7 +246,7 @@ describe('delegação entre conversas V9', () => {
     expect(service.store.delegation(firstDelegation.id)?.status).toBe('interrupted')
     await vi.waitFor(() => expect(runtime.startedTurns).toBe(2))
     runtime.complete(2)
-    await expect(second).resolves.toBe('Resultado 2.')
+    await expect(second).resolves.toContain('Resultado 2.')
   })
 
   it('recupera vínculos persistidos após reabrir o banco sem repetir execução ativa', () => {
@@ -152,6 +266,38 @@ describe('delegação entre conversas V9', () => {
     expect(store.delegation(delegation.id)).toMatchObject({ status: 'interrupted', error: expect.stringContaining('não foi repetido') })
     expect(store.history(source.id)[0]).toMatchObject({ status: 'interrupted', relatedConversationId: target.id })
     expect(store.history(target.id)[0]).toMatchObject({ status: 'interrupted', relatedConversationId: source.id })
+    store.close()
+  })
+
+  it('repara vínculos antigos comprovados uma vez sem associar mensagens ambíguas', () => {
+    const directory = tempDirectory()
+    let store = new WorkspaceStore(directory)
+    const recipient = store.saveAgent({ name: 'Destino', alias: 'destino', instructions: 'Próprias' })
+    const requester = store.saveAgent({ name: 'Origem', alias: 'origem', instructions: 'Próprias' })
+    const source = store.saveConversation({ kind: 'group', name: 'Origem', agentIds: [requester.id] })
+    const target = store.saveConversation({ kind: 'direct', name: 'Pedido', agentIds: [recipient.id] })
+    const at = new Date().toISOString()
+    const run: Run = { id: 'child-run', conversationId: target.id, agentId: recipient.id, rootId: 'root-run', parentId: 'root-run', ancestry: [requester.id, recipient.id], status: 'completed', threadId: 'thread-1', turnId: 'turn-1', messageId: 'result-message', input: 'Pedido', agent: recipient, workspaceId: target.workspaceId, workspacePath: store.workspace(target.workspaceId).path, createdAt: at }
+    const result: Message = { id: 'result-message', conversationId: target.id, agentId: recipient.id, author: recipient.name, role: 'assistant', text: 'Concluído', status: 'completed', runId: null, createdAt: at }
+    const approval: Approval = { id: 'pending-approval', runId: run.id, conversationId: target.id, agentId: recipient.id, kind: 'write', details: { path: 'plan.md', before: 'antigo', after: 'novo' }, status: 'pending', createdAt: at, resolvedAt: null }
+    const unrelated: Message = { ...result, id: 'ambiguous-result', delegationId: 'delegation-ambiguous' }
+    const duplicate: Message = { ...result, id: 'shared-result' }
+    const duplicateRun: Run = { ...run, id: 'shared-child-run', messageId: duplicate.id }
+    const delegation: Delegation = { id: 'delegation-repair', idempotencyKey: 'root:call', rootRunId: 'root-run', parentRunId: 'root-run', childRunId: run.id, requesterAgentId: requester.id, recipientAgentId: recipient.id, sourceConversationId: source.id, targetConversationId: target.id, sourceMessageId: 'source-message', requestMessageId: 'request-message', resultMessageId: result.id, task: 'Pedido', status: 'completed', result: 'Concluído', error: '', createdAt: at, updatedAt: at }
+    const ambiguous: Delegation = { ...delegation, id: 'delegation-ambiguous', idempotencyKey: 'root:ambiguous', resultMessageId: unrelated.id }
+    const sharedA: Delegation = { ...delegation, id: 'shared-a', idempotencyKey: 'root:shared-a', childRunId: duplicateRun.id, resultMessageId: duplicate.id }
+    const sharedB: Delegation = { ...sharedA, id: 'shared-b', idempotencyKey: 'root:shared-b' }
+    store.putRun(run); store.putRun(duplicateRun); store.putMessage(result); store.putMessage(unrelated); store.putMessage(duplicate); store.putDelegation(delegation); store.putDelegation(ambiguous); store.putDelegation(sharedA); store.putDelegation(sharedB); store.putApproval(approval)
+
+    store.close()
+    store = new WorkspaceStore(directory)
+    expect(store.message(result.id)?.runId).toBe(run.id)
+    expect(store.message(unrelated.id)?.runId).toBeNull()
+    expect(store.message(duplicate.id)?.runId).toBeNull()
+    expect(store.approvals().find(item => item.id === approval.id)?.status).toBe('interrupted')
+    expect(store.runs()).toHaveLength(2)
+    expect(store.repairDelegatedMessageLinks()).toBe(0)
+    expect(readdirSync(directory).some(file => file.startsWith('politron-v9.backup-delegated-links-'))).toBe(true)
     store.close()
   })
 

@@ -9,7 +9,7 @@ const provider = (id: ProviderInfo['id'], name: string, executable: boolean, ids
 })
 
 describe('seletor por provedor', () => {
-  it('lista as cinco CLIs e permite OpenCode/Antigravity com o runtime de chat', () => {
+  it('lista as cinco CLIs e informa o mesmo contrato de ferramentas por permissão', () => {
     const inventory = [
       provider('codex', 'Codex', true, ['gpt-a']),
       provider('claude', 'Claude', true, ['haiku']),
@@ -23,5 +23,6 @@ describe('seletor por provedor', () => {
     expect(models.find(item => item.id === 'antigravity:gemini-flash')?.enabled).toBe(true)
     expect(models.find(item => item.id === 'opencode:open-model')?.enabled).toBe(true)
     expect(providers.find(item => item.id === 'antigravity')?.description).toMatch(/conversar/)
+    expect(providers.every(item => item.description?.includes('ferramentas do Boobot seguem o papel e as permissões'))).toBe(true)
   })
 })

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] }, ipcMain: { handle: vi.fn(), on: vi.fn() }, safeStorage: { isEncryptionAvailable: () => false } }))
+const live = vi.hoisted(() => ({ open: vi.fn() }))
+vi.mock('./gemini-live', () => ({ openGeminiLive: live.open, listGeminiLiveModels: vi.fn() }))
 
 import { SentenceBuffer, float32ToInt16, int16ToFloat32, isLikelyHallucination, sampleRateFromMime, speakable, wavFromFloat32 } from './audio-text'
 import { chatStream } from './groq'
@@ -128,5 +130,59 @@ describe('ferramentas de gestão durante ligação por voz', () => {
     const service = new RealtimeService('D:/tmp/boobot-realtime-tests', { respondToAgent: vi.fn() } as never)
     const regular = { id: 'normal-voice', role: 'agent', name: 'Nina' } as Agent
     expect(getTools(service, regular).map(tool => tool.name)).toEqual(['executar_tarefa', 'editar_meu_perfil'])
+  })
+})
+
+describe('abertura cancelável da ligação', () => {
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void
+    let reject!: (error: Error) => void
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+    return { promise, resolve, reject }
+  }
+  const makeService = () => {
+    const app = {
+      store: { conversation: () => ({ agentIds: ['a'], leaderAgentId: 'a' }), agent: () => ({ id: 'a', name: 'Nina', instructions: '' }) },
+      history: () => [], respondVoice: vi.fn(), respondToAgent: vi.fn(),
+    }
+    const service = new RealtimeService('D:/tmp/boobot-realtime-tests', app as never)
+    const settingsStore = (service as unknown as { settingsStore: { settings: () => Promise<unknown>; key: () => Promise<string> } }).settingsStore
+    settingsStore.settings = async () => ({ geminiModel: 'live-model', geminiVoice: 'Puck', transcriptionModel: 'whisper-large-v3-turbo', piperVoice: 'faber' })
+    settingsStore.key = async () => 'gemini-key'
+    return service
+  }
+
+  it('fecha a sessão tardia quando parar acontece antes de a abertura terminar', async () => {
+    const opening = deferred<import('./gemini-live').RealtimeSession>()
+    const session = { pushAudio: vi.fn(), interrupt: vi.fn(), close: vi.fn() }
+    live.open.mockReset().mockReturnValue(opening.promise)
+    const service = makeService()
+    const started = service.start('gemini', 'conversation')
+    await vi.waitFor(() => expect(live.open).toHaveBeenCalledTimes(1))
+    service.stop()
+    opening.resolve(session)
+    await started
+    expect(session.close).toHaveBeenCalledTimes(1)
+    expect((service as unknown as { session: unknown }).session).toBeNull()
+  })
+
+  it('mantém a sessão B quando a abertura antiga A resolve depois', async () => {
+    const openingA = deferred<import('./gemini-live').RealtimeSession>()
+    const openingB = deferred<import('./gemini-live').RealtimeSession>()
+    const sessionA = { pushAudio: vi.fn(), interrupt: vi.fn(), close: vi.fn() }
+    const sessionB = { pushAudio: vi.fn(), interrupt: vi.fn(), close: vi.fn() }
+    live.open.mockReset().mockReturnValueOnce(openingA.promise).mockReturnValueOnce(openingB.promise)
+    const service = makeService()
+    const startedA = service.start('gemini', 'conversation')
+    await vi.waitFor(() => expect(live.open).toHaveBeenCalledTimes(1))
+    const startedB = service.start('gemini', 'conversation')
+    await vi.waitFor(() => expect(live.open).toHaveBeenCalledTimes(2))
+    openingB.resolve(sessionB)
+    await startedB
+    openingA.resolve(sessionA)
+    await startedA
+    expect(sessionA.close).toHaveBeenCalledTimes(1)
+    expect(sessionB.close).not.toHaveBeenCalled()
+    expect((service as unknown as { session: unknown }).session).toBe(sessionB)
   })
 })

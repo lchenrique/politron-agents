@@ -135,14 +135,25 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     if (existing) return placeTab(current, tab, existing.id)
     const editor = groups(current.root).find(group => group.tabs.some(item => item.kind === 'file')) || groups(current.root).find(group => !group.tabs.length)
     if (editor) return placeTab(current, tab, editor.id)
-    const main = toolGroup(current, zone) || mainGroup(current)
-    return groups(current.root).length < 8 ? splitGroup(current, main.id, 'right', tab) : placeTab(current, tab, main.id)
+    // Opening a file should activate an editor tab, not split and shrink the
+    // workspace on every first file open. Explicit 'side' still targets the side.
+    const destination = zone === 'side' ? toolGroup(current, 'side') || mainGroup(current) : mainGroup(current)
+    return placeTab(current, tab, destination.id)
   })
   useImperativeHandle(ref, () => ({ openTool, openFile, useDevelopmentLayout: () => setLayout(current => developmentDockLayout(current)) }))
   const closeTab = (id: string) => {
     const draft = drafts[id]
     if (draft && draft.content !== draft.baseline && !window.confirm('Descartar as alterações não salvas deste arquivo?')) return
     if (draft) changeDraft(id, () => undefined)
+    const closingFile = groupWithTab(layout.root, id)?.tabs.find(tab => tab.id === id && tab.kind === 'file')
+    if (closingFile?.workspaceId && closingFile.path) {
+      // Wait until React has unmounted the view before releasing its cached model.
+      requestAnimationFrame(() => {
+        void import('./MonacoCodeEditor').then(({ disposePolitronFileModel }) => {
+          disposePolitronFileModel(closingFile.workspaceId!, closingFile.path!)
+        }).catch(() => undefined)
+      })
+    }
     if (id === 'terminal') void window.vibeAPI?.terminal?.close?.().catch(() => undefined)
     setLayout(current => {
       const source = groupWithTab(current.root, id)
@@ -249,7 +260,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
         </DropdownMenu>
       </header>
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-        {group.tabs.length ? group.tabs.map(tab => <div key={tab.id} className={group.active === tab.id ? 'flex h-full min-h-0 min-w-0 flex-col' : 'hidden'}>{renderTab(tab)}</div>)
+        {group.tabs.length ? group.tabs.map(tab => <div key={tab.id} className={group.active === tab.id ? 'flex h-full min-h-0 min-w-0 flex-col' : 'hidden'}>{tab.kind === 'file' && group.active !== tab.id ? null : renderTab(tab)}</div>)
           : <div className="flex h-full flex-col items-center justify-center gap-3 p-5 text-center"><Code2 className="size-8 text-muted-foreground/50" /><p className="text-xs text-muted-foreground">Escolha o conteúdo deste painel.</p><DockAddMenu groupId={group.id} onOpen={openInGroup} label="Escolher conteúdo da nova aba" /></div>}
       </div>
     </section>

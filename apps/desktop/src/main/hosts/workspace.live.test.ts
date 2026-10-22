@@ -30,7 +30,11 @@ it.skipIf(process.env.BOOBOT_RUN_HOST_LIVE !== '1')('Codex real: dois projetos r
   })
   try {
     await client.connect()
-    const models = await service.runtime.models(), model = (models.find(item => /luna/i.test(item.id)) || models.find(item => item.isDefault) || models[0]).id
+    const requestedModel = process.env.BOOBOT_LIVE_TOOL_MODEL?.trim()
+    if (!requestedModel) throw new Error('Defina BOOBOT_LIVE_TOOL_MODEL com o ID exato do modelo de teste.')
+    const models = await service.runtime.models()
+    const model = models.find(item => item.id === requestedModel)?.id
+    if (!model) throw new Error(`O modelo solicitado em BOOBOT_LIVE_TOOL_MODEL não está disponível: ${requestedModel}`)
     record('model', model)
     const save = (input: Partial<Agent>) => client.call('v9:saveAgent', [{ runtime: 'codex', model, effort: 'low', canWrite: false, computerUse: false, ...input }]) as Promise<Agent>
     const worker = await save({ name: 'Implementador Fixture', alias: 'fixture-worker', canWrite: true, instructions: 'Leia src/counter.ts e tests/counter.test.ts com ferramentas do workspace. Corrija somente src/counter.ts, para increment retornar value+1, usando workspace_write. Execute npm test via workspace_run_command. Não altere testes ou package.json, não use rede nem arquivos fora do projeto. Reporte saída e caminho.' })
@@ -52,8 +56,44 @@ it.skipIf(process.env.BOOBOT_RUN_HOST_LIVE !== '1')('Codex real: dois projetos r
     await Promise.all(approvals)
     const snapshot = await client.call('v9:snapshot') as Snapshot
     record('runs', snapshot.runs.map(run => ({ id: run.id, parent: run.parentId, runtime: run.agent.runtime, status: run.status, path: run.workspacePath })))
-    expect(snapshot.runs.filter(run => run.parentId)).toHaveLength(4)
     expect(snapshot.runs.every(run => run.status === 'completed')).toBe(true)
+    const runsById = new Map(snapshot.runs.map(run => [run.id, run]))
+    const rootFor = (run: Snapshot['runs'][number]) => {
+      let current = run
+      const seen = new Set<string>()
+      while (current.parentId) {
+        expect(seen.has(current.id), `ciclo de runs em ${current.id}`).toBe(false)
+        seen.add(current.id)
+        const parent = runsById.get(current.parentId)
+        expect(parent, `run pai ausente: ${current.parentId}`).toBeTruthy()
+        current = parent!
+      }
+      return current
+    }
+    const roots = snapshot.runs.filter(run => !run.parentId && chats.some(chat => chat.id === run.conversationId))
+    expect(roots).toHaveLength(2)
+    for (const rootRun of roots) {
+      const descendants = snapshot.runs.filter(run => run.id !== rootRun.id && rootFor(run).id === rootRun.id)
+      expect(descendants.length).toBeGreaterThan(0)
+      expect(descendants.length).toBeLessThanOrEqual(8)
+      expect(descendants.some(run => run.agentId === coordinator.id)).toBe(true)
+      expect(descendants.some(run => run.agentId === worker.id)).toBe(true)
+      record('run-tree', { root: rootRun.id, conversationId: rootRun.conversationId, descendants: descendants.map(run => ({ id: run.id, parentId: run.parentId, agentId: run.agentId })) })
+    }
+    expect(snapshot.runs.filter(run => run.parentId).every(run => roots.some(root => rootFor(run).id === root.id))).toBe(true)
+    const workerDelegations = service.store.delegations().filter(delegation => delegation.recipientAgentId === worker.id)
+    expect(workerDelegations).toHaveLength(2)
+    const allDelegations = service.store.delegations()
+    expect(new Set(allDelegations.map(delegation => delegation.idempotencyKey)).size).toBe(allDelegations.length)
+    for (const delegation of workerDelegations) {
+      const commands = service.store.commandEvidenceForRun(delegation.childRunId)
+      record('command-evidence', { delegationId: delegation.id, runId: delegation.childRunId, commands })
+      expect(commands.length).toBeGreaterThan(0)
+      expect(commands.some(item => item.command.trim() === 'npm test' && item.status === 'completed' && item.exitCode === 0 && /pass 2/.test(item.output))).toBe(true)
+      const changes = service.store.fileChangesForRun(delegation.childRunId)
+      expect(changes.some(change => change.path.replace(/\\/g, '/') === 'src/counter.ts' && change.status === 'applied')).toBe(true)
+      record('file-evidence', { delegationId: delegation.id, files: changes.map(change => ({ path: change.path, status: change.status })) })
+    }
     for (let index = 0; index < chats.length; index++) {
       const directory = join(root, `react-ts-${index}`)
       const result = await promisify(execFile)(process.execPath, ['--experimental-strip-types','--test','tests/counter.test.ts'], { cwd: directory, timeout: 20_000 })

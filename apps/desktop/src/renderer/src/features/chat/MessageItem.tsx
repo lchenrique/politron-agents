@@ -7,10 +7,10 @@ import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
 import { RunProgress } from './RunProgress'
 import { speakVoice, stopVoice } from '../voice/voice-player'
-import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { Message as ChatMessage, MessageContent, MessageHeader } from '@/components/ui/message'
 import { Trace, TraceLine, TraceTitle } from '@/components/ui/trace'
-import { CodeBlock } from '@/components/ui/code-block'
+import { CodeBlock } from '@/components/ai/code-block'
+import { MessageBubble as PastaMessageBubble } from '@/components/ai/message-bubble'
 
 export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice }: {
   message: Message
@@ -44,7 +44,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
         {message.status === 'interrupted' && <span className="font-normal text-muted-foreground">cancelada</span>}
       </MessageHeader>}
       {!human && message.role === 'assistant' && <RunProgress status={message.status} agentName={agent?.name || message.author} />}
-      {human ? <><Bubble align="end" variant="muted"><BubbleContent className="whitespace-pre-wrap">{message.text}</BubbleContent></Bubble>{message.status === 'failed' && <span className="text-xs text-destructive">Falha no envio da instrução.</span>}</>
+      {human ? <><PastaMessageBubble from="user" status={message.status === 'failed' ? 'failed' : message.status === 'queued' || message.status === 'running' ? 'sending' : 'sent'} className="whitespace-pre-wrap">{message.text}</PastaMessageBubble>{message.status === 'failed' && <span className="text-xs text-destructive">Falha no envio da instrução.</span>}</>
         : <div className="prose prose-sm dark:prose-invert max-w-none break-words text-[14px] leading-6 prose-p:my-2 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
             pre({ children }) { return <>{children}</> },

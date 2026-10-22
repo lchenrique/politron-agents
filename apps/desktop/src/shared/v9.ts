@@ -19,7 +19,7 @@ export interface Agent {
   pitsEyeSize?: number; pitsEyeSpacing?: number; pitsSpeed?: number; pitsAmplitude?: number
   pitsBodyWidth?: number; pitsBodyHeight?: number
   pitsMouthSize?: number; pitsBlushStrength?: number
-  canWrite: boolean; computerUse: boolean; approvalMode: 'ask' | 'automatic'; revision: number; createdAt: string
+  canWrite: boolean; computerUse: boolean; approvalMode: 'ask' | 'automatic' | 'bypass'; revision: number; createdAt: string
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 export const ASSISTANT_ID = 'app-assistant'
@@ -51,6 +51,12 @@ export interface FileChange {
   path: string; status: 'applied' | 'failed' | 'unknown' | 'unchanged'; before: string; after: string
   additions: number; deletions: number; truncated: boolean; binary: boolean; createdAt: string
 }
+export type CommandStatus = 'completed' | 'failed' | 'interrupted' | 'timed_out'
+export interface CommandResult { output: string; exitCode: number | null; status: CommandStatus; truncated: boolean }
+export interface CommandEvidence extends CommandResult {
+  id: string; runId: string; toolCallId: string; agentId: string; conversationId: string; workspaceId: string
+  command: string; cwd: string; createdAt: string; finishedAt: string
+}
 export interface Approval {
   id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser' | 'command' | 'delegation' | 'agent-change'
   details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string }
@@ -59,7 +65,7 @@ export interface Approval {
 export interface Run {
   id: string; conversationId: string; agentId: string; rootId: string; parentId: string | null
   ancestry: string[]; status: RunStatus; threadId: string | null; turnId: string | null
-  messageId: string; input: string; agent: Agent; workspaceId: string; workspacePath: string; createdAt: string
+  messageId: string; input: string; inputMessageId?: string; agent: Agent; workspaceId: string; workspacePath: string; createdAt: string
 }
 export interface Delegation {
   id: string; idempotencyKey: string; rootRunId: string; parentRunId: string; childRunId: string
@@ -67,6 +73,7 @@ export interface Delegation {
   targetConversationId: string; sourceMessageId: string; requestMessageId: string
   resultMessageId: string; task: string; status: RunStatus; result: string
   error: string; createdAt: string; updatedAt: string
+  previousDelegationId?: string
   continuationRunId?: string
 }
 export type ModelEffort = NonNullable<Agent['effort']>
@@ -92,13 +99,15 @@ export interface BrowserFrame {
   human: boolean; action: string; capturedAt: string
 }
 export type WorkspaceEvent =
-  | { type: 'changed' }
+  | { type: 'changed'; reason?: 'connection-restored' }
   | { type: 'message'; message: Message }
   | { type: 'fileChange'; fileChange: FileChange }
   | { type: 'approval'; approval: Approval }
   | { type: 'browser'; frame: BrowserFrame }
+  | { type: 'browserClosed'; key: string; conversationId: string; agentId: string }
 export interface AppAPI {
   snapshot(): Promise<Snapshot>
+  settingsPreferences(): Promise<{ computerUse: boolean; approvalMode: Agent['approvalMode']; terminalEnabled: boolean }>
   saveAgent(input: Partial<Agent>): Promise<Agent>
   saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>>): Promise<Agent>
   saveTerminalAccess(enabled: boolean): Promise<void>

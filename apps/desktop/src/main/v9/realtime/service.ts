@@ -25,6 +25,7 @@ export class RealtimeService {
   private readonly settingsStore: RealtimeSettingsStore
   private session: RealtimeSession | null = null
   private starting: Promise<void> | null = null
+  private generation = 0
   private eventOwner: WebContents | null = null
   private transcriptMessages = new Map<'user' | 'agent', string>()
 
@@ -143,49 +144,69 @@ export class RealtimeService {
   }
 
   async start(mode: RealtimeMode, conversationId: string, agentId?: string, owner?: WebContents): Promise<void> {
-    if (this.starting) await this.starting.catch(() => undefined)
     this.stop()
     this.transcriptMessages.clear()
     this.eventOwner = owner || null
-    this.starting = this.open(mode, conversationId, agentId)
-    try { await this.starting } finally { this.starting = null }
+    const generation = this.generation
+    const opening = this.open(generation, mode, conversationId, agentId)
+    this.starting = opening
+    try { await opening } finally { if (this.starting === opening) this.starting = null }
   }
 
-  private async open(mode: RealtimeMode, conversationId: string, agentId?: string) {
-    this.emit({ type: 'phase', phase: 'connecting' })
+  private async open(generation: number, mode: RealtimeMode, conversationId: string, agentId?: string) {
+    const current = () => generation === this.generation
+    const emit = (event: RealtimeEvent) => { if (current()) this.emit(event) }
+    emit({ type: 'phase', phase: 'connecting' })
     try {
       const settings = await this.settingsStore.settings()
+      if (!current()) return
       const { agent, recent, history } = this.persona(conversationId, agentId)
       const tools = mode === 'gemini' ? [] : this.voiceTools(conversationId, agent)
       // In both modes the selected Boo is authoritative; voice transcripts are UI-only.
       // respondVoice persists the user message and the real agent answer in the SAME chat.
-      const emit = (event: RealtimeEvent) => this.emit(event)
 
       if (mode === 'gemini') {
         const key = await this.settingsStore.key('gemini')
+        if (!current()) return
         if (!key) throw new Error('Cadastre a chave do Gemini (Google AI Studio) para usar este modo.')
         const model = settings.geminiModel || (await listGeminiLiveModels(key))[0]
+        if (!current()) return
         if (!model) throw new Error('Nenhum modelo Live disponível nesta chave do Gemini.')
-        this.session = await openGeminiLive({
+        let openedSession: RealtimeSession | null = null
+        const candidate = await openGeminiLive({
           key, model, voice: settings.geminiVoice, instructions: voiceInstructions(agent, recent), tools, emit,
           onUtterance: async text => {
             // The selected agent is the only source of answers, even when Gemini provides the voice.
-            const activeCall = this.session
+            if (!current()) return
             const answer = await this.app.respondVoice(conversationId, text, agent.id)
             // A delayed answer must NEVER be spoken by a later call or by a different Boo.
-            if (activeCall && this.session === activeCall) activeCall.narrate?.(answer)
+            if (current() && openedSession && this.session === openedSession) openedSession.narrate?.(answer)
           },
         })
+        openedSession = candidate
+        if (!current()) { candidate.close(); return }
+        this.session = candidate
       } else {
         const key = await this.settingsStore.key('groq')
+        if (!current()) return
         if (settings.transcriptionModel !== 'parakeet-v3' && !key) throw new Error('Cadastre a chave do Groq para transcrever com Whisper ou selecione o Parakeet local.')
         if (!(await this.settingsStore.localModelsReady(settings.piperVoice))) throw new Error('Baixe a voz local selecionada (Piper pt-BR) antes de ligar no modo gratuito.')
+        if (!current()) return
         if (settings.transcriptionModel === 'parakeet-v3' && !(await this.settingsStore.parakeetInstalled())) throw new Error('Baixe o Parakeet local nas configurações antes de ligar.')
-        this.session = await openFreeCascade({ groqKey: key || undefined, transcriptionModel: settings.transcriptionModel, parakeetDir: this.settingsStore.parakeetDir, vadPath: this.settingsStore.vadPath, piperDir: this.settingsStore.piperDir(settings.piperVoice), piperVoice: settings.piperVoice, generateResponse: (text, signal) => signal.aborted ? Promise.reject(new Error('Resposta interrompida.')) : this.app.respondVoice(conversationId, text, agent.id), emit })
+        if (!current()) return
+        const candidate = await openFreeCascade({ groqKey: key || undefined, transcriptionModel: settings.transcriptionModel, parakeetDir: this.settingsStore.parakeetDir, vadPath: this.settingsStore.vadPath, piperDir: this.settingsStore.piperDir(settings.piperVoice), piperVoice: settings.piperVoice, generateResponse: async (text, signal) => {
+          if (signal.aborted || !current()) throw new Error('Resposta interrompida.')
+          const answer = await this.app.respondVoice(conversationId, text, agent.id)
+          if (!current()) throw new Error('Resposta interrompida.')
+          return answer
+        }, emit })
+        if (!current()) { candidate.close(); return }
+        this.session = candidate
       }
     } catch (error) {
-      this.emit({ type: 'error', message: error instanceof Error ? error.message : 'Não foi possível iniciar a voz.' })
-      this.emit({ type: 'phase', phase: 'idle' })
+      if (!current()) return
+      emit({ type: 'error', message: error instanceof Error ? error.message : 'Não foi possível iniciar a voz.' })
+      emit({ type: 'phase', phase: 'idle' })
       throw error
     }
   }
@@ -209,12 +230,14 @@ export class RealtimeService {
   interrupt() { this.session?.interrupt() }
 
   stop() {
-    if (!this.session) return
-    this.session.close()
+    const wasActive = !!this.session || !!this.starting
+    this.generation++
+    this.starting = null
+    const session = this.session
     this.session = null
     this.transcriptMessages.clear()
-    this.emit({ type: 'phase', phase: 'idle' })
-    this.emit({ type: 'ended' })
+    try { session?.close() } catch { /* a sessão pode já ter encerrado */ }
+    if (wasActive) { this.emit({ type: 'phase', phase: 'idle' }); this.emit({ type: 'ended' }) }
   }
 }
 

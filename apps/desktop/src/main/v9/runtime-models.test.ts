@@ -50,7 +50,7 @@ async function startClaudeWithoutDiscovery() {
     computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-18T00:00:00Z',
   }
   try {
-    const threadId = await runtime.thread(agent, tmpdir(), [])
+    const threadId = (await runtime.thread(agent, tmpdir(), [])).id
     await expect(runtime.request('turn/start', { threadId, input: [{ type: 'text', text: 'Mensagem simulada.' }] }))
       .resolves.toMatchObject({ thread: { id: 'session-from-cache' } })
     expect(models).not.toHaveBeenCalled()

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
 import type { Agent, Model } from '../../shared/v9'
 import type { DynamicTool } from './codex'
-import type { AgentRuntime } from './agent-runtime'
+import type { AgentRuntime, RuntimeThread } from './agent-runtime'
 import { AntigravityRuntime } from './antigravity'
 import { buildAgentSystemPrompt } from './agent-prompt'
 
@@ -23,12 +23,14 @@ type State = {
 type Packet = Record<string, any>
 const cleanError = (value: string) => value.replace(/(?:sk-[a-zA-Z0-9_-]{12,}|Bearer\s+[^\s]+)/g, '[redacted]').slice(0, 400)
 const config = JSON.stringify({
-  permission: { '*': 'deny' },
+  permission: { '*': 'ask' },
   agent: {
     'politron-safe': {
       description: 'Assistente integrado às ferramentas aprovadas do Boobot',
       mode: 'primary',
-      permission: { '*': 'deny' },
+      // O free tier exige o catálogo nativo. No `run` não interativo, pedidos
+      // ask são recusados pelo próprio CLI quando --auto está ausente.
+      permission: { '*': 'ask' },
       prompt: 'Siga o contrato de resposta JSON recebido. As ferramentas do Boobot são chamadas pela aplicação após validar o JSON. Não utilize ferramentas nativas do CLI, comandos ou subagentes externos.',
     },
   },
@@ -37,7 +39,7 @@ const config = JSON.stringify({
 })
 
 /** Conserva provedores definidos por ambiente e substitui apenas a política deste adaptador. */
-export function openCodeToolConfig(content = process.env.OPENCODE_CONFIG_CONTENT): string {
+export function openCodeToolConfig(content = process.env.OPENCODE_CONFIG_CONTENT, model?: string): string {
   let supplied: Record<string, unknown> = {}
   if (content) {
     try {
@@ -47,7 +49,7 @@ export function openCodeToolConfig(content = process.env.OPENCODE_CONFIG_CONTENT
     } catch { throw new Error('OPENCODE_CONFIG_CONTENT deve conter um objeto JSON válido.') }
   }
   const policy = JSON.parse(config) as Record<string, unknown>
-  return JSON.stringify({ ...supplied, ...policy })
+  return JSON.stringify({ ...supplied, ...policy, ...(model ? { small_model: model } : {}) })
 }
 
 /** O JSON estruturado é convertido no mesmo broker de ferramentas e aprovações dos demais motores. */
@@ -85,13 +87,13 @@ export class HeadlessCliRuntime extends EventEmitter implements AgentRuntime {
     throw new Error('O catálogo OpenCode é disponibilizado pelo inventário de CLIs do Boobot.')
   }
 
-  async thread(agent: Agent, _workspace: string, tools: DynamicTool[], id?: string, projectInstructions = ''): Promise<string> {
+  async thread(agent: Agent, _workspace: string, tools: DynamicTool[], id?: string, projectInstructions = ''): Promise<RuntimeThread> {
     const key = id || randomUUID()
-    if (this.sessions.has(key)) return key
+    if (this.sessions.has(key)) return { id: key, history: 'retained' }
     await this.executable()
     await mkdir(this.directory, { recursive: true })
     this.sessions.set(key, { id: key, agent, instructions: projectInstructions, tools, history: [], text: '', raw: '', steps: 0, stopping: false, finished: false })
-    return key
+    return { id: key, history: 'empty' }
   }
 
   async send(threadId: string, message: string, model?: string, timeout = 360000): Promise<{ thread: { id: string }; turn: { id: string; status: string } }> {
@@ -107,11 +109,13 @@ export class HeadlessCliRuntime extends EventEmitter implements AgentRuntime {
       buildAgentSystemPrompt(session.agent, session.instructions),
       session.tools.length ? [
         'PROTOCOLO DE FERRAMENTAS DO BOOBOT: responda SOMENTE com um objeto JSON, sem Markdown.',
+        'Este é um protocolo RPC textual real: a aplicação lê seu JSON e executa a ferramenta. Estas ferramentas NÃO aparecem no catálogo nativo do OpenCode. A ausência nesse catálogo não significa que estão indisponíveis. Emita o JSON descrito abaixo como texto da resposta; não procure nem invoque uma ferramenta nativa para isso.',
         'Para chamar UMA ferramenta: {"action":"tool","tool":"nome_exato","arguments":"JSON dos argumentos serializado como string","text":""}.',
         'Depois aguarde o resultado real. Uma proposta pode ser negada; nunca diga que criou algo antes do resultado da ferramenta.',
         'Para responder ao usuário: {"action":"final","tool":"none","arguments":"{}","text":"sua resposta em português"}.',
         'Use somente as ferramentas abaixo por esse protocolo. Não use ferramentas nativas do CLI, shell, MCPs herdados ou subagentes externos.',
         'Pedido de criar Boos ao Chief exige group_members e, se necessário, propose_boos. Listar nomes, planos e organogramas não cria Boos.',
+        'Exemplo de primeira resposta para consultar participantes: {"action":"tool","tool":"group_members","arguments":"{}","text":""}. Aguarde o retorno antes de propor Boos.',
         'Ferramentas disponíveis, descrições e esquemas de argumentos:', JSON.stringify(session.tools),
       ].join('\n') : 'Você está sem ferramentas nesta sessão. Informe essa limitação quando uma ação depender delas; não afirme ter criado agentes ou alterado dados.',
       history && 'Histórico desta conversa:\n' + history,
@@ -132,7 +136,7 @@ export class HeadlessCliRuntime extends EventEmitter implements AgentRuntime {
     if (session.finished || session.stopping) return
     const chosen = session.model!
     const args = this.kind === 'opencode'
-      ? ['run', '--pure', '--agent', 'politron-safe', '--model', chosen, '--format', 'json']
+      ? ['run', '--pure', '--agent', 'politron-safe', '--model', chosen, '--format', 'json', '--title', 'Boobot']
       : ['--mode', 'plan', '--sandbox', '--disable-slash-commands', '--input-format', 'stream-json', '--output-format', 'stream-json', '--model', chosen]
     if (this.kind === 'antigravity' && session.tools.length) args.push('--json-schema', JSON.stringify({
       type: 'object', properties: {
@@ -144,7 +148,7 @@ export class HeadlessCliRuntime extends EventEmitter implements AgentRuntime {
       cwd: this.directory,
       windowsHide: true, shell: false, stdio: 'pipe',
       env: this.kind === 'opencode'
-        ? { ...process.env, OPENCODE_CONFIG_CONTENT: openCodeToolConfig(), OPENCODE_DISABLE_AUTOUPDATE: '1' }
+        ? { ...process.env, OPENCODE_CONFIG_CONTENT: openCodeToolConfig(undefined, chosen), OPENCODE_DISABLE_AUTOUPDATE: '1' }
         : { ...process.env },
     })
     session.child = child

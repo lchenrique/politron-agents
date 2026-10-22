@@ -11,7 +11,7 @@ import type { Agent } from '../../shared/v9'
 
 class FakeRuntime extends EventEmitter {
   async models() { return [] }
-  async thread() { return 'thread-test' }
+  async thread() { return { id: 'thread-test', history: 'empty' as const } }
   async request() { return { turn: { id: 'turn-test', status: 'inProgress' } } }
   respond() {}
   async interrupt() {}
@@ -34,7 +34,7 @@ function setup(runtime: Agent['runtime'] = 'codex') {
   const chief = service.saveAgent({ name: 'Chief', alias: 'chief', role: 'chief', instructions: 'Coordene a equipe.', runtime })
   const workspace = service.store.saveWorkspace({ name: 'Projeto' })
   const names = (agent: Agent = chief) => ((service as unknown as { tools: (context: unknown) => { name: string }[] }).tools({ agent, run: { workspaceId: workspace.id } })).map(tool => tool.name)
-  const propose = (name: string, args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent: chief, run: { workspaceId: workspace.id, workspacePath: workspace.path } }, name, args)
+  const propose = (name: string, args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent: chief, run: { id: 'chief-run', ancestry: [chief.id], workspaceId: workspace.id, workspacePath: workspace.path }, conversation: { agentIds: [chief.id] } }, name, args)
   return { service, chief, workspace, names, propose }
 }
 
@@ -156,6 +156,43 @@ describe('visibilidade de agentes pelo group_members', () => {
     expect(names({ ...chief, role: 'agent' })).toContain('group_members')
     const members = await callAsAgent('group_members', {}) as { alias: string }[]
     expect(members.map(member => member.alias)).toEqual(['@nina'])
+  })
+
+  it('aplica o mesmo canDelegate ao catálogo e à execução de ask_agent', async () => {
+    const { service, chief, workspace } = setup()
+    const worker = service.saveAgent({ name: 'Nina', alias: 'nina', instructions: 'Revise o projeto.' })
+    const outsider = service.saveAgent({ name: 'Verati', alias: 'verati', instructions: 'Outra equipe.' })
+    service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [worker.id] })
+    service.store.putRun({ id: 'worker-busy', agentId: worker.id, status: 'running' } as any)
+    const conversation = service.store.saveConversation({ name: 'Chief', workspaceId: workspace.id, agentIds: [chief.id] })
+    const context = { agent: chief, conversation, run: { id: 'run-chief', ancestry: [chief.id], workspaceId: workspace.id, workspacePath: workspace.path } }
+    const call = (name: string, args: Record<string, unknown>) => (service as any).callTool(context, name, args, 'call-' + name)
+    const members = await call('group_members', {}) as { alias: string; canDelegate: boolean; reason?: string }[]
+    expect(members.find(item => item.alias === '@nina')).toMatchObject({ canDelegate: true, availability: 'busy' })
+    expect(members.find(item => item.alias === '@verati')).toMatchObject({ canDelegate: false, reason: expect.stringMatching(/equipe/) })
+
+    const approval = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
+    const delegate = vi.spyOn(service as any, 'delegate').mockResolvedValue('Tarefa concluída.')
+    await expect(call('ask_agent', { agent: outsider.alias, task: 'Revisão curta.' })).rejects.toThrow(/equipe/)
+    expect(approval).not.toHaveBeenCalled()
+    await expect(call('ask_agent', { agent: worker.alias, task: 'Revisão curta.' })).resolves.toBe('Tarefa concluída.')
+    expect(approval).toHaveBeenCalledOnce()
+    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ agent: chief }), worker, 'Revisão curta.', expect.any(String), true, undefined)
+  })
+
+  it('revalida a equipe depois da aprovação antes de iniciar a delegação', async () => {
+    const { service, chief, workspace } = setup()
+    const worker = service.saveAgent({ name: 'Nina', alias: 'nina', instructions: 'Revise o projeto.' })
+    service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [worker.id] })
+    const conversation = service.store.saveConversation({ name: 'Chief', workspaceId: workspace.id, agentIds: [chief.id] })
+    const context = { agent: chief, conversation, run: { id: 'run-chief', ancestry: [chief.id], workspaceId: workspace.id, workspacePath: workspace.path } }
+    vi.spyOn(service as any, 'requestApproval').mockImplementation(async () => {
+      service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [] })
+      return true
+    })
+    const delegate = vi.spyOn(service as any, 'delegate').mockResolvedValue('Não deve executar.')
+    await expect((service as any).callTool(context, 'ask_agent', { agent: worker.alias, task: 'Revise.' }, 'team-change')).rejects.toThrow(/equipe/)
+    expect(delegate).not.toHaveBeenCalled()
   })
 })
 

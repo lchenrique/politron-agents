@@ -85,6 +85,8 @@ export interface ActionSearchBarProps {
   label?: string;
   placeholder?: string;
   className?: string;
+  /** Override the palette surface without changing the global Kokonut style. */
+  surfaceClassName?: string;
 }
 
 interface Entry {
@@ -504,6 +506,7 @@ function ActionSearchBar({
   label = "Search commands",
   placeholder = "Search or jump to…",
   className,
+  surfaceClassName,
 }: ActionSearchBarProps) {
   const uid = useId();
   const inputId = `${uid}-input`;
@@ -944,7 +947,8 @@ function ActionSearchBar({
           "@container/palette absolute inset-x-0 top-0 z-30 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
           open
             ? "shadow-[0_16px_40px_-16px_rgb(0_0_0/0.2)] dark:shadow-[0_16px_40px_-16px_rgb(0_0_0/0.7)]"
-            : "shadow-xs"
+            : "shadow-xs",
+          surfaceClassName
         )}
       >
         <div className="flex h-11 items-center gap-2 px-3">

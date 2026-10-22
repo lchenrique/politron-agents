@@ -17,6 +17,7 @@ import { DockWorkspace, type DockWorkspaceHandle, type DockTool, type DockZone }
 import { Editor, type EditorData, type EditorKind } from '../editors/Editor'
 import { SettingsPage, type SettingsSection } from './SettingsPage'
 import { INHERIT_MODEL_NAME, emptySnapshot, errorText } from './appShellShared'
+import { selectVisibleRunEvidence } from './delegation-evidence'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 
 export default function AppShell() {
@@ -73,10 +74,16 @@ export default function AppShell() {
   const selectWorkspace = useCallback((id: string) => { activeWorkspaceIdRef.current = id; setActiveWorkspaceId(id); setSelectedId('') }, [])
   useEffect(() => { activeWorkspaceIdRef.current = activeWorkspaceId }, [activeWorkspaceId])
   const selectedAgents = useMemo(() => !selected ? [] : selected.agentIds.length ? selected.agentIds.map(id => snapshot.agents.find(agent => agent.id === id)).filter((agent): agent is Agent => !!agent) : [snapshot.assistant], [selected, snapshot.agents, snapshot.assistant])
-  const { messages, hasOlderMessages: historyHasMore, hasNewerMessages, focusedMessageId: focusedHistoryMessageId, queueMessage, loadOlder: loadOlderMessages, search: searchHistory, openSearchHit: openHistorySearchHit, returnToLatest: returnToLatestHistory } = useConversationHistory(selected?.id, setNotice)
-  const messageRunIds = useMemo(() => new Set(messages.map(message => message.runId).filter((id): id is string => !!id)), [messages])
-  const visibleFileChanges = useMemo(() => snapshot.fileChanges.filter(change => messageRunIds.has(change.runId)), [snapshot.fileChanges, messageRunIds])
-  const visibleApprovals = useMemo(() => snapshot.approvals.filter(approval => messageRunIds.has(approval.runId)), [snapshot.approvals, messageRunIds])
+  const { messages, hasOlderMessages: historyHasMore, hasNewerMessages, focusedMessageId: focusedHistoryMessageId, queueMessage, loadOlder: loadOlderMessages, search: searchHistory, openSearchHit: openHistorySearchHit, returnToLatest: returnToLatestHistory, reconcileAfterReconnect } = useConversationHistory(selected?.id, setNotice)
+  const visibleRunEvidence = useMemo(() => selectVisibleRunEvidence(messages, snapshot.fileChanges, snapshot.approvals), [messages, snapshot.fileChanges, snapshot.approvals])
+  const visibleFileChanges = visibleRunEvidence.fileChanges
+  const visibleApprovals = visibleRunEvidence.approvals
+  // Only completed, real writes from this conversation can appear above the composer.
+  const finishedWithChanges = [...messages].reverse().find(message => message.role === 'assistant'
+    && message.runId && ['completed', 'failed', 'interrupted'].includes(message.status)
+    && visibleFileChanges.some(change => change.runId === message.runId && change.status === 'applied'))
+  const latestReview = finishedWithChanges?.runId
+    ? visibleFileChanges.filter(change => change.runId === finishedWithChanges.runId && change.status === 'applied') : []
   const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
   const selectedWorkspace = selected ? snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined
   const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(data); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
@@ -123,15 +130,19 @@ export default function AppShell() {
         }
       } else if (event.type === 'fileChange') setSnapshot(current => ({ ...current, fileChanges: [...current.fileChanges.filter(item => item.id !== event.fileChange.id), event.fileChange] }))
       else if (event.type === 'approval') setSnapshot(current => ({ ...current, approvals: [...current.approvals.filter(item => item.id !== event.approval.id), event.approval] }))
-      else if (event.type === 'changed') scheduleRefresh()
+      else if (event.type === 'changed') {
+        if (event.reason === 'connection-restored') void reconcileAfterReconnect().catch(error => setNotice(errorText(error)))
+        scheduleRefresh()
+      }
       else if (event.type === 'browser') setBrowserFrames(current => {
         const at = current.findIndex(frame => frame.key === event.frame.key)
         if (at < 0) return [...current, event.frame]
         const next = [...current]; next[at] = event.frame; return next
       })
+      else if (event.type === 'browserClosed') setBrowserFrames(current => current.filter(frame => frame.key !== event.key))
     })
     return () => { off(); offProviders(); if (refreshTimer !== null) clearTimeout(refreshTimer) }
-  }, [refresh, queueMessage])
+  }, [refresh, queueMessage, reconcileAfterReconnect])
   useEffect(() => { void window.appAPI.setVisibleConversation(selected?.id || null).catch(error => setNotice(errorText(error))) }, [selected?.id])
   const refreshBrowser = useCallback(async () => { if (!selected) { setBrowserFrames([]); return } try { setBrowserFrames(await window.appAPI.browserFrames(selected.id)) } catch (error) { setNotice(errorText(error)) } }, [selected?.id])
   useEffect(() => { void refreshBrowser() }, [refreshBrowser])
@@ -157,8 +168,48 @@ export default function AppShell() {
   }
   const saveWorkspace = async (data: EditorData) => { const workspace = await window.appAPI.saveWorkspace(data as Partial<Workspace> & { path?: string | null }); await refresh(); selectWorkspace(workspace.id) }
   const startConversation = async (workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ workspaceId }); await refresh(); selectConversation(conversation.id) } catch (error) { setNotice(errorText(error)) } }
-  const deleteWorkspace = async (id: string) => { try { await window.appAPI.deleteWorkspace(id); await refresh() } catch (error) { setNotice(errorText(error)) } }
-  const deleteConversation = async (id: string) => { try { await window.appAPI.deleteConversation(id); if (selectedId === id) setSelectedId(''); await refresh() } catch (error) { setNotice(errorText(error)) } }
+  const deleteWorkspace = async (id: string) => {
+    try {
+      const currentActiveWorkspace = activeWorkspaceIdRef.current
+      const currentSelectedWorkspace = selected?.workspaceId
+      await window.appAPI.deleteWorkspace(id)
+      const data = await window.appAPI.snapshot()
+      setSnapshot(data)
+      const activeWorkspaceWasDeleted = !!currentActiveWorkspace && !data.workspaces.some(item => item.id === currentActiveWorkspace && !item.archived)
+      if (activeWorkspaceWasDeleted) { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null) }
+      const removedCurrentContext = currentActiveWorkspace === id || activeWorkspaceWasDeleted || currentSelectedWorkspace === id || (!!selectedId && !data.conversations.some(item => item.id === selectedId && !item.archived))
+      if (removedCurrentContext) {
+        const next = data.conversations.find(item => !item.archived)
+        if (next) selectConversation(next.id)
+        else {
+          const conversation = await window.appAPI.saveConversation({})
+          const updated = await window.appAPI.snapshot()
+          setSnapshot(updated)
+          selectConversation(conversation.id)
+        }
+      } else if (!data.conversations.some(item => item.id === selectedId && !item.archived)) setSelectedId(data.conversations.find(item => !item.archived)?.id || '')
+    } catch (error) { setNotice(errorText(error)) }
+  }
+  const deleteConversation = async (id: string) => {
+    try {
+      const wasCurrent = selectedId === id
+      const workspaceId = snapshot.conversations.find(item => item.id === id)?.workspaceId
+      await window.appAPI.deleteConversation(id)
+      const data = await window.appAPI.snapshot()
+      setSnapshot(data)
+      if (wasCurrent) {
+        const next = data.conversations.find(item => !item.archived && item.workspaceId === workspaceId)
+          || data.conversations.find(item => !item.archived)
+        if (next) selectConversation(next.id)
+        else {
+          const conversation = await window.appAPI.saveConversation({ workspaceId })
+          const updated = await window.appAPI.snapshot()
+          setSnapshot(updated)
+          selectConversation(conversation.id)
+        }
+      }
+    } catch (error) { setNotice(errorText(error)) }
+  }
   const deleteAgent = async (id: string) => { try { const name = snapshot.agents.find(agent => agent.id === id)?.name; await window.appAPI.deleteAgent(id); await refresh(); setNotice(`${name || 'Agente'} excluído.`) } catch (error) { setNotice(errorText(error)) } }
   const setAgentChief = async (agent: Agent, chief: boolean) => {
     if (chief && snapshot.agents.some(item => item.id !== agent.id && item.role === 'chief')) { setNotice('Já existe um Chief. Remova esse papel antes de promover outro agente.'); return }
@@ -266,9 +317,12 @@ export default function AppShell() {
               onNotice={setNotice}
             />
             <Composer
+              mentionAgents={selectedAgents}
               working={conversationRuns.length > 0}
               canSteer={canSteer}
               conversationId={selected.id}
+              reviewChanges={latestReview}
+              reviewKey={finishedWithChanges?.runId || ''}
               models={promptOptions.models}
               modelProviders={promptOptions.providers}
               defaultModelName={selectedModelName}

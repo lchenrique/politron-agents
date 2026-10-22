@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events'
 import type { BrowserFrame } from '../../shared/v9'
 
 type Session = { key: string; conversationId: string; agentId: string; context: BrowserContext; page: Page; x: number | null; y: number | null; human: boolean; action: string }
+type SessionStart = { conversationId: string; agentId: string; cancelled: boolean; promise: Promise<Session> }
 const viewport = { width: 1280, height: 800 }
 const httpUrl = (value: unknown) => {
   if (typeof value !== 'string' || value.length > 4000) throw new Error('Informe um endereço web válido.')
@@ -15,7 +16,7 @@ export class BrowserService extends EventEmitter {
   private browser: Browser | null = null
   private browserStart: Promise<Browser> | null = null
   private sessions = new Map<string, Session>()
-  private sessionStarts = new Map<string, Promise<Session>>()
+  private sessionStarts = new Map<string, SessionStart>()
   private latest = new Map<string, BrowserFrame>()
   private async getBrowser() {
     if (this.browser?.isConnected()) return this.browser
@@ -27,28 +28,33 @@ export class BrowserService extends EventEmitter {
     const current = this.sessions.get(key)
     if (current && !current.page.isClosed()) return current
     const pending = this.sessionStarts.get(key)
-    if (pending) return pending
-    const start = this.createSession(key, conversationId, agentId).finally(() => { this.sessionStarts.delete(key) })
+    if (pending) return pending.promise
+    const start: SessionStart = { conversationId, agentId, cancelled: false, promise: Promise.resolve(null as never) }
+    start.promise = this.createSession(key, conversationId, agentId, start).finally(() => { if (this.sessionStarts.get(key) === start) this.sessionStarts.delete(key) })
     this.sessionStarts.set(key, start)
-    return start
+    return start.promise
   }
-  private async createSession(key: string, conversationId: string, agentId: string): Promise<Session> {
-    const context = await (await this.getBrowser()).newContext({ viewport, acceptDownloads: false, serviceWorkers: 'block' })
+  private async createSession(key: string, conversationId: string, agentId: string, start: SessionStart): Promise<Session> {
+    const browser = await this.getBrowser()
+    if (start.cancelled) throw new Error('A sessão de navegador foi encerrada.')
+    const context = await browser.newContext({ viewport, acceptDownloads: false, serviceWorkers: 'block' })
+    if (start.cancelled) { await context.close().catch(() => undefined); throw new Error('A sessão de navegador foi encerrada.') }
     try {
     const page = await context.newPage()
+    if (start.cancelled) { await context.close().catch(() => undefined); throw new Error('A sessão de navegador foi encerrada.') }
     const value: Session = { key, conversationId, agentId, context, page, x: null, y: null, human: false, action: 'Navegador pronto' }
     page.on('close', () => { if (this.sessions.get(key) === value) { this.sessions.delete(key); this.latest.delete(key) } })
     this.sessions.set(key, value)
     await this.capture(value)
+    if (start.cancelled || this.sessions.get(key) !== value) { await context.close().catch(() => undefined); throw new Error('A sessão de navegador foi encerrada.') }
     return value
-    } catch (error) { await context.close().catch(() => undefined); this.sessions.delete(key); throw error }
+    } catch (error) { await context.close().catch(() => undefined); if (this.sessions.get(key)?.context === context) this.sessions.delete(key); throw error }
   }
   private async capture(session: Session): Promise<BrowserFrame> {
     const page = session.page
     const image = page.isClosed() ? '' : `data:image/png;base64,${(await page.screenshot({ type: 'png', animations: 'disabled' })).toString('base64')}`
     const frame: BrowserFrame = { key: session.key, conversationId: session.conversationId, agentId: session.agentId, url: page.isClosed() ? '' : page.url(), title: page.isClosed() ? '' : await page.title().catch(() => ''), image, width: viewport.width, height: viewport.height, x: session.x, y: session.y, human: session.human, action: session.action, capturedAt: new Date().toISOString() }
-    this.latest.set(session.key, frame)
-    this.emit('frame', frame)
+    if (this.sessions.get(session.key) === session) { this.latest.set(session.key, frame); this.emit('frame', frame) }
     return frame
   }
   private async summarize(page: Page) {
@@ -113,6 +119,31 @@ export class BrowserService extends EventEmitter {
   frames(conversationId: string) {
     return [...this.latest.values()].filter(frame => frame.conversationId === conversationId)
   }
+  async disposeConversation(conversationId: string): Promise<void> {
+    await this.disposeWhere(owner => owner.conversationId === conversationId)
+  }
+  async disposeAgent(agentId: string): Promise<void> {
+    await this.disposeWhere(owner => owner.agentId === agentId)
+  }
+  private async disposeWhere(matches: (owner: Pick<Session, 'conversationId' | 'agentId'>) => boolean): Promise<void> {
+    const keys = new Set<string>()
+    for (const [key, session] of this.sessions) if (matches(session)) keys.add(key)
+    for (const [key, start] of this.sessionStarts) if (matches(start)) keys.add(key)
+    const closing: Promise<unknown>[] = []
+    for (const key of keys) {
+      const start = this.sessionStarts.get(key)
+      if (start) { start.cancelled = true; this.sessionStarts.delete(key) }
+      const session = this.sessions.get(key)
+      if (session) {
+        this.sessions.delete(key)
+        closing.push(session.context.close().catch(() => undefined))
+      }
+      const frame = this.latest.get(key)
+      this.latest.delete(key)
+      if (frame) this.emit('frameClosed', { key, conversationId: frame.conversationId, agentId: frame.agentId })
+    }
+    await Promise.allSettled(closing)
+  }
   async control(key: string, human: boolean) {
     const session = this.sessions.get(key)
     if (!session || session.page.isClosed()) throw new Error('A sessão de navegador ainda não foi aberta por um agente.')
@@ -134,7 +165,10 @@ export class BrowserService extends EventEmitter {
     await this.capture(session)
   }
   async close() {
-    await Promise.allSettled([...this.sessionStarts.values()])
+    for (const start of this.sessionStarts.values()) start.cancelled = true
+    this.sessionStarts.clear()
+    const frames = [...this.latest.values()]
+    for (const frame of frames) this.emit('frameClosed', { key: frame.key, conversationId: frame.conversationId, agentId: frame.agentId })
     await this.browserStart?.catch(() => undefined)
     await Promise.all([...this.sessions.values()].map(session => session.context.close().catch(() => undefined)))
     this.sessions.clear(); this.latest.clear(); await this.browser?.close().catch(() => undefined); this.browser = null

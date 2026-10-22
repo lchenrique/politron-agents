@@ -13,7 +13,7 @@ class ControlledRuntime extends EventEmitter {
   threads: string[] = []
   inputs: string[] = []
   async models() { return [] }
-  async thread() { const id = `thread-${this.threads.length}`; this.threads.push(id); return id }
+  async thread() { const id = `thread-${this.threads.length}`; this.threads.push(id); return { id, history: 'empty' as const } }
   async send(_threadId: string, input: string) { this.inputs.push(input); return { turn: { id: 'shared-turn', status: 'inProgress' } } }
   respond() {}
   async interrupt() {}
@@ -132,13 +132,18 @@ describe('auditoria de isolamento e falha dos runtimes', () => {
     const signal = new AbortController()
     vi.spyOn(service as unknown as { requestApproval(): Promise<boolean> }, 'requestApproval').mockResolvedValue(true)
     const quote = (value: string) => `'${value.replace(/'/g, "''")}'`
-    const pending = broker.callTool({ agent, conversation: chat, signal: signal.signal, run: { workspaceId: chat.workspaceId, workspacePath: service.store.workspace(chat.workspaceId).path } }, 'workspace_run_command', { command: `& ${quote(process.execPath)} ${quote(script)}` })
+    const pending = broker.callTool({ agent, conversation: chat, signal: signal.signal, run: { id: 'cancel-run', workspaceId: chat.workspaceId, workspacePath: service.store.workspace(chat.workspaceId).path } }, 'workspace_run_command', { command: `& ${quote(process.execPath)} ${quote(script)}` })
     // Anexa o tratamento antes de abortar para evitar rejeições sem observador.
     const result = pending.catch(error => error)
-    await vi.waitFor(() => expect(existsSync(ready)).toBe(true), { timeout: 5000 })
-    signal.abort()
-    expect(await result).toBeInstanceOf(Error)
-    expect(existsSync(marker)).toBe(false)
+    try {
+      await vi.waitFor(() => expect(existsSync(ready)).toBe(true), { timeout: 5000 })
+      signal.abort()
+      expect(await result).toContain('Execução interrompida.')
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      signal.abort()
+      await result
+    }
   }, 15000)
   it('preserva falha de turno recebida antes da resposta de turn/start', async () => {
     const { service, codex, conversation, sends } = setup()
@@ -173,7 +178,7 @@ describe('auditoria de isolamento e falha dos runtimes', () => {
     const agent = service.saveAgent({ instructions: 'Verifique apenas a versão do npm.', name: 'Terminal', alias: 'terminal', canWrite: true })
     const chat = conversation(agent)
     vi.spyOn(service as unknown as { requestApproval(): Promise<boolean> }, 'requestApproval').mockResolvedValue(true)
-    const result = await broker.callTool({ agent, conversation: chat, run: { workspaceId: chat.workspaceId, workspacePath: service.store.workspace(chat.workspaceId).path } }, 'workspace_run_command', { command: 'npm --version' })
+    const result = await broker.callTool({ agent, conversation: chat, run: { id: 'npm-run', workspaceId: chat.workspaceId, workspacePath: service.store.workspace(chat.workspaceId).path } }, 'workspace_run_command', { command: 'npm --version' })
     expect(result).toMatch(/\d+\.\d+\.\d+/)
     expect(result).not.toMatch(/LASTEXITCODE|VariableIsUndefined/)
   }, 15000)
