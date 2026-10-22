@@ -37,12 +37,15 @@ async function fakeOpenCode() {
       if (url.pathname === '/session' && req.method === 'POST') return send({ id: 'sess-1' })
       if (url.pathname === '/session/sess-1' && req.method === 'GET') return send({ id: 'sess-1' })
       if (url.pathname === '/session/sess-1/message' && req.method === 'POST') {
+        if (json?.parts?.[0]?.text?.includes('TEST_NATIVE_REJECTED'))
+          return send({ info: { role: 'assistant' }, parts: [{ type: 'tool', tool: 'bash', state: { status: 'error' } }] })
         turns++
         if (turns === 1) return send({ info: { role: 'assistant' }, parts: [{ type: 'text',
           text: JSON.stringify({ action: 'tool', tool: 'group_members', arguments: '{}', text: '' }) }] })
         return send({ info: { role: 'assistant' }, parts: [{ type: 'text',
           text: JSON.stringify({ action: 'final', tool: 'none', arguments: '{}', text: 'Equipe consultada.' }) }] })
       }
+      if (url.pathname === '/session/sess-1/permissions/per-1' && req.method === 'POST') return send(true)
       if (url.pathname === '/session/sess-1/abort') return send(true)
       send({ message: 'Not found' }, 404)
     })
@@ -60,11 +63,12 @@ async function fakeOpenCode() {
 }
 
 describe('servidor OpenCode isolado e broker do Boobot', () => {
-  it('desliga ferramentas nativas mesmo com permissÃµes herdadas', () => {
+  it('mantém ferramentas nativas visíveis, mas condiciona toda execução à aprovação', () => {
     const result = JSON.parse(openCodeServerConfig(JSON.stringify({ permission: { '*': 'allow' }, mcp: { unsafe: { type: 'local' } }, plugin: ['unsafe'], provider: { custom: {} } })))
-    expect(result.permission).toEqual({ '*': 'deny' })
-    expect(result.agent['politron-safe'].permission).toEqual({ '*': 'deny' })
-    expect(result.agent['politron-safe'].tools).toEqual({ '*': false })
+    expect(result.permission).toEqual({ '*': 'ask', external_directory: 'deny' })
+    expect(result.agent['politron-safe'].permission).toEqual({ '*': 'ask', external_directory: 'deny' })
+    expect(result).not.toHaveProperty('tools')
+    expect(result.agent['politron-safe']).not.toHaveProperty('tools')
     expect(result.plugin).toEqual([])
     expect(result.mcp).toEqual({})
     expect(result.provider).toEqual({ custom: {} })
@@ -93,11 +97,68 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
     expect(events.some(event => event.method === 'item/agentMessage/delta' && event.params.delta === 'Equipe consultada.')).toBe(true)
     const messages = calls.filter(call => call.path.startsWith('/session/sess-1/message'))
     expect(messages).toHaveLength(2)
-    expect(messages.every(call => call.json.agent === 'politron-safe' && call.json.tools['*'] === false)).toBe(true)
+    expect(messages.every(call => call.json.agent === 'politron-safe' && !('tools' in call.json))).toBe(true)
     expect(messages[0].json.model).toEqual({ providerID: 'test', modelID: 'free' })
     expect(messages[1].json.parts[0].text).toContain('2 agentes')
     expect(messages[0].auth).toMatch(/^Basic /)
     expect((await app.thread(agent, 'D:/workspace-isolado', tools, 'sess-1')).history).toBe('retained')
+  })
+
+  it('rejeita pedidos de ferramenta nativa por HTTP, sem aprovação implícita', async () => {
+    const { runtime: app, calls } = await fakeOpenCode()
+    const thread = await app.thread(agent, 'D:/workspace-isolado', [])
+    const internal = app as any
+    internal.sessions.get(thread.id).turn = 'turn-permission'
+    internal.onStreamEvent({ type: 'permission.asked', properties: {
+      id: 'per-1', sessionID: thread.id, permission: 'bash', patterns: ['*'] } })
+    for (let attempt = 0; attempt < 30 && !calls.some(c => c.path.includes('/permissions/per-1')); attempt++)
+      await new Promise(resolve => setTimeout(resolve, 20))
+    const reply = calls.find(c => c.path.includes('/permissions/per-1'))
+    expect(reply?.method).toBe('POST')
+    expect(reply?.json).toEqual({ response: 'reject' })
+    expect(reply?.auth).toMatch(/^Basic /)
+  })
+
+  it('relata claramente tentativa de ferramenta nativa sem texto', async () => {
+    const { runtime: app } = await fakeOpenCode()
+    const thread = await app.thread(agent, 'D:/workspace-isolado', [])
+    const finished = new Promise<any>(resolve => {
+      app.on('event', event => { if (event.method === 'turn/completed') resolve(event) })
+    })
+    await app.send(thread.id, 'TEST_NATIVE_REJECTED', 'test/free')
+    const turn = await finished
+    expect(turn.params.turn.status).toBe('failed')
+    expect(turn.params.turn.error.message).toContain('ferramenta nativa bash')
+  })
+
+  it('encaminha ferramenta nativa ao evento do broker e devolve resposta real', async () => {
+    const { runtime: app } = await fakeOpenCode()
+    const schema = [{ type: 'function' as const, name: 'workspace_read', description: 'Leitura',
+      inputSchema: { type: 'object', properties: { path: { type: 'string' } } } }]
+    const thread = await app.thread(agent, 'D:/workspace-isolado', schema)
+    const internal = app as any
+    internal.sessions.get(thread.id).turn = 'bridge-turn'
+    const bridge = await internal.bridge.start()
+    const events: any[] = []
+    app.on('event', event => {
+      events.push(event)
+      if (event.method === 'item/tool/call') {
+        app.respond(event.id, { success: true, contentItems: [{ type: 'inputText', text: 'texto verificado' }] })
+      }
+    })
+    const invoke = (name: string) => fetch(bridge.baseUrl + '/sessions/' + thread.id + '/call', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + bridge.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, argumentsJson: '{"path":"a.txt"}' })
+    })
+    expect((await invoke('workspace_write')).status).toBe(403)
+    const authorized = await invoke('workspace_read')
+    expect(authorized.status).toBe(200)
+    const reply = await authorized.json()
+    expect(reply.success).toBe(true)
+    expect(reply.result.contentItems[0].text).toBe('texto verificado')
+    expect(events.filter(e => e.method === 'item/tool/call')).toHaveLength(1)
+    internal.finish(internal.sessions.get(thread.id), 'interrupted')
+    expect((await invoke('workspace_read')).status).toBe(404)
   })
 
   it('recusa sessÃ£o perdida sem recriÃ¡-la por engano', async () => {
@@ -110,12 +171,21 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
     runtime = app
     const internal = app as any
     const state: any = { id: 'stream', turn: 'turn-1', cwd: 'D:/project', agent, instructions: '',
-      tools: [], text: '', parts: new Map(), request: new AbortController(), steps: 0 }
+      tools: [], text: '', parts: new Map(), assistantMessages: new Set(), request: new AbortController(), steps: 0 }
     internal.sessions.set(state.id, state)
     const events: any[] = []
     app.on('event', item => events.push(item))
-    const update = (text: string) => internal.onStreamEvent({ type: 'message.part.updated',
-      properties: { part: { type: 'text', sessionID: 'stream', id: 'part-1', text } } })
+    const update = (text: string, role = 'assistant', messageID = 'assistant-1') => {
+      internal.onStreamEvent({ type: 'message.updated', properties: {
+        info: { id: messageID, sessionID: 'stream', role } } })
+      internal.onStreamEvent({ type: 'message.part.updated', properties: {
+        part: { type: 'text', sessionID: 'stream', messageID, id: 'part-1', text } } })
+    }
+    update('Segredo do prompt enviado pelo usuário', 'user', 'user-1')
+    expect(events).toHaveLength(0)
+    internal.onStreamEvent({ type: 'message.part.updated', properties: {
+      part: { type: 'text', sessionID: 'stream', messageID: 'unknown', id: 'part-1', text: 'desconhecido' } } })
+    expect(events).toHaveLength(0)
     update('Ola')
     update('Ola')
     update('Ola, mundo!')

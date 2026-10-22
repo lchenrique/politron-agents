@@ -1,21 +1,24 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { promisify } from 'node:util'
-import { access, mkdir } from 'node:fs/promises'
+import { access, mkdir, writeFile } from 'node:fs/promises'
 import { join, dirname, extname } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { Agent, Model } from '../../shared/v9'
 import type { DynamicTool } from './codex'
 import { SessionUnavailableError, type AgentRuntime, type RuntimeThread } from './agent-runtime'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { openCodeToolConfig } from './headless-cli'
 import { readOpenCodeModels } from './opencode-models'
+import { OpenCodeToolBridge } from './opencode-tool-bridge'
+import bridgePlugin from './opencode-bridge-plugin.bundle.mjs?raw'
 
 const execFileAsync = promisify(execFile)
 type Data = Record<string, any>
 type Session = { id: string; cwd: string; agent: Agent; instructions: string; tools: DynamicTool[];
   turn?: string; model?: string; waiting?: string; text: string; steps: number; parts: Map<string, string>;
-  timer?: ReturnType<typeof setTimeout>; request?: AbortController }
+  timer?: ReturnType<typeof setTimeout>; request?: AbortController; assistantMessages: Set<string> }
 const clean = (error: unknown) => {
   const detail = error instanceof Error ? error.message : String(error)
   if (/free tier can only be used from within OpenCode/i.test(detail))
@@ -25,10 +28,15 @@ const clean = (error: unknown) => {
 
 export function openCodeServerConfig(inherited?: string): string {
   const supplied = JSON.parse(openCodeToolConfig(inherited)) as Data
+  // The legacy headless adapter disables the native tool catalog. Zen free
+  // models reject that request shape even when it originates in OpenCode.
+  // Keep the native declarations, but require approval for EVERY execution.
+  delete supplied.tools
+  const gate = { '*': 'ask', external_directory: 'deny' }
   return JSON.stringify({ ...supplied, plugin: [], mcp: {}, share: 'disabled',
-    permission: { '*': 'deny' }, agent: { 'politron-safe': {
+    permission: gate, agent: { 'politron-safe': {
       description: 'Boobot: ferramentas e aprovações controladas pelo aplicativo',
-      mode: 'primary', permission: { '*': 'deny' }, tools: { '*': false },
+      mode: 'primary', permission: gate,
       prompt: 'Não utilize ferramentas nativas. Somente o broker Boobot executa ações.'
     } }
   })
@@ -64,6 +72,12 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
   private readonly streamAbort = new AbortController()
   private sessions = new Map<string, Session>()
   private pending = new Map<string, Session>()
+  private readonly nativeCalls = new Map<string, { session: Session; resolve: (data: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  private readonly bridge = new OpenCodeToolBridge(id => {
+    const session = this.sessions.get(id)
+    return session ? { tools: session.tools, active: !!session.turn,
+      invoke: (name, args, callId) => this.invokeTool(session, name, args, callId) } : undefined
+  })
   constructor(private readonly directory: string) { super() }
 
   private async start(): Promise<void> {
@@ -82,10 +96,21 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
       'Esta integracao usa o servidor OpenCode v1. Versoes v2 precisam de adaptador proprio; configure BOOBOT_OPENCODE_TRANSPORT=cli para diagnosticar.'
     )
     const password = randomBytes(32).toString('base64url')
-    const child = spawn(binary, ['serve', '--pure', '--hostname', '127.0.0.1', '--port', '0'], {
+    const bridge = await this.bridge.start()
+    const filename = 'boobot-opencode-' + createHash('sha256').update(bridgePlugin).digest('hex').slice(0, 16) + '.mjs'
+    const pluginPath = join(this.directory, filename)
+    await writeFile(pluginPath, bridgePlugin, { encoding: 'utf8', flag: 'w' })
+    const config = JSON.parse(openCodeServerConfig()) as Data
+    config.plugin = [[pathToFileURL(pluginPath).href, bridge]]
+    const isolatedConfig = join(this.directory, 'isolated-config')
+    await mkdir(isolatedConfig, { recursive: true })
+    const child = spawn(binary, ['serve', '--hostname', '127.0.0.1', '--port', '0'], {
       cwd: this.directory, windowsHide: true, stdio: 'pipe', shell: false,
       env: { ...process.env, OPENCODE_SERVER_USERNAME: 'opencode', OPENCODE_SERVER_PASSWORD: password,
-        OPENCODE_CONFIG_CONTENT: openCodeServerConfig(), OPENCODE_DISABLE_AUTOUPDATE: '1' },
+        // --pure suppresses the Boobot plugin. Isolate other plugin/config
+        // discovery instead, and load ONLY the bundled authenticated bridge.
+        OPENCODE_CONFIG_DIR: isolatedConfig, OPENCODE_CONFIG: '', OPENCODE_DISABLE_PROJECT_CONFIG: '1',
+        OPENCODE_CONFIG_CONTENT: JSON.stringify(config), OPENCODE_DISABLE_AUTOUPDATE: '1' },
     })
     this.child = child; this.secret = password
     this.base = await new Promise<string>((resolve, reject) => {
@@ -165,11 +190,37 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     }
   }
   private onStreamEvent(event: Data): void {
+    if (event.type === 'permission.asked') {
+      const permission = event.properties
+      const state = this.sessions.get(permission?.sessionID)
+      if (!state?.turn || typeof permission?.id !== 'string') return
+      // OpenCode Zen's free models require native tool definitions in the
+      // request. Definitions are NOT authorization: reject every native call.
+      // Only the separately approved Boobot tool broker can act on the host.
+      void this.http('POST', '/session/' + encodeURIComponent(state.id) +
+        '/permissions/' + encodeURIComponent(permission.id), state.cwd,
+        { response: 'reject' }, 12000).catch(() => {
+        // A failed deny stays pending in OpenCode; never auto-approve/retry.
+      })
+      return
+    }
+    if (event.type === 'message.updated') {
+      const info = event.properties?.info
+      if (typeof info?.sessionID !== 'string' || typeof info?.id !== 'string') return
+      const session = this.sessions.get(info.sessionID)
+      if (!session?.turn) return
+      if (info.role === 'assistant') session.assistantMessages.add(info.id)
+      else session.assistantMessages.delete(info.id)
+      return
+    }
     if (event.type !== 'message.part.updated') return
     const part = event.properties?.part
     if (part?.type !== 'text' || typeof part.text !== 'string') return
     const session = this.sessions.get(part.sessionID || event.properties?.sessionID)
     if (!session?.turn || session.tools.length || !session.request) return
+    // Never stream prompt/user input as assistant output. Unknown message IDs are
+    // ignored until OpenCode identifies their role; HTTP response remains final.
+    if (typeof part.messageID !== 'string' || !session.assistantMessages.has(part.messageID)) return
     session.parts.set(String(part.id || 'text'), part.text)
     this.delta(session, [...session.parts.values()].join('\n'))
   }
@@ -200,18 +251,19 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     }
     const info: Data = id ? { id } : await this.http('POST', '/session', cwd, { title: 'Boobot ' + agent.name })
     if (typeof info.id !== 'string') throw new Error('OpenCode não confirmou a sessão.')
-    this.sessions.set(info.id, { id: info.id, cwd, agent, instructions, tools, text: '', steps: 0, parts: new Map() })
+    this.sessions.set(info.id, { id: info.id, cwd, agent, instructions, tools, text: '', steps: 0, parts: new Map(), assistantMessages: new Set() })
     return { id: info.id, history: id ? 'retained' : 'empty' }
   }
   private initialPrompt(s: Session, message: string): string {
     const guide = s.tools.length ? [
-      'PROTOCOLO BOOBOT: responda SOMENTE JSON, sem Markdown.',
-      'Ferramenta: {"action":"tool","tool":"nome_exato","arguments":"JSON serializado dos argumentos","text":""}.',
-      'Final: {"action":"final","tool":"none","arguments":"{}","text":"resposta em português"}.',
-      'As ferramentas são executadas APENAS pelo aplicativo após verificar permissões. Nunca use ferramentas nativas.',
-      'Aguarde o resultado real antes de confirmar alterações. Ferramentas disponíveis:',
-      JSON.stringify(s.tools)
-    ].join('\n') : 'Sem ferramentas nesta sessão. Responda normalmente.'
+      'Para trabalhar no workspace use SOMENTE as ferramentas nativas boobot_tools e boobot_call.',
+      'boobot_tools mostra os nomes e esquemas autorizados para este agente e workspace.',
+      'boobot_call recebe name e argumentsJson, um objeto JSON serializado de parâmetros.',
+      'O Boobot decide permissões, solicita aprovações e executa as ferramentas.',
+      'Nunca use bash, read, write ou outras ferramentas nativas do OpenCode: elas são recusadas.',
+      'Não invente alterações; espere o resultado real de cada chamada.',
+      'Ferramentas autorizadas nesta sessão:', JSON.stringify(s.tools)
+    ].join('\n') : 'Sem ferramentas Boobot nesta sessão. Responda normalmente, sem ferramentas nativas.'
     return [buildAgentSystemPrompt(s.agent, s.instructions), guide, 'Usuário: ' + message].join('\n\n')
   }
   async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<Data> {
@@ -221,7 +273,7 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     const chosen = model || state.agent.model
     openCodeModelRef(chosen)
     const turn = randomUUID()
-    state.turn = turn; state.model = chosen; state.text = ''; state.parts.clear(); state.steps = 0
+    state.turn = turn; state.model = chosen; state.text = ''; state.parts.clear(); state.assistantMessages.clear(); state.steps = 0
     state.timer = setTimeout(() => { state.request?.abort(); this.finish(state, 'failed', 'OpenCode excedeu o tempo limite.') }, timeout)
     state.timer.unref?.()
     // Return the turn identity before a response can arrive.
@@ -234,15 +286,28 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     try {
       const result: Data = await this.http('POST', '/session/' + encodeURIComponent(state.id) + '/message',
         state.cwd, { agent: 'politron-safe', model: openCodeModelRef(state.model || state.agent.model),
-          tools: { '*': false }, parts: [{ type: 'text', text: message }] }, 600000, request.signal)
+          parts: [{ type: 'text', text: message }] }, 600000, request.signal)
       if (!state.turn || state.request !== request) return
       if (result?.info?.error) throw new Error(clean(result.info.error?.data?.message || result.info.error?.message || result.info.error))
       const raw = (result?.parts || []).filter((part: Data) => part.type === 'text' && typeof part.text === 'string')
         .map((part: Data) => part.text).join('\n').trim()
-      if (!raw) throw new Error('Resposta vazia do OpenCode.')
+      if (!raw) {
+        const native = (result?.parts || []).find((part: Data) => part.type === 'tool')
+        if (native) throw new Error('OpenCode tentou usar ferramenta nativa ' +
+          String(native.tool || 'desconhecida') +
+          ', mas o Boobot não autoriza sua execução. A ponte nativa de ferramentas ainda precisa ser integrada.')
+        throw new Error('Resposta vazia do OpenCode.')
+      }
       if (!state.tools.length) { this.delta(state, raw); this.finish(state, 'completed'); return }
-      const normalized = raw.trim()
-      const action: Data = JSON.parse(normalized)
+      // Native plugin calls execute during OpenCode's HTTP turn and report via
+      // the Boobot broker. Preserve the old structured-JSON path as fallback.
+      let action: Data
+      try { action = JSON.parse(raw.trim()) } catch {
+        this.delta(state, raw); this.finish(state, 'completed'); return
+      }
+      if (!action || typeof action !== 'object' || !['tool', 'final'].includes(action.action)) {
+        this.delta(state, raw); this.finish(state, 'completed'); return
+      }
       if (action.action === 'final' && action.tool === 'none' && typeof action.text === 'string' && action.text.trim()) {
         this.delta(state, action.text); this.finish(state, 'completed'); return
       }
@@ -263,7 +328,33 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     state.text = text
     this.emit('event', { method: 'item/agentMessage/delta', params: { threadId: state.id, turnId: state.turn, delta } })
   }
+  private invokeTool(state: Session, name: string, args: Record<string, unknown>, callId: string): Promise<unknown> {
+    if (!state.turn || !state.tools.some(tool => tool.name === name))
+      return Promise.reject(new Error('Ferramenta não disponível para a sessão.'))
+    if (++state.steps > 32) return Promise.reject(new Error('Limite de 32 chamadas de ferramenta excedido.'))
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.nativeCalls.delete(callId)
+        reject(new Error('A ferramenta excedeu o tempo de execução autorizado.'))
+      }, 120000)
+      this.nativeCalls.set(callId, { session: state, resolve, reject, timer })
+      this.emit('event', { id: callId, method: 'item/tool/call', params: {
+        threadId: state.id, turnId: state.turn, tool: name, arguments: args
+      } })
+    })
+  }
   respond(id: number | string, result: unknown): void {
+    const native = this.nativeCalls.get(String(id))
+    if (native) {
+      this.nativeCalls.delete(String(id)); clearTimeout(native.timer)
+      if (!native.session.turn) return native.reject(new Error('Turno já encerrado.'))
+      const record = result as Data
+      if (record?.success === false) return native.reject(new Error(
+        record.contentItems?.find((item: Data) => typeof item?.text === 'string')?.text || 'A execução foi recusada pelo Boobot.'
+      ))
+      native.resolve(result)
+      return
+    }
     const state = this.pending.get(String(id))
     if (!state?.turn) return
     this.pending.delete(String(id)); state.waiting = undefined
@@ -284,6 +375,10 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     state.turn = undefined
     if (state.timer) clearTimeout(state.timer)
     if (state.waiting) this.pending.delete(state.waiting)
+    for (const [id, native] of this.nativeCalls) if (native.session === state) {
+      this.nativeCalls.delete(id); clearTimeout(native.timer)
+      native.reject(new Error('Turno encerrado antes da conclusão da ferramenta.'))
+    }
     state.waiting = undefined
     if (state.text) this.emit('event', { method: 'item/completed', params: { threadId: state.id, turnId: turn, item: { type: 'agentMessage', text: state.text } } })
     this.emit('event', { method: 'turn/completed', params: { threadId: state.id, turn: { id: turn, status, ...(error ? { error: { message: error } } : {}) } } })
@@ -292,6 +387,7 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     this.closed = true
     this.streamAbort.abort()
     for (const state of this.sessions.values()) { state.request?.abort(); if (state.turn) this.finish(state, 'interrupted') }
+    this.bridge.close()
     this.child?.kill(); this.child = undefined; this.sessions.clear(); this.pending.clear()
   }
 }

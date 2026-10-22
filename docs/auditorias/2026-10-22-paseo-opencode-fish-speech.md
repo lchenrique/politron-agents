@@ -41,3 +41,17 @@ Fontes revisadas em `getpaseo/paseo` (branch principal):
 
 ## Teste real Luna (22/10)
 Teste em diretório descartável do Codex usando `gpt-6-luna` passou: leitura, escrita autorizada em `counter.js`, execução `node test.cjs`, diff aplicado e resposta com `TESTE-RUNTIME-OK`. Evidências em `C:\Users\lchen\AppData\Local\Temp\boobot-tools-codex-pO4lJP`. Isso valida o fluxo funcional, não estabelece uma comparação de custo/qualidade entre modelos.
+
+## Diagnóstico adicional no Desktop Remote
+- Servidor real OpenCode v1 iniciou em localhost autenticado, criou e retomou sessão nativa; 5 testes passaram entre fake server e smoke live.
+- Modelos gratuitos Zen disponíveis localmente: `opencode/mimo-v2.6-flash-free` e `opencode/big-pickle` foram testados por `OpenCodeServerRuntime`; ambos retornaram recusa de uso gratuito fora do aplicativo oficial. Isso não é falha de autenticação do servidor nem justifica contornar a restrição do provedor. O adaptador CLI legado já havia passado com `opencode/big-pickle` anteriormente, conforme provider-inventory.
+- Identificado e corrigido problema do SSE: eventos de texto de mensagem de usuário podiam ser retransmitidos como resposta. Agora apenas mensagens de papel assistant explicitamente anunciadas podem emitir delta. Novo teste cobre mensagem de usuário e ID desconhecido; resposta HTTP final continua autoritativa.
+- Teste real de Zen foi adicionado como opt-in em `opencode-server.zen.test.ts` (via `BOOBOT_LIVE_ZEN=1`), com expectativa de resposta genuína. O teste é mantido como diagnóstico e falha se o provedor recusar, sem falso positivo.
+
+## Descoberta e validação posterior: Zen gratuito no servidor v1
+- A mensagem "free tier can only be used from within OpenCode" era enganosa neste caso. O servidor utilizava o binário oficial e credenciais válidas, mas openCodeServerConfig() herdava ferramentas nativas desabilitadas do adaptador CLI e impunha permissão deny. A chamada HTTP também desabilitava todas as ferramentas. A ausência de ferramentas nativas como bash/read dispara a recusa do Zen (ver anomalyco/opencode #50627 e #51315).
+- Correção: manter as declarações nativas do OpenCode, configurar todas as permissões como ask e external_directory como deny, e recusar pelo HTTP toda solicitação nativa permission.asked; o broker próprio do Boobot continua isolado.
+- Teste real do servidor autenticado: opencode/big-pickle respondeu ZEN_OK (25,7 s) e opencode/mimo-v2.6-flash-free também respondeu ZEN_OK (21,7 s), sem Go ou modelos pagos.
+- Limitação real: solicitação ao broker textual com Big Pickle produziu tentativa da ferramenta nativa bash com status error, sem chamada group_members. Portanto a geração de texto está validada, mas ferramentas do Boobot ainda não estão integradas com a robustez do Paseo. O adaptador exibe diagnóstico explícito em vez de resposta vazia.
+- Um teste real de tentativa de criar arquivo temporário não criou arquivo, mas não emitiu pedido de permissão (permissionRequests=0): inconclusivo para segurança. O teste unitário verifica resposta explícita reject a permission.asked; ainda falta aceitação ponta a ponta da política de aprovação.
+- Próximo passo: implementar plugin/bridge de ferramentas por sessão conforme Paseo, registrar esquemas das ferramentas do Boobot e devolver resultados ou recusas de forma nativa. Não liberar shell e escrita sem aprovação nem contornar validações do provedor.
