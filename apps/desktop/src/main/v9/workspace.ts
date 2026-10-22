@@ -20,6 +20,7 @@ import { CodexRuntime, type DynamicTool } from './codex'
 import { ClaudeRuntime } from './claude'
 import { PiRuntime } from './pi'
 import { HeadlessCliRuntime } from './headless-cli'
+import { OpenCodeServerRuntime } from './opencode-server'
 import { chooseBooIdentity } from './boo-identity'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
 import { SessionUnavailableError, type AgentRuntime, type RuntimeThread } from './agent-runtime'
@@ -83,7 +84,9 @@ export class AppService extends EventEmitter {
     this.decisionRouting = new OpenRouterDecisionService(dataDirectory)
     this.claudeRuntime = claudeRuntime || new ClaudeRuntime(dataDirectory, () => this.credentials.load())
     this.piRuntime = new PiRuntime(join(dataDirectory, 'pi-runtime'))
-    this.openCodeRuntime = new HeadlessCliRuntime('opencode', join(dataDirectory, 'opencode-chat'))
+    this.openCodeRuntime = process.env.BOOBOT_OPENCODE_TRANSPORT === 'cli'
+      ? new HeadlessCliRuntime('opencode', join(dataDirectory, 'opencode-chat'))
+      : new OpenCodeServerRuntime(join(dataDirectory, 'opencode-server'))
     this.antigravityRuntime = new HeadlessCliRuntime('antigravity', join(dataDirectory, 'antigravity-chat'))
     this.gitWorkspaces = new GitWorkspaceService(join(dataDirectory, 'worktrees'))
     this.skills = new SkillsService(dataDirectory)
