@@ -58,14 +58,14 @@ export interface CommandEvidence extends CommandResult {
   command: string; cwd: string; createdAt: string; finishedAt: string
 }
 export interface Approval {
-  id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser' | 'command' | 'delegation' | 'agent-change'
-  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string }
+  id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser' | 'command' | 'delegation' | 'agent-change' | 'question' | 'plan'
+  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; answer?: string; planTitle?: string; planSteps?: string[] }
   status: 'pending' | 'approved' | 'denied' | 'interrupted'; createdAt: string; resolvedAt: string | null
 }
 export interface Run {
   id: string; conversationId: string; agentId: string; rootId: string; parentId: string | null
   ancestry: string[]; status: RunStatus; threadId: string | null; turnId: string | null
-  messageId: string; input: string; inputMessageId?: string; agent: Agent; workspaceId: string; workspacePath: string; createdAt: string
+  messageId: string; input: string; inputMessageId?: string; planMode?: boolean; agent: Agent; workspaceId: string; workspacePath: string; createdAt: string
 }
 export interface Delegation {
   id: string; idempotencyKey: string; rootRunId: string; parentRunId: string; childRunId: string
@@ -123,6 +123,7 @@ export interface AppAPI {
   readProjectFile(workspaceId: string, filePath: string): Promise<ProjectFileContent>
   writeProjectFile(workspaceId: string, filePath: string, content: string, expectedHash: string): Promise<{ path: string; hash: string }>
   respondApproval(approvalId: string, approved: boolean): Promise<void>
+  answerQuestion(approvalId: string, answer: string): Promise<void>
   setVisibleConversation(conversationId: string | null): Promise<void>
   getVisibleConversation(): Promise<string | null>
   respondToAgent(conversationId: string, text: string, agentId: string): Promise<string>
@@ -130,7 +131,7 @@ export interface AppAPI {
   historyPage(conversationId: string, beforeCursor?: number | string | null, limit?: number): Promise<MessagePage>
   searchHistory(conversationId: string, query: string, limit?: number): Promise<MessageSearchHit[]>
   historyAround(conversationId: string, cursor: number, limit?: number): Promise<MessagePage>
-  send(conversationId: string, text: string, model?: string, effort?: Agent['effort']): Promise<void>
+  send(conversationId: string, text: string, model?: string, effort?: Agent['effort'], planMode?: boolean): Promise<void>
   stop(conversationId: string): Promise<void>
   voiceStatus(): Promise<VoiceStatus>
   pitVoices(): Promise<PitVoicesInfo>

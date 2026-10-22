@@ -129,7 +129,7 @@ function FollowUpSuggestions({
             className="flex w-full flex-col items-stretch gap-1 bg-transparent p-0"
             onKeyDown={handleKeyDown}
             onValueChange={(value: string[]) => {
-              const nextSelectedId = value[0]
+              const nextSelectedId = value.find(item => item !== currentSelectedId) ?? value[0]
               if (nextSelectedId) selectSuggestion(nextSelectedId)
             }}
             orientation="vertical"

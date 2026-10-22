@@ -234,7 +234,7 @@ export default function AppShell() {
     try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
-  const submitMessage = async (value: string, modelName: string, options: { files: File[]; effort?: Agent['effort'] }) => {
+  const submitMessage = async (value: string, modelName: string, options: { files: File[]; effort?: Agent['effort']; planMode?: boolean }) => {
     if (!selected) throw new Error('Escolha uma conversa antes de enviar.')
     let input = value
     if (options.files.length) {
@@ -243,7 +243,7 @@ export default function AppShell() {
     }
     const selectedModel = models.find(item => item.id === modelName || item.name === modelName)?.id
     if (options.effort) setSelectedEffort(options.effort)
-    await window.appAPI.send(selected.id, input, selectedModel, options.effort)
+    await window.appAPI.send(selected.id, input, selectedModel, options.effort, options.planMode)
   }
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])

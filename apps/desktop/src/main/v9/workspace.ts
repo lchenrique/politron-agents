@@ -68,6 +68,7 @@ export class AppService extends EventEmitter {
   private readonly groupRounds = new Map<string, Promise<void>>()
   private readonly groupRoundSignals = new Map<string, Set<AbortController>>()
   private readonly approvalWaiters = new Map<string, (approved: boolean) => void>()
+  private readonly questionWaiters = new Map<string, (answer: string) => void>()
   private visibleConversationId: string | null = null
   private cachedModels: ((runtime: Agent['runtime']) => Promise<Model[]>) | null = null
   private readonly statusTimer: ReturnType<typeof setInterval>
@@ -232,6 +233,50 @@ export class AppService extends EventEmitter {
     }
     this.approvalWaiters.delete(approvalId); resolveApproval(approved)
   }
+  async answerQuestion(approvalId: string, answer: string): Promise<void> {
+    const approval = this.store.approval(approvalId)
+    if (!approval || approval.kind !== 'question' || approval.status !== 'pending') throw new Error('A pergunta não está pendente.')
+    const submit = this.questionWaiters.get(approvalId)
+    if (!submit) throw new Error('O agente desta pergunta não está ativo.')
+    const response = text(answer, 2000).trim()
+    if (!response) throw new Error('Escolha ou informe uma resposta.')
+    this.questionWaiters.delete(approvalId)
+    const updated: Approval = { ...approval, status: 'approved', details: { ...approval.details, answer: response }, resolvedAt: new Date().toISOString() }
+    this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
+    const context = this.contexts.get(approval.runId)
+    if (context) {
+      context.run.status = 'running'; this.store.putRun(context.run)
+      this.updateMessage(context.message, 'running', context.message.text)
+    }
+    submit(response)
+  }
+  private askUser(context: RunContext, question: string, options: string[]): Promise<string> {
+    if (context.signal?.aborted) return Promise.reject(new Error('Execução interrompida.'))
+    const approval: Approval = { id: randomUUID(), runId: context.run.id,
+      conversationId: context.conversation.id, agentId: context.agent.id, kind: 'question',
+      details: { question, options }, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
+    this.store.putApproval(approval)
+    context.run.status = 'waiting'; this.store.putRun(context.run)
+    this.updateMessage(context.message, 'waiting', context.message.text)
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        this.questionWaiters.delete(approval.id)
+        const current = this.store.approval(approval.id)
+        if (current?.status === 'pending') {
+          const updated: Approval = { ...current, status: 'interrupted', resolvedAt: new Date().toISOString() }
+          this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
+        }
+        reject(new Error('Pergunta interrompida.'))
+      }
+      this.questionWaiters.set(approval.id, answer => {
+        context.signal?.removeEventListener('abort', abort)
+        resolve(answer)
+      })
+      context.signal?.addEventListener('abort', abort, { once: true })
+      this.emitEvent({ type: 'approval', approval })
+      this.notifyWhenAway(context.conversation.id, 'Pergunta do Boo', question.slice(0, 140))
+    })
+  }
   private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], forceAsk = false): Promise<boolean> {
     if (shouldAutoApprove(context.agent.approvalMode, kind, forceAsk)) return true
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
@@ -272,7 +317,7 @@ export class AppService extends EventEmitter {
     const message: Message = { id: randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, createdAt: new Date().toISOString() }
     this.store.putMessage(message); this.emitEvent({ type: 'message', message }); return message
   }
-  async send(conversationId: string, value: string, model?: string, effort?: Agent['effort'], preferredAgentId?: string, voiceReply = false, recordInput = true): Promise<void> {
+  async send(conversationId: string, value: string, model?: string, effort?: Agent['effort'], preferredAgentId?: string, voiceReply = false, recordInput = true, planMode = false): Promise<void> {
     const input = text(value, 100000).trim()
     if (!input) return
     const conversation = this.store.conversation(conversationId)
@@ -372,7 +417,7 @@ export class AppService extends EventEmitter {
       const runInput = mode === 'discussion' && (roundTranscript.length || corrections)
         ? `${input}${corrections ? `\n\nNovas mensagens humanas durante a rodada:\n${corrections}` : ''}${roundTranscript.length ? `\n\nRespostas anteriores desta rodada, em ordem${previousRoundRaw.length > 9000 ? ' (trecho final; início omitido)' : ''}:\n${previousRoundText}` : ''}`
         : input
-      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: runInput, inputMessageId: recordInput ? userMessage.id : undefined, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
+      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: planMode ? '[MODO PLANO ATIVO] Analise a tarefa, consulte apenas ferramentas de leitura e use propose_plan para apresentar um plano em etapas. NÃO modifique arquivos, execute comandos ou realize alterações até o usuário enviar outra tarefa fora do modo plano.\n\n' + runInput : runInput, planMode, inputMessageId: recordInput ? userMessage.id : undefined, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
       const message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
       run.messageId = message.id
@@ -533,7 +578,7 @@ export class AppService extends EventEmitter {
       const permissionKey = createHash('sha256').update(JSON.stringify({
         agentCanWrite: agent.canWrite, workspaceFilesWrite: permissions?.filesWrite || 'inherit',
         agentComputerUse: agent.computerUse, workspaceComputerUse: permissions?.computerUse || 'deny',
-        approvalMode: agent.approvalMode, terminalEnabled: this.store.terminalEnabled(),
+        approvalMode: agent.approvalMode, terminalEnabled: this.store.terminalEnabled(), planMode: run.planMode === true,
       })).digest('hex').slice(0, 12)
       const toolsKey = fingerprintTools(tools, TOOL_BROKER_VERSION).slice(0, 16)
       const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}`
@@ -630,12 +675,21 @@ export class AppService extends EventEmitter {
     const permissions = this.store.workspace(context.run.workspaceId).permissions
     const canWrite = context.agent.canWrite && permissions?.filesWrite !== 'deny'
     const canUseComputer = context.agent.computerUse && permissions?.computerUse !== 'deny'
+    const planning = context.run.planMode === true
     return [
+      tool('ask_user', 'Faça uma pergunta objetiva ao usuário somente quando uma decisão bloquear o trabalho. Mostre opções claras e aguarde a resposta. Nunca use para pedir permissão de executar ferramentas.', {
+        question: { type: 'string', description: 'Pergunta direta.' },
+        options: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 6 },
+      }, ['question', 'options']),
+      tool('propose_plan', 'Registre um plano visual, em etapas verificáveis, para o usuário acompanhar. No modo plano, NÃO execute mudanças.', {
+        title: { type: 'string' },
+        steps: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 15 },
+      }, ['title', 'steps']),
       tool('workspace_list', 'Lista arquivos e pastas dentro da pasta deste grupo.', { path: { type: 'string', description: 'Caminho relativo; use . para a raiz.' } }, ['path']),
       tool('workspace_read', 'Lê um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' } }, ['path']),
-      ...(canWrite ? [tool('workspace_write', 'Cria ou substitui um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
-      ...(canWrite && this.store.terminalEnabled() ? [tool('workspace_run_command', 'Executa um comando não interativo no terminal com diretório de trabalho nesta conversa. Não há sandbox do sistema operacional: o comando aprovado pode acessar outros caminhos. Cada execução exige aprovação do usuário. Comandos podem ler ou alterar arquivos e usar programas instalados; não use para comandos interativos.', { command: { type: 'string', description: 'Comando de shell a executar.' } }, ['command'])] : []),
-      ...(canUseComputer ? [
+      ...(canWrite && !planning ? [tool('workspace_write', 'Cria ou substitui um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
+      ...(canWrite && !planning && this.store.terminalEnabled() ? [tool('workspace_run_command', 'Executa um comando não interativo no terminal com diretório de trabalho nesta conversa. Não há sandbox do sistema operacional: o comando aprovado pode acessar outros caminhos. Cada execução exige aprovação do usuário. Comandos podem ler ou alterar arquivos e usar programas instalados; não use para comandos interativos.', { command: { type: 'string', description: 'Comando de shell a executar.' } }, ['command'])] : []),
+      ...(canUseComputer && !planning ? [
         tool('browser_open', 'Abre um endereço HTTP ou HTTPS na sessão privada deste agente.', { url: { type: 'string' } }, ['url']),
         tool('browser_observe', 'Lê o conteúdo visível e os controles da página aberta pelo agente.', {}, []),
         tool('browser_click', 'Clica em um seletor CSS ou em uma posição dentro da página.', { selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, []),
@@ -664,8 +718,8 @@ export class AppService extends EventEmitter {
       tool('save_context_checkpoint', 'Salva um resumo de continuidade deste trabalho para uma futura sessão nova. Use em trabalhos longos ou antes de uma troca de contexto; não substitui os registros originais nem repete ações.', { summary: { type: 'string', description: 'Objetivo, progresso com evidências e próximos passos.' }, decisions: { type: 'array', items: { type: 'string' }, maxItems: 20 }, pending: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, ['summary']),
       tool('list_skills', 'Lista as skills disponíveis (nome e quando usar cada uma): as já instaladas no Codex/Claude Code desta máquina, as que o usuário adicionou e as que você ou outro agente já aprenderam. Use antes de uma tarefa para ver se já existe um procedimento conhecido; chame read_skill para ler o conteúdo completo de uma antes de segui-la.', {}, []),
       tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id devolvido por list_skills.', { id: { type: 'string' } }, ['id']),
-      ...(canWrite ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
-      ...(context.agent.role === 'chief' ? [
+      ...(canWrite && !planning ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
+      ...(context.agent.role === 'chief' && !planning ? [
         tool('propose_agent', 'Propõe criar um agente novo (um "Boo" novo) ou alterar o perfil de um agente que já participa desta equipe. Nada será salvo sem aprovação explícita do usuário. Agentes novos começam sem acesso a arquivos e navegador. Se o usuário pedir para "criar um Boo", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
         tool('propose_agent_model', 'Propõe mudar o runtime/modelo/esforço de um Boo da equipe. Use quando o usuário pedir para trocar GPT por Claude, Codex por outro motor ou definir outro modelo para front-end/back-end. SEMPRE pede aprovação explícita; NÃO muda permissões, papel, nome nem avatar. Modelo vazio seleciona o padrão do runtime.', { agent: { type: 'string', description: 'Nome ou @menção do Boo a reconfigurar.' }, runtime: { type: 'string', enum: ['codex','claude','pi','opencode','antigravity'] }, model: { type: 'string', description: 'Identificador exato do modelo; vazio usa o padrão do motor.' }, effort: { type: 'string', enum: ['low','medium','high','xhigh','max'] } }, ['agent','runtime']),
         tool('propose_boos', 'Propõe 1 a 5 Boos com UMA aprovação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Nunca cria agentes sem aprovação; não libera escrita nem computador.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário proposto espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' } }, required: ['instructions'] } } }, ['agents']),
@@ -731,6 +785,29 @@ export class AppService extends EventEmitter {
       return target
     }
     const workspace = this.store.workspace(context.run.workspaceId)
+    if (name === 'ask_user') {
+      const question = text(args.question, 500).trim()
+      const raw = args.options
+      if (!question || !Array.isArray(raw) || raw.length < 2 || raw.length > 6 ||
+        !raw.every(value => typeof value === 'string' && value.trim().length > 0 && value.length <= 100))
+        throw new Error('Pergunta ou opções inválidas.')
+      return 'Resposta do usuário: ' + await this.askUser(context, question, raw as string[])
+    }
+    if (name === 'propose_plan') {
+      const title = text(args.title, 140).trim()
+      const raw = args.steps
+      if (!title || !Array.isArray(raw) || raw.length < 1 || raw.length > 15 ||
+        !raw.every(value => typeof value === 'string' && value.trim().length > 0 && value.length <= 300))
+        throw new Error('Título ou etapas do plano inválidos.')
+      const record: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id,
+        agentId: context.agent.id, kind: 'plan', details: { planTitle: title, planSteps: raw as string[] },
+        status: 'approved', createdAt: new Date().toISOString(), resolvedAt: new Date().toISOString() }
+      this.store.putApproval(record); this.emitEvent({ type: 'approval', approval: record })
+      return 'Plano apresentado no Boobot. Aguarde o usuário solicitar a execução.'
+    }
+    if (context.run.planMode && !['workspace_list', 'workspace_read', 'ask_user', 'propose_plan',
+      'group_members', 'search_history', 'list_skills', 'read_skill'].includes(name))
+      throw new Error('Modo plano: ferramenta de alteração indisponível.')
     if (name === 'workspace_run_command') {
       if (!this.store.terminalEnabled()) throw new Error('A execução de comandos no terminal está desativada nas configurações globais.')
       if (!context.agent.canWrite) throw new Error('Este agente não tem permissão de escrita para executar comandos.')

@@ -171,7 +171,7 @@ function PlanApprovalCard({
           </li>
         )}
       </ol>
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+      {(onEdit || onStepsChange || onCancel || onStart) && <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
         <Button
           type="button"
           variant="ghost"
@@ -233,7 +233,7 @@ function PlanApprovalCard({
             )}
           </Button>
         </div>
-      </div>
+      </div>}
     </section>
   )
 }

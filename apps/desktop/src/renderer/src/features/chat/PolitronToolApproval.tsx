@@ -4,6 +4,7 @@ import type { Approval } from '../../../../shared/v9'
 import { DiffCard } from '../diff/DiffCard'
 import { errorText } from '../app/appShellShared'
 import { ApprovalCard } from '@/components/ai/approval-card'
+import { AgentInteractionCard } from './AgentInteractionCard'
 
 const approvalKind = {
   write: { title: 'Alteração de arquivo', icon: FileEdit },
@@ -24,6 +25,7 @@ export function PolitronToolApproval({ approval, onNotice }: { approval: Approva
   const armTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(armTimer.current), [])
 
+  if (approval.kind === 'question' || approval.kind === 'plan') return <AgentInteractionCard approval={approval} onNotice={onNotice} />
   const definition = approvalKind[approval.kind]
   const details = approval.details
   const sensitive = approval.kind === 'agent-change' || approval.kind === 'command' || (approval.kind === 'write' && Boolean(details.before))

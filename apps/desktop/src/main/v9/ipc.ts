@@ -32,6 +32,7 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('readProjectFile', (id, filePath) => service.readProjectFile(id, filePath))
   invoke('writeProjectFile', (id, filePath, content, expectedHash) => service.writeProjectFile(id, filePath, content, expectedHash))
   invoke('respondApproval', (id, approved) => service.respondApproval(id, approved))
+  invoke('answerQuestion', (id, answer) => service.answerQuestion(id, answer))
   invoke('setVisibleConversation', (id) => service.setVisibleConversation(id))
   invoke('getVisibleConversation', () => service.getVisibleConversation())
   invoke('respondToAgent', (id, text, agentId) => service.respondToAgent(id, text, agentId))
@@ -47,7 +48,7 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('historyPage', (id, beforeCursor, limit) => service.historyPage(id, beforeCursor, limit))
   invoke('searchHistory', (id, query, limit) => service.searchHistory(id, query, limit))
   invoke('historyAround', (id, cursor, limit) => service.historyAround(id, cursor, limit))
-  invoke('send', (id, text, model, effort) => service.send(id, text, model, effort))
+  invoke('send', (id, text, model, effort, planMode) => service.send(id, text, model, effort, undefined, false, true, planMode))
   invoke('stop', (id) => service.stop(id))
   invoke('voiceStatus', () => voice.status())
   invoke('pitVoices', () => voice.pitVoices())
@@ -77,6 +78,6 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     service.off('workspace-event', send)
     voice.close()
     ipcMain.removeHandler('v9:clearClaudeCredential')
-    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

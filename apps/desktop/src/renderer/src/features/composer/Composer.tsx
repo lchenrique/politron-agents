@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircle, Mic, Square } from 'lucide-react'
+import { ClipboardList, LoaderCircle, Mic, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { ModelChoice, ModelProviderChoice } from './model-options'
 import AIModelSelector, { type ModelSelection } from '@/components/kokonutui/ai-model-selector'
@@ -26,7 +26,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   defaultModelName?: string
   defaultEffort?: Agent['effort']
   onModelChange: (model: string) => void
-  onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort'] }) => Promise<void>
+  onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort']; planMode?: boolean }) => Promise<void>
   onStop: () => void
   onVoiceNotice?: (error: string) => void
 }) {
@@ -42,6 +42,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   const [files, setFiles] = useState<File[]>([])
   const [modelName, setModelName] = useState(defaultModelName || INHERIT_MODEL_NAME)
   const [effort, setEffort] = useState<ModelEffort>(defaultEffort || 'medium')
+  const [planMode, setPlanMode] = useState(false)
   const [pendingSends, setPendingSends] = useState(0)
   const pendingCount = useRef(0)
   const submissionGeneration = useRef(0)
@@ -158,7 +159,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     setValue('')
     setFiles([])
     try {
-      await onSubmit(message, model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, { files: submittedFiles, effort: selectedEffort })
+      await onSubmit(message, model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, { files: submittedFiles, effort: selectedEffort, planMode })
     } catch (cause) {
       if (activeConversation.current === submittedConversation) { setValue(current => current || message); setFiles(current => current.length ? current : submittedFiles); notify(cause) }
     } finally { if (submissionGeneration.current === submittedGeneration) { pendingCount.current--; setPendingSends(pendingCount.current) } }
@@ -203,6 +204,13 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
         placeholder={busy && canSteer ? 'Acrescente uma instrução à tarefa em andamento…' : 'Escreva uma mensagem…'}
         onSubmit={(message, selection) => { void submit(message, selection.files) }}
         extraControls={<>
+          <Button type="button" size="sm" variant={planMode ? 'secondary' : 'ghost'}
+            aria-label="Modo planejamento" aria-pressed={planMode}
+            title={planMode ? 'Planejamento ativo: não altera arquivos' : 'Ativar planejamento sem alterações'}
+            disabled={busy} onClick={() => setPlanMode(current => !current)}
+            className="h-8 shrink-0 gap-1.5 rounded-full px-2.5 text-xs">
+            <ClipboardList className="size-4" /><span>Plano</span>
+          </Button>
           {busy && canSteer && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" onClick={onStop}><Square /></Button>}
           <AIModelSelector key={conversationId} models={models} providers={modelProviders}
             value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort }}
