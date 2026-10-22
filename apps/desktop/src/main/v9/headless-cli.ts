@@ -31,6 +31,9 @@ const config = JSON.stringify({
       // O free tier exige o catálogo nativo. No `run` não interativo, pedidos
       // ask são recusados pelo próprio CLI quando --auto está ausente.
       permission: { '*': 'ask' },
+      // OpenCode still advertises native tools to providers when permission is 'ask'.
+      // This agent uses the Boobot textual broker, so disable native schemas entirely.
+      tools: { '*': false },
       prompt: 'Siga o contrato de resposta JSON recebido. As ferramentas do Boobot são chamadas pela aplicação após validar o JSON. Não utilize ferramentas nativas do CLI, comandos ou subagentes externos.',
     },
   },

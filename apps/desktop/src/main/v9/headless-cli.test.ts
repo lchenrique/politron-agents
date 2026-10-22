@@ -19,6 +19,7 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
     expect(result.provider.custom.models).toEqual({ exact: {} })
     expect(result.permission).toEqual({ '*': 'ask' })
     expect(result.agent['politron-safe'].permission).toEqual({ '*': 'ask' })
+    expect(result.agent['politron-safe'].tools).toEqual({ '*': false })
     expect(JSON.parse(openCodeToolConfig(undefined, 'opencode/big-pickle')).small_model).toBe('opencode/big-pickle')
     expect(() => openCodeToolConfig('{broken')).toThrow('OPENCODE_CONFIG_CONTENT deve conter um objeto JSON válido.')
   })
