@@ -18,6 +18,12 @@ async function run() {
   const errors = []
   page.on('pageerror', e => errors.push(e.message))
   await page.waitForFunction(() => !!window.appAPI, undefined, { timeout: 30000 })
+  const fixture = await page.evaluate(async () => {
+    const workspace = await window.appAPI.saveWorkspace({ name: 'QA instalador' })
+    const conversation = await window.appAPI.saveConversation({ name: 'QA plano instalador', workspaceId: workspace.id, kind: 'direct', agentIds: [] })
+    return conversation.name
+  })
+  await page.getByRole('button', { name: fixture, exact: true }).click()
   const control = page.getByRole('button', { name: 'Modo planejamento' })
   await control.waitFor({ timeout: 30000 })
   assert.equal(await control.getAttribute('aria-pressed'), 'false')
