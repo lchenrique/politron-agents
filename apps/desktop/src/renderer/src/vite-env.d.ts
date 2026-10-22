@@ -3,6 +3,7 @@ import type { AppAPI } from '../../shared/v9'
 import type { RealtimeAPI } from '../../shared/realtime'
 import type { ProvidersAPI } from '../../shared/providers'
 import type { SkillsAPI } from '../../shared/skills'
+import type { UpdatesAPI } from '../../shared/updates'
 
 declare global {
 interface Window {
@@ -32,5 +33,6 @@ interface Window {
   realtimeAPI: RealtimeAPI;
   providersAPI: ProvidersAPI;
   skillsAPI: SkillsAPI;
+  updatesAPI: UpdatesAPI;
 }
 }

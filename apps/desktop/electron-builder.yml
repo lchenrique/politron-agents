@@ -13,6 +13,10 @@ files:
   # O renderer já contém o editor e seus workers compilados pelo Vite.
   - "!**/node_modules/monaco-editor/**"
 asar: true
+# Alimentado pela publicação dos instaladores; por padrão os feeds não estão configurados.
+extraResources:
+  - from: update-feed.json
+    to: update-feed.json
 # As dependências nativas devem ser validadas no Electron empacotado.
 # O rebuild automático de node-pty falha no caminho original com espaços.
 npmRebuild: false
@@ -40,6 +44,7 @@ nsis:
 # Só funciona de verdade se o repo virar público ou as releases saírem daqui
 # pra um host público (ex.: bucket HTTP com provider "generic").
 publish:
-  provider: github
-  owner: lchenrique
-  repo: politron-agents
+  provider: generic
+  url: https://updates.example.invalid/boobot/
+# O URL acima é apenas placeholder de empacotamento; o updater usa exclusivamente
+# os feeds HTTPS definidos em update-feed.json. Configure o host antes de publicar.

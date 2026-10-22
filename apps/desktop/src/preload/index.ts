@@ -3,6 +3,7 @@ import type { AppAPI, WorkspaceEvent } from '../shared/v9'
 import type { RealtimeAPI } from '../shared/realtime'
 import type { ProvidersAPI } from '../shared/providers'
 import type { SkillsAPI } from '../shared/skills'
+import type { UpdatesAPI } from '../shared/updates'
 
 type EventCallback = (data: any) => void
 
@@ -103,6 +104,15 @@ const appAPI: AppAPI = {
   }
 }
 contextBridge.exposeInMainWorld('appAPI', appAPI)
+
+const updatesAPI: UpdatesAPI = {
+  status: () => ipcRenderer.invoke('updates:status'),
+  check: () => ipcRenderer.invoke('updates:check'),
+  setChannel: channel => ipcRenderer.invoke('updates:setChannel', channel),
+  install: () => ipcRenderer.invoke('updates:install'),
+  onChanged: callback => onChannel('updates:changed', callback),
+}
+contextBridge.exposeInMainWorld('updatesAPI', updatesAPI)
 
 const realtimeAPI: RealtimeAPI = {
   status: () => ipcRenderer.invoke('realtime:status'),

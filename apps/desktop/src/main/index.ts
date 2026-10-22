@@ -268,12 +268,12 @@ app.whenReady().then(async () => {
 
   registerTerminalHandlers(workspaceId => appService!.workspacePath(workspaceId), () => !!hosts?.remote)
   registerWindowControlHandlers({ showMain: showMainWindow, showMascot: showMascotWindow, closeMascot: () => mascotWindow?.close() })
+  initAutoUpdater()
   console.log('[Main] IPC handlers registered')
 
   mainWindow = createAppWindow(createWindow)
   createTray()
   console.log('[Main] Main window reference stored')
-  initAutoUpdater()
 
   app.on('activate', () => {
     showMainWindow()

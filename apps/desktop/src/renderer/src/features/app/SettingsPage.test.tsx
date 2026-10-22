@@ -133,3 +133,24 @@ describe('painel de configurações', () => {
     await waitFor(() => expect(skillsAPI.addFromFolder).toHaveBeenCalled())
   })
 })
+
+describe('atualizações em Configurações', () => {
+  it('abre a área de atualização sem consultar o GitHub em modo dev', async () => {
+    const updatesAPI = {
+      status: vi.fn().mockResolvedValue({
+        currentVersion: '0.1.0-beta.1', channel: 'beta', phase: 'development',
+        latestVersion: null, releaseNotes: null, progressPercent: null,
+        lastCheckedAt: null, error: null,
+      }),
+      check: vi.fn(), setChannel: vi.fn(), install: vi.fn(),
+      onChanged: vi.fn(() => () => undefined),
+    }
+    vi.stubGlobal('appAPI', appAPI)
+    vi.stubGlobal('updatesAPI', updatesAPI)
+    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Atualizações$/ }))
+    expect(await screen.findByText(/Modo desenvolvimento/)).toBeInTheDocument()
+    expect(updatesAPI.status).toHaveBeenCalledTimes(1)
+    expect(updatesAPI.check).not.toHaveBeenCalled()
+  })
+})

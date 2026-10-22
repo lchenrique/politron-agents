@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AudioLines, FolderPlus, GraduationCap, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench } from 'lucide-react'
+import { AudioLines, Download, FolderPlus, GraduationCap, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench } from 'lucide-react'
 import type { Agent, DecisionModel, OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { SkillInfo } from '../../../../shared/skills'
@@ -12,9 +12,10 @@ import { ThemeSelector } from '@/components/ide/ThemeSelector'
 import { errorText } from './appShellShared'
 import { RealtimeSettingsPanel } from '../realtime/RealtimeCall'
 import { HostSettingsPanel } from '../hosts/HostSettingsPanel'
+import { AppUpdatesPanel } from './AppUpdatesPanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
 
-export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'skills' | 'voz' | 'conexoes'
+export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'skills' | 'voz' | 'conexoes' | 'atualizacoes'
 type Section = SettingsSection
 const SECTIONS: { id: Section; label: string; icon: typeof Palette }[] = [
   { id: 'geral', label: 'Geral', icon: Palette },
@@ -24,6 +25,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof Palette }[] = [
   { id: 'skills', label: 'Skills', icon: GraduationCap },
   { id: 'voz', label: 'Voz em tempo real', icon: AudioLines },
   { id: 'conexoes', label: 'Conexões', icon: Monitor },
+  { id: 'atualizacoes', label: 'Atualizações', icon: Download },
 ]
 const SOURCE_LABEL: Record<SkillInfo['source'], string> = { codex: 'Codex', claude: 'Claude Code', custom: 'Adicionada aqui', learned: 'Aprendida por um agente' }
 
@@ -257,6 +259,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
           <SkillsSection />
         </>}
         {section === 'conexoes' && <><h2 className="text-lg font-semibold">Conexões</h2><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field></>}
+        {section === 'atualizacoes' && <><h2 className="text-lg font-semibold">Atualizações</h2><AppUpdatesPanel /></>}
         {section === 'voz' && <>
           <h2 className="text-lg font-semibold">Voz em tempo real</h2>
           <Field icon={AudioLines} title="Ligações do mascote" description="Configure aqui as chaves, transcrição e vozes. O mascote dentro do app e o flutuante usam estas mesmas preferências."><RealtimeSettingsPanel /></Field>
