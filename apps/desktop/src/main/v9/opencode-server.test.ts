@@ -166,6 +166,39 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
     await expect(app.thread(agent, 'D:/workspace-isolado', [], 'not-found')).rejects.toThrow(/sessÃ£o|SessÃ£o|runtime/i)
   })
 
+  it('cancela chamadas pendentes sem permitir resposta tardia do broker', async () => {
+    const { runtime: app } = await fakeOpenCode()
+    const schema = [{ type: 'function' as const, name: 'workspace_read', description: 'Leitura',
+      inputSchema: { type: 'object', properties: { path: { type: 'string' } } } }]
+    const thread = await app.thread(agent, 'D:/workspace-isolado', schema)
+    const internal = app as any
+    internal.sessions.get(thread.id).turn = 'turn-cancel'
+    const bridge = await internal.bridge.start()
+    let toolCallId = ''
+    const called = new Promise<void>(resolve => {
+      app.on('event', event => {
+        if (event.method === 'item/tool/call') { toolCallId = event.id; resolve() }
+      })
+    })
+    const endpoint = bridge.baseUrl + '/sessions/' + thread.id + '/call'
+    const req = fetch(endpoint, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + bridge.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'workspace_read', argumentsJson: '{"path":"a.txt"}' })
+    })
+    await called
+    expect(internal.nativeCalls.size).toBe(1)
+    await app.interrupt(thread.id, 'turn-cancel')
+    const result = await req
+    expect(result.status).toBe(409)
+    expect((await result.json()).error).toContain('Turno encerrado')
+    expect(internal.nativeCalls.size).toBe(0)
+    app.respond(toolCallId, { success: true, contentItems: [{ type: 'inputText', text: 'não deve ser entregue' }] })
+    expect((await fetch(endpoint, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + bridge.token },
+      body: JSON.stringify({ name: 'workspace_read', argumentsJson: '{}' })
+    })).status).toBe(404)
+  })
+
   it('entrega apenas delta novo no stream SSE', () => {
     const app = new OpenCodeServerRuntime(tmpdir())
     runtime = app

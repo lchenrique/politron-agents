@@ -1,9 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { RealtimeSettingsPanel } from './RealtimeCall'
 import { useVoicePreferences } from './preferences'
 const status = { geminiKey: true, groqKey: false, localModels: false, vadInstalled: false, parakeetInstalled: false, installedPiperVoices: [], settings: { geminiModel: '', geminiVoice: 'Puck', transcriptionModel: 'whisper-large-v3-turbo', piperVoice: 'faber' } }
-afterEach(() => { vi.unstubAllGlobals(); localStorage.clear() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear() })
 it('permite substituir uma chave já configurada sem expor nem remover a anterior primeiro', async () => {
   const api = { status: vi.fn(async () => status), geminiModels: vi.fn(async () => ['gemini-live-fixture']), saveKey: vi.fn(async () => undefined), clearKey: vi.fn(async () => undefined) }
   vi.stubGlobal('realtimeAPI', api); render(<RealtimeSettingsPanel />)
