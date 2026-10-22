@@ -16,7 +16,8 @@
 | Testes de permissões, delegações, editor | 33 PASSARAM | `approval-policy.test.ts`, `queue-delegation.test.ts`, `guarded-write.test.ts`, `DockWorkspace.test.tsx`, `SettingsPage.test.tsx` |
 | História, estado e mensagens no Electron real | PASSOU | `npm run test:agent-stability:electron`; 80 mensagens, âncora estável, exclusão de workspace, composer editável |
 | Sessão, escrita guardada, filas | 21 PASSARAM | `session-continuity.test.ts`, `queue-delegation.test.ts`, `guarded-write.test.ts` |
-| Codex real (API + broker + escrita + teste) | PASSOU | modelo `gpt-6-astra`, aprovou `workspace_write` e `workspace_run_command`, alterou somente `counter.js`, executou `node test.cjs`, resultado `TESTE-RUNTIME-OK` |
+| Codex real (API + broker + escrita + teste) | PASSOU | primeiro teste histórico com `gpt-6-astra`, aprovou `workspace_write` e `workspace_run_command`, alterou somente `counter.js`, executou `node test.cjs`, resultado `TESTE-RUNTIME-OK` |
+| Codex econômico (GPT-6 Luna) | PASSOU | teste ponta a ponta no workspace descartável `boobot-tools-codex-pO4lJP`, com escrita e `node test.cjs`, em 22/10/2026 |
 | OpenCode (CLI real + provedor local controlado) | 2 PASSARAM | transporte `group_members` + `propose_boos`; rejeição de shell nativo |
 | Pi com MiniMax M2.7 | BLOQUEADO | resposta do provedor `402 insufficient_balance_error` |
 | Claude CLI | BLOQUEADO | `OAuth session expired and could not be refreshed` |
@@ -30,7 +31,7 @@
 
 ## Uso recomendado desta beta
 - Iniciar: `cd "D:\projetos pessoais\politron\apps\desktop"` e `npm run dev`.
-- No seletor Codex, usar modelo **GPT-6 Astra** (identificador do runtime `gpt-6-astra`) para os primeiros testes; o catálogo marcou `gpt-6.1-sol` como padrão, mas essa opção foi recusada pela conta ChatGPT no aceite.
+- Para uso diário, usar **GPT-6 Luna** (identificador `gpt-6-luna`). O teste ponta a ponta com Luna passou em 22/10/2026; Astra ficou apenas como evidência histórica da validação anterior, e não é recomendado como padrão. O catálogo marcou `gpt-6.1-sol` como padrão anteriormente, mas essa opção foi recusada pela conta ChatGPT no aceite.
 - Usar pasta Git de teste e aprovação de escrita/terminal. Começar com tarefas pequenas; revisar diffs e executar testes locais.
 - Para voltar ao checkpoint de código, consultar `git show beta-preflight-2026-10-22`. Não fazer reset destrutivo sobre trabalhos novos.
 - Renovar login do Claude no próprio CLI e configurar um modelo com saldo para o Pi antes de voltar a testá-los.

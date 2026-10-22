@@ -8,7 +8,7 @@ export const SCHEMA_VERSION = 9
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
   instructions: 'Você é o Assistente padrão do Boobot. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
-  runtime: 'codex', model: '', color: '#6366f1', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-01-01T00:00:00.000Z'
+  runtime: 'codex', model: 'gpt-6-luna', color: '#6366f1', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-01-01T00:00:00.000Z'
 }
 
 function normalizeConversation(value: Conversation): Conversation {

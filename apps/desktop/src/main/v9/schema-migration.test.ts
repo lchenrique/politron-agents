@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { WorkspaceStore } from './store'
+import { ASSISTANT, WorkspaceStore } from './store'
 
 const directories: string[] = []
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }) })
@@ -64,5 +64,13 @@ describe('migração direta do esquema 7 para 9', () => {
       expect((store.db.prepare('PRAGMA table_info(v9_sessions)').all() as { name: string }[]).map(column => column.name)).toEqual(expect.arrayContaining(['runtime', 'context_version', 'delivered_digests']))
       expect(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='v9_command_evidence'").get()).toEqual({ name: 'v9_command_evidence' })
     } finally { store.close() }
+  })
+})
+
+
+describe('modelo padrão econômico do Assistente', () => {
+  it('seleciona GPT-6 Luna sem impor o modelo a outros Boos', () => {
+    expect(ASSISTANT.runtime).toBe('codex')
+    expect(ASSISTANT.model).toBe('gpt-6-luna')
   })
 })
