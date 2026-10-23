@@ -33,3 +33,26 @@ it('propaga configuração à ligação na mesma janela e por evento de outra ja
   fireEvent(window, new StorageEvent('storage', { key: 'politron.realtime.mode', newValue: 'gemini' }))
   expect(screen.getByText('gemini:true')).toBeInTheDocument()
 })
+
+it('oferece PocketTTS na configuração usada pela chamada real, inclusive partindo de Gemini', async () => {
+  const pocket = { installed: true, choices: [
+    { id: 'rafael', name: 'Rafael · masculina' },
+    { id: 'vera', name: 'Vera · feminina' },
+  ], selection: { defaultVoiceId: 'rafael', agentVoiceIds: {} } }
+  const api = {
+    status: vi.fn(async () => ({ ...status, pocketInstalled: true })),
+    saveSettings: vi.fn(async (patch: { ttsEngine: string }) => ({ ...status.settings, ...patch })),
+    geminiModels: vi.fn(async () => []),
+    saveKey: vi.fn(), clearKey: vi.fn(),
+  }
+  vi.stubGlobal('realtimeAPI', api)
+  vi.stubGlobal('appAPI', { pocketVoices: vi.fn(async () => pocket), snapshot: vi.fn(async () => ({ agents: [] })) })
+  render(<RealtimeSettingsPanel />)
+  const button = await screen.findByRole('radio', { name: /PocketTTS/ })
+  fireEvent.click(button)
+  await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ ttsEngine: 'pocket' }))
+  expect(localStorage.getItem('politron.realtime.mode')).toBe('free')
+  expect(await screen.findByRole('region', { name: 'Vozes PocketTTS' })).toBeInTheDocument()
+  await screen.findByRole('option', { name: 'Rafael · masculina' })
+  expect(screen.getByLabelText('Selecionar voz PocketTTS')).toHaveValue('rafael')
+})

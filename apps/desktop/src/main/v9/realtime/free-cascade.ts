@@ -50,11 +50,12 @@ async function loadParakeet(dir: string) {
  */
 export async function openFreeCascade(options: {
   groqKey?: string; transcriptionModel?: RealtimeTranscriptionModel; parakeetDir?: string; vadPath: string; piperDir: string; piperVoice?: PiperVoice
+  pocketSpeech?: (text: string, signal: AbortSignal) => Promise<{ data: string; sampleRate: number }>
   generateResponse: (text: string, signal: AbortSignal) => Promise<string>; emit: (event: RealtimeEvent) => void
 }): Promise<RealtimeSession> {
-  const { groqKey, transcriptionModel = 'whisper-large-v3-turbo', parakeetDir = '', vadPath, piperDir, piperVoice = 'faber', generateResponse, emit } = options
+  const { groqKey, transcriptionModel = 'whisper-large-v3-turbo', parakeetDir = '', vadPath, piperDir, piperVoice = 'faber', pocketSpeech, generateResponse, emit } = options
   const sherpa = nativeRequire('sherpa-onnx-node') as Sherpa
-  const tts = await loadPiper(piperDir, piperVoice)
+  const tts = pocketSpeech ? null : await loadPiper(piperDir, piperVoice)
   const parakeet = transcriptionModel === 'parakeet-v3' ? await loadParakeet(parakeetDir) : null
   const vad = new sherpa.Vad({ sileroVad: { model: vadPath, threshold: 0.5, minSilenceDuration: 0.55, minSpeechDuration: 0.25, maxSpeechDuration: 25, windowSize: WINDOW }, sampleRate: SAMPLE_RATE, numThreads: 1, provider: 'cpu', debug: false }, 30)
   const buffer = new sherpa.CircularBuffer(SAMPLE_RATE * 30)
@@ -79,11 +80,16 @@ export async function openFreeCascade(options: {
       if (signal.aborted) return
       // O addon nativo do Sherpa retorna buffers externos por padrão. No Electron,
       // isso pode falhar ao resolver a Promise de geração ("TTS settlement failed").
-      const audio = await tts.generateAsync({ text, sid: 0, speed: 1.05, enableExternalBuffer: false })
+      const packet = pocketSpeech
+        ? await pocketSpeech(text, signal)
+        : await (async () => {
+            const audio = await tts!.generateAsync({ text, sid: 0, speed: 1.05, enableExternalBuffer: false })
+            return { data: int16ToBase64(float32ToInt16(audio.samples)), sampleRate: audio.sampleRate }
+          })()
       if (signal.aborted) return
       speaking = true
       emit({ type: 'phase', phase: 'speaking' })
-      emit({ type: 'audio', data: int16ToBase64(float32ToInt16(audio.samples)), sampleRate: audio.sampleRate })
+      emit({ type: 'audio', ...packet })
     }).catch(error => { if (!signal.aborted) emit({ type: 'error', message: error instanceof Error ? error.message : 'Falha ao gerar a voz.' }) })
   }
 

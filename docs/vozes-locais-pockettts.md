@@ -10,6 +10,13 @@ Cada Boo pode falar com uma identidade própria sem chamadas a uma API de TTS e 
 - Uma cópia do executável oficial foi colocada somente no perfil local do Boobot, em `%APPDATA%\politron-desktop\voice-models\pocket-tts\bin\pocket-tts.exe`. **Não está no Git e não será incluída automaticamente no instalador.**
 - Dois WAVs de referência **já existentes no computador** foram copiados para `...\pocket-tts\voices\boo_f1.wav` e `boo_dora.wav`, provenientes de `Music\Politron - Vozes PT-BR`. Não foram clonadas com PocketTTS, apenas referências iniciais para uso futuro autorizado. Não os distribuir sem verificar as licenças dos modelos que originaram as gravações.
 
+## Integração no aplicativo atual (correção de UI em 22/10/2026)
+A implementação anterior aparecia apenas no componente `VoiceCall.tsx`, não utilizado pela interface atual de telefonemas. Corrigido no fluxo realmente utilizado: **Configurações → Voz em tempo real → PocketTTS**, ao lado de Gemini Live e Agente + Piper.
+
+O modo PocketTTS mantém as demais etapas da conversa gratuita (Silero para detectar voz, Groq Whisper ou Parakeet para transcrição e o runtime do Boo para responder). Só substitui a **síntese** Piper pela chamada ao executável PocketTTS instalado no perfil do usuário. O código converte WAV PCM mono de 16 bits em áudio do protocolo de tempo real, suporta interrupção via AbortSignal e mantém Piper como padrão em configurações antigas. As vozes geral/por Boo, importação de WAV/MP3/safetensors e geração de prévia estão acessíveis na tela usada pelo usuário.
+
+Para ouvir usando microfone, é necessário Silero instalado e uma opção de ASR configurada. Se faltar Silero, a UI oferece instalá-lo, incluindo o Piper como motor reserva. A prévia usa o executável diretamente e dispensa o microfone. **O instalador beta anterior ainda não contém essa correção**; testar com `npm run dev` até gerar uma nova versão.
+
 ## Operação
 1. Selecione **PocketTTS · vozes próprias locais** na janela de Chamada. Essa escolha é explícita e não altera o provedor padrão dos usuários existentes.
 2. Selecione uma das quatro vozes predefinidas verificadas (Rafael, Vera, Cosette e Marius) ou uma identidade importada. **Voz geral** e identidade individual por Boo são independentes. O Boobot mantém a escolha mesmo após reiniciar.

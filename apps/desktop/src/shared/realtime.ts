@@ -6,6 +6,7 @@
 export type RealtimeMode = 'gemini' | 'free'
 export type RealtimeProvider = 'gemini' | 'groq'
 export type RealtimeTranscriptionModel = 'whisper-large-v3-turbo' | 'whisper-large-v3' | 'parakeet-v3'
+export type RealtimeTtsEngine = 'piper' | 'pocket'
 export type PiperVoice = 'faber' | 'cadu' | 'jeff' | 'edresson' | 'miro' | 'dii'
 
 export interface RealtimeSettings {
@@ -13,6 +14,7 @@ export interface RealtimeSettings {
   geminiVoice: string
   transcriptionModel: RealtimeTranscriptionModel
   piperVoice: PiperVoice
+  ttsEngine: RealtimeTtsEngine
 }
 
 export interface RealtimeStatus {
@@ -23,6 +25,7 @@ export interface RealtimeStatus {
   vadInstalled: boolean
   parakeetInstalled: boolean
   installedPiperVoices: PiperVoice[]
+  pocketInstalled: boolean
   settings: RealtimeSettings
 }
 
@@ -48,6 +51,7 @@ export interface RealtimeAPI {
   installLocalModels(): Promise<RealtimeStatus>
   installParakeet(): Promise<RealtimeStatus>
   installPiperVoice(voice: PiperVoice): Promise<RealtimeStatus>
+  previewPocketVoice(agentId?: string): Promise<Uint8Array>
   start(mode: RealtimeMode, conversationId: string, agentId?: string): Promise<void>
   /** Trecho de áudio do microfone: PCM 16 bits, 16 kHz, mono. */
   pushAudio(chunk: ArrayBuffer): void

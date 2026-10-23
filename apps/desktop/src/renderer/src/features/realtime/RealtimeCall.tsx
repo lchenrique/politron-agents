@@ -7,6 +7,7 @@ import type { PiperVoice, RealtimeEvent, RealtimeMode, RealtimePhase, RealtimePr
 import { errorText } from '../app/appShellShared'
 import { MicCapture, PcmPlayer } from './audio-io'
 import { notifyVoiceSettings, useVoicePreferences } from './preferences'
+import { PocketTtsSettings } from './PocketTtsSettings'
 
 const PHASE_LABEL: Record<RealtimePhase, string> = {
   idle: 'Desligado', connecting: 'Conectando…', listening: 'Ouvindo', hearing: 'Você está falando…',
@@ -78,10 +79,11 @@ export function RealtimeSettingsPanel() {
   return <section aria-label="Preferências de voz" className="flex flex-col gap-4">
       <div><h3 className="flex items-center gap-2 text-base"><Settings2 className="size-4" />Configurar voz</h3>
         <p className="text-xs text-muted-foreground">Preferências gerais para o mascote do app e o flutuante. Alterações valem na próxima ligação.</p></div>
-      <div role="radiogroup" aria-label="Motor de voz" className="grid grid-cols-2 gap-1 rounded-lg border border-border/60 p-1">
-        {([['gemini', 'Gemini Live', 'Voz Gemini · resposta do Boo'], ['free', 'Agente + voz local', 'ASR e Piper configuráveis']] as const).map(([value, label, hint]) =>
-          <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => onModeChange(value)}
-            className={`rounded-md px-2 py-1.5 text-left text-xs transition-colors ${mode === value ? 'bg-accent font-medium' : 'text-muted-foreground hover:bg-accent/50'}`}>
+      <div role="radiogroup" aria-label="Motor de voz" className="grid grid-cols-3 gap-1 rounded-lg border border-border/60 p-1">
+        {([['gemini', 'Gemini Live', 'Voz Gemini'], ['piper', 'Agente + Piper', 'Leve e rápido'], ['pocket', 'PocketTTS', 'Vozes locais dos Boos']] as const).map(([value, label, hint]) =>
+          <button key={value} type="button" role="radio" aria-checked={mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')}
+            onClick={() => { if (value === 'gemini') onModeChange('gemini'); else { onModeChange('free'); void saveSetting({ ttsEngine: value }) } }}
+            className={`rounded-md px-2 py-1.5 text-left text-xs transition-colors ${(mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')) ? 'bg-accent font-medium' : 'text-muted-foreground hover:bg-accent/50'}`}>
             {label}<span className="block text-[10px] font-normal text-muted-foreground">{hint}</span>
           </button>)}
       </div>
@@ -90,7 +92,7 @@ export function RealtimeSettingsPanel() {
         ? <KeyField provider="gemini" configured={!!status.geminiKey} label="Chave do Gemini Live" help="Chave do Google AI Studio. O uso depende dos limites da sua conta." onSaved={() => { setCredentialRevision(value => value + 1); void refresh(); notifySaved() }} />
         : <KeyField provider="groq" configured={!!status.groqKey} label="Chave do Groq para Whisper" help="Usada somente para transcrever sua fala pela internet. Com Parakeet local, essa chave não é necessária." onSaved={() => { void refresh(); notifySaved() }} />)}
       {status && mode === 'free' && <div className="space-y-3 rounded-lg border border-border/60 p-3 text-xs">
-        <p>O agente selecionado no mascote gera a resposta usando o runtime e o modelo já configurados para ele (Codex ou Claude). Silero detecta a fala e Piper sintetiza a voz localmente. Whisper usa Groq para transcrever; Parakeet faz isso no computador.</p>
+        <p>O Boo selecionado usa o runtime e modelo configurados no seu perfil. Silero detecta a fala; Piper ou PocketTTS gera o áudio localmente. Whisper usa Groq para transcrever; Parakeet faz isso no computador.</p>
         <label className="block space-y-1 text-[11px] text-muted-foreground">Modelo de transcrição (ASR)
           <select className={selectClass} value={settings?.transcriptionModel || 'whisper-large-v3-turbo'} onChange={event => void saveSetting({ transcriptionModel: event.target.value as RealtimeSettings['transcriptionModel'] })}>
             <option value="whisper-large-v3-turbo">Whisper Large V3 Turbo · Groq na nuvem · rápido</option>
@@ -100,7 +102,14 @@ export function RealtimeSettingsPanel() {
         </label>
         {settings?.transcriptionModel === 'parakeet-v3' && !status.parakeetInstalled && <div className="flex items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">O Parakeet roda no computador e só é baixado quando você pedir.</span><Button size="sm" variant="outline" onClick={() => void installParakeet()} disabled={!!installingExtra}>{installingExtra === 'parakeet' ? 'Baixando Parakeet…' : 'Baixar Parakeet'}</Button></div>}
         {settings?.transcriptionModel === 'parakeet-v3' && status.parakeetInstalled && <p className="text-[11px] text-emerald-600">Parakeet instalado. A transcrição fica no computador.</p>}
-        <div className="space-y-1.5 border-t border-border/50 pt-2">
+        {settings?.ttsEngine === 'pocket' && <PocketTtsSettings installed={status.pocketInstalled} />}
+        {settings?.ttsEngine === 'pocket' && !status.vadInstalled && <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">O detector Silero é necessário para ouvir o microfone. O download também prepara o Piper como reserva.</span>
+          <Button size="sm" variant="outline" disabled={installing} onClick={() => void install()}>
+            {installing ? 'Instalando…' : 'Instalar Silero'}
+          </Button>
+        </div>}
+        {settings?.ttsEngine !== 'pocket' && <div className="space-y-1.5 border-t border-border/50 pt-2">
           <label className="block space-y-1 text-[11px] text-muted-foreground">Voz de resposta (TTS) · Piper local
             <select className={selectClass} value={settings?.piperVoice || 'faber'} onChange={event => void saveSetting({ piperVoice: event.target.value as PiperVoice })}>
               {piperVoices.map(voice => <option key={voice.id} value={voice.id}>{voice.label} · {voice.detail}</option>)}
@@ -110,7 +119,7 @@ export function RealtimeSettingsPanel() {
           {status.installedPiperVoices.includes(settings?.piperVoice || 'faber') && <p className="text-[11px] text-emerald-600">Voz selecionada instalada. A síntese acontece localmente.</p>}
           {!status.vadInstalled && <Button size="sm" variant="outline" onClick={() => void install()} disabled={installing || !!installingExtra}><Download className="size-3.5" />{installing ? 'Baixando motor e voz…' : 'Baixar Silero e voz selecionada'}</Button>}
           <p className="text-[10px] text-muted-foreground">Miro e Dii são vozes comunitárias experimentais com licença para uso não comercial.</p>
-        </div>
+        </div>}
       </div>}
       {mode === 'gemini' && <p className="text-[11px] text-muted-foreground">O Gemini escuta e dá voz ao agente selecionado. As respostas, ferramentas e permissões são as do próprio Boo, com o modelo configurado no perfil dele.</p>}
       {settings && mode === 'gemini' && hasKey && <div className="grid grid-cols-2 gap-2">

@@ -159,7 +159,8 @@ export class PocketVoiceService {
       await fs.rm(temporary, { force: true })
     }
   }
-  async speak(text: string, agentId?: string): Promise<Uint8Array> {
+  async speak(text: string, agentId?: string, signal?: AbortSignal): Promise<Uint8Array> {
+    if (signal?.aborted) throw new Error('Síntese de voz cancelada.')
     if (typeof text !== 'string' || !text.trim() || text.length > 700) throw new Error('Use um texto de até 700 caracteres para PocketTTS.')
     if (agentId && forbiddenId(agentId)) throw new Error('Identificador de Boo inválido.')
     if (!(await this.installed())) throw new Error('Instale o executável local PocketTTS antes de selecionar este motor.')
@@ -173,9 +174,10 @@ export class PocketVoiceService {
     try {
       await execFileAsync(this.executable, ['generate', '--language', 'portuguese', '--quantize',
         '--voice', voicePath, '--text', text, '--output-path', file], {
-        windowsHide: true, timeout: 125_000, maxBuffer: 1024 * 1024,
+        windowsHide: true, timeout: 125_000, maxBuffer: 1024 * 1024, signal,
         env: { ...process.env, HF_HUB_OFFLINE: '1', HF_HUB_DISABLE_TELEMETRY: '1' },
       })
+      if (signal?.aborted) throw new Error('Síntese de voz cancelada.')
       const audio = await fs.readFile(file)
       if (audio.length > MAX_WAV || !isRiff(audio)) throw new Error('PocketTTS não gerou um WAV válido.')
       const result = Uint8Array.from(audio)

@@ -5,11 +5,11 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { PiperVoice, RealtimeProvider, RealtimeSettings, RealtimeTranscriptionModel } from '../../../shared/realtime'
+import type { PiperVoice, RealtimeProvider, RealtimeSettings, RealtimeTranscriptionModel, RealtimeTtsEngine } from '../../../shared/realtime'
 
 const execFileAsync = promisify(execFile)
 
-export const DEFAULT_SETTINGS: RealtimeSettings = { geminiModel: '', geminiVoice: 'Puck', transcriptionModel: 'whisper-large-v3-turbo', piperVoice: 'faber' }
+export const DEFAULT_SETTINGS: RealtimeSettings = { geminiModel: '', geminiVoice: 'Puck', transcriptionModel: 'whisper-large-v3-turbo', piperVoice: 'faber', ttsEngine: 'piper' }
 const ENV_KEYS: Record<RealtimeProvider, string> = { gemini: 'GEMINI_API_KEY', groq: 'GROQ_API_KEY' }
 
 export const PIPER_VOICES: Record<PiperVoice, { folder: string; model: string; archive: string }> = {
@@ -55,9 +55,10 @@ export class RealtimeSettingsStore {
   async settings(): Promise<RealtimeSettings> {
     try {
       const stored = JSON.parse(await fs.readFile(this.settingsPath, 'utf8'))
-      const value: RealtimeSettings = { ...DEFAULT_SETTINGS, geminiModel: stored.geminiModel, geminiVoice: stored.geminiVoice, transcriptionModel: stored.transcriptionModel, piperVoice: stored.piperVoice }
+      const value: RealtimeSettings = { ...DEFAULT_SETTINGS, geminiModel: stored.geminiModel, geminiVoice: stored.geminiVoice, transcriptionModel: stored.transcriptionModel, piperVoice: stored.piperVoice, ttsEngine: stored.ttsEngine }
       if (!['whisper-large-v3-turbo', 'whisper-large-v3', 'parakeet-v3'].includes(value.transcriptionModel)) value.transcriptionModel = DEFAULT_SETTINGS.transcriptionModel
       if (!(value.piperVoice in PIPER_VOICES)) value.piperVoice = DEFAULT_SETTINGS.piperVoice
+      if (value.ttsEngine !== 'piper' && value.ttsEngine !== 'pocket') value.ttsEngine = 'piper'
       return value
     } catch { return { ...DEFAULT_SETTINGS } }
   }
@@ -70,6 +71,7 @@ export class RealtimeSettingsStore {
       geminiVoice: text(patch.geminiVoice, current.geminiVoice) || DEFAULT_SETTINGS.geminiVoice,
       transcriptionModel: ['whisper-large-v3-turbo', 'whisper-large-v3', 'parakeet-v3'].includes(String(patch.transcriptionModel)) ? patch.transcriptionModel as RealtimeTranscriptionModel : current.transcriptionModel,
       piperVoice: patch.piperVoice && patch.piperVoice in PIPER_VOICES ? patch.piperVoice as PiperVoice : current.piperVoice,
+      ttsEngine: ['piper', 'pocket'].includes(String(patch.ttsEngine)) ? patch.ttsEngine as RealtimeTtsEngine : current.ttsEngine,
     }
     await fs.mkdir(this.root, { recursive: true })
     await fs.writeFile(this.settingsPath, JSON.stringify(next), { mode: 0o600 })

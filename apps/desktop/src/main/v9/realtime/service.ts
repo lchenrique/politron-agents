@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { ASSISTANT_ID, type Agent } from '../../../shared/v9'
 import type { PiperVoice, RealtimeEvent, RealtimeMode, RealtimeProvider, RealtimeSettings, RealtimeStatus } from '../../../shared/realtime'
 import type { AppService } from '../workspace'
@@ -7,6 +8,8 @@ import { RealtimeSettingsStore } from './settings'
 import { listGeminiLiveModels, openGeminiLive, type RealtimeSession, type RealtimeTool } from './gemini-live'
 import type { ChatMessage } from './groq'
 import { loadPiper, openFreeCascade } from './free-cascade'
+import { PocketVoiceService } from '../pocket-voices'
+import { pocketWavToAudio } from './pocket-audio'
 
 const RECENT_MESSAGES = 12
 
@@ -23,13 +26,17 @@ Não repita limitações falsas de respostas anteriores. Se a execução demorar
 /** Liga a voz em tempo real a uma conversa do Politron. Uma sessão por vez. */
 export class RealtimeService {
   private readonly settingsStore: RealtimeSettingsStore
+  private readonly pocket: PocketVoiceService
   private session: RealtimeSession | null = null
   private starting: Promise<void> | null = null
   private generation = 0
   private eventOwner: WebContents | null = null
   private transcriptMessages = new Map<'user' | 'agent', string>()
 
-  constructor(root: string, private readonly app: AppService, private readonly executeTaskAwaitMs = 20_000) { this.settingsStore = new RealtimeSettingsStore(root) }
+  constructor(root: string, private readonly app: AppService, private readonly executeTaskAwaitMs = 20_000) {
+    this.settingsStore = new RealtimeSettingsStore(root)
+    this.pocket = new PocketVoiceService(join(root, 'voice-models', 'pocket-tts'))
+  }
 
   private emit(event: RealtimeEvent) {
     if (this.eventOwner && !this.eventOwner.isDestroyed()) { this.eventOwner.send('realtime:event', event); return }
@@ -38,15 +45,19 @@ export class RealtimeService {
 
   async status(): Promise<RealtimeStatus> {
     const settings = await this.settingsStore.settings()
-    const [gemini, groq, piperReady, vadInstalled, parakeetInstalled, installedPiperVoices] = await Promise.all([
-      this.settingsStore.key('gemini'), this.settingsStore.key('groq'), this.settingsStore.localModelsReady(settings.piperVoice), this.settingsStore.vadInstalled(), this.settingsStore.parakeetInstalled(), this.settingsStore.installedPiperVoices(),
+    const [gemini, groq, piperReady, vadInstalled, parakeetInstalled, installedPiperVoices, pocketInstalled] = await Promise.all([
+      this.settingsStore.key('gemini'), this.settingsStore.key('groq'), this.settingsStore.localModelsReady(settings.piperVoice), this.settingsStore.vadInstalled(), this.settingsStore.parakeetInstalled(), this.settingsStore.installedPiperVoices(), this.pocket.installed(),
     ])
-    return { geminiKey: !!gemini, groqKey: !!groq, localModels: piperReady && (settings.transcriptionModel !== 'parakeet-v3' || parakeetInstalled), vadInstalled, parakeetInstalled, installedPiperVoices, settings }
+    return { geminiKey: !!gemini, groqKey: !!groq, localModels: (settings.ttsEngine === 'pocket' ? pocketInstalled && vadInstalled : piperReady) && (settings.transcriptionModel !== 'parakeet-v3' || parakeetInstalled), vadInstalled, parakeetInstalled, installedPiperVoices, pocketInstalled, settings }
   }
 
   saveKey(provider: RealtimeProvider, key: string) { return this.settingsStore.saveKey(provider, key) }
   clearKey(provider: RealtimeProvider) { return this.settingsStore.clearKey(provider) }
   saveSettings(patch: Partial<RealtimeSettings>) { return this.settingsStore.saveSettings(patch) }
+
+  async previewPocketVoice(agentId?: string): Promise<Uint8Array> {
+    return this.pocket.speak('Olá, eu sou seu Boo. Estou pronto para ajudar!', agentId)
+  }
 
   async geminiModels(): Promise<string[]> {
     const key = await this.settingsStore.key('gemini')
@@ -190,11 +201,18 @@ export class RealtimeService {
         const key = await this.settingsStore.key('groq')
         if (!current()) return
         if (settings.transcriptionModel !== 'parakeet-v3' && !key) throw new Error('Cadastre a chave do Groq para transcrever com Whisper ou selecione o Parakeet local.')
-        if (!(await this.settingsStore.localModelsReady(settings.piperVoice))) throw new Error('Baixe a voz local selecionada (Piper pt-BR) antes de ligar no modo gratuito.')
+        if (!(await this.settingsStore.vadInstalled())) throw new Error('Instale o detector de fala Silero antes de ligar.')
+        if (settings.ttsEngine === 'pocket') {
+          if (!(await this.pocket.installed())) throw new Error('PocketTTS não está instalado. Configure o motor em Voz em tempo real ou escolha Piper.')
+        } else if (!(await this.settingsStore.localModelsReady(settings.piperVoice))) {
+          throw new Error('Baixe a voz local selecionada (Piper pt-BR) antes de ligar.')
+        }
         if (!current()) return
         if (settings.transcriptionModel === 'parakeet-v3' && !(await this.settingsStore.parakeetInstalled())) throw new Error('Baixe o Parakeet local nas configurações antes de ligar.')
         if (!current()) return
-        const candidate = await openFreeCascade({ groqKey: key || undefined, transcriptionModel: settings.transcriptionModel, parakeetDir: this.settingsStore.parakeetDir, vadPath: this.settingsStore.vadPath, piperDir: this.settingsStore.piperDir(settings.piperVoice), piperVoice: settings.piperVoice, generateResponse: async (text, signal) => {
+        const candidate = await openFreeCascade({ groqKey: key || undefined, transcriptionModel: settings.transcriptionModel, parakeetDir: this.settingsStore.parakeetDir, vadPath: this.settingsStore.vadPath, piperDir: this.settingsStore.piperDir(settings.piperVoice), piperVoice: settings.piperVoice,
+          pocketSpeech: settings.ttsEngine === 'pocket' ? async (text, signal) => pocketWavToAudio(await this.pocket.speak(text, agent.id, signal)) : undefined,
+          generateResponse: async (text, signal) => {
           if (signal.aborted || !current()) throw new Error('Resposta interrompida.')
           const answer = await this.app.respondVoice(conversationId, text, agent.id)
           if (!current()) throw new Error('Resposta interrompida.')
@@ -257,6 +275,7 @@ export function registerRealtimeIpc(service: RealtimeService, isRemote = () => f
   handle('installLocalModels', () => service.installLocalModels())
   handle('installParakeet', () => service.installParakeet())
   handle('installPiperVoice', voice => service.installPiperVoice(voice))
+  handle('previewPocketVoice', agentId => service.previewPocketVoice(agentId))
   ipcMain.handle('realtime:start', (event, mode, conversationId, agentId) => { requireLocal(); return service.start(mode, conversationId, agentId, event.sender) })
   handle('interrupt', () => service.interrupt())
   handle('stop', () => service.stop())
@@ -268,6 +287,6 @@ export function registerRealtimeIpc(service: RealtimeService, isRemote = () => f
   return () => {
     service.stop()
     ipcMain.off('realtime:audio', onAudio)
-    for (const channel of ['status', 'saveKey', 'clearKey', 'saveSettings', 'geminiModels', 'installLocalModels', 'installParakeet', 'installPiperVoice', 'start', 'interrupt', 'stop']) ipcMain.removeHandler(`realtime:${channel}`)
+    for (const channel of ['status', 'saveKey', 'clearKey', 'saveSettings', 'geminiModels', 'installLocalModels', 'installParakeet', 'installPiperVoice', 'previewPocketVoice', 'start', 'interrupt', 'stop']) ipcMain.removeHandler(`realtime:${channel}`)
   }
 }

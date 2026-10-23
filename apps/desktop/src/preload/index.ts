@@ -128,6 +128,7 @@ const realtimeAPI: RealtimeAPI = {
   installLocalModels: () => ipcRenderer.invoke('realtime:installLocalModels'),
   installParakeet: () => ipcRenderer.invoke('realtime:installParakeet'),
   installPiperVoice: voice => ipcRenderer.invoke('realtime:installPiperVoice', voice),
+  previewPocketVoice: agentId => ipcRenderer.invoke('realtime:previewPocketVoice', agentId),
   start: (mode, conversationId, agentId) => ipcRenderer.invoke('realtime:start', mode, conversationId, agentId),
   pushAudio: chunk => ipcRenderer.send('realtime:audio', chunk),
   interrupt: () => ipcRenderer.invoke('realtime:interrupt'),
