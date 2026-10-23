@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage, screen, ipcMain } from 'electron'
 import { join, resolve, sep } from 'node:path'
 import { existsSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,6 +17,7 @@ import { readOpenCodeModels } from './v9/opencode-models'
 import { SkillsService, registerSkillsIpc } from './v9/skills/service'
 import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
+import { PwaGateway } from './pwa/gateway'
 import { initAutoUpdater } from './v9/auto-updater'
 
 process.on('uncaughtException', (error) => {
@@ -42,6 +43,7 @@ let isQuitting = false
 let appService: AppService | null = null
 let realtimeService: RealtimeService | null = null
 let hosts: HostManager | null = null
+let pwa: PwaGateway | null = null
 
 // Marca nova, mantendo os dados do Politron já instalado. Em uma instalação nova,
 // o diretório de dados é boobot-desktop. Não renomear o banco nem copiar cegamente.
@@ -262,6 +264,30 @@ app.whenReady().then(async () => {
   await hosts.initialize()
   hosts.registerIpc()
 
+  // Browser gateway is loopback-only. Tailnet HTTPS must be enabled explicitly by the owner.
+  pwa = new PwaGateway({
+    assets: app.isPackaged ? join(process.resourcesPath, 'pwa') : join(process.cwd(), 'src', 'main', 'pwa', 'assets'),
+    host: () => {
+      const data = hosts!.snapshot()
+      return { id: data.selectedId, name: data.hosts.find(item => item.id === data.selectedId)?.name || 'Boobot' }
+    },
+    dispatch: (method, args, grants) => hosts!.dispatchFromPwa(method, args, grants),
+  })
+  // Isolated Electron E2E profiles may choose an ephemeral port; production is fixed at loopback 6780.
+  const pwaPort = process.env.BOOBOT_E2E_USER_DATA_DIR && process.env.BOOBOT_E2E_PWA_PORT === '0' ? 0 : 6780
+  void pwa.listen(pwaPort).then(port => {
+    console.log('[PWA] Gateway privado ativo em loopback na porta', port)
+  }).catch(error => console.warn('[PWA] Gateway não pôde iniciar:', error instanceof Error ? error.message : 'erro'))
+
+  const pwaWindow = (event: Electron.IpcMainInvokeEvent) => {
+    if (!BrowserWindow.fromWebContents(event.sender)) throw new Error('Janela não autorizada.')
+    if (!pwa) throw new Error('PWA indisponível.')
+    return pwa
+  }
+  ipcMain.handle('pwa:status', event => pwaWindow(event).status())
+  ipcMain.handle('pwa:issueCode', event => pwaWindow(event).issueCode())
+  ipcMain.handle('pwa:revokeAll', event => { pwaWindow(event).revokeAll(); return pwaWindow(event).status() })
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
@@ -293,6 +319,8 @@ app.on('before-quit', () => {
   destroyAppWindow()
   realtimeService?.stop()
   void hosts?.close()
+  void pwa?.close()
+  pwa = null
   appService?.dispose()
   appService = null
 })

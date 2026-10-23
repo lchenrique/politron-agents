@@ -7,6 +7,7 @@ import type { UpdatesAPI } from '../../shared/updates'
 
 declare global {
 interface Window {
+  pwaAPI?: import('../../shared/pwa-desktop').PwaDesktopAPI
   hostsAPI?: import('../../shared/hosts').HostsAPI
  vibeAPI: {
  windowControls: {

@@ -13,6 +13,7 @@ import { errorText } from './appShellShared'
 import { setRivePreview, useRivePreview } from './booRendererPreference'
 import { RealtimeSettingsPanel } from '../realtime/RealtimeCall'
 import { HostSettingsPanel } from '../hosts/HostSettingsPanel'
+import { PwaSettingsPanel } from '../hosts/PwaSettingsPanel'
 import { AppUpdatesPanel } from './AppUpdatesPanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
 
@@ -267,7 +268,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
           <h2 className="text-lg font-semibold">Skills</h2>
           <SkillsSection />
         </>}
-        {section === 'conexoes' && <><h2 className="text-lg font-semibold">Conexões</h2><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field></>}
+        {section === 'conexoes' && <><h2 className="text-lg font-semibold">Conexões</h2><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field><Field icon={Monitor} title="Acesso PWA no navegador" description="Pareie o celular para consultar projetos e conversas do host em modo leitura, sem expor as credenciais dos agentes."><PwaSettingsPanel /></Field></>}
         {section === 'atualizacoes' && <><h2 className="text-lg font-semibold">Atualizações</h2><AppUpdatesPanel /></>}
         {section === 'voz' && <>
           <h2 className="text-lg font-semibold">Voz em tempo real</h2>

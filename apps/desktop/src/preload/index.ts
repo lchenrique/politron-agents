@@ -167,3 +167,10 @@ const hostsAPI: import('../shared/hosts').HostsAPI = {
   onFolderRequest: callback => onChannel('hosts:folderRequest', callback),
 }
 contextBridge.exposeInMainWorld('hostsAPI', hostsAPI)
+
+const pwaAPI: import('../shared/pwa-desktop').PwaDesktopAPI = {
+  status: () => ipcRenderer.invoke('pwa:status'),
+  issueCode: () => ipcRenderer.invoke('pwa:issueCode'),
+  revokeAll: () => ipcRenderer.invoke('pwa:revokeAll'),
+}
+contextBridge.exposeInMainWorld('pwaAPI', pwaAPI)
