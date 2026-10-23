@@ -16,3 +16,7 @@ Foram estudadas as filas por conversa e o registro de runtimes independentes de 
 ## WebSocket
 
 `ws` 8.18.3 utiliza a licença MIT, preservada no pacote `node_modules/ws/LICENSE`. A execução no processo principal utiliza o transporte Node, separado do navegador do usuário.
+
+## Rive
+
+A renderização experimental dos Boos usa `@rive-app/react-canvas` 4.37.1 e `@rive-app/canvas` 2.45.1, ambos sob licença MIT, com runtime WebAssembly distribuído localmente. Os arquivos de licenças e avisos das bibliotecas devem acompanhar a distribuição. A arte `boo-rive.riv` foi gerada para o Boobot a partir das próprias silhuetas do projeto pela CLI oficial Rive 1.7.0; verificar os requisitos de assinatura e publicação antes de um instalador público.

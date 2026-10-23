@@ -1,8 +1,10 @@
-import { memo, useCallback, useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { lazy, Suspense, memo, useCallback, useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Agent } from '../../../../shared/v9'
 import { STARTLE_EVENT, usePoliDrowsy, usePoliGaze } from './usePoliGaze'
 import { useAvatarActivity } from './useAvatarActivity'
 import { BOO_BODY_PATHS } from './boo-appearance'
+import { BooFaceAccessory, BooHeadAccessory } from './BooAccessories'
+const RiveBooAvatar = lazy(() => import('./RiveBooAvatar').then(m => ({ default: m.RiveBooAvatar })))
 import './PoliAvatar.css'
 
 export type PoliExpression = 'idle' | 'thinking' | 'coding' | 'done'
@@ -119,6 +121,14 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
   // Mesmo pivô do corpo, aura e reflexos, no centro do viewBox (28 + 185 / 2 ≈ 120).
   const bodyTransform = `translate(120 100) scale(${bodyWidth} ${bodyHeight}) translate(-120 -100)`
 
+  // Compatibilidade: nÃ£o perder tamanhos de olhos, escala e expressÃµes personalizados.
+  // A primeira migraÃ§Ã£o usa Rive para os Boos grandes de proporÃ§Ã£o original;
+  // os demais conservam a implementaÃ§Ã£o SVG atÃ© que os bindings sejam equivalentes.
+  const riveEligible = import.meta.env.MODE !== 'test' && size >= 80 && agent.pitsAnimate !== false
+    && eyeSize === 8 && eyeSpacing === 26 && bodyWidth === 1
+    && bodyHeight === 1 && mouthSize === 1 && showAura && showBlush
+  const [riveReady, setRiveReady] = useState(false)
+  const riveVisible = riveEligible && riveReady && calm && !hovered && !reaction
   const style = {
     '--poli-speed': `${Math.max(1, Math.min(6, agent.pitsSpeed ?? 3))}s`,
     '--poli-amplitude': `-${(Math.max(0, Math.min(24, agent.pitsAmplitude ?? 9)) * size / 180).toFixed(2)}px`,
@@ -126,10 +136,10 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
     height: size,
   } as CSSProperties
   return (
-    <span ref={ref} className="poli-avatar inline-flex shrink-0 items-center justify-center" style={style} data-animate={animate} data-motion-active={animate} data-shape={shape} data-state={state} data-hover={hovered} data-mood={mood}
+    <span ref={ref} className="poli-avatar relative inline-flex shrink-0 items-center justify-center" style={style} data-animate={animate} data-motion-active={animate} data-shape={shape} data-state={state} data-hover={hovered} data-mood={mood} data-rive-active={riveVisible}
       onPointerEnter={event => { pet.current = { x: event.clientX, direction: 0, flips: [] }; setHovered(true) }}
       onPointerLeave={() => setHovered(false)} onPointerDown={onPress} onPointerMove={onPet}>
-      <svg viewBox="28 0 185 200" className="size-full overflow-visible" role="img" aria-label={`${agent.name || 'Boo'} — ${mood}`}>
+      <svg viewBox="28 0 185 200" className="size-full overflow-visible" style={riveVisible ? { visibility: 'hidden' } : undefined} role="img" aria-label={`${agent.name || 'Boo'} — ${mood}`}>
         <defs>
           <radialGradient id={gradientId} cx="30%" cy="20%" r="85%">
             <stop offset="0" stopColor={mix(color, 255, .46)} />
@@ -153,17 +163,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
               <g className="poli-avatar__shape">
                 <path d={BOO_BODY_PATHS[shape]} fill={`url(#${gradientId})`} />
             <ellipse cx="91" cy="43" rx="37" ry="13" transform="rotate(-24 91 43)" fill="#fff" opacity=".22" />
-            {headAccessory === 'antenna' && <g aria-label="Antena do Boo" stroke={color} strokeWidth="8" strokeLinecap="round"><path d="M120 35 Q112 7 120 -1" fill="none" /><circle cx="120" cy="-1" r="10" fill="#f8d463" stroke="none" /></g>}
-            {headAccessory === 'horns' && <g aria-label="Chifres do Boo" fill={color}><path d="M58 59 Q38 22 45 3 Q54 24 84 38 Z" /><path d="M182 59 Q202 22 195 3 Q186 24 156 38 Z" /></g>}
-            {headAccessory === 'cap' && <g aria-label="Boné do Boo"><path d="M61 51 Q74 10 123 12 Q172 12 182 51 L175 58 Q120 44 65 58 Z" fill="#354d6a" /><path d="M105 52 Q157 42 203 58 Q169 75 114 65 Z" fill="#26384f" /></g>}
-            {headAccessory === 'cap-flat' && <g aria-label="Boné reto do Boo"><path d="M65 49 Q78 12 120 14 Q163 12 178 49 L174 57 Q120 43 66 57 Z" fill="#344f79" /><path d="M111 51 L209 51 Q207 63 163 66 L112 62 Z" fill="#263650" /></g>}
-            {headAccessory === 'cap-back' && <g aria-label="Boné para trás do Boo"><path d="M63 52 Q76 12 122 13 Q168 12 180 53 L171 62 Q119 44 66 61 Z" fill="#365270" /><path d="M68 52 L31 57 L31 65 Q64 74 94 57 Z" fill="#23364b" /><path d="M108 20 L132 20" stroke="#cbd5e1" strokeWidth="5" strokeLinecap="round" /></g>}
-            {headAccessory === 'beanie' && <g aria-label="Gorro do Boo"><path d="M56 66 Q52 10 120 6 Q189 10 184 66 Z" fill="#a45f9c" /><rect x="55" y="54" width="131" height="20" rx="10" fill="#784272" /><circle cx="120" cy="4" r="13" fill="#cf84b6" /></g>}
-            {headAccessory === 'bucket' && <g aria-label="Chapéu bucket do Boo"><path d="M69 21 Q120 4 171 21 L182 59 Q120 72 58 59 Z" fill="#4d9c82" /><path d="M51 60 Q120 48 189 60 L199 73 Q120 88 41 73 Z" fill="#347962" /></g>}
-            {headAccessory === 'top-hat' && <g aria-label="Cartola do Boo"><path d="M83 -36 H157 L164 46 H76 Z" fill="#353246" /><rect x="68" y="39" width="104" height="12" rx="6" fill="#584b78" /><rect x="52" y="48" width="136" height="10" rx="5" fill="#242333" /></g>}
-            {headAccessory === 'witch-hat' && <g aria-label="Chapéu de bruxa do Boo"><path d="M121 -52 Q139 2 161 52 L65 52 Q100 8 121 -52 Z" fill="#60408b" /><path d="M58 48 H180 Q195 48 203 62 Q121 84 39 62 Z" fill="#392758" /><path d="M75 48 H172" stroke="#c496dc" strokeWidth="7" /></g>}
-            {headAccessory === 'crown' && <g aria-label="Coroa do Boo"><path d="M64 52 L58 1 L87 24 L120 -12 L151 24 L181 1 L175 52 Z" fill="#eabf52" stroke="#d09a32" strokeWidth="4" /><circle cx="120" cy="35" r="8" fill="#e96a9d" /></g>}
-            {headAccessory === 'headphones' && <g aria-label="Fone de ouvido do Boo"><path d="M48 108 V75 Q48 11 120 10 Q192 11 192 75 V108" fill="none" stroke="#263347" strokeWidth="13" strokeLinecap="round" /><rect x="36" y="81" width="24" height="49" rx="11" fill="#435a80" stroke="#263347" strokeWidth="5" /><rect x="180" y="81" width="24" height="49" rx="11" fill="#435a80" stroke="#263347" strokeWidth="5" /><rect x="44" y="91" width="9" height="28" rx="5" fill="#85d8ff" /><rect x="187" y="91" width="9" height="28" rx="5" fill="#85d8ff" /></g>}
+            <BooHeadAccessory kind={headAccessory} />
             {(showBlush || mood === 'love') && <>
               <ellipse cx="77" cy="118" rx="14" ry="7" fill={cheek} opacity={blushOpacity} />
               <ellipse cx="163" cy="118" rx="14" ry="7" fill={cheek} opacity={blushOpacity} />
@@ -190,9 +190,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
                 {eyeXs.map(cx => <ellipse key={cx} cx={cx} cy="94" rx={eyeSize} ry={eyeSize * 1.5} />)}
               </g>}
             </g>
-            {faceAccessory === 'glasses' && <g aria-label="Óculos do Boo" fill="none" stroke="#253347" strokeWidth="5" strokeLinecap="round"><rect x="76" y="79" width="35" height="34" rx="11" /><rect x="129" y="79" width="35" height="34" rx="11" /><path d="M111 91 Q120 85 129 91 M76 91 L58 87 M164 91 L182 87" /></g>}
-            {faceAccessory === 'round-glasses' && <g aria-label="Óculos redondos do Boo" fill="none" stroke="#7c553a" strokeWidth="5"><circle cx="94" cy="95" r="19" /><circle cx="146" cy="95" r="19" /><path d="M113 92 Q120 88 127 92 M75 92 L59 88 M165 92 L181 88" /></g>}
-            {faceAccessory === 'sunglasses' && <g aria-label="Óculos escuros do Boo"><rect x="75" y="80" width="38" height="30" rx="9" fill="#202b42" /><rect x="127" y="80" width="38" height="30" rx="9" fill="#202b42" /><path d="M113 89 Q120 85 127 89 M75 89 L58 85 M165 89 L182 85" fill="none" stroke="#202b42" strokeWidth="5" /><path d="M81 84 L95 84" stroke="#7ca7ce" strokeWidth="3" /></g>}
+            <BooFaceAccessory kind={faceAccessory} />
             <g className="poli-avatar__mouth-scale" transform={mouthTransform}>
             {state === 'speaking' && <ellipse className="poli-avatar__mouth-speaking" cx="120" cy="129" rx="6" ry="5" fill="#fff" />}
             {state !== 'speaking' && mood === 'idle' && <path d="M108 124 Q120 135 132 124" {...mouth} />}
@@ -234,6 +232,13 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
           </g>
         </g>
       </svg>
+      {riveEligible && <Suspense fallback={null}>
+        <RiveBooAvatar shape={shape} color={color} eyeColor={eyeColor}
+          cheekColor={cheek} blushOpacity={blushOpacity}
+          headAccessory={headAccessory} faceAccessory={faceAccessory}
+          speaking={state === 'speaking'} visible={riveVisible}
+          playing={animate && riveVisible} onReady={setRiveReady} />
+      </Suspense>}
     </span>
   )
 })

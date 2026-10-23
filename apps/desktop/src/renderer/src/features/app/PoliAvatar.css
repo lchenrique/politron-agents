@@ -65,3 +65,7 @@
 @media (prefers-reduced-motion: reduce) {
   .poli-avatar__finger { animation: none !important; }
 }
+
+/* O SVG permanece como fallback, mas n�o anima oculto durante a pr�via Rive. */
+.poli-avatar[data-rive-active='true'] > svg,
+.poli-avatar[data-rive-active='true'] > svg * { animation-play-state: paused !important; }

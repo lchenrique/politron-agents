@@ -1,0 +1,861 @@
+<Rive version="1" kind="fragment">
+<Artboard width="185" height="200" name="round" id="0:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="0:7" styleId="0:5">
+<LayoutComponentStyle name="Artboard Style" id="0:5"/>
+<Node x="-28" name="Boo Artwork" id="0:41">
+<Node name="Blinking eyes" id="0:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original round">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="63" y="46" inRotation="2.413" inDistance="25.024" outRotation="-0.758" outDistance="52.345"/>
+<CubicDetachedVertex x="177" y="46" inRotation="-2.383" inDistance="52.345" outRotation="0.729" outDistance="25.024"/>
+<CubicDetachedVertex x="201" y="111" inRotation="-1.471" inDistance="26.8" outRotation="1.64" outDistance="38.759"/>
+<CubicDetachedVertex x="120" y="174" inRotation="-0.065" inDistance="51.441" outRotation="-3.077" outDistance="51.441"/>
+<CubicDetachedVertex x="39" y="111" inRotation="1.502" inDistance="38.759" outRotation="-1.67" outDistance="26.8"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="0:7"><StateMachineLayer name="Blink" id="0:8">
+<EntryState><StateTransition stateToId="0:12"/></EntryState>
+<AnimationState animationId="0:6" id="0:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="0:6">
+<KeyedObject objectId="0:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="0:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="flat" id="1:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="1:7" styleId="1:5">
+<LayoutComponentStyle name="Artboard Style" id="1:5"/>
+<Node x="-28" name="Boo Artwork" id="1:41">
+<Node name="Blinking eyes" id="1:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original flat">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="58" y="72" inRotation="2.382" inDistance="18.391" outRotation="-1.071" outDistance="16.707"/>
+<CubicDetachedVertex x="120" y="51" inRotation="-3.122" inDistance="33.34" outRotation="-0.02" outDistance="33.34"/>
+<CubicDetachedVertex x="182" y="72" inRotation="-2.07" inDistance="16.707" outRotation="0.76" outDistance="18.391"/>
+<CubicDetachedVertex x="198" y="121" inRotation="-1.438" inDistance="20.177" outRotation="1.658" outDistance="30.782"/>
+<CubicDetachedVertex x="120" y="169" inRotation="-0.027" inDistance="49.351" outRotation="-3.115" outDistance="49.351"/>
+<CubicDetachedVertex x="42" y="121" inRotation="1.484" inDistance="30.782" outRotation="-1.703" outDistance="20.177"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="1:7"><StateMachineLayer name="Blink" id="1:8">
+<EntryState><StateTransition stateToId="1:12"/></EntryState>
+<AnimationState animationId="1:6" id="1:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="1:6">
+<KeyedObject objectId="1:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="1:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="long" id="2:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="2:7" styleId="2:5">
+<LayoutComponentStyle name="Artboard Style" id="2:5"/>
+<Node x="-28" name="Boo Artwork" id="2:41">
+<Node name="Blinking eyes" id="2:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original long">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="79" y="30" inRotation="2.444" inDistance="26.973" outRotation="-0.678" outDistance="35.087"/>
+<CubicDetachedVertex x="161" y="30" inRotation="-2.464" inDistance="35.087" outRotation="0.698" outDistance="26.973"/>
+<CubicDetachedVertex x="189" y="113" inRotation="-1.518" inDistance="38.053" outRotation="1.626" outDistance="48.74"/>
+<CubicDetachedVertex x="120" y="187" inRotation="-0.015" inDistance="43.338" outRotation="-3.126" outDistance="43.338"/>
+<CubicDetachedVertex x="51" y="113" inRotation="1.516" inDistance="48.74" outRotation="-1.623" outDistance="38.053"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="2:7"><StateMachineLayer name="Blink" id="2:8">
+<EntryState><StateTransition stateToId="2:12"/></EntryState>
+<AnimationState animationId="2:6" id="2:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="2:6">
+<KeyedObject objectId="2:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="2:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="drop" id="3:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="3:7" styleId="3:5">
+<LayoutComponentStyle name="Artboard Style" id="3:5"/>
+<Node x="-28" name="Boo Artwork" id="3:41">
+<Node name="Blinking eyes" id="3:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original drop">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="120" y="9" inRotation="2.134" inDistance="29.963" outRotation="1.007" outDistance="29.963"/>
+<CubicDetachedVertex x="175" y="61" inRotation="-2.717" inDistance="22.676" outRotation="0.516" outDistance="22.988"/>
+<CubicDetachedVertex x="197" y="122" inRotation="-1.391" inDistance="29.814" outRotation="1.768" outDistance="37.393"/>
+<CubicDetachedVertex x="120" y="179" inRotation="-0.03" inDistance="44.02" outRotation="-3.111" outDistance="44.02"/>
+<CubicDetachedVertex x="43" y="122" inRotation="1.373" inDistance="37.393" outRotation="-1.751" outDistance="29.814"/>
+<CubicDetachedVertex x="65" y="61" inRotation="2.626" inDistance="22.988" outRotation="-0.424" outDistance="22.676"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="3:7"><StateMachineLayer name="Blink" id="3:8">
+<EntryState><StateTransition stateToId="3:12"/></EntryState>
+<AnimationState animationId="3:6" id="3:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="3:6">
+<KeyedObject objectId="3:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="3:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="squircle" id="4:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="4:7" styleId="4:5">
+<LayoutComponentStyle name="Artboard Style" id="4:5"/>
+<Node x="-28" name="Boo Artwork" id="4:41">
+<Node name="Blinking eyes" id="4:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original squircle">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="68" y="29" inRotation="2.854" inDistance="18.774" outRotation="-0.333" outDistance="18.342"/>
+<CubicDetachedVertex x="120" y="20" inRotation="3.142" inDistance="17.333" outRotation="0" outDistance="17.333"/>
+<CubicDetachedVertex x="172" y="29" inRotation="-2.808" inDistance="18.342" outRotation="0.288" outDistance="18.774"/>
+<CubicDetachedVertex x="199" y="68" inRotation="-1.571" inDistance="20.667" outRotation="1.571" outDistance="20.333"/>
+<CubicDetachedVertex x="199" y="129" inRotation="-1.571" inDistance="20.333" outRotation="1.571" outDistance="24.667"/>
+<CubicDetachedVertex x="165" y="171" inRotation="-0.146" inDistance="22.91" outRotation="3.009" outDistance="30.265"/>
+<CubicDetachedVertex x="75" y="171" inRotation="0.133" inDistance="30.265" outRotation="-2.996" outDistance="22.91"/>
+<CubicDetachedVertex x="41" y="129" inRotation="1.571" inDistance="24.667" outRotation="-1.571" outDistance="20.333"/>
+<CubicDetachedVertex x="41" y="68" inRotation="1.571" inDistance="20.333" outRotation="-1.571" outDistance="20.667"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="4:7"><StateMachineLayer name="Blink" id="4:8">
+<EntryState><StateTransition stateToId="4:12"/></EntryState>
+<AnimationState animationId="4:6" id="4:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="4:6">
+<KeyedObject objectId="4:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="4:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="bean" id="5:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="5:7" styleId="5:5">
+<LayoutComponentStyle name="Artboard Style" id="5:5"/>
+<Node x="-28" name="Boo Artwork" id="5:41">
+<Node name="Blinking eyes" id="5:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original bean">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="87" y="28" inRotation="2.441" inDistance="27.913" outRotation="-0.375" outDistance="23.646"/>
+<CubicDetachedVertex x="162" y="40" inRotation="-2.605" inDistance="32.585" outRotation="0.441" outDistance="26.541"/>
+<CubicDetachedVertex x="191" y="91" inRotation="-1.368" inDistance="23.142" outRotation="1.877" outDistance="13.283"/>
+<CubicDetachedVertex x="192" y="132" inRotation="-1.879" inDistance="15.391" outRotation="1.379" outDistance="24.449"/>
+<CubicDetachedVertex x="150" y="175" inRotation="-0.142" inDistance="32.998" outRotation="2.882" outDistance="33.797"/>
+<CubicDetachedVertex x="66" y="160" inRotation="0.675" inDistance="29.881" outRotation="-2.597" outDistance="29.612"/>
+<CubicDetachedVertex x="50" y="95" inRotation="2.053" inDistance="31.609" outRotation="-1.446" outDistance="26.874"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="5:7"><StateMachineLayer name="Blink" id="5:8">
+<EntryState><StateTransition stateToId="5:12"/></EntryState>
+<AnimationState animationId="5:6" id="5:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="5:6">
+<KeyedObject objectId="5:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="5:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="ghost-wave" id="6:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="6:7" styleId="6:5">
+<LayoutComponentStyle name="Artboard Style" id="6:5"/>
+<Node x="-28" name="Boo Artwork" id="6:41">
+<Node name="Blinking eyes" id="6:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original ghost-wave">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="63" y="46" inRotation="2.356" inDistance="25.456" outRotation="-0.73" outDistance="50.99"/>
+<CubicDetachedVertex x="177" y="46" inRotation="-2.412" inDistance="50.99" outRotation="0.744" outDistance="22.647"/>
+<CubicDetachedVertex x="199" y="115" inRotation="-1.506" inDistance="30.732" outRotation="1.571" outDistance="21.333"/>
+<CubicDetachedVertex x="189" y="167" inRotation="-1.107" inDistance="14.907" outRotation="-2.447" outDistance="10.414"/>
+<CubicDetachedVertex x="162" y="171" inRotation="-0.751" inDistance="13.679" outRotation="2.486" outDistance="10.934"/>
+<CubicDetachedVertex x="137" y="170" inRotation="0.742" inDistance="10.853" outRotation="-2.453" outDistance="14.682"/>
+<CubicDetachedVertex x="105" y="174" inRotation="-0.876" inDistance="15.62" outRotation="2.521" outDistance="11.47"/>
+<CubicDetachedVertex x="77" y="169" inRotation="0.82" inDistance="13.679" outRotation="-2.393" outDistance="12.737"/>
+<CubicDetachedVertex x="51" y="166" inRotation="-0.695" inDistance="10.414" outRotation="-2.07" outDistance="16.707"/>
+<CubicDetachedVertex x="40" y="115" inRotation="1.605" inDistance="19.345" outRotation="-1.666" outDistance="28.127"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="6:7"><StateMachineLayer name="Blink" id="6:8">
+<EntryState><StateTransition stateToId="6:12"/></EntryState>
+<AnimationState animationId="6:6" id="6:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="6:6">
+<KeyedObject objectId="6:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="6:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="ghost-puff" id="7:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="7:7" styleId="7:5">
+<LayoutComponentStyle name="Artboard Style" id="7:5"/>
+<Node x="-28" name="Boo Artwork" id="7:41">
+<Node name="Blinking eyes" id="7:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original ghost-puff">
+<PointsPath isClosed="true" isClockwise="false" name="Silhouette">
+<CubicDetachedVertex x="120" y="14" inRotation="0" inDistance="42" outRotation="3.142" outDistance="42"/>
+<CubicDetachedVertex x="43" y="76" inRotation="-1.466" inDistance="38.21" outRotation="1.768" outDistance="30.594"/>
+<CubicDetachedVertex x="52" y="151" inRotation="-2.147" inDistance="23.854" outRotation="1.071" outDistance="8.353"/>
+<CubicDetachedVertex x="70" y="161" inRotation="3.058" inDistance="8.028" outRotation="-0.245" outDistance="8.246"/>
+<CubicDetachedVertex x="90" y="172" inRotation="-2.09" inDistance="10.75" outRotation="0.829" outDistance="10.853"/>
+<CubicDetachedVertex x="113" y="173" inRotation="2.4" inDistance="10.853" outRotation="-0.62" outDistance="5.735"/>
+<CubicDetachedVertex x="127" y="173" inRotation="-2.521" inDistance="5.735" outRotation="0.742" outDistance="10.853"/>
+<CubicDetachedVertex x="150" y="172" inRotation="2.313" inDistance="10.853" outRotation="-1.052" outDistance="10.75"/>
+<CubicDetachedVertex x="170" y="161" inRotation="-2.897" inDistance="8.246" outRotation="0.083" outDistance="8.028"/>
+<CubicDetachedVertex x="188" y="151" inRotation="2.07" inDistance="8.353" outRotation="-0.994" outDistance="23.854"/>
+<CubicDetachedVertex x="197" y="76" inRotation="1.373" inDistance="30.594" outRotation="-1.676" outDistance="38.21"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="7:7"><StateMachineLayer name="Blink" id="7:8">
+<EntryState><StateTransition stateToId="7:12"/></EntryState>
+<AnimationState animationId="7:6" id="7:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="7:6">
+<KeyedObject objectId="7:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="7:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="cute-squid" id="8:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="8:7" styleId="8:5">
+<LayoutComponentStyle name="Artboard Style" id="8:5"/>
+<Node x="-28" name="Boo Artwork" id="8:41">
+<Node name="Blinking eyes" id="8:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original cute-squid">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="120" y="14" inRotation="3.142" inDistance="9.333" outRotation="0" outDistance="28.667"/>
+<CubicDetachedVertex x="185" y="49" inRotation="-2.132" inDistance="27.56" outRotation="1.119" outDistance="25.94"/>
+<CubicDetachedVertex x="195" y="115" inRotation="-1.349" inDistance="21.187" outRotation="1.748" outDistance="18.962"/>
+<CubicDetachedVertex x="177" y="154" inRotation="-0.702" inDistance="11.353" outRotation="0.996" outDistance="13.499"/>
+<CubicDetachedVertex x="175" y="182" inRotation="-0.702" inDistance="11.353" outRotation="2.875" outDistance="7.601"/>
+<CubicDetachedVertex x="153" y="171" inRotation="0.905" inDistance="11.87" outRotation="2.078" outDistance="13.728"/>
+<CubicDetachedVertex x="131" y="180" inRotation="0.644" inDistance="10" outRotation="-2.273" outDistance="11.353"/>
+<CubicDetachedVertex x="109" y="180" inRotation="-0.869" inDistance="11.353" outRotation="2.622" outDistance="10.75"/>
+<CubicDetachedVertex x="87" y="170" inRotation="1.153" inDistance="13.132" outRotation="2.316" outDistance="11.795"/>
+<CubicDetachedVertex x="64" y="176" inRotation="0.567" inDistance="8.692" outRotation="-2.554" outDistance="7.211"/>
+<CubicDetachedVertex x="63" y="155" inRotation="2.061" inDistance="11.333" outRotation="-2.451" outDistance="19.889"/>
+<CubicDetachedVertex x="41" y="103" inRotation="1.601" inDistance="22.01" outRotation="-1.571" outDistance="40.667"/>
+<CubicDetachedVertex x="92" y="19" inRotation="2.718" inDistance="37.298" outRotation="-0.343" outDistance="9.911"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="8:7"><StateMachineLayer name="Blink" id="8:8">
+<EntryState><StateTransition stateToId="8:12"/></EntryState>
+<AnimationState animationId="8:6" id="8:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="8:6">
+<KeyedObject objectId="8:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="8:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="soft-square" id="9:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="9:7" styleId="9:5">
+<LayoutComponentStyle name="Artboard Style" id="9:5"/>
+<Node x="-28" name="Boo Artwork" id="9:41">
+<Node name="Blinking eyes" id="9:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original soft-square">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="69" y="23" inRotation="2.737" inDistance="20.309" outRotation="-0.525" outDistance="14.636"/>
+<CubicDetachedVertex x="120" y="16" inRotation="-3.017" inDistance="21.499" outRotation="-0.124" outDistance="21.499"/>
+<CubicDetachedVertex x="171" y="23" inRotation="-2.617" inDistance="14.636" outRotation="0.343" outDistance="19.821"/>
+<CubicDetachedVertex x="202" y="66" inRotation="-1.661" inDistance="22.091" outRotation="1.571" outDistance="21"/>
+<CubicDetachedVertex x="202" y="129" inRotation="-1.571" inDistance="21" outRotation="1.688" outDistance="22.823"/>
+<CubicDetachedVertex x="172" y="173" inRotation="-0.367" inDistance="18.571" outRotation="2.869" outDistance="17.308"/>
+<CubicDetachedVertex x="120" y="172" inRotation="0.288" inDistance="18.774" outRotation="2.843" outDistance="18.135"/>
+<CubicDetachedVertex x="68" y="173" inRotation="0.263" inDistance="17.951" outRotation="-2.709" outDistance="19.09"/>
+<CubicDetachedVertex x="38" y="129" inRotation="1.446" inDistance="21.499" outRotation="-1.571" outDistance="21"/>
+<CubicDetachedVertex x="38" y="66" inRotation="1.571" inDistance="21" outRotation="-1.474" outDistance="20.763"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="9:7"><StateMachineLayer name="Blink" id="9:8">
+<EntryState><StateTransition stateToId="9:12"/></EntryState>
+<AnimationState animationId="9:6" id="9:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="9:6">
+<KeyedObject objectId="9:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="9:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="little-cat" id="10:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="10:7" styleId="10:5">
+<LayoutComponentStyle name="Artboard Style" id="10:5"/>
+<Node x="-28" name="Boo Artwork" id="10:41">
+<Node name="Blinking eyes" id="10:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original little-cat">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="52" y="16" inRotation="0" inDistance="0" outRotation="-0.133" outDistance="10.088"/>
+<CubicDetachedVertex x="85" y="33" inRotation="-2.329" inDistance="17.448" outRotation="-0.405" outDistance="25.386"/>
+<CubicDetachedVertex x="155" y="33" inRotation="-2.737" inDistance="25.386" outRotation="-0.812" outDistance="17.448"/>
+<CubicDetachedVertex x="188" y="16" inRotation="-3.009" inDistance="10.088" outRotation="1.589" outDistance="18.67"/>
+<CubicDetachedVertex x="187" y="72" inRotation="-1.553" inDistance="18.67" outRotation="1.082" outDistance="24.157"/>
+<CubicDetachedVertex x="193" y="135" inRotation="-1.23" inDistance="21.929" outRotation="1.893" outDistance="31.623"/>
+<CubicDetachedVertex x="120" y="178" inRotation="0.034" inDistance="38.69" outRotation="3.107" outDistance="38.69"/>
+<CubicDetachedVertex x="47" y="135" inRotation="1.249" inDistance="31.623" outRotation="-1.912" outDistance="21.929"/>
+<CubicDetachedVertex x="53" y="72" inRotation="2.059" inDistance="24.157" outRotation="0" outDistance="0"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="10:7"><StateMachineLayer name="Blink" id="10:8">
+<EntryState><StateTransition stateToId="10:12"/></EntryState>
+<AnimationState animationId="10:6" id="10:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="10:6">
+<KeyedObject objectId="10:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="10:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<Artboard width="185" height="200" name="ghost-peak" id="11:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="11:7" styleId="11:5">
+<LayoutComponentStyle name="Artboard Style" id="11:5"/>
+<Node x="-28" name="Boo Artwork" id="11:41">
+<Node name="Blinking eyes" id="11:40">
+<Shape x="94" y="94" name="Left eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="146" y="94" name="Right eye" >
+<Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="120" y="130" name="Speaking mouth" opacity="0.45">
+<Ellipse width="12" height="10" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:308" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Smile" opacity="1"><PointsPath isClosed="false"><StraightVertex x="108" y="124"/><CubicDetachedVertex x="120" y="132" inRotation="3.14" inDistance="6" outRotation="0" outDistance="6"/><StraightVertex x="132" y="124"/></PointsPath><Stroke thickness="5" cap="round" join="round"><SolidColor colorValue="FFFFFFFF" name="Color"></SolidColor></Stroke><DataBindContext sourcePathIds="0:300-0:307" propertyKey="18"/></Shape>
+<Shape x="77" y="118" name="Left cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="163" y="118" name="Right cheek" opacity="0.45">
+<Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
+<DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
+<Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
+<Shape x="91" y="43" name="Body highlight" >
+<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape name="Original ghost-peak">
+<PointsPath isClosed="true" isClockwise="true" name="Silhouette">
+<CubicDetachedVertex x="120" y="12" inRotation="2.356" inDistance="13.199" outRotation="0.785" outDistance="12.257"/>
+<CubicDetachedVertex x="158" y="32" inRotation="-2.869" inDistance="17.308" outRotation="0.386" outDistance="23.027"/>
+<CubicDetachedVertex x="198" y="83" inRotation="-1.778" inDistance="25.889" outRotation="1.32" outDistance="26.841"/>
+<CubicDetachedVertex x="187" y="159" inRotation="-1.055" inDistance="28.363" outRotation="2.182" outDistance="16.275"/>
+<CubicDetachedVertex x="157" y="166" inRotation="0.682" inDistance="13.744" outRotation="2.383" outDistance="17.448"/>
+<CubicDetachedVertex x="120" y="171" inRotation="0.625" inDistance="14.802" outRotation="2.565" outDistance="15.902"/>
+<CubicDetachedVertex x="83" y="166" inRotation="0.814" inDistance="16.506" outRotation="2.542" outDistance="15.348"/>
+<CubicDetachedVertex x="50" y="159" inRotation="0.96" inDistance="16.275" outRotation="-2.09" outDistance="26.874"/>
+<CubicDetachedVertex x="42" y="84" inRotation="1.862" inDistance="27.841" outRotation="-1.384" outDistance="25.104"/>
+<CubicDetachedVertex x="82" y="31" inRotation="2.69" inDistance="24.449" outRotation="-0.205" outDistance="16.344"/>
+</PointsPath>
+<Fill name="Gradient"><RadialGradient startX="82" startY="40" endX="195" endY="166" name="Color">
+<GradientStop position="0" colorValue="FFBCB5FF"><DataBindContext sourcePathIds="0:300-0:302" propertyKey="38"/></GradientStop>
+<GradientStop position=".52" colorValue="FF786BEA"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="38"/></GradientStop>
+<GradientStop position="1" colorValue="FF4A4190"><DataBindContext sourcePathIds="0:300-0:304" propertyKey="38"/></GradientStop>
+</RadialGradient></Fill></Shape>
+<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
+</Node>
+<Shape x="92" y="190" name="Ground shadow" >
+<Ellipse width="95" height="15" originX="0.5" originY="0.5"/>
+
+<Fill name="Fill"><SolidColor colorValue="24786BEA" name="Color"></SolidColor></Fill></Shape>
+<StateMachine name="BooMotion" id="11:7"><StateMachineLayer name="Blink" id="11:8">
+<EntryState><StateTransition stateToId="11:12"/></EntryState>
+<AnimationState animationId="11:6" id="11:12"/>
+</StateMachineLayer></StateMachine>
+<LinearAnimation name="Blink" duration="276" loopValue="loop" id="11:6">
+<KeyedObject objectId="11:40"><KeyedProperty propertyKey="17">
+<KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="254" interpolationType="linear"/>
+<KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
+<KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+<KeyedObject objectId="11:41"><KeyedProperty propertyKey="14">
+<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation></Artboard>
+<ViewModel name="BooColors" id="0:300" defaultInstanceId="0:301">
+<ViewModelPropertyColor name="light" id="0:302"/><ViewModelPropertyColor name="base" id="0:303"/><ViewModelPropertyColor name="dark" id="0:304"/>
+<ViewModelPropertyColor name="eyes" id="0:305"/><ViewModelPropertyColor name="cheek" id="0:306"/>
+<ViewModelPropertyNumber name="smileOpacity" id="0:307"/><ViewModelPropertyNumber name="talkOpacity" id="0:308"/><ViewModelPropertyNumber name="blushOpacity" id="0:309"/>
+<ViewModelInstance exports="true" name="Default" id="0:301">
+<ViewModelInstanceColor propertyValue="FFBCB5FF" viewModelPropertyId="0:302"/>
+<ViewModelInstanceColor propertyValue="FF786BEA" viewModelPropertyId="0:303"/>
+<ViewModelInstanceColor propertyValue="FF4A4190" viewModelPropertyId="0:304"/>
+<ViewModelInstanceColor propertyValue="FFFFFFFF" viewModelPropertyId="0:305"/>
+<ViewModelInstanceColor propertyValue="73F5A5D1" viewModelPropertyId="0:306"/>
+<ViewModelInstanceNumber propertyValue="1" viewModelPropertyId="0:307"/>
+<ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:308"/>
+<ViewModelInstanceNumber propertyValue=".45" viewModelPropertyId="0:309"/>
+</ViewModelInstance></ViewModel>
+</Rive>
