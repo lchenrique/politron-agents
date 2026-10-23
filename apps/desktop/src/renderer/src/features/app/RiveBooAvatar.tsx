@@ -33,7 +33,7 @@ function rgb(hex: string): [number, number, number] {
 }
 
 export const RiveBooAvatar = memo(function RiveBooAvatar({
-  shape, color, eyeColor, cheekColor, blushOpacity, headAccessory, faceAccessory,
+  shape, color, eyeColor, cheekColor, blushOpacity, headAccessory, faceAccessory, accessoryColors,
   bodyWidth, bodyHeight, eyeSize, eyeSpacing, mouthSize,
   speaking, expression, mood, showAura, showBlush, playing, visible, onReady,
 }: {
@@ -44,6 +44,7 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
   blushOpacity: number
   headAccessory: string
   faceAccessory: string
+  accessoryColors?: Record<string, string[]>
   speaking: boolean
   expression: PoliExpression
   mood: string
@@ -156,9 +157,9 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
           <svg viewBox="28 0 185 200" className="poli-avatar__rive-accessory" aria-hidden="true"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
             <BooHeadAccessory kind={headAccessory} shape={shape} bodyWidth={bodyWidth} bodyHeight={bodyHeight}
-              eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} />
+              eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} colors={accessoryColors} />
             <BooFaceAccessory kind={faceAccessory} shape={shape} bodyWidth={bodyWidth} bodyHeight={bodyHeight}
-              eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} />
+              eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} colors={accessoryColors} />
           </svg>
         )}
       </span>

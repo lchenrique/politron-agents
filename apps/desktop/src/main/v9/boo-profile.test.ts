@@ -10,6 +10,19 @@ const chief = {
 } as Agent
 
 describe('autoedição segura de perfil', () => {
+  it('aceita paletas seguras na autoedição sem modificar permissões', () => {
+    const result = buildSelfProfileUpdate(chief, {
+      pitsAccessoryColors: { cap: ['#AA3344', '#112233', '#fedeac'], glasses: ['#334455'] },
+    })
+    expect(result.pitsAccessoryColors).toMatchObject({
+      cap: ['#aa3344', '#112233', '#fedeac'], glasses: ['#334455'],
+    })
+    expect(result.canWrite).toBe(false)
+    for (const invalid of [{ cap: ['red'] }, { cap: Array(4).fill('#aabbcc') }, { __proto__: null, evil: ['#aabbcc'] }]) {
+      expect(() => buildSelfProfileUpdate(chief, { pitsAccessoryColors: invalid })).toThrow()
+    }
+  })
+
   it('permite acessórios recuperados do Boo Pet sem alterar as permissões do agente', () => {
     const next = buildSelfProfileUpdate(chief, {
       pitsHeadAccessory: 'party-hat',

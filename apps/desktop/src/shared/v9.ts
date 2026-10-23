@@ -1,3 +1,5 @@
+import type { BooAccessoryColors } from './boo-accessory-colors'
+
 export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'interrupted' | 'failed'
 /** Mesma paleta do Poli Studio (PoliCustomizer); usada também para sortear a cor de um Pit novo, criado pelo usuário ou pelo Chief. */
 export const PIT_COLOR_PALETTE = ['#786bea', '#4098eb', '#32b6a0', '#f0a05b', '#ef79ac', '#393f56', '#e05e70']
@@ -15,6 +17,8 @@ export interface Agent {
   pitsAccessory?: 'none' | 'antenna' | 'horns' | 'glasses' | 'cap'
   pitsHeadAccessory?: 'none' | 'antenna' | 'horns' | 'cap' | 'cap-flat' | 'cap-back' | 'beanie' | 'bucket' | 'top-hat' | 'witch-hat' | 'headphones' | 'crown' | 'party-hat' | 'chef-hat' | 'bow' | 'flower' | 'halo'
   pitsFaceAccessory?: 'none' | 'glasses' | 'round-glasses' | 'sunglasses' | 'heart-glasses' | 'star-glasses' | 'monocle' | 'mustache' | 'star-mask'
+  /** Cores por peça e acessório; continuam salvas ao alternar o item. */
+  pitsAccessoryColors?: BooAccessoryColors
   pitsCheekColor?: string; pitsEyeColor?: string; pitsAura?: boolean; pitsBlush?: boolean; pitsAnimate?: boolean
   pitsEyeSize?: number; pitsEyeSpacing?: number; pitsSpeed?: number; pitsAmplitude?: number
   pitsBodyWidth?: number; pitsBodyHeight?: number

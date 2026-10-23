@@ -9,6 +9,7 @@ export type BooAccessoryProps = {
   eyeSize?: number
   eyeSpacing?: number
   mouthSize?: number
+  colors?: Record<string, string[]>
 }
 
 const labels: Record<string, string> = {
@@ -26,13 +27,13 @@ const labels: Record<string, string> = {
 }
 
 /** Shared SVG artwork + body-shape anchoring, used unchanged over the Rive canvas. */
-function asLooks({ kind, shape = 'ghost-wave', bodyWidth = 1, bodyHeight = 1, eyeSize = 8, eyeSpacing = 26, mouthSize = 1 }: BooAccessoryProps, layer: 'head' | 'face') {
+function asLooks({ kind, shape = 'ghost-wave', bodyWidth = 1, bodyHeight = 1, eyeSize = 8, eyeSpacing = 26, mouthSize = 1, colors = {} }: BooAccessoryProps, layer: 'head' | 'face') {
   return {
     shape, width: bodyWidth, height: bodyHeight,
     eyeSize, eyeSpacing, mouthSize,
     head: layer === 'head' ? kind : 'none',
     face: layer === 'face' ? kind : 'none',
-    colors: {},
+    colors,
   }
 }
 

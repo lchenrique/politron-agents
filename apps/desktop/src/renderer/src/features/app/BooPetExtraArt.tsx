@@ -3,7 +3,7 @@ import { mix } from './boo-pet-color'
 
 type Palette = [label: string, color: string][]
 type Brush = { c: string[]; id: (key: string) => string; url: (key: string) => string }
-type Head = { label: string; colors: Palette; anchor: [number, number]; draw: (p: Brush) => ReactNode }
+type Head = { label: string; colors: Palette; anchor: [number, number]; lift?: number; draw: (p: Brush) => ReactNode }
 type Face = { x1: number; x2: number; y: number; r: number; mouthY: number; mouth: number }
 type FaceItem = { label: string; colors: Palette; draw: (p: Brush, face: Face) => ReactNode }
 
@@ -112,7 +112,7 @@ export const extraHeads: Record<string, Head> = {
     </>,
   },
   headphones: {
-    label: 'Fones de ouvido', colors: [['Arco', '#344961'], ['Conchas', '#75cbd8'], ['Detalhes', '#ecfaff']], anchor: [120, 83],
+    label: 'Fones de ouvido', colors: [['Arco', '#344961'], ['Conchas', '#75cbd8'], ['Detalhes', '#ecfaff']], anchor: [120, 83], lift: 7,
     draw: ({ c, id, url }) => <>
       <defs><Fabric id={id('band')} base={c[0]}/><Fabric id={id('cup')} base={c[1]}/></defs>
       <path d="M49 112 V76 C49 12 80 -8 120 -8 C160 -8 191 12 191 76 V112"

@@ -80,6 +80,15 @@ describe('Rive experimental: motion composite and state overlays', () => {
     expect(screen.getByTestId('rive')).toBeInTheDocument()
   })
 
+  it('colors the same head and face pieces in Rive without changing the native canvas', () => {
+    const { container } = render(<RiveBooAvatar {...props} headAccessory="cap"
+      faceAccessory="glasses"
+      accessoryColors={{ cap: ['#f01234', '#506070', '#fefefe'], glasses: ['#009977', '#aaccdd'] }} />)
+    expect(container.querySelector('.poli-avatar__rive-accessory')?.innerHTML).toContain('#f01234')
+    expect(container.querySelector('.poli-avatar__rive-accessory')?.innerHTML).toContain('#009977')
+    expect(screen.getByTestId('rive')).toBeInTheDocument()
+  })
+
   it('does not show a smile behind the speaking mouth', () => {
     render(<RiveBooAvatar {...props} expression="idle" speaking />)
     expect(state.number).toHaveBeenCalledWith('smileOpacity', 0)

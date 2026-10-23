@@ -226,15 +226,15 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
               </g>
             </g>
             {/* Accessory geometry is anchored to the unscaled head, as in Boo Pet. */}
-            <BooHeadAccessory kind={headAccessory} shape={shape} bodyWidth={bodyWidth} bodyHeight={bodyHeight} eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} />
-            <BooFaceAccessory kind={faceAccessory} shape={shape} bodyWidth={bodyWidth} bodyHeight={bodyHeight} eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} />
+            <BooHeadAccessory kind={headAccessory} shape={shape} bodyWidth={bodyWidth} bodyHeight={bodyHeight} eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} colors={agent.pitsAccessoryColors} />
+            <BooFaceAccessory kind={faceAccessory} shape={shape} bodyWidth={bodyWidth} bodyHeight={bodyHeight} eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} colors={agent.pitsAccessoryColors} />
           </g>
         </g>
       </svg>
       {riveEligible && <Suspense fallback={null}>
         <RiveBooAvatar shape={shape} color={color} eyeColor={eyeColor}
           cheekColor={cheek} blushOpacity={blushOpacity}
-          headAccessory={headAccessory} faceAccessory={faceAccessory}
+          headAccessory={headAccessory} faceAccessory={faceAccessory} accessoryColors={agent.pitsAccessoryColors}
           bodyWidth={bodyWidth} bodyHeight={bodyHeight} eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize}
           speaking={state === 'speaking'} expression={face} mood={mood} showAura={showAura} showBlush={showBlush} visible={riveVisible}
           playing={animate && riveVisible} onReady={setRiveReady} />

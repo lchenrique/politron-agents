@@ -718,6 +718,7 @@ export class AppService extends EventEmitter {
         pitsAccessory: { type: 'string', enum: ['none', 'antenna', 'horns', 'glasses', 'cap'] },
         pitsHeadAccessory: { type: 'string', enum: ['none', 'antenna', 'horns', 'cap', 'cap-flat', 'cap-back', 'beanie', 'bucket', 'top-hat', 'witch-hat', 'headphones', 'crown', 'party-hat', 'chef-hat', 'bow', 'flower', 'halo'] },
         pitsFaceAccessory: { type: 'string', enum: ['none', 'glasses', 'round-glasses', 'sunglasses', 'heart-glasses', 'star-glasses', 'monocle', 'mustache', 'star-mask'] },
+        pitsAccessoryColors: { type: 'object', description: 'Paletas personalizadas por acessório: IDs dos itens mapeados para listas de até 3 cores #RRGGBB.' },
         pitsEyeColor: { type: 'string' }, pitsCheekColor: { type: 'string' },
         pitsEyeSize: { type: 'number' }, pitsEyeSpacing: { type: 'number' },
         pitsBodyWidth: { type: 'number' }, pitsBodyHeight: { type: 'number' },

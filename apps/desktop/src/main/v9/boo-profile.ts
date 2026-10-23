@@ -1,8 +1,9 @@
 import type { Agent } from '../../shared/v9'
+import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 
 /** Whitelist estrita: perfil e aparência não podem escalar permissões ou alterar o runtime. */
 export const SELF_PROFILE_FIELDS = [
-  'name', 'description', 'instructions', 'color', 'pitsShape', 'pitsAccessory', 'pitsHeadAccessory', 'pitsFaceAccessory',
+  'name', 'description', 'instructions', 'color', 'pitsShape', 'pitsAccessory', 'pitsHeadAccessory', 'pitsFaceAccessory', 'pitsAccessoryColors',
   'pitsEyeColor', 'pitsCheekColor', 'pitsEyeSize', 'pitsEyeSpacing',
   'pitsBlush', 'pitsAura', 'pitsAnimate', 'pitsSpeed', 'pitsAmplitude', 'pitsBodyWidth', 'pitsBodyHeight', 'pitsMouthSize', 'pitsBlushStrength',
 ] as const
@@ -36,6 +37,8 @@ export function buildSelfProfileUpdate(current: Agent, supplied: Record<string, 
     } else if (key === 'pitsShape') {
       if (typeof value !== 'string' || !shapes.includes(value as typeof shapes[number])) throw new Error('Formato do Boo inválido.')
       update[key] = value
+    } else if (key === 'pitsAccessoryColors') {
+      update[key] = validateBooAccessoryColors(value)
     } else if (key === 'pitsHeadAccessory') {
       if (typeof value !== 'string' || !heads.includes(value as typeof heads[number])) throw new Error('Acessório de cabeça inválido.')
       update[key] = value

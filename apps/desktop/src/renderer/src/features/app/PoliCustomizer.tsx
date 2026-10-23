@@ -4,6 +4,7 @@ import { Slider } from '@/components/ui/slider'
 import { PIT_COLOR_PALETTE, type Agent } from '../../../../shared/v9'
 import { PoliAvatar, type PoliExpression } from './PoliAvatar'
 import { BOO_BODY_PATHS, BOO_SHAPE_PRESETS, DEFAULT_BOO_APPEARANCE } from './boo-appearance'
+import { BooAccessoryColorEditor } from './BooAccessoryColorEditor'
 
 type Tab = 'appearance' | 'animation' | 'states'
 // Mesma paleta usada para sortear a cor de um Pit novo (ver randomPitColor em shared/v9.ts).
@@ -26,6 +27,8 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
   const [tab, setTab] = useState<Tab>('appearance')
   const [expression, setExpression] = useState<PoliExpression>('idle')
   const [background, setBackground] = useState<'light' | 'dark' | 'grid'>('light')
+  const selectedHead = agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')
+  const selectedFace = agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')
   return <div className="overflow-hidden rounded-xl border border-border/70" aria-label="Boo Studio — editor do mascote">
     <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
       <div><h3 className="text-sm font-semibold">Boo Studio</h3><p className="text-[11px] text-muted-foreground">Personalize o seu agente em tempo real</p></div>
@@ -86,6 +89,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
                     className={['rounded-md border px-1 py-2 text-[11px]', (agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')) === value ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'].join(' ')}>{label}</button>
                 ))}
               </div>
+              <BooAccessoryColorEditor layer="head" accessory={selectedHead} colors={agent.pitsAccessoryColors} onChange={onChange} />
               <p className="text-xs font-medium">Rosto</p>
               <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Acessórios de rosto">
                 {([['none','Nenhum'],['glasses','Óculos'],['round-glasses','Redondos'],['sunglasses','Escuros'],['heart-glasses','Coração'],['star-glasses','Estrela'],['monocle','Monóculo'],['mustache','Bigode'],['star-mask','Máscara']] as const).map(([value,label]) => (
@@ -94,6 +98,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
                     className={['rounded-md border px-1 py-2 text-[11px]', (agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')) === value ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'].join(' ')}>{label}</button>
                 ))}
               </div>
+              <BooAccessoryColorEditor layer="face" accessory={selectedFace} colors={agent.pitsAccessoryColors} onChange={onChange} />
             </div>
             <div className="space-y-3 border-t border-border/60 pt-3"><Toggle label="Bochechas rosadas" checked={agent.pitsBlush!==false} onChange={value => onChange({pitsBlush:value})}/>{agent.pitsBlush!==false && <label className="flex items-center justify-between text-xs">Cor das bochechas<input type="color" aria-label="Cor das bochechas" value={agent.pitsCheekColor || '#f5a5d1'} onChange={event => onChange({pitsCheekColor:event.target.value})} /></label>}{agent.pitsBlush !== false && <Range label="Intensidade do rosado" value={Math.round((agent.pitsBlushStrength ?? .45) * 100)} min={0} max={100} step={5} unit="%" onChange={value => onChange({ pitsBlushStrength: value / 100 })} />}<Toggle label="Aura colorida" checked={agent.pitsAura!==false} onChange={value => onChange({pitsAura:value})}/></div>
           </>}

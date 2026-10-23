@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Run, type Snapshot, type Workspace } from '../../shared/v9'
+import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 
 export const SCHEMA_VERSION = 9
 export const ASSISTANT: Agent = {
@@ -340,6 +341,7 @@ export class WorkspaceStore {
       pitsAccessory: ['none', 'antenna', 'horns', 'glasses', 'cap'].includes(input.pitsAccessory || '') ? input.pitsAccessory : previous?.pitsAccessory || 'none',
       pitsHeadAccessory: ['none', 'antenna', 'horns', 'cap', 'cap-flat', 'cap-back', 'beanie', 'bucket', 'top-hat', 'witch-hat', 'headphones', 'crown', 'party-hat', 'chef-hat', 'bow', 'flower', 'halo'].includes(input.pitsHeadAccessory || '') ? input.pitsHeadAccessory : previous?.pitsHeadAccessory ?? ((input.pitsAccessory || previous?.pitsAccessory) === 'glasses' ? 'none' : (input.pitsAccessory || previous?.pitsAccessory || 'none')) as Agent['pitsHeadAccessory'],
       pitsFaceAccessory: ['none', 'glasses', 'round-glasses', 'sunglasses', 'heart-glasses', 'star-glasses', 'monocle', 'mustache', 'star-mask'].includes(input.pitsFaceAccessory || '') ? input.pitsFaceAccessory : previous?.pitsFaceAccessory ?? ((input.pitsAccessory || previous?.pitsAccessory) === 'glasses' ? 'glasses' : 'none'),
+      pitsAccessoryColors: input.pitsAccessoryColors === undefined ? previous?.pitsAccessoryColors : validateBooAccessoryColors(input.pitsAccessoryColors),
       pitsEyeColor: /^#[\da-f]{6}$/i.test(input.pitsEyeColor || '') ? input.pitsEyeColor : previous?.pitsEyeColor || '#ffffff',
       pitsCheekColor: /^#[\da-f]{6}$/i.test(input.pitsCheekColor || '') ? input.pitsCheekColor : previous?.pitsCheekColor || '#f5a5d1',
       pitsEyeSize: typeof input.pitsEyeSize === 'number' && Number.isFinite(input.pitsEyeSize) ? Math.max(4, Math.min(15, input.pitsEyeSize)) : previous?.pitsEyeSize ?? 8,

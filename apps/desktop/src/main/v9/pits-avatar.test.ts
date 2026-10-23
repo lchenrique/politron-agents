@@ -67,3 +67,27 @@ describe('cor sorteada para um Pit novo', () => {
     store.db.close()
   })
 })
+
+
+describe('paletas personalizadas por Boo', () => {
+  it('persiste as cores no banco, preserva as demais ao editar e permite restauração', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'politron-acc-colors-'))
+    dirs.push(dir)
+    const store = new WorkspaceStore(dir)
+    const agent = store.saveAgent({ name: 'Cora', alias: 'cora', instructions: 'Ajudar.', pitsHeadAccessory: 'cap',
+      pitsAccessoryColors: { cap: ['#AA2211', '#334455', '#ffeeaa'], headphones: ['#22aabb', '#336699', '#eeeeee'] } })
+    expect(agent.pitsAccessoryColors?.cap[0]).toBe('#aa2211')
+    store.saveAgent({ id: agent.id, name: 'Cora', instructions: 'Ajudar.', pitsFaceAccessory: 'glasses' })
+    expect(store.agent(agent.id).pitsAccessoryColors?.headphones?.[0]).toBe('#22aabb')
+    store.db.close()
+    const reopened = new WorkspaceStore(dir)
+    expect(reopened.agent(agent.id).pitsAccessoryColors).toMatchObject({
+      cap: ['#aa2211', '#334455', '#ffeeaa'],
+      headphones: ['#22aabb', '#336699', '#eeeeee'],
+    })
+    reopened.saveAgent({ ...reopened.agent(agent.id), pitsAccessoryColors: { headphones: ['#22aabb', '#336699', '#eeeeee'] } })
+    expect(reopened.agent(agent.id).pitsAccessoryColors?.cap).toBeUndefined()
+    expect(() => reopened.saveAgent({ ...reopened.agent(agent.id), pitsAccessoryColors: { cap: ['invalid'] } })).toThrow()
+    reopened.db.close()
+  })
+})

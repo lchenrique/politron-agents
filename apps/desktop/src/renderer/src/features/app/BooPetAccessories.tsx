@@ -35,7 +35,7 @@ function heart(cx: number, cy: number, s: number): string {
 const Gloss = ({d, width = 4}: {d: string; width?: number}) => <path d={d} fill="none" stroke="#fff" strokeOpacity=".5" strokeWidth={width} strokeLinecap="round"/>
 
 /** Chapéus: `anchor` é o ponto onde o item apoia na cabeça do Boo "Bolinha". */
-type Head = {label: string; colors: Colors; anchor: [number, number]; draw: (p: Paint) => ReactNode}
+type Head = {label: string; colors: Colors; anchor: [number, number]; lift?: number; draw: (p: Paint) => ReactNode}
 const HEADS: Record<string, Head> = {
  ...extraHeads,
  'cap': {label: 'Boné', colors: [['Copa', '#4a90e2'], ['Aba', '#2c6cb8'], ['Detalhes', '#ffd166']], anchor: [120, 58], draw: ({c, id, url}) => <>
@@ -67,7 +67,7 @@ const HEADS: Record<string, Head> = {
   <rect x="54" y="38" width="132" height="13" rx="6.5" fill={url('d')} stroke={edge(c[0])} strokeWidth="2"/>
   <Gloss d="M64 42 H96" width={3}/>
  </>},
- 'witch-hat': {label: 'Bruxa', colors: [['Chapéu', '#6b46c1'], ['Faixa', '#2d1f4f'], ['Fivela', '#f5c542']], anchor: [120, 54], draw: ({c, id, url}) => <>
+ 'witch-hat': {label: 'Bruxa', colors: [['Chapéu', '#6b46c1'], ['Faixa', '#2d1f4f'], ['Fivela', '#f5c542']], anchor: [120, 54], lift: 8, draw: ({c, id, url}) => <>
   <defs><Shade id={id('d')} color={c[0]}/><clipPath id={id('clip')}><path d="M72 46 Q96 18 106 -14 Q114 -42 140 -56 Q158 -62 162 -48 Q146 -50 138 -36 Q130 -12 138 12 Q144 30 168 46 Z"/></clipPath></defs>
   <path d="M72 46 Q96 18 106 -14 Q114 -42 140 -56 Q158 -62 162 -48 Q146 -50 138 -36 Q130 -12 138 12 Q144 30 168 46 Z" fill={url('d')} stroke={edge(c[0])} strokeWidth="2"/>
   <Gloss d="M98 20 Q106 -6 114 -30"/>
@@ -203,5 +203,5 @@ export function ImportedBooPetAccessory({looks, layer}: {looks: Looks; layer: 'h
  // Mesma altura relativa da cabeça em qualquer formato: onde o corpo tem a mesma fração da largura máxima.
  const y = shapeLineAt(looks.shape, refWidth / REF.width)
  const scale = clamp(shapeWidthAt(looks.shape, y) * looks.width / refWidth, .7, 1.45)
- return <g aria-label={head.label} transform={`translate(${120 + (ax - 120) * scale} ${bodyY(y, looks)}) scale(${scale}) translate(${-ax} ${-ay})`}>{head.draw(paint)}</g>
+ return <g aria-label={head.label} transform={`translate(${120 + (ax - 120) * scale} ${bodyY(y, looks) - (head.lift || 0) * looks.height}) scale(${scale}) translate(${-ax} ${-ay})`}>{head.draw(paint)}</g>
 }
