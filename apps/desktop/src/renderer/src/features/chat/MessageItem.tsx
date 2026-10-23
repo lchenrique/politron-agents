@@ -1,15 +1,13 @@
 import { memo, useState } from 'react'
 import { Volume2, LoaderCircle, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
 import { RunProgress } from './RunProgress'
 import { speakVoice, stopVoice } from '../voice/voice-player'
 import { Message as ChatMessage, MessageContent, MessageHeader } from '@/components/ui/message'
 import { Trace, TraceLine, TraceTitle } from '@/components/ui/trace'
-import { CodeBlock } from '@/components/ai/code-block'
+import { MessageMarkdown } from './MessageMarkdown'
 import { MessageBubble as PastaMessageBubble } from '@/components/ai/message-bubble'
 
 export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice }: {
@@ -45,17 +43,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
       </MessageHeader>}
       {!human && message.role === 'assistant' && <RunProgress status={message.status} agentName={agent?.name || message.author} />}
       {human ? <><PastaMessageBubble from="user" status={message.status === 'failed' ? 'failed' : message.status === 'queued' || message.status === 'running' ? 'sending' : 'sent'} className="whitespace-pre-wrap">{message.text}</PastaMessageBubble>{message.status === 'failed' && <span className="text-xs text-destructive">Falha no envio da instrução.</span>}</>
-        : <div className="prose prose-sm dark:prose-invert max-w-none break-words text-[14px] leading-6 prose-p:my-2 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
-            pre({ children }) { return <>{children}</> },
-            code({ className, children, ...props }) {
-            const match = /language-(\w+)/.exec(className || '')
-            const raw = String(children)
-            const code = raw.replace(/\n$/, '')
-            if (match || raw.endsWith('\n')) return <CodeBlock code={code} language={match?.[1]} />
-            return <code className={className} {...props}>{children}</code>
-          } }}>{message.text || (message.status === 'running' ? ' ' : '')}</ReactMarkdown>
-        </div>}
+        : <MessageMarkdown>{message.text || (message.status === 'running' ? ' ' : '')}</MessageMarkdown>}
     </MessageContent>
   </ChatMessage>
 }, (previous, next) => previous.message.id === next.message.id

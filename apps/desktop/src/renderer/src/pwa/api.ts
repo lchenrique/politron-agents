@@ -1,3 +1,5 @@
+import type { RunStatus } from '../../../shared/v9'
+
 export type RemoteBoo = {
   id: string; name: string; alias?: string; color: string
   pitsShape?: string; pitsHeadAccessory?: string; pitsFaceAccessory?: string
@@ -11,7 +13,7 @@ export type RemoteConversation = { id: string; workspaceId: string; name: string
 export type RemoteRun = { id: string; conversationId?: string; workspaceId?: string; agentId?: string; status: string; input?: string }
 export type RemoteApproval = { id: string; kind: string; runId?: string; status: string; details?: { action?: string; path?: string } }
 export type RemoteSnapshot = { agents: RemoteBoo[]; workspaces: RemoteWorkspace[]; conversations: RemoteConversation[]; runs: RemoteRun[]; approvals: RemoteApproval[] }
-export type RemoteMessage = { id: string; role: string; text: string; author?: string; agentId?: string; createdAt?: string; status?: string }
+export type RemoteMessage = { id: string; role: string; text: string; author?: string; agentId?: string; createdAt?: string; status?: RunStatus }
 export type RemoteStatus = { paired: boolean; host?: { id: string; name: string }; capabilities?: string[]; readOnly?: boolean }
 
 export async function request<T = unknown>(path: string, body?: object): Promise<T> {

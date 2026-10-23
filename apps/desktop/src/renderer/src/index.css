@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 html.floating-mascot-document, body.floating-mascot-document, body.floating-mascot-document #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent !important; }
 .floating-mascot-drag { -webkit-app-region: drag; }
@@ -1650,3 +1651,22 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   background-color: color-mix(in srgb, var(--background) 88%, var(--foreground) 12%);
   border: 1px solid color-mix(in srgb, var(--background) 78%, var(--foreground) 22%);
 }
+
+/* A tipografia do chat segue o tema ativo, inclusive nos temas coloridos. */
+.boobot-markdown {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-links: var(--foreground);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-quotes: var(--muted-foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
+.boobot-markdown :not(pre) > code::before,
+.boobot-markdown :not(pre) > code::after { content: none; }

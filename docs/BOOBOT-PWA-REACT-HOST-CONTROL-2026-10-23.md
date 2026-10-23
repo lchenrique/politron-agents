@@ -15,6 +15,9 @@ O repositório MIT https://github.com/stablyai/orca foi revisado, especificament
 - Logo original e barra superior similar à do Electron
 - Sidebar com projetos, conversas e avatares `PoliAvatar` **reais**, respeitando a forma, cor e acessórios (incluindo personalização de paletas)
 - Conversa com avatar do agente, mensagens, histórico e composer
+- Chat com `Message`, `MessageContent`, `MessageHeader`, `MessageBubble` e `PromptInput` já instalados; carregamento da conversa com `AITextLoading` da Kokonut UI, sem etapas fictícias.
+- `MessageMarkdown` compartilhado entre o chat desktop e a PWA: Markdown GFM, títulos, listas, tabelas com rolagem própria, links externos protegidos e `CodeBlock` da Pasta UI com cópia de código. A tipografia usa o plugin instalado e as cores do tema ativo.
+- A PWA omite controles de modelo e anexos que o gateway não oferece. O composer mantém bloqueio por permissão do dispositivo, envio por Enter, composição IME, texto restaurado após falha e parada da execução.
 - Desktop web com sidebar, chat central e inspector lateral
 - Mobile com sidebar e inspector recolhíveis, chat como conteúdo principal
 - Estado sincronizado por polling (3 s para mensagens; 7 s para snapshot), evitando manter processos dos agentes no navegador
@@ -43,11 +46,20 @@ O componente compartilhado `ReactColorField.tsx` usa o `ChromePicker` da bibliot
 - `npm run typecheck`
 - `npx vitest run src/main/pwa/gateway.test.ts src/main/hosts/pwa-policy.test.ts`
 - `npx vitest run src/renderer/src/components/ui/ReactColorField.test.tsx src/renderer/src/features/app/BooAccessoryColors.test.tsx`
-- `node scripts/verify-pwa-web.cjs`: dados fictícios, Boos reais com acessórios, mobile + desktop, chat bloqueado por padrão e envio permitido após grant, arquivos/diff, console sem erros e layout sem rolagem horizontal
+- `npx vitest run src/renderer/src/features/chat/MessageMarkdown.test.tsx src/renderer/src/components/ai/prompt-input.test.tsx src/renderer/src/features/chat/MessageList.test.tsx src/renderer/src/features/composer/Composer.test.tsx`
+- `node scripts/verify-pwa-web.cjs`: dados fictícios, Boos reais com acessórios, mobile + desktop, chat bloqueado por padrão e envio permitido após grant, arquivos/diff, hierarquia visual do Markdown, tabela e código longos sem rolagem horizontal da página, cópia real para a área de transferência e console sem erros
 - `npm run build`
-- `node scripts/verify-pwa-electron.cjs`: Electron com banco isolado, autenticação, snapshot do host, método proibido, revogação
+- `node scripts/verify-pwa-electron.cjs`: Electron com banco isolado, Markdown visível no chat desktop, autenticação, snapshot do host, método proibido, revogação
 
 O HTML/CSS/JS estáticos antigos foram removidos para evitar dois estilos de UI. O service worker armazena **somente** arquivos estáticos da aplicação, nunca conversas, diff, cookies ou dados de agentes.
+
+### Resultado da revisão dos componentes em 23/10/2026
+
+- 37 testes passaram: 28 dos componentes de chat/composer e 9 do gateway/política de host. Typecheck, ESLint dos arquivos TS/TSX alterados e `npm run build` terminaram com código 0. O build mantém avisos de tamanho dos chunks e de bibliotecas de UI; esta rodada não mede desempenho.
+- O smoke web passou com dois Boos, viewport mobile de 390 px, nenhum transbordamento horizontal da página, nenhum erro de página/rede, envio e parada pelo gateway e cópia real do código para a área de transferência. A tipografia computada confirmou título de 20 px, texto de 14 px e lista com marcador `disc`.
+- O smoke do Electron compilado passou com perfil e banco temporários: título e `CodeBlock` renderizados no chat desktop, pareamento real com o gateway, snapshot com um workspace, método proibido recusado com 403 e sessão revogada recusada com 401. Nenhum erro no renderer. A mensagem de Markdown foi inserida apenas no banco temporário; nenhum modelo foi executado.
+- Capturas locais: `%TEMP%/boobot-pwa-desktop.png`, `%TEMP%/boobot-pwa-mobile-chat.png` e `%TEMP%/boobot-pwa-electron-PaIBMn/desktop-markdown.png`. Log final do Electron: `%TEMP%/boobot-pwa-electron-final-20261023.log`; build: `%TEMP%/boobot-pwa-component-build-final-20261023.log`.
+- A suíte global e os testes de React Color listados acima não foram repetidos nesta revisão. Não houve publicação, instalação ou teste em celular físico/tailnet.
 
 ## Acesso no celular fora do PC
 

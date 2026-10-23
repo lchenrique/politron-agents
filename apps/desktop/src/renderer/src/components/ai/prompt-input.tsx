@@ -37,6 +37,8 @@ interface PromptInputProps extends Omit<React.ComponentProps<'form'>, 'onSubmit'
   mentionActiveId?: string
   mentionOpen?: boolean
   showModelPicker?: boolean
+  showAttachments?: boolean
+  textareaLabel?: string
   accept?: string
   pending?: boolean
   placeholder?: string
@@ -62,6 +64,8 @@ function PromptInput({
   mentionActiveId,
   mentionOpen = false,
   showModelPicker = true,
+  showAttachments = true,
+  textareaLabel = 'Message',
   accept,
   value: valueProp,
   model,
@@ -133,7 +137,7 @@ function PromptInput({
       }}
       {...props}
     >
-      <input
+      {showAttachments && <input
         ref={fileInputRef}
         type="file"
         multiple
@@ -145,7 +149,7 @@ function PromptInput({
           updateFiles(next)
           event.target.value = ''
         }}
-      />
+      />}
       {(files.length > 0 || selectedTool) && (
         <div className="flex flex-wrap gap-2 px-2 py-1">
           {selectedTool && (
@@ -186,7 +190,7 @@ function PromptInput({
           if (typeof forwardedTextareaRef === 'function') forwardedTextareaRef(element)
           else if (forwardedTextareaRef) forwardedTextareaRef.current = element
         }}
-        aria-label="Message"
+        aria-label={textareaLabel}
         role={mentionOpen ? 'combobox' : undefined}
         aria-autocomplete={mentionOpen ? 'list' : undefined}
         aria-expanded={mentionOpen ? true : undefined}
@@ -201,14 +205,14 @@ function PromptInput({
         onClick={event => onCaretChange?.(event.currentTarget.value, event.currentTarget.selectionStart)}
         onKeyUp={event => onCaretChange?.(event.currentTarget.value, event.currentTarget.selectionStart)}
         onPaste={(event) => {
-          if (event.clipboardData.files.length) {
+          if (showAttachments && event.clipboardData.files.length) {
             const next = [...files, ...Array.from(event.clipboardData.files)]
             updateFiles(next)
           }
         }}
         onDrop={(event) => {
           event.preventDefault()
-          if (event.dataTransfer.files.length) {
+          if (showAttachments && event.dataTransfer.files.length) {
             const next = [...files, ...Array.from(event.dataTransfer.files)]
             updateFiles(next)
           }
@@ -229,7 +233,7 @@ function PromptInput({
       {suggestions}
       <div className="flex items-center justify-between gap-2 pt-2">
         <div className="flex min-w-0 items-center gap-1">
-          <Button type="button" variant="ghost" size="icon" aria-label="Anexar arquivos" title="Anexar arquivos" onClick={() => { if (onExtraAction) onExtraAction(); else fileInputRef.current?.click() }}><span aria-hidden="true">＋</span></Button>
+          {showAttachments && <Button type="button" variant="ghost" size="icon" aria-label="Anexar arquivos" title="Anexar arquivos" onClick={() => { if (onExtraAction) onExtraAction(); else fileInputRef.current?.click() }}><span aria-hidden="true">＋</span></Button>}
           {showModelPicker && <PromptToolsMenu
             onSelect={(tool) => {
               if (tool === 'files') fileInputRef.current?.click()

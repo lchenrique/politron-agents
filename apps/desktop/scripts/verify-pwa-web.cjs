@@ -34,11 +34,17 @@ async function main(){
       calls.push([method,args])
       if(method==='v9:snapshot')return snapshot
       if(method==='v9:historyPage')return {messages:[{id:'m1',conversationId:'c1',agentId:'boo1',
-        author:'Boo de QA',role:'assistant',text:'Mensagem do host de teste.',createdAt:new Date().toISOString()}],hasMore:false}
+        author:'Boo de QA',role:'assistant',status:'completed',text:[
+          'Mensagem do host de teste.', '', '## Plano do projeto', '', '**Interface compartilhada** com `TypeScript`.', '',
+          '- Preservar os Boos', '- Reutilizar os componentes', '',
+          '| Recurso | Estado |', '| --- | --- |', '| Chat | Pronto |', '| Arquivo | ' + 'arquivo-'.repeat(30) + ' |', '',
+          '```typescript', 'const marca = "Boobot";', '// ' + 'linha-longa-'.repeat(28), '```', '',
+          '[Documentação](https://example.com/boobot)',
+        ].join('\n'),createdAt:new Date().toISOString()}],hasMore:false}
       if(method==='v9:workspaceDiff')return 'diff --git a/test.txt b/test.txt'
       if(method==='v9:listProjectFiles')return [{name:'src',path:'src',directory:true}]
-      if(method==='v9:send')return undefined
-      if(method==='v9:stop')return undefined
+      if(method==='v9:send'){snapshot.runs=[{id:'run1',workspaceId:'ws1',conversationId:'c1',agentId:'boo1',status:'running'}];return undefined}
+      if(method==='v9:stop'){snapshot.runs=[];return undefined}
       throw Error('Unsupported method '+method)
     }
   })
@@ -63,6 +69,19 @@ async function main(){
   await page.getByRole('button',{name:'Abrir menu'}).click()
   await page.getByRole('button',{name:/Conversa de teste/}).first().click()
   await page.getByText('Mensagem do host de teste.').waitFor()
+  await page.getByRole('heading',{name:'Plano do projeto',level:2}).waitFor({timeout:5000})
+  const typography=await page.evaluate(()=>({
+    heading:parseFloat(getComputedStyle(document.querySelector('.boobot-pwa-messages h2')).fontSize),
+    paragraph:parseFloat(getComputedStyle(document.querySelector('.boobot-pwa-messages p')).fontSize),
+    list:getComputedStyle(document.querySelector('.boobot-pwa-messages ul')).listStyleType,
+  }))
+  assert.ok(typography.heading>typography.paragraph,'Markdown headings must have visual hierarchy')
+  assert.equal(typography.list,'disc','Markdown list markers must be visible')
+  assert.equal(await page.locator('[data-slot="agent-code-block"]').count(),1)
+  assert.equal(await page.getByRole('table').count(),1)
+  assert.equal(await page.getByRole('link',{name:'Documentação'}).getAttribute('rel'),'noopener noreferrer')
+  assert.equal(await page.locator('[data-slot="prompt-input"]').count(),1)
+  assert.equal(await page.getByRole('button',{name:'Anexar arquivos'}).count(),0)
   const svgAvatars=await page.locator('.poli-avatar svg path').count()
   assert.ok(svgAvatars>=1,'PWA does not reuse PoliAvatar SVG')
   assert.ok(await page.getByRole('button',{name:'Enviar mensagem'}).isDisabled(),'Chat must default disabled')
@@ -74,6 +93,11 @@ async function main(){
   await page.getByRole('button',{name:'Enviar mensagem'}).click()
   await page.getByText(/Mensagem enviada ao host/).waitFor()
   assert.ok(calls.find(([method,args])=>method==='v9:send' && args[0]==='c1' && args[1]==='Teste remoto de mensagem'))
+  await page.getByRole('button',{name:'Parar agente'}).click()
+  await page.getByText('Solicitação de parada enviada ao host.').waitFor()
+  assert.ok(calls.find(([method,args])=>method==='v9:stop' && args[0]==='c1'))
+  await page.getByRole('button',{name:'Fechar alerta'}).click()
+  await page.screenshot({path:path.join(os.tmpdir(),'boobot-pwa-mobile-chat.png')})
   await page.getByRole('button',{name:'Abrir detalhes do projeto'}).click()
   await page.getByRole('button',{name:'Diff'}).click()
   await page.getByText('diff --git a/test.txt b/test.txt').waitFor()
@@ -91,10 +115,15 @@ async function main(){
   await desktop.getByRole('button',{name:/Projeto Fictício/}).click()
   await desktop.getByRole('button',{name:/Conversa de teste/}).first().click()
   await desktop.getByText('Mensagem do host de teste.').waitFor()
+  await desktop.getByRole('heading',{name:'Plano do projeto',level:2}).waitFor()
+  await desktop.context().grantPermissions(['clipboard-read','clipboard-write'],{origin:base})
+  await desktop.getByRole('button',{name:'Copiar código'}).click()
+  assert.equal((await desktop.evaluate(()=>navigator.clipboard.readText())).replace(/\r\n/g,'\n'),'const marca = "Boobot";\n// ' + 'linha-longa-'.repeat(28))
+  assert.equal(await desktop.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)
   await desktop.screenshot({path:path.join(os.tmpdir(),'boobot-pwa-desktop.png'),fullPage:true})
   assert.deepEqual(errors,[])
   assert.deepEqual(network.filter(([status])=>status!==403),[])
   console.log(JSON.stringify({result:'PASS',gatewayPort:port,mobile,boos:2,chat:true,errors,network,
-    screenshots:['boobot-pwa-mobile-pair.png','boobot-pwa-mobile-paired.png','boobot-pwa-desktop.png']},null,2))
+    typography,screenshots:['boobot-pwa-mobile-pair.png','boobot-pwa-mobile-chat.png','boobot-pwa-mobile-paired.png','boobot-pwa-desktop.png']},null,2))
 }
 main().catch(err=>{console.error(err);process.exitCode=1}).finally(async()=>{if(browser)await browser.close();if(gateway)await gateway.close()})

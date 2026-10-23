@@ -1,10 +1,18 @@
 /* eslint-disable react-refresh/only-export-components -- PWA single entrypoint. */
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AlertCircle, ArrowRight, Check, ChevronRight, CodeXml, FileCode, FileDiff, Folder, GitBranch, LayoutPanelLeft,
-  LoaderCircle, Menu, MessageCircle, PanelRight, RefreshCcw, Send, ShieldCheck, Square, Wifi, WifiOff, X } from 'lucide-react'
+  LoaderCircle, Menu, MessageCircle, PanelRight, RefreshCcw, ShieldCheck, Square, Wifi, WifiOff, X } from 'lucide-react'
 import type { Agent } from '../../../shared/v9'
 import { PoliAvatar } from '../features/app/PoliAvatar'
+import { MessageMarkdown } from '../features/chat/MessageMarkdown'
+import { RunProgress } from '../features/chat/RunProgress'
+import { Message, MessageContent, MessageHeader } from '@/components/ui/message'
+import { Trace, TraceLine, TraceTitle } from '@/components/ui/trace'
+import { MessageBubble } from '@/components/ai/message-bubble'
+import { PromptInput } from '@/components/ai/prompt-input'
+import { Button } from '@/components/ui/button'
+import AITextLoading from '@/components/kokonutui/ai-text-loading'
 import { request, rpc, type RemoteBoo, type RemoteConversation, type RemoteMessage, type RemoteSnapshot, type RemoteStatus } from './api'
 import logo from '../../public/boobot-mascot.svg?url'
 import '../index.css'
@@ -30,6 +38,7 @@ function Pwa() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<RemoteMessage[]>([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
   const [pairCode, setPairCode] = useState('')
   const [pairError, setPairError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -78,11 +87,13 @@ function Pwa() {
   useEffect(() => {
     if (!conversationId || !status?.paired) return
     let cancelled = false
+    setMessagesLoading(true)
     const fetchMessages = async () => {
       try {
         const page = await rpc<{ messages: RemoteMessage[] }>('v9:historyPage', conversationId, null, 100)
         if (!cancelled) setMessages(page.messages || [])
       } catch (error) { if (!cancelled) setNotice(getError(error)) }
+      finally { if (!cancelled) setMessagesLoading(false) }
     }
     void fetchMessages()
     const id = window.setInterval(() => { if (!document.hidden) void fetchMessages() }, 3000)
@@ -104,9 +115,8 @@ function Pwa() {
     } catch (error) { setPairError(getError(error)) }
     finally { setBusy(false) }
   }
-  const send = async (event: FormEvent) => {
-    event.preventDefault()
-    const text = chatText.trim()
+  const send = async (value: string) => {
+    const text = value.trim()
     if (!text || !conversationId || !canChat || sending) return
     setSending(true); setNotice('')
     try {
@@ -217,32 +227,34 @@ function Pwa() {
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="boobot-pwa-messages min-h-0 flex-1 overflow-y-auto px-3 py-5 md:px-8" aria-label="Histórico da conversa">
               <div className="mx-auto flex max-w-[850px] flex-col gap-5">
-                {!messages.length && <p className="py-8 text-center text-xs text-muted-foreground">Esta conversa ainda não tem mensagens.</p>}
+                {messagesLoading && !messages.length && <AITextLoading texts={['Carregando conversa…']} label="Carregando conversa" className="py-8 text-sm font-normal text-muted-foreground" />}
+                {!messagesLoading && !messages.length && <p className="py-8 text-center text-xs text-muted-foreground">Esta conversa ainda não tem mensagens.</p>}
                 {messages.map(m => {
                   const mine = m.role === 'user'
                   const boo = snapshot.agents.find(a => a.id === m.agentId) || selectedBoos[0]
-                  return <article key={m.id} className={`flex items-start gap-2.5 ${mine ? 'flex-row-reverse' : ''}`}>
+                  if (m.role === 'activity') return <Trace key={m.id} role="status"><TraceLine status={m.status === 'failed' ? 'error' : m.status === 'running' ? 'running' : m.status === 'queued' ? 'pending' : 'complete'}><TraceTitle>{m.text}</TraceTitle></TraceLine></Trace>
+                  return <Message key={m.id} align={mine ? 'end' : 'start'} data-message-id={m.id}>
                     {!mine && <Boo boo={boo} size={42} />}
-                    <div className={`min-w-0 max-w-[85%] space-y-1 ${mine ? 'text-right' : ''}`}>
-                      <div className="text-[11px] font-semibold text-muted-foreground">{mine ? 'Você' : boo?.name || m.author || 'Boobot'}</div>
-                      <div className={`whitespace-pre-wrap break-words rounded-xl border p-3 text-[13px] leading-6 ${mine ? 'border-border bg-accent text-foreground' : 'border-border bg-card text-card-foreground'}`}>
-                        {m.text || (m.status === 'queued' ? 'Aguardando resposta…' : '…')}</div>
-                    </div>
-                  </article>
+                    <MessageContent className={mine ? 'w-fit max-w-[85%]' : 'max-w-[90%]'}>
+                      <MessageHeader className="px-0">{mine ? 'Você' : boo?.name || m.author || 'Boobot'}</MessageHeader>
+                      {mine ? <MessageBubble from="user" className="whitespace-pre-wrap" status={m.status === 'failed' ? 'failed' : m.status === 'queued' || m.status === 'running' ? 'sending' : 'sent'}>{m.text}</MessageBubble>
+                        : <>
+                          <RunProgress status={m.status || 'completed'} agentName={boo?.name || m.author || 'Boobot'} />
+                          {m.status === 'queued' && !m.text ? <AITextLoading texts={['Aguardando resposta…']} label="Aguardando resposta" className="justify-start text-sm font-normal text-muted-foreground" /> : <MessageMarkdown>{m.text}</MessageMarkdown>}
+                        </>}
+                    </MessageContent>
+                  </Message>
                 })}
                 <div ref={bottom} />
               </div>
             </div>
             <div className="border-t border-border bg-background p-3 md:px-8 md:py-4">
-              <form onSubmit={send} className="mx-auto flex max-w-[850px] items-end gap-2 rounded-xl border border-input bg-card p-2 shadow-sm">
-                <textarea className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-[13px] outline-none placeholder:text-muted-foreground"
-                  rows={2} aria-label="Mensagem para o Boo" placeholder={canChat ? 'Envie uma mensagem para seus Boos…' : 'Autorize mensagens para este dispositivo nas configurações do Boobot.'}
-                  disabled={!canChat || sending} value={chatText} onChange={e => setChatText(e.target.value)}
-                  onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key==='Enter' && !event.shiftKey){event.preventDefault();event.currentTarget.form?.requestSubmit()} }} />
-                {activeRun && canChat && <button type="button" aria-label="Parar agente" onClick={() => void stop()} className="rounded-lg border border-destructive/50 p-2.5 text-destructive hover:bg-destructive/10"><Square size={16} /></button>}
-                <button type="submit" disabled={!canChat || !chatText.trim() || sending} aria-label="Enviar mensagem"
-                  className="rounded-lg bg-primary p-2.5 text-primary-foreground disabled:opacity-40">{sending ? <LoaderCircle size={17} className="animate-spin"/> : <Send size={17} />}</button>
-              </form>
+              <fieldset disabled={!canChat || sending} className="mx-auto min-w-0 max-w-[850px]">
+                <PromptInput value={chatText} onValueChange={setChatText} onSubmit={value => void send(value)}
+                  textareaLabel="Mensagem para o Boo" showModelPicker={false} showAttachments={false}
+                  extraControls={activeRun && canChat ? <Button type="button" variant="ghost" size="icon" aria-label="Parar agente" onClick={() => void stop()}><Square /></Button> : undefined}
+                  placeholder={canChat ? 'Envie uma mensagem para seus Boos…' : 'Autorize mensagens para este dispositivo nas configurações do Boobot.'} />
+              </fieldset>
               <p className="mx-auto mt-1.5 max-w-[850px] text-center text-[10px] text-muted-foreground">{canChat ? 'Mensagens enviadas ao mesmo host. O processamento continua no Boobot do computador.' : 'Para enviar mensagens, autorize este dispositivo em Configurações → Conexões → Acesso PWA, no Boobot do computador.'}</p>
             </div>
           </div>

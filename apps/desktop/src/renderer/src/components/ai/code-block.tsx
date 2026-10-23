@@ -86,7 +86,7 @@ function CodeBlock({
         )}
         <span className="min-w-0 truncate text-[13px]">{filename ?? language}</span>
         <Button
-          aria-label="Copy code"
+          aria-label={copied ? 'Código copiado' : 'Copiar código'}
           className="ml-auto"
           onClick={copyCode}
           size="icon-xs"

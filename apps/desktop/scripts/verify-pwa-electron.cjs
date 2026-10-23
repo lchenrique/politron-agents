@@ -4,6 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const assert = require('node:assert/strict')
+const { DatabaseSync } = require('node:sqlite')
 const cwd = path.resolve(__dirname, '..')
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'boobot-pwa-electron-'))
 let electron, browser
@@ -17,6 +18,26 @@ async function main() {
   desktop.on('pageerror', error => errors.push(error.message))
   await desktop.waitForFunction(() => !!window.appAPI && !!window.pwaAPI)
   await desktop.waitForFunction(async () => (await window.pwaAPI.status()).running)
+  const fixture = await desktop.evaluate(async () => {
+    const agent = await window.appAPI.saveAgent({ name: 'Boo de Markdown', instructions: 'Fixture visual, sem execução.', canWrite: false })
+    const workspace = await window.appAPI.saveWorkspace({ name: 'QA Markdown' })
+    const conversation = await window.appAPI.saveConversation({ name: 'Conversa Markdown', workspaceId: workspace.id, agentIds: [agent.id] })
+    return { agent, conversation }
+  })
+  const database = new DatabaseSync(path.join(home, 'userData', 'politron-v9.sqlite'))
+  try {
+    const message = { id: 'markdown-smoke', conversationId: fixture.conversation.id, agentId: fixture.agent.id, author: fixture.agent.name,
+      role: 'assistant', status: 'completed', runId: null, createdAt: new Date().toISOString(),
+      text: '## Markdown compartilhado\n\n**Boobot** no aplicativo e na PWA.\n\n- Boos preservados\n- Componentes compartilhados\n\n```typescript\nconst marca = "Boobot";\n```' }
+    database.prepare('INSERT INTO v9_messages(id,conversation_id,data) VALUES(?,?,?)').run(message.id, message.conversationId, JSON.stringify(message))
+  } finally { database.close() }
+  await desktop.reload()
+  await desktop.getByRole('button', { name: 'Conversa Markdown', exact: true }).click()
+  const heading = desktop.getByRole('heading', { name: 'Markdown compartilhado', level: 2 })
+  await heading.waitFor()
+  assert.ok(await heading.evaluate(element => parseFloat(getComputedStyle(element).fontSize) > 14))
+  assert.equal(await desktop.locator('[data-slot="agent-code-block"]').count(), 1)
+  await desktop.screenshot({ path: path.join(home, 'desktop-markdown.png') })
   const initial = await desktop.evaluate(() => window.pwaAPI.status())
   assert.ok(initial.running)
   assert.ok(initial.port > 0 && initial.port !== 6780)
@@ -50,7 +71,7 @@ async function main() {
   assert.equal(revoked, 401)
   assert.deepEqual(errors, [])
   console.log(JSON.stringify({ result: 'PASS', gatewayPort: initial.port, paired: status.paired,
-    workspaces: snapshot.result.workspaces.length, forbidden, revoked, errors }, null, 2))
+    workspaces: snapshot.result.workspaces.length, forbidden, revoked, desktopMarkdown: true, screenshot: path.join(home, 'desktop-markdown.png'), errors }, null, 2))
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })
   .finally(async () => { if (browser) await browser.close(); if (electron) await electron.close() })
