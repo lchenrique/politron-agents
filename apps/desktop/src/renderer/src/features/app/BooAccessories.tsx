@@ -1,8 +1,34 @@
 import { memo } from 'react'
 import { BooCap } from './BooCaps'
+import { ImportedBooPetAccessory, heads, faces } from './BooPetAccessories'
+
+const PET_HEADS = new Set(['cap', 'beanie', 'top-hat', 'witch-hat', 'crown', 'party-hat', 'chef-hat', 'bow', 'flower', 'halo'])
+const PET_FACES = new Set(['round-glasses', 'sunglasses', 'heart-glasses', 'star-glasses', 'monocle', 'mustache', 'star-mask'])
+
+export type BooAccessoryProps = {
+  kind: string
+  shape?: string
+  bodyWidth?: number
+  bodyHeight?: number
+  eyeSize?: number
+  eyeSpacing?: number
+  mouthSize?: number
+}
+
+function petLooks({ kind, shape = 'ghost-wave', bodyWidth = 1, bodyHeight = 1, eyeSize = 8, eyeSpacing = 26, mouthSize = 1 }: BooAccessoryProps, layer: 'head' | 'face') {
+  return {
+    shape, width: bodyWidth, height: bodyHeight, eyeSize, eyeSpacing, mouthSize,
+    head: layer === 'head' ? kind : 'none',
+    face: layer === 'face' ? kind : 'none',
+    colors: {},
+  }
+}
+
 
 /** Acessórios em coordenadas do artboard 240×200: não alteram a silhueta do Boo. */
-export const BooHeadAccessory = memo(function BooHeadAccessory({ kind }: { kind: string }) {
+export const BooHeadAccessory = memo(function BooHeadAccessory(props: BooAccessoryProps) {
+  const { kind } = props
+  if (PET_HEADS.has(kind)) return <g aria-label={`${heads.find(([id]) => id === kind)?.[1] || kind} do Boo`}><ImportedBooPetAccessory looks={petLooks(props, 'head')} layer="head" /></g>
   switch (kind) {
     case 'antenna':
       return <g aria-label="Antena do Boo" strokeLinecap="round">
@@ -17,7 +43,6 @@ export const BooHeadAccessory = memo(function BooHeadAccessory({ kind }: { kind:
         <path d="M180 60 Q206 25 195 0 Q189 27 151 43Z" fill="#74569c" stroke="#3f396a" strokeWidth="2.5"/>
         <path d="M52 18 Q53 39 70 47 M188 18 Q187 39 170 47" fill="none" stroke="#c9afe8" strokeWidth="5" strokeLinecap="round"/>
       </g>
-    case 'cap':
     case 'cap-flat':
     case 'cap-back':
       return <BooCap style={kind} />
@@ -83,9 +108,11 @@ export const BooHeadAccessory = memo(function BooHeadAccessory({ kind }: { kind:
   }
 })
 
-export const BooFaceAccessory = memo(function BooFaceAccessory({ kind }: { kind: string }) {
-  if (kind === 'glasses' || kind === 'round-glasses') {
-    const round = kind === 'round-glasses'
+export const BooFaceAccessory = memo(function BooFaceAccessory(props: BooAccessoryProps) {
+  const { kind } = props
+  if (PET_FACES.has(kind)) return <g aria-label={kind === 'round-glasses' ? 'Óculos redondos do Boo' : kind === 'sunglasses' ? 'Óculos escuros do Boo' : `${faces.find(([id]) => id === kind)?.[1] || kind} do Boo`}><ImportedBooPetAccessory looks={petLooks(props, 'face')} layer="face" /></g>
+  if (kind === 'glasses') {
+    const round = false // Round glasses are handled by the imported Boo Pet artwork.
     return <g aria-label={round ? 'Óculos redondos do Boo' : 'Óculos do Boo'} fill="none">
       <g stroke={round ? '#73533e' : '#26354b'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round">
         {round

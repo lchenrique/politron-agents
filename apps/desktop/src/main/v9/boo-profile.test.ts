@@ -10,6 +10,20 @@ const chief = {
 } as Agent
 
 describe('autoedição segura de perfil', () => {
+  it('permite acessórios recuperados do Boo Pet sem alterar as permissões do agente', () => {
+    const next = buildSelfProfileUpdate(chief, {
+      pitsHeadAccessory: 'party-hat',
+      pitsFaceAccessory: 'heart-glasses',
+    })
+    expect(next).toMatchObject({
+      pitsHeadAccessory: 'party-hat',
+      pitsFaceAccessory: 'heart-glasses',
+      canWrite: false,
+      approvalMode: 'ask',
+      role: 'chief',
+    })
+  })
+
   it('permite personalidade e aparência sem alterar outras configurações', () => {
     const next = buildSelfProfileUpdate(chief, {
       instructions: 'Seja direto e coopere.', color: '#ABCDEF',

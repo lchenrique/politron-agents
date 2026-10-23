@@ -4,6 +4,7 @@ import { STARTLE_EVENT, usePoliDrowsy, usePoliGaze } from './usePoliGaze'
 import { useAvatarActivity } from './useAvatarActivity'
 import { BOO_BODY_PATHS } from './boo-appearance'
 import { BooFaceAccessory, BooHeadAccessory } from './BooAccessories'
+import { heads as booPetHeads, faces as booPetFaces } from './BooPetAccessories'
 import { useRivePreview } from './booRendererPreference'
 const RiveBooAvatar = lazy(() => import('./RiveBooAvatar').then(m => ({ default: m.RiveBooAvatar })))
 import './PoliAvatar.css'
@@ -116,6 +117,8 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
 
   const headAccessory = agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')
   const faceAccessory = agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')
+  const importedHead = booPetHeads.some(([id]) => id === headAccessory)
+  const importedFace = booPetFaces.some(([id]) => id === faceAccessory)
   const bodyWidth = Math.max(.75, Math.min(1.25, agent.pitsBodyWidth ?? 1))
   const bodyHeight = Math.max(.75, Math.min(1.25, agent.pitsBodyHeight ?? 1))
   const mouthSize = Math.max(.65, Math.min(1.6, agent.pitsMouthSize ?? 1))
@@ -165,7 +168,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
               <g className="poli-avatar__shape">
                 <path d={BOO_BODY_PATHS[shape]} fill={`url(#${gradientId})`} />
             <ellipse cx="91" cy="43" rx="37" ry="13" transform="rotate(-24 91 43)" fill="#fff" opacity=".22" />
-            <BooHeadAccessory kind={headAccessory} />
+            {!importedHead && <BooHeadAccessory kind={headAccessory} />}
             {(showBlush || mood === 'love') && <>
               <ellipse cx="77" cy="118" rx="14" ry="7" fill={cheek} opacity={blushOpacity} />
               <ellipse cx="163" cy="118" rx="14" ry="7" fill={cheek} opacity={blushOpacity} />
@@ -192,7 +195,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
                 {eyeXs.map(cx => <ellipse key={cx} cx={cx} cy="94" rx={eyeSize} ry={eyeSize * 1.5} />)}
               </g>}
             </g>
-            <BooFaceAccessory kind={faceAccessory} />
+            {!importedFace && <BooFaceAccessory kind={faceAccessory} />}
             <g className="poli-avatar__mouth-scale" transform={mouthTransform}>
             {state === 'speaking' && <ellipse className="poli-avatar__mouth-speaking" cx="120" cy="129" rx="6" ry="5" fill="#fff" />}
             {state !== 'speaking' && mood === 'idle' && <path d="M108 124 Q120 135 132 124" {...mouth} />}
@@ -231,6 +234,9 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
             </g>}
               </g>
             </g>
+            {/* Accessory geometry is anchored to the unscaled head, as in Boo Pet. */}
+            {importedHead && <BooHeadAccessory kind={headAccessory} shape={shape} bodyWidth={bodyWidth} bodyHeight={bodyHeight} eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} />}
+            {importedFace && <BooFaceAccessory kind={faceAccessory} shape={shape} bodyWidth={bodyWidth} bodyHeight={bodyHeight} eyeSize={eyeSize} eyeSpacing={eyeSpacing} mouthSize={mouthSize} />}
           </g>
         </g>
       </svg>

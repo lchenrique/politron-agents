@@ -13,8 +13,8 @@ export interface Agent {
   temporaryTask?: string
   pitsShape?: 'round' | 'flat' | 'long' | 'drop' | 'squircle' | 'bean' | 'ghost-wave' | 'ghost-puff' | 'ghost-peak' | 'cute-squid' | 'soft-square' | 'little-cat'
   pitsAccessory?: 'none' | 'antenna' | 'horns' | 'glasses' | 'cap'
-  pitsHeadAccessory?: 'none' | 'antenna' | 'horns' | 'cap' | 'cap-flat' | 'cap-back' | 'beanie' | 'bucket' | 'top-hat' | 'witch-hat' | 'headphones' | 'crown'
-  pitsFaceAccessory?: 'none' | 'glasses' | 'round-glasses' | 'sunglasses'
+  pitsHeadAccessory?: 'none' | 'antenna' | 'horns' | 'cap' | 'cap-flat' | 'cap-back' | 'beanie' | 'bucket' | 'top-hat' | 'witch-hat' | 'headphones' | 'crown' | 'party-hat' | 'chef-hat' | 'bow' | 'flower' | 'halo'
+  pitsFaceAccessory?: 'none' | 'glasses' | 'round-glasses' | 'sunglasses' | 'heart-glasses' | 'star-glasses' | 'monocle' | 'mustache' | 'star-mask'
   pitsCheekColor?: string; pitsEyeColor?: string; pitsAura?: boolean; pitsBlush?: boolean; pitsAnimate?: boolean
   pitsEyeSize?: number; pitsEyeSpacing?: number; pitsSpeed?: number; pitsAmplitude?: number
   pitsBodyWidth?: number; pitsBodyHeight?: number

@@ -132,8 +132,8 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
         {(headAccessory !== 'none' || faceAccessory !== 'none' || expression !== 'idle') && (
           <svg viewBox="28 0 185 200" className="poli-avatar__rive-accessory" aria-hidden="true"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
-            <BooHeadAccessory kind={headAccessory} />
-            <BooFaceAccessory kind={faceAccessory} />
+        <BooHeadAccessory kind={headAccessory} shape={shape} />
+            <BooFaceAccessory kind={faceAccessory} shape={shape} />
             {!speaking && expression === 'thinking' && <>
               <ellipse cx="120" cy="128" rx="5" ry="7" fill="#fff" />
               <g className="poli-avatar__thought">

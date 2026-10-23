@@ -80,7 +80,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
               <p className="text-[11px] text-muted-foreground">Escolha um item de cabeça e um de rosto. Chapéus e fones não se sobrepõem.</p>
               <p className="text-xs font-medium">Cabeça</p>
               <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Acessórios de cabeça">
-                {([['none','Nenhum'],['antenna','Antena'],['horns','Chifrinhos'],['cap','Boné'],['cap-flat','Aba reta'],['cap-back','Para trás'],['beanie','Gorro'],['bucket','Bucket'],['top-hat','Cartola'],['witch-hat','Bruxa'],['headphones','Fone'],['crown','Coroa']] as const).map(([value,label]) => (
+                {([['none','Nenhum'],['antenna','Antena'],['horns','Chifrinhos'],['cap','Boné'],['cap-flat','Aba reta'],['cap-back','Para trás'],['beanie','Gorro'],['bucket','Bucket'],['top-hat','Cartola'],['witch-hat','Bruxa'],['headphones','Fone'],['crown','Coroa'],['party-hat','Festa'],['chef-hat','Chef'],['bow','Laço'],['flower','Flor'],['halo','Auréola']] as const).map(([value,label]) => (
                   <button key={value} type="button" aria-pressed={(agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')) === value}
                     onClick={() => onChange({ pitsHeadAccessory: value, pitsAccessory: 'none' })}
                     className={['rounded-md border px-1 py-2 text-[11px]', (agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')) === value ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'].join(' ')}>{label}</button>
@@ -88,7 +88,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
               </div>
               <p className="text-xs font-medium">Rosto</p>
               <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Acessórios de rosto">
-                {([['none','Nenhum'],['glasses','Óculos'],['round-glasses','Redondos'],['sunglasses','Escuros']] as const).map(([value,label]) => (
+                {([['none','Nenhum'],['glasses','Óculos'],['round-glasses','Redondos'],['sunglasses','Escuros'],['heart-glasses','Coração'],['star-glasses','Estrela'],['monocle','Monóculo'],['mustache','Bigode'],['star-mask','Máscara']] as const).map(([value,label]) => (
                   <button key={value} type="button" aria-pressed={(agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')) === value}
                     onClick={() => onChange({ pitsFaceAccessory: value, pitsAccessory: 'none' })}
                     className={['rounded-md border px-1 py-2 text-[11px]', (agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')) === value ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'].join(' ')}>{label}</button>
