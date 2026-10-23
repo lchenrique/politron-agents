@@ -76,8 +76,6 @@ ${fill('38FFFFFF')}</Shape>`
 <GradientStop position=".72" colorValue="29786BEA">${bind('ambientMid',38)}</GradientStop>
 <GradientStop position="1" colorValue="00786BEA">${bind('ambientEdge',38)}</GradientStop>
 </RadialGradient></Fill></Shape>`
-  const shadow=`<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/>${fill('FF786BEA','base')}</Shape>`
   const blush1=ellipse('Left cheek',77,118,28,14,'73F5A5D1','cheek','blushOpacity')
   const blush2=ellipse('Right cheek',163,118,28,14,'73F5A5D1','cheek','blushOpacity')
   return `<Artboard width="185" height="200" name="${key}" id="${id(2)}" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="${id(7)}" styleId="${id(5)}">
@@ -93,12 +91,10 @@ ${body}
 <Shape x="120" y="98" id="${id(42)}" name="Aura" opacity=".12"><Ellipse width="166" height="166" originX=".5" originY=".5"/>${fill('FF786BEA','base')}</Shape>
 ${ambient}
 </Node>
-${shadow}
 <StateMachine name="BooMotion" id="${id(7)}"><StateMachineLayer name="Blink" id="${id(8)}">
 <EntryState><StateTransition stateToId="${id(12)}"/></EntryState>
 <AnimationState animationId="${id(6)}" id="${id(12)}"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="${id(14)}"><EntryState><StateTransition stateToId="${id(16)}"/></EntryState><AnimationState animationId="${id(15)}" id="${id(16)}"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="${id(9)}"><EntryState><StateTransition stateToId="${id(13)}"/></EntryState><AnimationState animationId="${id(10)}" id="${id(13)}"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="${id(6)}">
@@ -108,19 +104,6 @@ ${shadow}
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="${id(15)}">
-<KeyedObject objectId="${id(41)}"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="${id(10)}">

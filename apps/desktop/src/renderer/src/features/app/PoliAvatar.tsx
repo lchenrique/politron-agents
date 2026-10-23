@@ -130,7 +130,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
     && eyeSize === 8 && eyeSpacing === 26 && bodyWidth === 1
     && bodyHeight === 1 && mouthSize === 1 && showAura && showBlush
   const [riveReady, setRiveReady] = useState(false)
-  const riveVisible = riveEligible && riveReady && calm && !hovered && !reaction
+  const riveVisible = riveEligible && riveReady && !hovered && !reaction && mood !== 'sleep' && mood !== 'happy'
   const style = {
     '--poli-speed': `${Math.max(1, Math.min(6, agent.pitsSpeed ?? 3))}s`,
     '--poli-amplitude': `-${(Math.max(0, Math.min(24, agent.pitsAmplitude ?? 9)) * size / 180).toFixed(2)}px`,
@@ -235,10 +235,10 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
         </g>
       </svg>
       {riveEligible && <Suspense fallback={null}>
-        <RiveBooAvatar size={size} shape={shape} color={color} eyeColor={eyeColor}
+        <RiveBooAvatar shape={shape} color={color} eyeColor={eyeColor}
           cheekColor={cheek} blushOpacity={blushOpacity}
           headAccessory={headAccessory} faceAccessory={faceAccessory}
-          speaking={state === 'speaking'} visible={riveVisible}
+          speaking={state === 'speaking'} expression={face} visible={riveVisible}
           playing={animate && riveVisible} onReady={setRiveReady} />
       </Suspense>}
     </span>

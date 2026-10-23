@@ -51,13 +51,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="0:7"><StateMachineLayer name="Blink" id="0:8">
 <EntryState><StateTransition stateToId="0:12"/></EntryState>
 <AnimationState animationId="0:6" id="0:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="0:14"><EntryState><StateTransition stateToId="0:16"/></EntryState><AnimationState animationId="0:15" id="0:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="0:9"><EntryState><StateTransition stateToId="0:13"/></EntryState><AnimationState animationId="0:10" id="0:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="0:6">
@@ -67,19 +64,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="0:15">
-<KeyedObject objectId="0:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="0:10">
@@ -142,13 +126,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="1:7"><StateMachineLayer name="Blink" id="1:8">
 <EntryState><StateTransition stateToId="1:12"/></EntryState>
 <AnimationState animationId="1:6" id="1:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="1:14"><EntryState><StateTransition stateToId="1:16"/></EntryState><AnimationState animationId="1:15" id="1:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="1:9"><EntryState><StateTransition stateToId="1:13"/></EntryState><AnimationState animationId="1:10" id="1:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="1:6">
@@ -158,19 +139,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="1:15">
-<KeyedObject objectId="1:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="1:10">
@@ -232,13 +200,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="2:7"><StateMachineLayer name="Blink" id="2:8">
 <EntryState><StateTransition stateToId="2:12"/></EntryState>
 <AnimationState animationId="2:6" id="2:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="2:14"><EntryState><StateTransition stateToId="2:16"/></EntryState><AnimationState animationId="2:15" id="2:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="2:9"><EntryState><StateTransition stateToId="2:13"/></EntryState><AnimationState animationId="2:10" id="2:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="2:6">
@@ -248,19 +213,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="2:15">
-<KeyedObject objectId="2:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="2:10">
@@ -323,13 +275,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="3:7"><StateMachineLayer name="Blink" id="3:8">
 <EntryState><StateTransition stateToId="3:12"/></EntryState>
 <AnimationState animationId="3:6" id="3:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="3:14"><EntryState><StateTransition stateToId="3:16"/></EntryState><AnimationState animationId="3:15" id="3:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="3:9"><EntryState><StateTransition stateToId="3:13"/></EntryState><AnimationState animationId="3:10" id="3:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="3:6">
@@ -339,19 +288,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="3:15">
-<KeyedObject objectId="3:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="3:10">
@@ -417,13 +353,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="4:7"><StateMachineLayer name="Blink" id="4:8">
 <EntryState><StateTransition stateToId="4:12"/></EntryState>
 <AnimationState animationId="4:6" id="4:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="4:14"><EntryState><StateTransition stateToId="4:16"/></EntryState><AnimationState animationId="4:15" id="4:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="4:9"><EntryState><StateTransition stateToId="4:13"/></EntryState><AnimationState animationId="4:10" id="4:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="4:6">
@@ -433,19 +366,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="4:15">
-<KeyedObject objectId="4:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="4:10">
@@ -509,13 +429,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="5:7"><StateMachineLayer name="Blink" id="5:8">
 <EntryState><StateTransition stateToId="5:12"/></EntryState>
 <AnimationState animationId="5:6" id="5:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="5:14"><EntryState><StateTransition stateToId="5:16"/></EntryState><AnimationState animationId="5:15" id="5:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="5:9"><EntryState><StateTransition stateToId="5:13"/></EntryState><AnimationState animationId="5:10" id="5:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="5:6">
@@ -525,19 +442,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="5:15">
-<KeyedObject objectId="5:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="5:10">
@@ -604,13 +508,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="6:7"><StateMachineLayer name="Blink" id="6:8">
 <EntryState><StateTransition stateToId="6:12"/></EntryState>
 <AnimationState animationId="6:6" id="6:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="6:14"><EntryState><StateTransition stateToId="6:16"/></EntryState><AnimationState animationId="6:15" id="6:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="6:9"><EntryState><StateTransition stateToId="6:13"/></EntryState><AnimationState animationId="6:10" id="6:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="6:6">
@@ -620,19 +521,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="6:15">
-<KeyedObject objectId="6:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="6:10">
@@ -700,13 +588,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="7:7"><StateMachineLayer name="Blink" id="7:8">
 <EntryState><StateTransition stateToId="7:12"/></EntryState>
 <AnimationState animationId="7:6" id="7:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="7:14"><EntryState><StateTransition stateToId="7:16"/></EntryState><AnimationState animationId="7:15" id="7:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="7:9"><EntryState><StateTransition stateToId="7:13"/></EntryState><AnimationState animationId="7:10" id="7:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="7:6">
@@ -716,19 +601,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="7:15">
-<KeyedObject objectId="7:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="7:10">
@@ -798,13 +670,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="8:7"><StateMachineLayer name="Blink" id="8:8">
 <EntryState><StateTransition stateToId="8:12"/></EntryState>
 <AnimationState animationId="8:6" id="8:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="8:14"><EntryState><StateTransition stateToId="8:16"/></EntryState><AnimationState animationId="8:15" id="8:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="8:9"><EntryState><StateTransition stateToId="8:13"/></EntryState><AnimationState animationId="8:10" id="8:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="8:6">
@@ -814,19 +683,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="8:15">
-<KeyedObject objectId="8:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="8:10">
@@ -893,13 +749,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="9:7"><StateMachineLayer name="Blink" id="9:8">
 <EntryState><StateTransition stateToId="9:12"/></EntryState>
 <AnimationState animationId="9:6" id="9:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="9:14"><EntryState><StateTransition stateToId="9:16"/></EntryState><AnimationState animationId="9:15" id="9:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="9:9"><EntryState><StateTransition stateToId="9:13"/></EntryState><AnimationState animationId="9:10" id="9:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="9:6">
@@ -909,19 +762,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="9:15">
-<KeyedObject objectId="9:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="9:10">
@@ -987,13 +827,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="10:7"><StateMachineLayer name="Blink" id="10:8">
 <EntryState><StateTransition stateToId="10:12"/></EntryState>
 <AnimationState animationId="10:6" id="10:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="10:14"><EntryState><StateTransition stateToId="10:16"/></EntryState><AnimationState animationId="10:15" id="10:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="10:9"><EntryState><StateTransition stateToId="10:13"/></EntryState><AnimationState animationId="10:10" id="10:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="10:6">
@@ -1003,19 +840,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="10:15">
-<KeyedObject objectId="10:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="10:10">
@@ -1082,13 +906,10 @@
 <GradientStop position="1" colorValue="00786BEA"><DataBindContext sourcePathIds="0:300-0:314" propertyKey="38"/></GradientStop>
 </RadialGradient></Fill></Shape>
 </Node>
-<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
-<Ellipse width="108" height="18" originX=".5" originY=".5"/><Fill name="Fill"><SolidColor colorValue="FF786BEA" name="Color"><DataBindContext sourcePathIds="0:300-0:303" propertyKey="37"/></SolidColor></Fill></Shape>
 <StateMachine name="BooMotion" id="11:7"><StateMachineLayer name="Blink" id="11:8">
 <EntryState><StateTransition stateToId="11:12"/></EntryState>
 <AnimationState animationId="11:6" id="11:12"/>
 </StateMachineLayer>
-<StateMachineLayer name="Floating" id="11:14"><EntryState><StateTransition stateToId="11:16"/></EntryState><AnimationState animationId="11:15" id="11:16"/></StateMachineLayer>
 <StateMachineLayer name="Aura pulse" id="11:9"><EntryState><StateTransition stateToId="11:13"/></EntryState><AnimationState animationId="11:10" id="11:13"/></StateMachineLayer>
 </StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="11:6">
@@ -1098,19 +919,6 @@
 <KeyFrameDouble value="0.06" frame="259" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
-</KeyedProperty></KeyedObject>
-</LinearAnimation>
-<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="11:15">
-<KeyedObject objectId="11:41"><KeyedProperty propertyKey="14">
-<KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
-<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
-<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
-<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
-<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation>
 <LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="11:10">

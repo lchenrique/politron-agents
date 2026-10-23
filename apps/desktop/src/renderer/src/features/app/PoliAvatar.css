@@ -69,14 +69,19 @@
 /* SVG como renderer padrão; overlays Rive seguem o movimento do corpo quando ativados. */
 .poli-avatar[data-rive-active='true'] > svg,
 .poli-avatar[data-rive-active='true'] > svg * { animation-play-state: paused !important; }
-/* Rive experimental: bonés e óculos acompanham a flutuação nativa de 4 unidades do artboard. */
-.poli-avatar[data-rive-active='true'][data-motion-active='true'] .poli-avatar__rive-accessory {
-  animation: poli-rive-accessory-bob 3s ease-in-out infinite;
+/* Rive experimental: the entire character and its accessories share one CSS transform.
+   Ground shadow is a sibling and never moves with the character. */
+.poli-avatar__rive-float,
+.poli-avatar__rive-lean { position: absolute; inset: 0; }
+.poli-avatar[data-rive-active='true'][data-animate='true'] .poli-avatar__rive-float {
+  animation: poli-avatar-float var(--poli-speed, 3s) ease-in-out infinite;
 }
-@keyframes poli-rive-accessory-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(calc(-1 * var(--poli-rive-bob, 3px))); }
+.poli-avatar__rive-lean {
+  transform: rotate(var(--poli-lean, 0deg));
+  transform-origin: 50% 87%;
+  transition: transform 220ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
-  .poli-avatar .poli-avatar__rive-accessory { animation: none !important; }
+  .poli-avatar .poli-avatar__rive-float { animation: none !important; }
+  .poli-avatar .poli-avatar__rive-lean { transform: none !important; transition: none !important; }
 }

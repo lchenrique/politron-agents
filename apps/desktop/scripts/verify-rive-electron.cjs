@@ -38,6 +38,9 @@ async function main() {
     avatars: document.querySelectorAll('.poli-avatar').length,
     riveActive: document.querySelectorAll('.poli-avatar[data-rive-active="true"]').length,
     riveCanvases: document.querySelectorAll('.poli-avatar canvas').length,
+    groundShadows: document.querySelectorAll('.poli-avatar[data-rive-active="true"] .poli-avatar__rive-shadow').length,
+    sharedFloats: document.querySelectorAll('.poli-avatar[data-rive-active="true"] .poli-avatar__rive-float').length,
+    sharedLeans: document.querySelectorAll('.poli-avatar[data-rive-active="true"] .poli-avatar__rive-lean').length,
     legacyVisible: Array.from(document.querySelectorAll('.poli-avatar > svg')).filter(svg => getComputedStyle(svg).visibility !== 'hidden').length,
   }))
   const report = { ui, errors, failedRequests, home }
@@ -45,6 +48,9 @@ async function main() {
   assert.ok(ui.avatars, 'Nenhum Boo exibido no smoke')
   assert.ok(ui.riveCanvases, 'O renderer Rive nao foi montado')
   assert.ok(ui.riveActive, 'Arquivo Rive nao terminou de carregar; veja erros de WASM')
+  assert.equal(ui.groundShadows, ui.riveActive, 'Sombra do Rive deve ficar fora do movimento do corpo')
+  assert.equal(ui.sharedFloats, ui.riveActive, 'Corpo e acessórios Rive devem flutuar juntos')
+  assert.equal(ui.sharedLeans, ui.riveActive, 'Inclinação Rive compartilhada não encontrada')
   await page.evaluate(() => {
     localStorage.removeItem('boobot.avatar.renderer')
     window.dispatchEvent(new Event('boobot:avatar-renderer-changed'))

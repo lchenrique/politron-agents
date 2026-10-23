@@ -1,4 +1,5 @@
 import type { RemoteEvent, RpcHandler } from './wire'
+import { assertPwaRpcAuthorized, type PwaCapability } from '../../shared/pwa-host-policy'
 
 // Lista explícita: pareamento não expõe IPC arbitrário nem ações da janela local.
 const METHODS = new Set([
@@ -18,6 +19,11 @@ export class HostRpc {
     return handler(...args as never[])
   }
   supports(method: string): boolean { return METHODS.has(method) }
+  /** Browser gateway must call this instead of dispatch; the desktop transport remains unchanged. */
+  dispatchFromPwa(method: string, args: unknown[], grants: readonly PwaCapability[]): unknown {
+    assertPwaRpcAuthorized(method, args, grants)
+    return this.dispatch(method, args)
+  }
 }
 
 export interface HostRouting {

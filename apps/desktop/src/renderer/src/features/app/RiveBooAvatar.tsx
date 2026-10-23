@@ -31,11 +31,10 @@ function rgb(hex: string): [number, number, number] {
 }
 
 export const RiveBooAvatar = memo(function RiveBooAvatar({
-  shape, color, eyeColor, cheekColor, blushOpacity, headAccessory, faceAccessory, size,
-  speaking, playing, visible, onReady,
+  shape, color, eyeColor, cheekColor, blushOpacity, headAccessory, faceAccessory,
+  speaking, expression, playing, visible, onReady,
 }: {
   shape: string
-  size: number
   color: string
   eyeColor: string
   cheekColor: string
@@ -43,6 +42,7 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
   headAccessory: string
   faceAccessory: string
   speaking: boolean
+  expression: 'idle' | 'thinking' | 'coding' | 'done'
   playing: boolean
   visible: boolean
   onReady: (ready: boolean) => void
@@ -93,10 +93,10 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
     setAmbientMid(...rgb(color), 41)
     setAmbientEdge(...rgb(color), 0)
     setBlushOpacity(blushOpacity)
-    setSmileOpacity(speaking ? 0 : 1)
+    setSmileOpacity(speaking || expression !== 'idle' ? 0 : 1)
     setTalkOpacity(speaking ? 1 : 0)
     onReady(true)
-  }, [rive, instance, color, eyeColor, cheekColor, blushOpacity, speaking,
+  }, [rive, instance, color, eyeColor, cheekColor, blushOpacity, speaking, expression,
     setLight, setBase, setDark, setEyes, setCheek, setAmbientCenter, setAmbientMid, setAmbientEdge, setBlushOpacity, setSmileOpacity, setTalkOpacity, onReady])
 
   // O hook global do ponteiro emite offsets; o Rive recebe os valores sem renderizar React a cada movimento.
@@ -121,12 +121,42 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
 
   return <span ref={layerRef} className="poli-avatar__rive-layer" aria-hidden={!visible}
     style={{ position: 'absolute', inset: 0, opacity: visible ? 1 : 0, pointerEvents: 'none' }}>
-    <RiveComponent role="img" aria-label="Boo animado" style={{ width: '100%', height: '100%', display: 'block' }} />
-    {(headAccessory !== 'none' || faceAccessory !== 'none') && (
-      <svg viewBox="28 0 185 200" className="poli-avatar__rive-accessory" aria-hidden={!visible} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', '--poli-rive-bob': (10 * size / 200) + 'px' } as React.CSSProperties}>
-        <BooHeadAccessory kind={headAccessory}/>
-        <BooFaceAccessory kind={faceAccessory}/>
-      </svg>
-    )}
+    {/* The shadow stays on the floor while the entire Boo (including hats) floats. */}
+    <svg viewBox="28 0 185 200" className="poli-avatar__rive-shadow" aria-hidden="true"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
+      <ellipse cx="120" cy="190" rx="54" ry="9" fill={color} opacity=".15" />
+    </svg>
+    <span className="poli-avatar__rive-float" style={{ position: 'absolute', inset: 0 }}>
+      <span className="poli-avatar__rive-lean" style={{ position: 'absolute', inset: 0 }}>
+        <RiveComponent role="img" aria-label="Boo animado" style={{ width: '100%', height: '100%', display: 'block' }} />
+        {(headAccessory !== 'none' || faceAccessory !== 'none' || expression !== 'idle') && (
+          <svg viewBox="28 0 185 200" className="poli-avatar__rive-accessory" aria-hidden="true"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
+            <BooHeadAccessory kind={headAccessory} />
+            <BooFaceAccessory kind={faceAccessory} />
+            {!speaking && expression === 'thinking' && <>
+              <ellipse cx="120" cy="128" rx="5" ry="7" fill="#fff" />
+              <g className="poli-avatar__thought">
+                <circle cx="187" cy="34" r="5" fill={eyeColor} />
+                <circle cx="200" cy="20" r="8" fill={eyeColor} />
+              </g>
+            </>}
+            {!speaking && expression === 'coding' && <>
+              <path d="M113 128 H127" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
+              <path d="M51 174 l-12 -10 12 -10 M65 154 l12 10 -12 10" fill="none" stroke={eyeColor} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+              <g className={playing ? 'poli-avatar__type' : ''} aria-hidden="true">
+                <rect x="146" y="173" width="36" height="5" rx="2.5" fill={eyeColor} opacity=".35" />
+                {[150, 161, 172].map((x, i) => <rect key={x} className={`poli-avatar__finger poli-avatar__finger--${i + 1}`} x={x} y="161" width="6" height="13" rx="3" fill={eyeColor} />)}
+              </g>
+            </>}
+            {!speaking && expression === 'done' && <>
+              <path d="M106 124 Q120 147 134 124" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
+              <circle cx="183" cy="42" r="21" fill="#31bd92" />
+              <path d="M172 42 l8 8 14 -17" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+            </>}
+          </svg>
+        )}
+      </span>
+    </span>
   </span>
 })
