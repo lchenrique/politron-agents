@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { BooCap } from './BooCaps'
 
 /** Acessórios em coordenadas do artboard 240×200: não alteram a silhueta do Boo. */
 export const BooHeadAccessory = memo(function BooHeadAccessory({ kind }: { kind: string }) {
@@ -18,19 +19,8 @@ export const BooHeadAccessory = memo(function BooHeadAccessory({ kind }: { kind:
       </g>
     case 'cap':
     case 'cap-flat':
-    case 'cap-back': {
-      const backwards = kind === 'cap-back'
-      const flat = kind === 'cap-flat'
-      return <g aria-label={backwards ? 'Boné para trás do Boo' : 'Boné do Boo'}>
-        <path d="M61 53 Q71 10 120 11 Q170 10 181 53 Q124 42 61 53Z" fill="#426489" stroke="#253951" strokeWidth="2.5"/>
-        <path d="M120 12 Q111 29 116 47 M70 36 Q94 29 117 32 M170 36 Q148 28 122 32" fill="none" stroke="#90abc5" strokeWidth="1.6" opacity=".8"/>
-        <path d="M63 52 Q121 40 178 52" fill="none" stroke="#1d3044" strokeWidth="5"/>
-        {backwards
-          ? <><path d="M70 52 L31 57 Q27 63 34 67 Q67 75 98 57Z" fill="#293b57" stroke="#1a273d" strokeWidth="2"/><path d="M111 19 H131" stroke="#d5e4f0" strokeWidth="4" strokeLinecap="round"/></>
-          : <><path d={flat ? 'M112 51 L211 49 Q214 61 168 67 L113 62Z' : 'M108 51 Q161 41 204 58 Q178 78 116 66Z'} fill="#293c58" stroke="#1b2c43" strokeWidth="2"/><path d="M121 55 Q163 53 197 59" fill="none" stroke="#7690ae" strokeWidth="2"/></>}
-        <path d="M112 33 Q120 27 128 33 L125 41 H115Z" fill="#e5d7bc" opacity=".75"/>
-      </g>
-    }
+    case 'cap-back':
+      return <BooCap style={kind} />
     case 'beanie':
       return <g aria-label="Gorro do Boo">
         <path d="M54 68 Q48 9 120 4 Q190 9 187 68Z" fill="#a765a5" stroke="#724578" strokeWidth="2"/>

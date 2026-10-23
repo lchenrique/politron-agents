@@ -28,6 +28,20 @@ const skillsAPI = {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('carregamento leve das configurações', () => {
+  it('mantém SVG por padrão e permite optar pelo Rive sem tornar a escolha irreversível', () => {
+    localStorage.removeItem('boobot.avatar.renderer')
+    vi.stubGlobal('appAPI', appAPI)
+    const { unmount } = render(<SettingsPage open onOpenChange={vi.fn()} />)
+    const choice = screen.getByRole('checkbox', { name: 'Experimentar renderer Rive (incompleto)' })
+    expect(choice).not.toBeChecked()
+    fireEvent.click(choice)
+    expect(choice).toBeChecked()
+    expect(localStorage.getItem('boobot.avatar.renderer')).toBe('rive')
+    fireEvent.click(choice)
+    expect(choice).not.toBeChecked()
+    expect(localStorage.getItem('boobot.avatar.renderer')).toBeNull()
+    unmount()
+  })
   it('expõe a restrição do Assistente e salva a liberação de escrita', async () => {
     vi.clearAllMocks()
     appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: false, computerUse: false, approvalMode: 'ask', terminalEnabled: true })

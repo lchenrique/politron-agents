@@ -51,6 +51,11 @@ describe('criação simples de conversa', () => {
 })
 
 describe('editor de agentes com Poli Studio', () => {
+  it('marca edição de arquivos ao cadastrar Boo novo sem sobrescrever escolhas de existentes', () => {
+    render(<Editor kind="agent" agents={[]} models={[]} onClose={vi.fn()} onSave={vi.fn()} onPickFolder={vi.fn()} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Modelo e permissões' }))
+    expect(screen.getByRole('checkbox', { name: 'Permitir edição de arquivos do workspace' })).toBeChecked()
+  })
   it('mostra a restrição de escrita existente e permite habilitar sem alterar o modo de aprovação', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<Editor kind="agent" agents={[]} models={[]} initial={agent('hermes', 'Hermes')} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn()} />)

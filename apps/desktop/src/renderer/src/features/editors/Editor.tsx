@@ -89,8 +89,8 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
     return next
   })
   // Especialidade e instruções não mudam nada no rosto do Pit: fora dos deps, digitar nesses campos não força o Boo Studio (SVG, 3 cópias na tela) a recalcular a cada tecla.
-  const previewAgent: Agent = useMemo(() => ({ id: (initial as Agent | undefined)?.id || '', name, alias, description: '', instructions: '', model, runtime, role, color, avatar, pitsShape, ...pits, canWrite: true, computerUse, approvalMode, revision: 0, createdAt: '' }),
-    [initial, name, alias, model, runtime, role, color, avatar, pitsShape, pits, computerUse, approvalMode])
+  const previewAgent: Agent = useMemo(() => ({ id: (initial as Agent | undefined)?.id || '', name, alias, description: '', instructions: '', model, runtime, role, color, avatar, pitsShape, ...pits, canWrite, computerUse, approvalMode, revision: 0, createdAt: '' }),
+    [initial, name, alias, model, runtime, role, color, avatar, pitsShape, pits, canWrite, computerUse, approvalMode])
   const onCustomizePoli = useCallback((patch: Partial<Agent>) => { if (patch.color) setColor(patch.color); if (patch.pitsShape) setPitsShape(patch.pitsShape); setPits(current => ({ ...current, ...patch })) }, [])
   return <div className={`fixed inset-0 z-50 flex bg-black/45 ${kind === 'agent' ? 'justify-end' : 'items-center justify-center p-4'}`} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section role="dialog" aria-modal="true" aria-labelledby="workspace-editor-title" className={`flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl ${kind === 'agent' ? 'h-full max-h-screen max-w-[840px] rounded-l-2xl border-y-0 border-r-0' : 'max-w-lg rounded-2xl'}`}>

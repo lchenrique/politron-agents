@@ -31,10 +31,11 @@ function rgb(hex: string): [number, number, number] {
 }
 
 export const RiveBooAvatar = memo(function RiveBooAvatar({
-  shape, color, eyeColor, cheekColor, blushOpacity, headAccessory, faceAccessory,
+  shape, color, eyeColor, cheekColor, blushOpacity, headAccessory, faceAccessory, size,
   speaking, playing, visible, onReady,
 }: {
   shape: string
+  size: number
   color: string
   eyeColor: string
   cheekColor: string
@@ -72,6 +73,9 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
   const { setRgb: setDark } = useViewModelInstanceColor('dark', instance)
   const { setRgb: setEyes } = useViewModelInstanceColor('eyes', instance)
   const { setRgb: setCheek } = useViewModelInstanceColor('cheek', instance)
+  const { setRgba: setAmbientCenter } = useViewModelInstanceColor('ambientCenter', instance)
+  const { setRgba: setAmbientMid } = useViewModelInstanceColor('ambientMid', instance)
+  const { setRgba: setAmbientEdge } = useViewModelInstanceColor('ambientEdge', instance)
   const { setValue: setSmileOpacity } = useViewModelInstanceNumber('smileOpacity', instance)
   const { setValue: setTalkOpacity } = useViewModelInstanceNumber('talkOpacity', instance)
   const { setValue: setBlushOpacity } = useViewModelInstanceNumber('blushOpacity', instance)
@@ -85,12 +89,15 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
     setDark(...rgb(tone(color, false, .39)))
     setEyes(...rgb(eyeColor))
     setCheek(...rgb(cheekColor))
+    setAmbientCenter(...rgb(color), 61)
+    setAmbientMid(...rgb(color), 41)
+    setAmbientEdge(...rgb(color), 0)
     setBlushOpacity(blushOpacity)
     setSmileOpacity(speaking ? 0 : 1)
     setTalkOpacity(speaking ? 1 : 0)
     onReady(true)
   }, [rive, instance, color, eyeColor, cheekColor, blushOpacity, speaking,
-    setLight, setBase, setDark, setEyes, setCheek, setBlushOpacity, setSmileOpacity, setTalkOpacity, onReady])
+    setLight, setBase, setDark, setEyes, setCheek, setAmbientCenter, setAmbientMid, setAmbientEdge, setBlushOpacity, setSmileOpacity, setTalkOpacity, onReady])
 
   // O hook global do ponteiro emite offsets; o Rive recebe os valores sem renderizar React a cada movimento.
   useEffect(() => {
@@ -116,7 +123,7 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
     style={{ position: 'absolute', inset: 0, opacity: visible ? 1 : 0, pointerEvents: 'none' }}>
     <RiveComponent role="img" aria-label="Boo animado" style={{ width: '100%', height: '100%', display: 'block' }} />
     {(headAccessory !== 'none' || faceAccessory !== 'none') && (
-      <svg viewBox="28 0 185 200" aria-hidden={!visible} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
+      <svg viewBox="28 0 185 200" className="poli-avatar__rive-accessory" aria-hidden={!visible} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible', '--poli-rive-bob': (10 * size / 200) + 'px' } as React.CSSProperties}>
         <BooHeadAccessory kind={headAccessory}/>
         <BooFaceAccessory kind={faceAccessory}/>
       </svg>

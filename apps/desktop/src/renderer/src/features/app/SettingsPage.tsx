@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { ThemeSelector } from '@/components/ide/ThemeSelector'
 import { errorText } from './appShellShared'
+import { setRivePreview, useRivePreview } from './booRendererPreference'
 import { RealtimeSettingsPanel } from '../realtime/RealtimeCall'
 import { HostSettingsPanel } from '../hosts/HostSettingsPanel'
 import { AppUpdatesPanel } from './AppUpdatesPanel'
@@ -132,6 +133,7 @@ function SpeechKeySettings() {
 
 export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: { open: boolean; onOpenChange: (open: boolean) => void; initialSection?: SettingsSection }) {
   const [section, setSection] = useState<Section>('geral')
+  const rivePreview = useRivePreview()
   useEffect(() => { if (open) setSection(initialSection) }, [open, initialSection])
   const [apiKey, setApiKey] = useState('')
   const [configured, setConfigured] = useState(false)
@@ -224,6 +226,12 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         {section === 'geral' && <>
           <h2 className="text-lg font-semibold">Geral</h2>
           <Field icon={Palette} title="Tema e modo de cor" description="Escolha uma paleta e alterne entre claro e escuro."><ThemeSelector /></Field>
+          <Field title="Animação dos Boos" description="O SVG original preserva brilho, sombra, acessórios e reações. O renderer Rive ainda está em desenvolvimento e não possui paridade visual.">
+            <label className="flex items-start gap-3 text-sm">
+              <Checkbox aria-label="Experimentar renderer Rive (incompleto)" checked={rivePreview} onCheckedChange={checked => setRivePreview(checked === true)} className="mt-1" />
+              <span><span className="block font-medium">Experimentar renderer Rive (incompleto)</span><span className="mt-1 block text-xs text-muted-foreground">Desligado por padrão. Com a opção desligada, todos os Boos usam SVG. Ao ligar, apenas retratos compatíveis usam Rive; o restante continua em SVG. Reversível imediatamente.</span></span>
+            </label>
+          </Field>
         </>}
         {section === 'assistente' && <>
           <h2 className="text-lg font-semibold">Assistente</h2>

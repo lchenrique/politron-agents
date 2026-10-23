@@ -4,6 +4,7 @@ import { STARTLE_EVENT, usePoliDrowsy, usePoliGaze } from './usePoliGaze'
 import { useAvatarActivity } from './useAvatarActivity'
 import { BOO_BODY_PATHS } from './boo-appearance'
 import { BooFaceAccessory, BooHeadAccessory } from './BooAccessories'
+import { useRivePreview } from './booRendererPreference'
 const RiveBooAvatar = lazy(() => import('./RiveBooAvatar').then(m => ({ default: m.RiveBooAvatar })))
 import './PoliAvatar.css'
 
@@ -43,6 +44,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
   const gradientId = 'poli-' + useId().replace(/:/g, '')
   const ref = useRef<HTMLSpanElement>(null)
   const [hovered, setHovered] = useState(false)
+  const riveOptIn = useRivePreview()
   const color = agent.color || '#786bea'
   const eyeColor = agent.pitsEyeColor || '#ffffff'
   const cheek = agent.pitsCheekColor || '#f5a5d1'
@@ -124,7 +126,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
   // Compatibilidade: nÃ£o perder tamanhos de olhos, escala e expressÃµes personalizados.
   // A primeira migraÃ§Ã£o usa Rive para os Boos grandes de proporÃ§Ã£o original;
   // os demais conservam a implementaÃ§Ã£o SVG atÃ© que os bindings sejam equivalentes.
-  const riveEligible = import.meta.env.MODE !== 'test' && size >= 80 && agent.pitsAnimate !== false
+  const riveEligible = riveOptIn && import.meta.env.MODE !== 'test' && size >= 80 && agent.pitsAnimate !== false
     && eyeSize === 8 && eyeSpacing === 26 && bodyWidth === 1
     && bodyHeight === 1 && mouthSize === 1 && showAura && showBlush
   const [riveReady, setRiveReady] = useState(false)
@@ -233,7 +235,7 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
         </g>
       </svg>
       {riveEligible && <Suspense fallback={null}>
-        <RiveBooAvatar shape={shape} color={color} eyeColor={eyeColor}
+        <RiveBooAvatar size={size} shape={shape} color={color} eyeColor={eyeColor}
           cheekColor={cheek} blushOpacity={blushOpacity}
           headAccessory={headAccessory} faceAccessory={faceAccessory}
           speaking={state === 'speaking'} visible={riveVisible}

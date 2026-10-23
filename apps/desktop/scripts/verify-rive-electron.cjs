@@ -19,6 +19,11 @@ async function main() {
   page.on('console', e => { if (e.type() === 'error') errors.push(e.text()) })
   page.on('requestfailed', req => failedRequests.push({ url: req.url(), error: req.failure()?.errorText }))
   await page.waitForFunction(() => !!window.appAPI)
+  // Rive é opt-in; a aparência SVG continua como padrão da aplicação.
+  await page.evaluate(() => {
+    localStorage.setItem('boobot.avatar.renderer', 'rive')
+    window.dispatchEvent(new Event('boobot:avatar-renderer-changed'))
+  })
   await page.evaluate(async () => {
     const conv = await window.appAPI.saveConversation({ name: 'Rive QA', agentIds: [] })
     await window.appAPI.setVisibleConversation(conv.id)
@@ -40,6 +45,12 @@ async function main() {
   assert.ok(ui.avatars, 'Nenhum Boo exibido no smoke')
   assert.ok(ui.riveCanvases, 'O renderer Rive nao foi montado')
   assert.ok(ui.riveActive, 'Arquivo Rive nao terminou de carregar; veja erros de WASM')
+  await page.evaluate(() => {
+    localStorage.removeItem('boobot.avatar.renderer')
+    window.dispatchEvent(new Event('boobot:avatar-renderer-changed'))
+  })
+  await page.waitForFunction(() => document.querySelectorAll('.poli-avatar[data-rive-active="true"]').length === 0)
+  assert.equal(await page.locator('.poli-avatar[data-rive-active="true"]').count(), 0, 'Fallback SVG não restaurado')
   assert.equal(errors.length, 0, 'Renderer com erros JS')
 }
 main().catch(e => { console.error(e); process.exitCode = 1 }).finally(async () => { if (app) await app.close() })

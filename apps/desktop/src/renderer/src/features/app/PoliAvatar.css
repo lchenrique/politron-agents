@@ -66,6 +66,17 @@
   .poli-avatar__finger { animation: none !important; }
 }
 
-/* O SVG permanece como fallback, mas n�o anima oculto durante a pr�via Rive. */
+/* SVG como renderer padrão; overlays Rive seguem o movimento do corpo quando ativados. */
 .poli-avatar[data-rive-active='true'] > svg,
 .poli-avatar[data-rive-active='true'] > svg * { animation-play-state: paused !important; }
+/* Rive experimental: bonés e óculos acompanham a flutuação nativa de 4 unidades do artboard. */
+.poli-avatar[data-rive-active='true'][data-motion-active='true'] .poli-avatar__rive-accessory {
+  animation: poli-rive-accessory-bob 3s ease-in-out infinite;
+}
+@keyframes poli-rive-accessory-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(calc(-1 * var(--poli-rive-bob, 3px))); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .poli-avatar .poli-avatar__rive-accessory { animation: none !important; }
+}

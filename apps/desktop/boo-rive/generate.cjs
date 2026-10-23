@@ -40,7 +40,7 @@ function vertexXml(d) {
   })
   return `<PointsPath isClosed="true" isClockwise="${area>0}" name="Silhouette">\n${lines.join('\n')}\n</PointsPath>`
 }
-const property = {light:'0:302',base:'0:303',dark:'0:304',eyes:'0:305',cheek:'0:306',smileOpacity:'0:307',talkOpacity:'0:308',blushOpacity:'0:309',gazeX:'0:310',gazeY:'0:311'}
+const property = {light:'0:302',base:'0:303',dark:'0:304',eyes:'0:305',cheek:'0:306',smileOpacity:'0:307',talkOpacity:'0:308',blushOpacity:'0:309',gazeX:'0:310',gazeY:'0:311',ambientCenter:'0:312',ambientMid:'0:313',ambientEdge:'0:314'}
 const bind=(prop,key)=>`<DataBindContext sourcePathIds="0:300-${property[prop]}" propertyKey="${key}"/>`
 const solid=(value,prop)=>`<SolidColor colorValue="${value}" name="Color">${prop?bind(prop,37):''}</SolidColor>`
 const fill=(value,prop)=>`<Fill name="Fill">${solid(value,prop)}</Fill>`
@@ -66,9 +66,18 @@ ${bind('gazeX',13)}${bind('gazeY',14)}
 ${ellipse('Left eye',-26,0,16,24,'FFFFFFFF','eyes')}
 ${ellipse('Right eye',26,0,16,24,'FFFFFFFF','eyes')}
 </Node>`
-  const glow=`<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
-<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+  const glow=`<Shape x="91" y="43" rotation="-0.418879" name="Original head highlight">
+<Ellipse width="74" height="26" originX=".5" originY=".5"/>
 ${fill('38FFFFFF')}</Shape>`
+  const ambient=`<Shape x="120" y="100" name="Soft surrounding glow">
+<Ellipse width="200" height="200" originX=".5" originY=".5"/>
+<Fill name="Fade"><RadialGradient startX="0" startY="0" endX="100" endY="0">
+<GradientStop position="0" colorValue="3D786BEA">${bind('ambientCenter',38)}</GradientStop>
+<GradientStop position=".72" colorValue="29786BEA">${bind('ambientMid',38)}</GradientStop>
+<GradientStop position="1" colorValue="00786BEA">${bind('ambientEdge',38)}</GradientStop>
+</RadialGradient></Fill></Shape>`
+  const shadow=`<Shape x="92" y="190" opacity=".15" name="Original ground shadow">
+<Ellipse width="108" height="18" originX=".5" originY=".5"/>${fill('FF786BEA','base')}</Shape>`
   const blush1=ellipse('Left cheek',77,118,28,14,'73F5A5D1','cheek','blushOpacity')
   const blush2=ellipse('Right cheek',163,118,28,14,'73F5A5D1','cheek','blushOpacity')
   return `<Artboard width="185" height="200" name="${key}" id="${id(2)}" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="${id(7)}" styleId="${id(5)}">
@@ -81,13 +90,17 @@ ${blush1}
 ${blush2}
 ${glow}
 ${body}
-<Shape x="120" y="98" name="Aura" opacity=".12"><Ellipse width="174" height="174" originX=".5" originY=".5"/>${fill('FF786BEA','base')}</Shape>
+<Shape x="120" y="98" id="${id(42)}" name="Aura" opacity=".12"><Ellipse width="166" height="166" originX=".5" originY=".5"/>${fill('FF786BEA','base')}</Shape>
+${ambient}
 </Node>
-${ellipse('Ground shadow',92,190,95,15,'24786BEA')}
+${shadow}
 <StateMachine name="BooMotion" id="${id(7)}"><StateMachineLayer name="Blink" id="${id(8)}">
 <EntryState><StateTransition stateToId="${id(12)}"/></EntryState>
 <AnimationState animationId="${id(6)}" id="${id(12)}"/>
-</StateMachineLayer></StateMachine>
+</StateMachineLayer>
+<StateMachineLayer name="Floating" id="${id(14)}"><EntryState><StateTransition stateToId="${id(16)}"/></EntryState><AnimationState animationId="${id(15)}" id="${id(16)}"/></StateMachineLayer>
+<StateMachineLayer name="Aura pulse" id="${id(9)}"><EntryState><StateTransition stateToId="${id(13)}"/></EntryState><AnimationState animationId="${id(10)}" id="${id(13)}"/></StateMachineLayer>
+</StateMachine>
 <LinearAnimation name="Blink" duration="276" loopValue="loop" id="${id(6)}">
 <KeyedObject objectId="${id(40)}"><KeyedProperty propertyKey="17">
 <KeyFrameDouble value="1" frame="0" interpolationType="linear"/>
@@ -96,10 +109,25 @@ ${ellipse('Ground shadow',92,190,95,15,'24786BEA')}
 <KeyFrameDouble value="1" frame="264" interpolationType="linear"/>
 <KeyFrameDouble value="1" frame="276" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
+</LinearAnimation>
+<LinearAnimation name="Natural floating" duration="180" loopValue="loop" id="${id(15)}">
 <KeyedObject objectId="${id(41)}"><KeyedProperty propertyKey="14">
 <KeyFrameDouble value="0" frame="0" interpolationType="linear"/>
-<KeyFrameDouble value="-4" frame="138" interpolationType="linear"/>
-<KeyFrameDouble value="0" frame="276" interpolationType="linear"/>
+<KeyFrameDouble value="-1.45" frame="22" interpolationType="linear"/>
+<KeyFrameDouble value="-5" frame="45" interpolationType="linear"/>
+<KeyFrameDouble value="-8.55" frame="68" interpolationType="linear"/>
+<KeyFrameDouble value="-10" frame="90" interpolationType="linear"/>
+<KeyFrameDouble value="-8.55" frame="112" interpolationType="linear"/>
+<KeyFrameDouble value="-5" frame="135" interpolationType="linear"/>
+<KeyFrameDouble value="-1.45" frame="158" interpolationType="linear"/>
+<KeyFrameDouble value="0" frame="180" interpolationType="linear"/>
+</KeyedProperty></KeyedObject>
+</LinearAnimation>
+<LinearAnimation name="Aura breathing" duration="144" loopValue="loop" id="${id(10)}">
+<KeyedObject objectId="${id(42)}"><KeyedProperty propertyKey="18">
+<KeyFrameDouble value=".12" frame="0" interpolationType="linear"/>
+<KeyFrameDouble value=".28" frame="72" interpolationType="linear"/>
+<KeyFrameDouble value=".12" frame="144" interpolationType="linear"/>
 </KeyedProperty></KeyedObject>
 </LinearAnimation></Artboard>`
 }
@@ -108,6 +136,7 @@ const vm=`<ViewModel name="BooColors" id="0:300" defaultInstanceId="0:301">
 <ViewModelPropertyColor name="eyes" id="0:305"/><ViewModelPropertyColor name="cheek" id="0:306"/>
 <ViewModelPropertyNumber name="smileOpacity" id="0:307"/><ViewModelPropertyNumber name="talkOpacity" id="0:308"/><ViewModelPropertyNumber name="blushOpacity" id="0:309"/>
 <ViewModelPropertyNumber name="gazeX" id="0:310"/><ViewModelPropertyNumber name="gazeY" id="0:311"/>
+<ViewModelPropertyColor name="ambientCenter" id="0:312"/><ViewModelPropertyColor name="ambientMid" id="0:313"/><ViewModelPropertyColor name="ambientEdge" id="0:314"/>
 <ViewModelInstance exports="true" name="Default" id="0:301">
 <ViewModelInstanceColor propertyValue="FFBCB5FF" viewModelPropertyId="0:302"/>
 <ViewModelInstanceColor propertyValue="FF786BEA" viewModelPropertyId="0:303"/>
@@ -118,6 +147,9 @@ const vm=`<ViewModel name="BooColors" id="0:300" defaultInstanceId="0:301">
 <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:308"/>
 <ViewModelInstanceNumber propertyValue=".45" viewModelPropertyId="0:309"/>
 <ViewModelInstanceNumber propertyValue="120" viewModelPropertyId="0:310"/><ViewModelInstanceNumber propertyValue="94" viewModelPropertyId="0:311"/>
+<ViewModelInstanceColor propertyValue="3D786BEA" viewModelPropertyId="0:312"/>
+<ViewModelInstanceColor propertyValue="29786BEA" viewModelPropertyId="0:313"/>
+<ViewModelInstanceColor propertyValue="00786BEA" viewModelPropertyId="0:314"/>
 </ViewModelInstance></ViewModel>`
 const xml=`<Rive version="1" kind="fragment">\n${shapes.map((s,i)=>board(s.key,i,s.value)).join('\n')}\n${vm}\n</Rive>\n`
 fs.writeFileSync(path.join(__dirname,'scene.rml'), xml, 'utf8')
