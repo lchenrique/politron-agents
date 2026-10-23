@@ -264,7 +264,7 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
       'Não invente alterações; espere o resultado real de cada chamada.',
       'Ferramentas autorizadas nesta sessão:', JSON.stringify(s.tools)
     ].join('\n') : 'Sem ferramentas Boobot nesta sessão. Responda normalmente, sem ferramentas nativas.'
-    return [buildAgentSystemPrompt(s.agent, s.instructions), guide, 'Usuário: ' + message].join('\n\n')
+    return [buildAgentSystemPrompt(s.agent, s.instructions, s.tools), guide, 'Usuário: ' + message].join('\n\n')
   }
   async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<Data> {
     const state = this.sessions.get(threadId)

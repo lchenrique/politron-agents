@@ -8,7 +8,7 @@ export const SCHEMA_VERSION = 9
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
   instructions: 'Você é o Assistente padrão do Boobot. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
-  runtime: 'codex', model: 'gpt-6-luna', color: '#6366f1', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-01-01T00:00:00.000Z'
+  runtime: 'codex', model: 'gpt-6-luna', color: '#6366f1', avatar: '', canWrite: true, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-01-01T00:00:00.000Z'
 }
 
 function normalizeConversation(value: Conversation): Conversation {
@@ -22,7 +22,7 @@ function normalizeWorkspace(value: Workspace): Workspace {
 }
 export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>
 export type SessionBinding = { key: string; threadId: string; runtime: Agent['runtime'] | null; contextVersion: number; deliveredDigests: Record<string, string> }
-const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: false, computerUse: false, approvalMode: 'ask' }
+const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: true, computerUse: false, approvalMode: 'ask' }
 function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'ghost-wave', approvalMode: value.approvalMode === 'automatic' || value.approvalMode === 'bypass' ? value.approvalMode : 'ask' } }
 
 export function requiredText(value: unknown, label: string, limit = 10000): string {
@@ -353,7 +353,7 @@ export class WorkspaceStore {
       pitsAura: input.pitsAura ?? previous?.pitsAura ?? true,
       pitsBlush: input.pitsBlush ?? previous?.pitsBlush ?? true,
       pitsAnimate: input.pitsAnimate ?? previous?.pitsAnimate ?? true,
-      canWrite: input.canWrite === true, computerUse: input.computerUse === true, approvalMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
+      canWrite: input.canWrite ?? previous?.canWrite ?? true, computerUse: input.computerUse ?? previous?.computerUse ?? false, approvalMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_agents', value); return value
   }
   private userAgents(ids: string[]): void {
@@ -388,7 +388,7 @@ export class WorkspaceStore {
     const filesWrite = permissionInput.filesWrite ?? oldPermissions?.filesWrite ?? 'inherit'
     const computerUse = permissionInput.computerUse ?? oldPermissions?.computerUse ?? 'inherit'
     if (!['inherit', 'deny'].includes(filesWrite) || !['inherit', 'deny'].includes(computerUse)) throw new Error('Política de acesso do workspace inválida.')
-    // Workspaces novos já nascem com o Chief liberado para propor; a aprovação explícita de cada proposta continua obrigatória e é a proteção real.
+    // Workspaces novos permitem propostas do Chief; o modo de aprovação do agente controla a confirmação.
     const chiefCreateAgents = permissionInput.chiefCreateAgents ?? oldPermissions?.chiefCreateAgents ?? true
     const chiefEditAgents = permissionInput.chiefEditAgents ?? oldPermissions?.chiefEditAgents ?? true
     const chiefManageTeam = permissionInput.chiefManageTeam ?? oldPermissions?.chiefManageTeam ?? true

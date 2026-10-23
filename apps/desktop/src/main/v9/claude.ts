@@ -140,7 +140,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         disallowedTools: ['Write', 'Edit', 'Bash', 'NotebookEdit', 'MultiEdit'],
         allowedTools: context.tools.map(item => `mcp__politron__${item.name}`),
         mcpServers: { politron: server },
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: buildAgentSystemPrompt(context.agent, context.projectInstructions) },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: buildAgentSystemPrompt(context.agent, context.projectInstructions, context.tools) },
       model: typeof params.model === 'string' ? params.model : context.agent.model || undefined,
       effort: context.agent.effort,
       ...(context.sessionId ? { resume: context.sessionId } : {}),

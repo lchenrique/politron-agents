@@ -138,7 +138,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   const [feedback, setFeedback] = useState('')
   const [assistantFeedback, setAssistantFeedback] = useState('')
   const [saving, setSaving] = useState(false)
-  const [assistantAccess, setAssistantAccess] = useState({ computerUse: false, approvalMode: 'ask' as Agent['approvalMode'] })
+  const [assistantAccess, setAssistantAccess] = useState({ canWrite: true, computerUse: false, approvalMode: 'ask' as Agent['approvalMode'] })
   const [terminalEnabled, setTerminalEnabled] = useState(true)
   const [terminalFeedback, setTerminalFeedback] = useState('')
   const [openRouterKey, setOpenRouterKey] = useState('')
@@ -150,7 +150,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   useEffect(() => { if (!open) { setApiKey(''); setOpenRouterKey('') } }, [open])
   useEffect(() => { if (!open || (section !== 'assistente' && section !== 'ferramentas')) return
     let active = true
-    void window.appAPI.settingsPreferences().then(value => { if (!active) return; setAssistantAccess({ computerUse: value.computerUse, approvalMode: value.approvalMode }); setTerminalEnabled(value.terminalEnabled) }).catch(error => { if (active) setFeedback(String(error)) })
+    void window.appAPI.settingsPreferences().then(value => { if (!active) return; setAssistantAccess({ canWrite: value.canWrite ?? true, computerUse: value.computerUse, approvalMode: value.approvalMode }); setTerminalEnabled(value.terminalEnabled) }).catch(error => { if (active) setFeedback(String(error)) })
     return () => { active = false }
   }, [open, section])
   useEffect(() => { if (!open || section !== 'provedores') return; let active = true
@@ -227,15 +227,16 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         </>}
         {section === 'assistente' && <>
           <h2 className="text-lg font-semibold">Assistente</h2>
-          <Field title="Assistente padrão" description="Escolha as permissões específicas do Assistente. O acesso a arquivos é comum a todos os agentes e respeita a política do workspace.">
+          <Field title="Assistente padrão" description="Escolha as permissões específicas do Assistente. A edição de arquivos respeita também a política do workspace.">
+            <label className="flex items-center gap-3 text-sm"><Checkbox checked={assistantAccess.canWrite} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, canWrite: checked === true })} /><span>Permitir edição de arquivos do workspace</span></label>
             <label className="flex items-start gap-3 text-sm"><Checkbox checked={assistantAccess.computerUse} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, computerUse: checked === true })} className="mt-0.5" /><span><span className="font-medium">Permitir uso do navegador</span><span className="mt-0.5 block text-xs text-muted-foreground">Ações no navegador respeitam o modo de aprovação deste Assistente.</span></span></label>
-            <label className="block space-y-1.5 text-sm">Modo de aprovação do Assistente<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as Agent['approvalMode'] })}><SelectTrigger aria-label="Aprovações para arquivos e navegador"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de agir (padrão)</SelectItem><SelectItem value="automatic">Automático · arquivos e navegador</SelectItem><SelectItem value="bypass">Bypass · incluindo terminal (alto risco)</SelectItem></SelectContent></Select></label>
-            <p className="text-xs leading-5 text-muted-foreground">Esta configuração vale somente para o Assistente padrão. Para outros Boos, ajuste o modo no editor do agente. No Bypass, o terminal pode alterar outros caminhos do computador sem pedir confirmação; alterações administrativas continuam protegidas.</p><p role="status" className="text-xs text-muted-foreground">{assistantFeedback}</p>
+            <label className="block space-y-1.5 text-sm">Modo de aprovação do Assistente<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as Agent['approvalMode'] })}><SelectTrigger aria-label="Aprovações para arquivos e navegador"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de agir (padrão)</SelectItem><SelectItem value="automatic">Automático · arquivos e navegador</SelectItem><SelectItem value="bypass">Bypass · autonomia total</SelectItem></SelectContent></Select></label>
+            <p className="text-xs leading-5 text-muted-foreground">Esta configuração vale somente para o Assistente padrão. Para outros Boos, ajuste o modo no editor do agente. No Bypass, o terminal pode alterar outros caminhos do computador sem pedir confirmação; o Chief em Bypass também pode criar equipes e delegar dentro das permissões do workspace.</p><p role="status" className="text-xs text-muted-foreground">{assistantFeedback}</p>
           </Field>
         </>}
         {section === 'ferramentas' && <>
           <h2 className="text-lg font-semibold">Ferramentas</h2>
-          <Field title="Terminal · todos os agentes" description="Todos os agentes podem ler e alterar arquivos do workspace. O terminal executa na pasta da conversa, mas não é isolado pelo sistema operacional. O modo Bypass de cada agente permite executar comandos sem confirmação.">
+          <Field title="Terminal · todos os agentes" description="Agentes com edição habilitada podem alterar arquivos do workspace. O terminal executa na pasta da conversa, mas não é isolado pelo sistema operacional. O modo Bypass de cada agente permite executar comandos sem confirmação.">
             <label className="flex items-start gap-3 text-sm"><Checkbox checked={terminalEnabled} onCheckedChange={checked => void updateTerminalAccess(checked === true)} className="mt-0.5" /><span><span className="font-medium">Habilitar terminal para todos os agentes</span><span className="mt-0.5 block text-xs text-muted-foreground">A alteração vale para o Assistente padrão e todos os agentes cadastrados.</span></span></label>
             <p role="status" className="text-xs text-muted-foreground">{terminalFeedback || (terminalEnabled ? 'Terminal habilitado para todos os agentes.' : 'Terminal desabilitado.')}</p>
           </Field>

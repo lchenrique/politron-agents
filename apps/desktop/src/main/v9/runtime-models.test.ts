@@ -9,11 +9,11 @@ import { ClaudeRuntime } from './claude'
 import { CodexRuntime } from './codex'
 
 const { execFileMock, spawnMock, crossSpawnMock } = vi.hoisted(() => ({ execFileMock: vi.fn(), spawnMock: vi.fn(), crossSpawnMock: vi.fn() }))
-vi.mock('node:child_process', async importOriginal => ({
-  ...await importOriginal<typeof import('node:child_process')>(),
-  execFile: execFileMock,
-  spawn: spawnMock,
-}))
+vi.mock('node:child_process', async importOriginal => {
+  const original = await importOriginal<typeof import('node:child_process')>()
+  return { ...original, execFile: execFileMock, spawn: spawnMock,
+    default: { ...original, execFile: execFileMock, spawn: spawnMock } }
+})
 vi.mock('cross-spawn', () => ({ default: crossSpawnMock }))
 
 afterEach(() => {

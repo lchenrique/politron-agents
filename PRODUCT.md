@@ -66,7 +66,7 @@ O usuário começa uma conversa com o Assistente padrão ou escolhe um bot. Proj
 
 - Um projeto organiza contexto e várias conversas independentes; a equipe pode ter zero, um ou vários bots.
 - Com um participante escolhido, somente ele responde. Com vários, os participantes ficam visíveis e a conversa admite colaboração.
-- A proposta de organização usa equipe padrão do projeto e participantes por conversa, conforme `docs/arquivo/ESTRATEGIA_CHAT_V9.md` (incorporado em `ESTRATEGIA_POLITRON.md`); alterações na equipe padrão não devem mudar silenciosamente conversas em andamento.
+- A equipe padrão do projeto é aplicada a novas conversas. Alterações pela administração do workspace preservam conversas existentes. Quando o Chief forma uma equipe por `propose_boos` ou associa membros por `propose_team`, a operação informa e inclui os membros na conversa atual, preservando o coordenador e sem disparar broadcast.
 - Cada edição real de arquivo deve apresentar um cartão de diff no chat, com caminho, autor, estado, adições/remoções e trechos alterados.
 - O diff é evidência produzida pela ferramenta e persistida com a execução. Diferenciar mudança aplicada, falha e resultado indeterminado; texto do modelo não comprova escrita.
 - Assistente padrão e projetos com múltiplas conversas têm uma implementação inicial no incremento isolado `v9/assistente-projetos`, com validação automatizada descrita abaixo. Isso não certifica execução com Codex real nem revisão visual da interface. Diff V9 no chat continua pendente; há componentes legados reutilizáveis para visualização.

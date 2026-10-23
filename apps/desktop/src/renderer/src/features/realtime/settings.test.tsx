@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { RealtimeSettingsPanel } from './RealtimeCall'
 import { useVoicePreferences } from './preferences'
 const status = { geminiKey: true, groqKey: false, localModels: false, vadInstalled: false, parakeetInstalled: false, installedPiperVoices: [], settings: { geminiModel: '', geminiVoice: 'Puck', transcriptionModel: 'whisper-large-v3-turbo', piperVoice: 'faber' } }
+const chatVoiceStatus = { provider: 'realtime', engine: 'piper', speech: true }
+beforeEach(() => vi.stubGlobal('appAPI', { voiceStatus: vi.fn(async () => chatVoiceStatus), snapshot: vi.fn(async () => ({ agents: [] })) }))
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear() })
 it('permite substituir uma chave já configurada sem expor nem remover a anterior primeiro', async () => {
   const api = { status: vi.fn(async () => status), geminiModels: vi.fn(async () => ['gemini-live-fixture']), saveKey: vi.fn(async () => undefined), clearKey: vi.fn(async () => undefined) }
@@ -46,7 +48,7 @@ it('oferece PocketTTS na configuração usada pela chamada real, inclusive parti
     saveKey: vi.fn(), clearKey: vi.fn(),
   }
   vi.stubGlobal('realtimeAPI', api)
-  vi.stubGlobal('appAPI', { pocketVoices: vi.fn(async () => pocket), snapshot: vi.fn(async () => ({ agents: [] })) })
+  vi.stubGlobal('appAPI', { voiceStatus: vi.fn(async () => chatVoiceStatus), pocketVoices: vi.fn(async () => pocket), snapshot: vi.fn(async () => ({ agents: [] })) })
   render(<RealtimeSettingsPanel />)
   const button = await screen.findByRole('radio', { name: /PocketTTS/ })
   fireEvent.click(button)
@@ -55,4 +57,20 @@ it('oferece PocketTTS na configuração usada pela chamada real, inclusive parti
   expect(await screen.findByRole('region', { name: 'Vozes PocketTTS' })).toBeInTheDocument()
   await screen.findByRole('option', { name: 'Rafael · masculina' })
   expect(screen.getByLabelText('Selecionar voz PocketTTS')).toHaveValue('rafael')
+})
+
+it('configura voz Piper feminina para um Boo e permite voltar à voz geral', async () => {
+  const settings = { ...status.settings, ttsEngine: 'piper', piperAgentVoices: {} }
+  const saveSettings = vi.fn(async patch => Object.assign(settings, patch))
+  vi.stubGlobal('realtimeAPI', { status: vi.fn(async () => ({ ...status, settings })), geminiModels: vi.fn(async () => []), saveSettings })
+  vi.stubGlobal('appAPI', { voiceStatus: vi.fn(async () => chatVoiceStatus), snapshot: vi.fn(async () => ({ agents: [{ id: 'boo-1', name: 'Brigid' }] })) })
+  render(<RealtimeSettingsPanel />)
+  expect(await screen.findByLabelText('Voz das respostas do chat')).toHaveValue('realtime')
+  fireEvent.change(await screen.findByLabelText('Selecionar Boo para voz Piper'), { target: { value: 'boo-1' } })
+  await screen.findByRole('option', { name: 'Brigid' })
+  fireEvent.change(screen.getByLabelText('Selecionar Boo para voz Piper'), { target: { value: 'boo-1' } })
+  fireEvent.change(screen.getByLabelText('Selecionar voz Piper'), { target: { value: 'dii' } })
+  await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ piperAgentVoices: { 'boo-1': 'dii' } }))
+  fireEvent.change(screen.getByLabelText('Selecionar voz Piper'), { target: { value: 'inherit' } })
+  await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ piperAgentVoices: {} }))
 })

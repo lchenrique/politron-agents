@@ -26,6 +26,18 @@ function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
 }
 
 describe('Composer compacto e elástico', () => {
+  it('aplica planejamento a um envio e permite executar no próximo pedido', async () => {
+    const { textarea, onSubmit } = setup()
+    fireEvent.click(screen.getByRole('button', { name: 'Modo planejamento' }))
+    fireEvent.change(textarea, { target: { value: 'Planeje a LP' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Planeje a LP', 'Modelo real', expect.objectContaining({ planMode: true })))
+    expect(screen.getByRole('button', { name: 'Modo planejamento' })).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.change(textarea, { target: { value: 'Pode fazer' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenLastCalledWith('Pode fazer', 'Modelo real', expect.objectContaining({ planMode: false })))
+  })
+
   it('preserva o rascunho se o envio falhar e não envia durante composição IME', async () => {
     const onSubmit = vi.fn().mockRejectedValue(new Error('Falha de envio'))
     const { textarea } = setup({ onSubmit })
@@ -35,6 +47,16 @@ describe('Composer compacto e elástico', () => {
     fireEvent.keyDown(textarea, { key: 'Enter' })
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Falha de envio'))
     expect(textarea).toHaveValue('Minha mensagem')
+  })
+
+  it('mantém o planejamento ao restaurar um envio que falhou', async () => {
+    const { textarea } = setup({ onSubmit: vi.fn().mockRejectedValue(new Error('Sem conexão')) })
+    fireEvent.click(screen.getByRole('button', { name: 'Modo planejamento' }))
+    fireEvent.change(textarea, { target: { value: 'Planeje a página' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await screen.findByRole('alert')
+    expect(textarea).toHaveValue('Planeje a página')
+    expect(screen.getByRole('button', { name: 'Modo planejamento' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('grava, transcreve localmente e insere a fala como rascunho editável sem enviar automaticamente', async () => {

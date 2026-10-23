@@ -6,13 +6,15 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
 import { execFile } from 'node:child_process'
-import { decodeWave } from './voice-wav'
+import { decodeWave, encodeWave } from './voice-wav'
 import { voiceWorkerScript } from './voice-worker-script'
 import { ChatterboxService } from './chatterbox'
 import { OpenRouterVoiceService, type VoiceProvider } from './openrouter-voice'
 import { FastWhisperService } from './fast-whisper'
 import { PitVoiceService, PIT_VOICE_CHOICES, type PitVoiceId } from './pit-voices'
 import { PocketVoiceService } from './pocket-voices'
+import { RealtimeSettingsStore } from './realtime/settings'
+import { loadPiper } from './realtime/free-cascade'
 
 const execFileAsync = promisify(execFile)
 const voiceModels = {
@@ -23,7 +25,7 @@ const voiceModels = {
   },
 } as const
 
-export type VoiceStatus = { transcription: boolean; speech: boolean; engine: 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine: 'whisper-small-fast' | 'whisper-tiny' }
+export type VoiceStatus = { transcription: boolean; speech: boolean; provider: VoiceProvider; engine: 'piper' | 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine: 'whisper-small-fast' | 'whisper-tiny' }
 
 export class VoiceService {
   private readonly modelsDir = join(app.getPath('userData'), 'voice-models')
@@ -32,6 +34,7 @@ export class VoiceService {
   private readonly fastWhisper = new FastWhisperService()
   private readonly pits = new PitVoiceService()
   private readonly pocket = new PocketVoiceService()
+  private readonly realtimeSettings = new RealtimeSettingsStore(app.getPath('userData'))
   private worker: Worker | null = null
   private nextId = 0
   private outstanding = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timeout: ReturnType<typeof setTimeout> }>()
@@ -43,9 +46,12 @@ export class VoiceService {
       return (await Promise.all(model.required.map(async file => !!(await fs.stat(join(this.modelsDir, model.folder, file)).catch(() => null))))).every(Boolean)
     }
     const [engine, voiceKeyConfigured, localSpeechInstalled, tinyReady, defaultVoiceReady, pitSpeechInstalled, fastReady, pocketSpeechInstalled] = await Promise.all([this.openRouter.provider(), this.openRouter.configured(), this.chatterbox.status(), installed('asr'), this.openRouter.defaultVoiceReady(), this.pits.installed(), this.fastWhisper.installed(), this.pocket.installed()])
+    const settings = engine === 'realtime' ? await this.realtimeSettings.settings() : null
+    const localEngine = settings?.ttsEngine === 'pocket' ? 'pocket-tts' : 'piper'
+    const localReady = settings && (localEngine === 'pocket-tts' ? pocketSpeechInstalled : await this.realtimeSettings.piperVoiceReady(settings.piperVoice))
     if (fastReady) void this.fastWhisper.warmup().catch(() => undefined)
-    return { transcription: fastReady || tinyReady, transcriptionEngine: fastReady ? 'whisper-small-fast' : 'whisper-tiny', speech: engine === 'pits' ? pitSpeechInstalled : engine === 'pocket' ? pocketSpeechInstalled : engine === 'openrouter' ? voiceKeyConfigured : localSpeechInstalled,
-      engine: engine === 'pits' ? 'pit-voices' : engine === 'pocket' ? 'pocket-tts' : engine === 'openrouter' ? 'openrouter' : 'chatterbox-pt-br', language: 'pt-BR', voiceKeyConfigured, localSpeechInstalled, defaultVoiceReady, pitSpeechInstalled, pocketSpeechInstalled }
+    return { transcription: fastReady || tinyReady, transcriptionEngine: fastReady ? 'whisper-small-fast' : 'whisper-tiny', provider: engine, speech: engine === 'realtime' ? !!localReady : engine === 'pits' ? pitSpeechInstalled : engine === 'pocket' ? pocketSpeechInstalled : engine === 'openrouter' ? voiceKeyConfigured : localSpeechInstalled,
+      engine: engine === 'realtime' ? localEngine : engine === 'pits' ? 'pit-voices' : engine === 'pocket' ? 'pocket-tts' : engine === 'openrouter' ? 'openrouter' : 'chatterbox-pt-br', language: 'pt-BR', voiceKeyConfigured, localSpeechInstalled, defaultVoiceReady, pitSpeechInstalled, pocketSpeechInstalled }
   }
 
   async prewarmTranscription(): Promise<void> {
@@ -124,10 +130,19 @@ export class VoiceService {
   async newVoice(agentId?: string): Promise<Uint8Array> { return this.openRouter.newVoice(agentId) }
   async resetAgentVoice(agentId: string): Promise<void> { return this.openRouter.resetAgentVoice(agentId) }
   async speak(text: string, speed = 1, agentId?: string): Promise<Uint8Array> {
-    const status = await this.status()
-    if (!status.speech) throw new Error(status.engine === 'pocket-tts' ? 'Instale o executável PocketTTS local.' : status.engine === 'pit-voices' ? 'Instale os motores Supertonic/Kokoro.' : status.engine === 'openrouter' ? 'Configure uma chave OpenRouter na janela de ligação.' : 'Instale o Chatterbox PT-BR para gerar voz local.')
     if (typeof text !== 'string' || text.trim().length < 1 || text.length > 1600) throw new Error('O texto para leitura deve ter até 1.600 caracteres.')
     if (!Number.isFinite(speed) || speed < 0.75 || speed > 1.5) throw new Error('Velocidade de fala inválida.')
+    if (await this.openRouter.provider() === 'realtime') {
+      const settings = await this.realtimeSettings.settings()
+      if (settings.ttsEngine === 'pocket') return this.pocket.speak(text, agentId)
+      const voice = (agentId && settings.piperAgentVoices?.[agentId]) || settings.piperVoice
+      if (!(await this.realtimeSettings.piperVoiceReady(voice))) throw new Error('Baixe a voz Piper selecionada em Configurações > Voz em tempo real.')
+      const tts = await loadPiper(this.realtimeSettings.piperDir(voice), voice)
+      const audio = await tts.generateAsync({ text, sid: 0, speed, enableExternalBuffer: false })
+      return encodeWave(audio.samples, audio.sampleRate)
+    }
+    const status = await this.status()
+    if (!status.speech) throw new Error(status.engine === 'pocket-tts' ? 'Instale o executável PocketTTS local.' : status.engine === 'pit-voices' ? 'Instale os motores Supertonic/Kokoro.' : status.engine === 'openrouter' ? 'Configure uma chave OpenRouter nas configurações de voz.' : 'Instale o Chatterbox PT-BR para gerar voz local.')
     if (status.engine === 'pit-voices') return this.pits.speak(text, agentId)
     if (status.engine === 'pocket-tts') return this.pocket.speak(text, agentId)
     return status.engine === 'openrouter' ? this.openRouter.speak(text, speed, agentId) : this.chatterbox.speak(text, speed)

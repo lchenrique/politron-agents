@@ -113,7 +113,7 @@ export class AppService extends EventEmitter {
   }
   snapshot() { return { ...this.store.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function') } }
   // Small read for Settings; avoid materializing conversations, runs and file changes.
-  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, terminalEnabled: this.store.terminalEnabled() } }
+  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, terminalEnabled: this.store.terminalEnabled() } }
   private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : name === 'antigravity' ? this.antigravityRuntime : this.runtime }
   /** Usa o inventário validado na inicialização ou atualizado manualmente; envio não varre CLI. */
   setCachedModelResolver(resolver: (runtime: Agent['runtime']) => Promise<Model[]>): void { this.cachedModels = resolver }
@@ -278,6 +278,7 @@ export class AppService extends EventEmitter {
     })
   }
   private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], forceAsk = false): Promise<boolean> {
+    if (context.signal?.aborted) return false
     if (shouldAutoApprove(context.agent.approvalMode, kind, forceAsk)) return true
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
     this.store.putApproval(approval)
@@ -670,6 +671,17 @@ export class AppService extends EventEmitter {
     if (status === 'completed') this.notifyWhenAway(context.conversation.id, 'Tarefa concluída', `${context.agent.name} concluiu a resposta.`)
     else if (status === 'failed') this.notifyWhenAway(context.conversation.id, 'Tarefa precisa de atenção', `${context.agent.name} não conseguiu concluir a resposta.`)
   }
+  /** Chamado dentro da transação que cria/associa o time. Não inicia execuções. */
+  private addTeamToConversation(context: RunContext, team: string[]): Conversation {
+    const current = this.store.conversation(context.conversation.id)
+    if (current.archived || current.workspaceId !== context.run.workspaceId) throw new Error('A conversa mudou; a associação da equipe foi cancelada.')
+    const agentIds = [...new Set([...current.agentIds, ...team])]
+    if (agentIds.length > 10) throw new Error('A conversa aceita até dez participantes, incluindo o coordenador.')
+    const leaderAgentId = current.leaderAgentId && agentIds.includes(current.leaderAgentId)
+      ? current.leaderAgentId : agentIds.includes(context.agent.id) ? context.agent.id : agentIds[0] || null
+    return this.store.saveConversation({ id: current.id, agentIds, kind: agentIds.length > 1 ? 'group' : 'direct',
+      responseMode: current.kind === 'group' ? current.responseMode : 'leader', leaderAgentId })
+  }
   private tools(context: RunContext): DynamicTool[] {
     const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]): DynamicTool => ({ type: 'function', name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false } })
     const permissions = this.store.workspace(context.run.workspaceId).permissions
@@ -688,7 +700,7 @@ export class AppService extends EventEmitter {
       tool('workspace_list', 'Lista arquivos e pastas dentro da pasta deste grupo.', { path: { type: 'string', description: 'Caminho relativo; use . para a raiz.' } }, ['path']),
       tool('workspace_read', 'Lê um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' } }, ['path']),
       ...(canWrite && !planning ? [tool('workspace_write', 'Cria ou substitui um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
-      ...(canWrite && !planning && this.store.terminalEnabled() ? [tool('workspace_run_command', 'Executa um comando não interativo no terminal com diretório de trabalho nesta conversa. Não há sandbox do sistema operacional: o comando aprovado pode acessar outros caminhos. Cada execução exige aprovação do usuário. Comandos podem ler ou alterar arquivos e usar programas instalados; não use para comandos interativos.', { command: { type: 'string', description: 'Comando de shell a executar.' } }, ['command'])] : []),
+      ...(canWrite && !planning && this.store.terminalEnabled() ? [tool('workspace_run_command', 'Executa um comando não interativo no terminal com diretório de trabalho nesta conversa. Não há sandbox do sistema operacional: o comando aprovado pode acessar outros caminhos. A confirmação segue o modo de aprovação do agente; no Bypass, executa sem perguntar. Comandos podem ler ou alterar arquivos e usar programas instalados; não use para comandos interativos.', { command: { type: 'string', description: 'Comando de shell a executar.' } }, ['command'])] : []),
       ...(canUseComputer && !planning ? [
         tool('browser_open', 'Abre um endereço HTTP ou HTTPS na sessão privada deste agente.', { url: { type: 'string' } }, ['url']),
         tool('browser_observe', 'Lê o conteúdo visível e os controles da página aberta pelo agente.', {}, []),
@@ -697,7 +709,7 @@ export class AppService extends EventEmitter {
         tool('browser_key', 'Pressiona uma tecla comum na página, como Enter, Tab ou Escape.', { key: { type: 'string' } }, ['key']),
         tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY'])
       ] : []),
-      ...(context.agent.id !== ASSISTANT_ID ? [tool('propose_self_profile', 'Edite SEU PRÓPRIO perfil cadastrado no Boobot, inclusive se você é o Chief. Use quando perguntarem se você consegue se editar, personalizar aparência, nome, especialidade, instruções, personalidade ou comportamento. O corpo do modelo/pesos não podem ser alterados. Sugira mudanças específicas, preservando campos omitidos. SEMPRE requer aprovação explícita antes de salvar. NÃO permite alterar runtime, modelo, permissões, papel, menção, chaves, ferramentas ou acesso ao computador.', {
+      ...(context.agent.id !== ASSISTANT_ID ? [tool('propose_self_profile', 'Edite SEU PRÓPRIO perfil cadastrado no Boobot, inclusive se você é o Chief. Use quando perguntarem se você consegue se editar, personalizar aparência, nome, especialidade, instruções, personalidade ou comportamento. O corpo do modelo/pesos não podem ser alterados. Sugira mudanças específicas, preservando campos omitidos. A confirmação segue o modo de aprovação do agente. NÃO permite alterar runtime, modelo, permissões, papel, menção, chaves, ferramentas ou acesso ao computador.', {
         name: { type: 'string', description: 'Novo nome visível (opcional).' },
         description: { type: 'string', description: 'Especialidade ou descrição (opcional).' },
         instructions: { type: 'string', description: 'Novo conjunto COMPLETO das instruções/personalidade. Se quiser alterar só uma frase, preserve as demais instruções atuais.' },
@@ -720,13 +732,13 @@ export class AppService extends EventEmitter {
       tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id devolvido por list_skills.', { id: { type: 'string' } }, ['id']),
       ...(canWrite && !planning ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
       ...(context.agent.role === 'chief' && !planning ? [
-        tool('propose_agent', 'Propõe criar um agente novo (um "Boo" novo) ou alterar o perfil de um agente que já participa desta equipe. Nada será salvo sem aprovação explícita do usuário. Agentes novos começam sem acesso a arquivos e navegador. Se o usuário pedir para "criar um Boo", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
-        tool('propose_agent_model', 'Propõe mudar o runtime/modelo/esforço de um Boo da equipe. Use quando o usuário pedir para trocar GPT por Claude, Codex por outro motor ou definir outro modelo para front-end/back-end. SEMPRE pede aprovação explícita; NÃO muda permissões, papel, nome nem avatar. Modelo vazio seleciona o padrão do runtime.', { agent: { type: 'string', description: 'Nome ou @menção do Boo a reconfigurar.' }, runtime: { type: 'string', enum: ['codex','claude','pi','opencode','antigravity'] }, model: { type: 'string', description: 'Identificador exato do modelo; vazio usa o padrão do motor.' }, effort: { type: 'string', enum: ['low','medium','high','xhigh','max'] } }, ['agent','runtime']),
-        tool('propose_boos', 'Propõe 1 a 5 Boos com UMA aprovação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Nunca cria agentes sem aprovação; não libera escrita nem computador.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário proposto espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' } }, required: ['instructions'] } } }, ['agents']),
-        tool('propose_team', 'Propõe alterar a equipe padrão deste workspace. Só persiste após aprovação explícita do usuário.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents']),
-        tool('propose_session', 'Propõe criar uma nova sessão neste workspace, com a equipe informada ou o Assistente padrão. Só cria após aprovação do usuário.', { name: { type: 'string' }, agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['name', 'agents']),
+        tool('propose_agent', 'Propõe criar um agente novo (um "Boo" novo) ou alterar o perfil de um agente que já participa desta equipe. A confirmação segue o modo do Chief. Agentes novos herdam acesso a arquivos, navegador e modo de aprovação do Chief, respeitando a política do workspace. Se o usuário pedir para "criar um Boo", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
+        tool('propose_agent_model', 'Propõe mudar o runtime/modelo/esforço de um Boo da equipe. Use quando o usuário pedir para trocar GPT por Claude, Codex por outro motor ou definir outro modelo para front-end/back-end. A confirmação segue o modo de aprovação do Chief; NÃO muda permissões, papel, nome nem avatar. Modelo vazio seleciona o padrão do runtime.', { agent: { type: 'string', description: 'Nome ou @menção do Boo a reconfigurar.' }, runtime: { type: 'string', enum: ['codex','claude','pi','opencode','antigravity'] }, model: { type: 'string', description: 'Identificador exato do modelo; vazio usa o padrão do motor.' }, effort: { type: 'string', enum: ['low','medium','high','xhigh','max'] } }, ['agent','runtime']),
+        tool('propose_boos', 'Propõe 1 a 5 Boos com UMA aprovação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Herda as permissões e o modo de aprovação do Chief, sem ampliar seu acesso. Para purpose=team e chiefManageTeam habilitado, associa os Boos à equipe padrão e à conversa atual na mesma operação. Continue com ask_agent se o pedido incluir trabalho para o time.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário proposto espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' } }, required: ['instructions'] } } }, ['agents']),
+        tool('propose_team', 'Altera a equipe padrão deste workspace e adiciona os Boos à conversa atual, preservando o coordenador e sem iniciar broadcast. A confirmação segue o modo do Chief.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents']),
+        tool('propose_session', 'Propõe criar uma nova sessão neste workspace, com a equipe informada ou o Assistente padrão. A confirmação segue o modo do Chief.', { name: { type: 'string' }, agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['name', 'agents']),
       ] : []),
-      tool('ask_agent', context.agent.role === 'chief' ? 'Delegue apenas a candidatos com canDelegate=true em group_members, quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. A delegação proposta precisa ser aprovada pelo usuário. Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
+      tool('ask_agent', context.agent.role === 'chief' ? 'Delegue apenas a candidatos com canDelegate=true em group_members, quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. A confirmação segue o modo do Chief; no Bypass, delegue sem perguntar novamente. Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
     ]
   }
@@ -803,7 +815,9 @@ export class AppService extends EventEmitter {
         agentId: context.agent.id, kind: 'plan', details: { planTitle: title, planSteps: raw as string[] },
         status: 'approved', createdAt: new Date().toISOString(), resolvedAt: new Date().toISOString() }
       this.store.putApproval(record); this.emitEvent({ type: 'approval', approval: record })
-      return 'Plano apresentado no Boobot. Aguarde o usuário solicitar a execução.'
+      return context.run.planMode
+        ? 'Plano apresentado no Boobot. Aguarde o próximo pedido do usuário fora do modo plano.'
+        : 'Plano registrado no Boobot. Continue a execução da tarefa autorizada e valide o resultado.'
     }
     if (context.run.planMode && !['workspace_list', 'workspace_read', 'ask_user', 'propose_plan',
       'group_members', 'search_history', 'list_skills', 'read_skill'].includes(name))
@@ -966,18 +980,34 @@ export class AppService extends EventEmitter {
         if (existingAgents.some(agent => agent.name.toLocaleLowerCase('pt-BR') === identity.name.toLocaleLowerCase('pt-BR')) && typeof input.name === 'string' && input.name.trim()) throw new Error('Já existe um Boo com esse nome. Reutilize-o ou escolha outro.')
         if (input.temporary !== undefined && typeof input.temporary !== 'boolean') throw new Error('temporary deve ser verdadeiro ou falso.')
         const temporary = typeof input.temporary === 'boolean' ? input.temporary : purpose === 'task'
-        proposed.push({ ...identity, description, instructions, temporary, temporaryStatus: temporary ? 'available' : undefined, temporaryWorkspaceId: temporary ? workspace.id : undefined, temporaryTask: temporary ? description || instructions.slice(0, 500) : undefined, runtime: 'codex', role: 'agent', canWrite: false, computerUse: false, approvalMode: 'ask' })
+        proposed.push({ ...identity, description, instructions, temporary, temporaryStatus: temporary ? 'available' : undefined, temporaryWorkspaceId: temporary ? workspace.id : undefined, temporaryTask: temporary ? description || instructions.slice(0, 500) : undefined, runtime: context.agent.runtime, model: context.agent.model, effort: context.agent.effort, role: 'agent', canWrite: context.agent.canWrite, computerUse: context.agent.computerUse, approvalMode: context.agent.approvalMode })
       }
       if (currentTemp + proposed.filter(item => item.temporary).length > 10) throw new Error('Limite de dez Boos temporários ativos por workspace.')
       const taskLabel = proposed.map(item => String(item.name) + ': ' + String(item.description || item.instructions)).join('\n').slice(0, 5000)
-      const proposal = { workspaceId: workspace.id, purpose, agents: proposed.map(item => ({ name: item.name, alias: item.alias, color: item.color, temporary: item.temporary, description: item.description, instructions: item.instructions })) }
+      const attachTeam = purpose === 'team' && workspace.permissions?.chiefManageTeam === true
+      const proposal = { workspaceId: workspace.id, purpose, conversationId: attachTeam ? context.conversation.id : undefined,
+        access: { canWrite: context.agent.canWrite, computerUse: context.agent.computerUse, approvalMode: context.agent.approvalMode },
+        agents: proposed.map(item => ({ name: item.name, alias: item.alias, color: item.color, temporary: item.temporary, description: item.description, instructions: item.instructions })) }
       if (!await this.requestApproval(context, 'agent-change', { action: (purpose === 'team' ? 'Criar equipe de ' : 'Criar reforço de ') + proposed.length + (proposed.length === 1 ? ' Boo' : ' Boos'), task: taskLabel, proposal: JSON.stringify(proposal) }, true)) return 'Criação dos Boos negada pelo usuário.'
       this.store.db.exec('BEGIN IMMEDIATE')
       let saved: Agent[]
-      try { saved = proposed.map(agent => this.store.saveAgent(agent)); this.store.db.exec('COMMIT') }
+      let updatedConversation: Conversation | undefined
+      try {
+        const latest = this.store.workspace(workspace.id)
+        if (latest.archived || !latest.permissions?.chiefCreateAgents || attachTeam && !latest.permissions?.chiefManageTeam) throw new Error('As permissões do workspace mudaram; a criação foi cancelada.')
+        saved = proposed.map(agent => this.store.saveAgent(agent))
+        if (attachTeam) {
+          this.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [...new Set([...latest.defaultAgentIds, ...saved.map(agent => agent.id)])] })
+          updatedConversation = this.addTeamToConversation(context, saved.map(agent => agent.id))
+        }
+        this.store.db.exec('COMMIT')
+      }
       catch (error) { this.store.db.exec('ROLLBACK'); throw error }
+      if (updatedConversation) context.conversation = updatedConversation
       this.emitEvent({ type: 'changed' })
-      return 'Boos criados: ' + saved.map(agent => agent.name + ' (@' + agent.alias + ', ' + agent.color + (agent.temporary ? ', temporário' : ', permanente') + ')').join('; ') + '.' + (saved.some(agent => agent.temporary) ? ' Os temporários estão disponíveis via ask_agent neste workspace e serão aposentados após uma tarefa, sem apagar o histórico.' : ' Os Boos são permanentes. Para associá-los à equipe do workspace, use propose_team com aprovação.')
+      return 'Boos criados: ' + saved.map(agent => agent.name + ' (@' + agent.alias + ', ' + agent.color + (agent.temporary ? ', temporário' : ', permanente') + ')').join('; ') + '.'
+        + (attachTeam ? ' Equipe associada ao workspace e à conversa atual. Continue com ask_agent para executar as tarefas solicitadas.' : ' Os Boos estão no catálogo; a associação à equipe exige chiefManageTeam habilitado e propose_team.')
+        + (saved.some(agent => agent.temporary) ? ' Os temporários estão disponíveis via ask_agent neste workspace e serão aposentados após uma tarefa, sem apagar o histórico.' : ' Os Boos são permanentes.')
     }
     if (name === 'propose_agent_model') {
       if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor troca de modelos.')
@@ -1014,7 +1044,7 @@ export class AppService extends EventEmitter {
       if (!/^[\p{L}\p{N}_-]+$/u.test(desiredAlias)) throw new Error('A menção proposta deve usar letras, números, hífen ou sublinhado.')
       if (this.store.agents().some(agent => agent.id !== existing?.id && agent.alias.toLocaleLowerCase('pt-BR') === desiredAlias.toLocaleLowerCase('pt-BR'))) throw new Error('A menção proposta já pertence a outro agente.')
       const proposal = operation === 'create'
-        ? { operation, name: nameValue, alias: desiredAlias, description, instructions, runtime: 'codex', canWrite: false, computerUse: false, approvalMode: 'ask' }
+        ? { operation, name: nameValue, alias: desiredAlias, description, instructions, runtime: context.agent.runtime, model: context.agent.model, effort: context.agent.effort, canWrite: context.agent.canWrite, computerUse: context.agent.computerUse, approvalMode: context.agent.approvalMode }
         : { operation, id: existing!.id, previousName: existing!.name, name: nameValue, alias: desiredAlias, description, instructions, runtime: existing!.runtime, model: existing!.model, effort: existing!.effort, role: existing!.role || 'agent', color: existing!.color, avatar: existing!.avatar ? 'Imagem existente preservada' : '', pitsShape: existing!.pitsShape, pitsEyeColor: existing!.pitsEyeColor, pitsEyeSize: existing!.pitsEyeSize, pitsEyeSpacing: existing!.pitsEyeSpacing, pitsCheekColor: existing!.pitsCheekColor, pitsBlush: existing!.pitsBlush, pitsAura: existing!.pitsAura, pitsAnimate: existing!.pitsAnimate, pitsSpeed: existing!.pitsSpeed, pitsAmplitude: existing!.pitsAmplitude, canWrite: existing!.canWrite, computerUse: existing!.computerUse, approvalMode: existing!.approvalMode }
       const label = operation === 'create' ? `Criar agente ${nameValue}` : `Atualizar agente ${existing!.name}`
       if (!await this.requestApproval(context, 'agent-change', { action: label, recipientName: nameValue, task: instructions, proposal: JSON.stringify(proposal) }, true)) return `Proposta negada: ${label}.`
@@ -1031,11 +1061,20 @@ export class AppService extends EventEmitter {
       const team = requestedNames.map(value => this.store.agents().find(agent => agent.temporaryStatus !== 'retired' && (agent.id === value || agent.alias.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR') || agent.name.toLocaleLowerCase('pt-BR') === value.toLocaleLowerCase('pt-BR'))))
       if (team.some(agent => !agent)) throw new Error('A proposta inclui um agente que não existe.')
       const agentIds = [...new Set(team.map(agent => agent!.id))]
-      const proposal = { workspaceId: workspace.id, workspace: workspace.name, agentIds, agents: team.map(agent => agent!.name) }
+      const proposal = { workspaceId: workspace.id, workspace: workspace.name, conversationId: context.conversation.id, agentIds, agents: team.map(agent => agent!.name) }
       if (!await this.requestApproval(context, 'agent-change', { action: `Alterar equipe de ${workspace.name}`, task: team.map(agent => agent!.name).join(', ') || 'Equipe vazia', proposal: JSON.stringify(proposal) }, true)) return `Proposta de equipe negada para ${workspace.name}.`
-      this.store.saveWorkspace({ id: workspace.id, defaultAgentIds: agentIds })
+      this.store.db.exec('BEGIN IMMEDIATE')
+      let updatedConversation: Conversation
+      try {
+        const latest = this.store.workspace(workspace.id)
+        if (latest.archived || !latest.permissions?.chiefManageTeam) throw new Error('As permissões do workspace mudaram; a associação foi cancelada.')
+        this.store.saveWorkspace({ id: workspace.id, defaultAgentIds: agentIds })
+        updatedConversation = this.addTeamToConversation(context, agentIds)
+        this.store.db.exec('COMMIT')
+      } catch (error) { this.store.db.exec('ROLLBACK'); throw error }
+      context.conversation = updatedConversation
       this.emitEvent({ type: 'changed' })
-      return `Equipe aprovada e atualizada em ${workspace.name}.`
+      return `Equipe atualizada em ${workspace.name} e adicionada à conversa atual. Continue as tarefas autorizadas com ask_agent.`
     }
     if (name === 'propose_session') {
       if (context.agent.role !== 'chief') throw new Error('Somente o Chief pode propor sessões.')

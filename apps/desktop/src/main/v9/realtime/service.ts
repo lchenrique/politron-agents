@@ -198,19 +198,20 @@ export class RealtimeService {
         if (!current()) { candidate.close(); return }
         this.session = candidate
       } else {
+        const piperVoice = settings.piperAgentVoices?.[agent.id] || settings.piperVoice
         const key = await this.settingsStore.key('groq')
         if (!current()) return
         if (settings.transcriptionModel !== 'parakeet-v3' && !key) throw new Error('Cadastre a chave do Groq para transcrever com Whisper ou selecione o Parakeet local.')
         if (!(await this.settingsStore.vadInstalled())) throw new Error('Instale o detector de fala Silero antes de ligar.')
         if (settings.ttsEngine === 'pocket') {
           if (!(await this.pocket.installed())) throw new Error('PocketTTS não está instalado. Configure o motor em Voz em tempo real ou escolha Piper.')
-        } else if (!(await this.settingsStore.localModelsReady(settings.piperVoice))) {
+        } else if (!(await this.settingsStore.localModelsReady(piperVoice))) {
           throw new Error('Baixe a voz local selecionada (Piper pt-BR) antes de ligar.')
         }
         if (!current()) return
         if (settings.transcriptionModel === 'parakeet-v3' && !(await this.settingsStore.parakeetInstalled())) throw new Error('Baixe o Parakeet local nas configurações antes de ligar.')
         if (!current()) return
-        const candidate = await openFreeCascade({ groqKey: key || undefined, transcriptionModel: settings.transcriptionModel, parakeetDir: this.settingsStore.parakeetDir, vadPath: this.settingsStore.vadPath, piperDir: this.settingsStore.piperDir(settings.piperVoice), piperVoice: settings.piperVoice,
+        const candidate = await openFreeCascade({ groqKey: key || undefined, transcriptionModel: settings.transcriptionModel, parakeetDir: this.settingsStore.parakeetDir, vadPath: this.settingsStore.vadPath, piperDir: this.settingsStore.piperDir(piperVoice), piperVoice,
           pocketSpeech: settings.ttsEngine === 'pocket' ? async (text, signal) => pocketWavToAudio(await this.pocket.speak(text, agent.id, signal)) : undefined,
           generateResponse: async (text, signal) => {
           if (signal.aborted || !current()) throw new Error('Resposta interrompida.')

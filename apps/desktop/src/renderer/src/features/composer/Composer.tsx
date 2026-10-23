@@ -158,10 +158,11 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     setError('')
     setValue('')
     setFiles([])
+    setPlanMode(false)
     try {
       await onSubmit(message, model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, { files: submittedFiles, effort: selectedEffort, planMode })
     } catch (cause) {
-      if (activeConversation.current === submittedConversation) { setValue(current => current || message); setFiles(current => current.length ? current : submittedFiles); notify(cause) }
+      if (activeConversation.current === submittedConversation) { setValue(current => current || message); setFiles(current => current.length ? current : submittedFiles); setPlanMode(planMode); notify(cause) }
     } finally { if (submissionGeneration.current === submittedGeneration) { pendingCount.current--; setPendingSends(pendingCount.current) } }
   }
 

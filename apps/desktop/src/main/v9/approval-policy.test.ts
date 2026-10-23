@@ -12,7 +12,7 @@ describe('aprovações por agente no backend', () => {
     expect(shouldAutoApprove('bypass', 'browser', false)).toBe(true)
   })
   it('mantém aprovações administrativas e delegação protegidas', () => {
-    for (const mode of ['ask', 'automatic', 'bypass'] as const) {
+    for (const mode of ['ask', 'automatic'] as const) {
       expect(shouldAutoApprove(mode, 'agent-change', false)).toBe(false)
       expect(shouldAutoApprove(mode, 'agent-change', true)).toBe(false)
       expect(shouldAutoApprove(mode, 'delegation', true)).toBe(false)

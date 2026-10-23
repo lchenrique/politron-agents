@@ -4,6 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 vi.mock('electron', () => ({ app: { getPath: () => 'C:/nonexistent-voice-root' } }))
+const processMock = vi.hoisted(() => ({ execFile: vi.fn() }))
+vi.mock('node:child_process', async importOriginal => {
+  const original = await importOriginal<typeof import('node:child_process')>()
+  return { ...original, execFile: processMock.execFile, default: { ...original, execFile: processMock.execFile } }
+})
 import { PocketVoiceService } from './pocket-voices'
 
 let root: string
@@ -19,6 +24,24 @@ function wav() {
   return data
 }
 describe('Identidades de voz PocketTTS locais', () => {
+  it('sintetiza com a voz feminina do Boo e usa a masculina geral quando herda', async () => {
+    mkdirSync(join(root, 'bin'), { recursive: true })
+    writeFileSync(join(root, 'bin', process.platform === 'win32' ? 'pocket-tts.exe' : 'pocket-tts'), Buffer.alloc(1_000_001))
+    processMock.execFile.mockImplementation((_command, args, _options, callback) => {
+      writeFileSync(args[args.indexOf('--output-path') + 1], wav())
+      callback(null, '', '')
+    })
+    const service = new PocketVoiceService(root)
+    await service.setVoice('rafael')
+    await service.setVoice('vera', 'boo-1')
+    await service.speak('Olá!', 'boo-1')
+    expect(processMock.execFile.mock.lastCall?.[1]).toContain('vera')
+    await service.speak('Outra frase!', 'boo-2')
+    expect(processMock.execFile.mock.lastCall?.[1]).toContain('rafael')
+    await service.setVoice(null, 'boo-1')
+    await service.speak('Usando a geral!', 'boo-1')
+    expect(processMock.execFile.mock.lastCall?.[1]).toContain('rafael')
+  })
   it('começa desativado e nunca inicia servidor ou faz download só para listar vozes', async () => {
     const service = new PocketVoiceService(root)
     expect(await service.info()).toEqual({

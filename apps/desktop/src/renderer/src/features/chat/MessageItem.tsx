@@ -24,7 +24,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
     if (audioState !== 'idle') { stopVoice(); setAudioState('idle'); return }
     setAudioState('loading')
     try {
-      await speakVoice(message.text, () => setAudioState('speaking'), { agentId: agent?.id })
+      await speakVoice(message.text, () => setAudioState('speaking'), { agentId: message.agentId || agent?.id })
     } catch (error) { onNotice(errorText(error)) }
     finally { setAudioState('idle') }
   }
@@ -37,7 +37,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
     <MessageContent className={human ? 'w-fit max-w-[85%] gap-1' : 'max-w-[90%] gap-1'}>
       {!human && <MessageHeader className="mb-1 flex items-center gap-2 px-0 text-foreground">
         <span className="font-bold" title={agent?.name || message.author} style={agent?.color ? { color: agent.color } : undefined}>@{agent?.alias || message.author}</span>
-        {message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 text-muted-foreground" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir em português brasileiro, com voz fixa por agente" onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
+        {message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 text-muted-foreground" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz do Boo ou a voz geral. Configure em Voz em tempo real." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
         {message.status === 'waiting' && <span className="font-normal text-amber-600">aguarda sua aprovação</span>}
         {message.status === 'queued' && <span className="font-normal text-muted-foreground">na fila</span>}
         {message.status === 'failed' && <span className="font-normal text-destructive">falhou</span>}
@@ -63,6 +63,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   && previous.message.status === next.message.status
   && previous.message.text === next.message.text
   && previous.message.author === next.message.author
+  && previous.message.agentId === next.message.agentId
   && previous.message.runId === next.message.runId
   && previous.message.delegationId === next.message.delegationId
   && previous.agent?.id === next.agent?.id

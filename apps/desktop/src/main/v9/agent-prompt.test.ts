@@ -24,7 +24,18 @@ describe('preâmbulo de sistema compartilhado entre Codex e Claude', () => {
     expect(prompt).toContain('purpose=task')
     expect(prompt).toContain('Boos dessa equipe devem ser PERMANENTES')
     expect(prompt).toContain('temporary=true')
-    expect(prompt).toContain('Toda criação e delegação exige aprovação')
+    expect(prompt).toContain('propose_team')
+    expect(prompt).toContain('conclua')
+  })
+
+  it('explica o bypass e o acesso por ferramentas sem confundir o sandbox nativo com a pasta', () => {
+    const prompt = buildAgentSystemPrompt({ ...agent, role: 'chief', approvalMode: 'bypass' }, '')
+    expect(prompt).toContain('Bypass')
+    expect(prompt).toContain('workspace_write')
+    expect(prompt).toContain('somente leitura')
+    expect(prompt).not.toContain('Toda criação e delegação exige aprovação')
+    expect(prompt).not.toContain('cada comando exige aprovação')
+    expect(prompt).toContain('continue_on_result=true')
   })
 
   it('anexa as instruções do projeto só quando existem', () => {

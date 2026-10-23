@@ -51,6 +51,17 @@ describe('criação simples de conversa', () => {
 })
 
 describe('editor de agentes com Poli Studio', () => {
+  it('mostra a restrição de escrita existente e permite habilitar sem alterar o modo de aprovação', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<Editor kind="agent" agents={[]} models={[]} initial={agent('hermes', 'Hermes')} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn()} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Modelo e permissões' }))
+    const writing = screen.getByRole('checkbox', { name: 'Permitir edição de arquivos do workspace' })
+    expect(writing).not.toBeChecked()
+    fireEvent.click(writing)
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ canWrite: true, approvalMode: 'ask' })))
+  })
+
   it('oculta esforço em Haiku sem essa capacidade e salva sem esforço', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     const initial: Agent = { ...agent('haiku-agent', 'Haiku'), runtime: 'claude', model: 'haiku', effort: 'max' }

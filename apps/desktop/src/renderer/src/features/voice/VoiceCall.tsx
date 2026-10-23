@@ -122,7 +122,7 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
     finally { setInstalling(false) }
   }
   const updateProvider = async (value: string) => {
-    if (value !== 'openrouter' && value !== 'local' && value !== 'pits' && value !== 'pocket') return
+    if (value !== 'realtime' && value !== 'openrouter' && value !== 'local' && value !== 'pits' && value !== 'pocket') return
     setError('')
     try {
       setStatus(await window.appAPI.voiceSetProvider(value))
@@ -245,9 +245,10 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
         {status && <div className="w-full space-y-2 rounded-lg border border-border/60 p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-medium">Motor de voz</span>
-            <Select value={status.engine === 'pit-voices' ? 'pits' : status.engine === 'pocket-tts' ? 'pocket' : status.engine === 'openrouter' ? 'openrouter' : 'local'} onValueChange={value => void updateProvider(value)}>
+            <Select value={status.provider || (status.engine === 'pit-voices' ? 'pits' : status.engine === 'pocket-tts' ? 'pocket' : status.engine === 'openrouter' ? 'openrouter' : 'local')} onValueChange={value => void updateProvider(value)}>
               <SelectTrigger className="h-8 w-[190px] text-xs" aria-label="Motor de voz"><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="realtime">Seguir vozes locais do app</SelectItem>
                 <SelectItem value="pits">Vozes dos Boos · local</SelectItem>
                 <SelectItem value="pocket">PocketTTS · vozes próprias locais</SelectItem>
                 <SelectItem value="openrouter">OpenRouter · Fish Audio grátis</SelectItem>

@@ -109,7 +109,7 @@ export class HeadlessCliRuntime extends EventEmitter implements AgentRuntime {
     session.turnId = turnId; session.text = ''; session.raw = ''; session.steps = 0; session.stopping = false; session.finished = false; session.model = chosen
     const history = session.history.slice(-12).map(item => item.role + ': ' + item.text.slice(0, 2600)).join('\n\n')
     const prompt = [
-      buildAgentSystemPrompt(session.agent, session.instructions),
+      buildAgentSystemPrompt(session.agent, session.instructions, session.tools),
       session.tools.length ? [
         'PROTOCOLO DE FERRAMENTAS DO BOOBOT: responda SOMENTE com um objeto JSON, sem Markdown.',
         'Este é um protocolo RPC textual real: a aplicação lê seu JSON e executa a ferramenta. Estas ferramentas NÃO aparecem no catálogo nativo do OpenCode. A ausência nesse catálogo não significa que estão indisponíveis. Emita o JSON descrito abaixo como texto da resposta; não procure nem invoque uma ferramenta nativa para isso.',

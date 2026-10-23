@@ -170,7 +170,7 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
     await bridge.start()
     const rpc = new PiConnection(node, entry, [
       ...SAFE_FLAGS, '--session-dir', sessionDirectory, '--session-id', id, '-e', extension,
-      '--tools', tools.map(tool => tool.name).join(','), '--append-system-prompt', buildAgentSystemPrompt(agent, projectInstructions)
+      '--tools', tools.map(tool => tool.name).join(','), '--append-system-prompt', buildAgentSystemPrompt(agent, projectInstructions, tools)
     ], directory, { ...process.env, POLITRON_PI_BRIDGE_URL: bridge.url, POLITRON_PI_BRIDGE_TOKEN: bridge.token },
     message => { if (context) this.receive(context, message) }, error => {
       if (context) { this.complete(context, 'failed', error.message); this.dispose(context); this.emit('disconnected', error) }

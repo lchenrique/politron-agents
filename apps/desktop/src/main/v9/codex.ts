@@ -122,7 +122,7 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       'features.apply_patch_freeform': false
     }
     for (const name of await this.configuredMcpNames(join(directory, '.codex', 'config.toml'))) config[`mcp_servers.${name}.enabled`] = false
-    const params = { cwd: directory, model: agent.model || null, ...(agent.effort ? { reasoningEffort: agent.effort } : {}), sandbox: 'read-only', approvalPolicy: 'on-request', config, developerInstructions: buildAgentSystemPrompt(agent, projectInstructions) }
+    const params = { cwd: directory, model: agent.model || null, ...(agent.effort ? { reasoningEffort: agent.effort } : {}), sandbox: 'read-only', approvalPolicy: 'on-request', config, developerInstructions: buildAgentSystemPrompt(agent, projectInstructions, tools) }
     const result = threadId
       ? await this.request('thread/resume', { ...params, threadId })
       : await this.request('thread/start', { ...params, dynamicTools: tools })

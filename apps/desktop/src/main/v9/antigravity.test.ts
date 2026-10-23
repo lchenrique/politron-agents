@@ -5,9 +5,10 @@ import { PassThrough } from 'node:stream'
 import { AntigravityRuntime, parseAntigravityModels } from './antigravity'
 
 const { execFileMock, crossSpawnMock } = vi.hoisted(() => ({ execFileMock: vi.fn(), crossSpawnMock: vi.fn() }))
-vi.mock('node:child_process', async importOriginal => ({
-  ...await importOriginal<typeof import('node:child_process')>(), execFile: execFileMock,
-}))
+vi.mock('node:child_process', async importOriginal => {
+  const original = await importOriginal<typeof import('node:child_process')>()
+  return { ...original, execFile: execFileMock, default: { ...original, execFile: execFileMock } }
+})
 vi.mock('cross-spawn', () => ({ default: crossSpawnMock }))
 
 afterEach(() => { vi.unstubAllGlobals(); execFileMock.mockReset(); crossSpawnMock.mockReset() })

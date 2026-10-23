@@ -14,6 +14,7 @@ export interface RealtimeSettings {
   geminiVoice: string
   transcriptionModel: RealtimeTranscriptionModel
   piperVoice: PiperVoice
+  piperAgentVoices?: Record<string, PiperVoice>
   ttsEngine: RealtimeTtsEngine
 }
 

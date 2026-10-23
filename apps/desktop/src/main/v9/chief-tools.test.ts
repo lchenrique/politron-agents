@@ -31,10 +31,11 @@ function setup(runtime: Agent['runtime'] = 'codex') {
   directories.push(directory)
   const service = new AppService(directory, new FakeRuntime() as unknown as ConstructorParameters<typeof AppService>[1])
   services.push(service)
-  const chief = service.saveAgent({ name: 'Chief', alias: 'chief', role: 'chief', instructions: 'Coordene a equipe.', runtime })
+  const chief = service.saveAgent({ name: 'Chief', alias: 'chief', role: 'chief', instructions: 'Coordene a equipe.', runtime, canWrite: false })
   const workspace = service.store.saveWorkspace({ name: 'Projeto' })
+  const conversation = service.store.saveConversation({ workspaceId: workspace.id, agentIds: [chief.id] })
   const names = (agent: Agent = chief) => ((service as unknown as { tools: (context: unknown) => { name: string }[] }).tools({ agent, run: { workspaceId: workspace.id } })).map(tool => tool.name)
-  const propose = (name: string, args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent: chief, run: { id: 'chief-run', ancestry: [chief.id], workspaceId: workspace.id, workspacePath: workspace.path }, conversation: { agentIds: [chief.id] } }, name, args)
+  const propose = (name: string, args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent: chief, run: { id: 'chief-run', ancestry: [chief.id], workspaceId: workspace.id, workspacePath: workspace.path }, conversation }, name, args)
   return { service, chief, workspace, names, propose }
 }
 
@@ -59,7 +60,7 @@ describe('delegação no workspace correto', () => {
 describe('troca segura de runtime pelo Chief', () => {
   it('permite trocar o Boo da equipe para Claude com aprovação, sem alterar permissões', async () => {
     const { service, chief, workspace, names } = setup()
-    const worker = service.saveAgent({ name: 'Frontend', alias: 'front', instructions: 'Trabalhe no frontend.', runtime: 'codex', model: 'gpt-5' })
+    const worker = service.saveAgent({ name: 'Frontend', alias: 'front', instructions: 'Trabalhe no frontend.', runtime: 'codex', model: 'gpt-5', canWrite: false })
     service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [worker.id], permissions: { ...permissions, chiefEditAgents: true } })
     const conversation = service.store.saveConversation({ name: 'Chief', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
     const context = { agent: chief, run: { workspaceId: workspace.id, workspacePath: workspace.path }, conversation }

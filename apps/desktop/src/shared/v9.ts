@@ -84,7 +84,7 @@ export interface Model {
   defaultEffort?: ModelEffort
 }
 export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][] }
-export interface VoiceStatus { transcription: boolean; speech: boolean; engine: 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }
+export interface VoiceStatus { transcription: boolean; speech: boolean; provider?: 'realtime' | 'openrouter' | 'local' | 'pits' | 'pocket'; engine: 'piper' | 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }
 export type PitVoiceId = 'f1' | 'f2' | 'f3' | 'f4' | 'm1' | 'm1-young' | 'dora' | 'alex' | 'santa'
 export interface PitVoiceSelection { defaultVoiceId: PitVoiceId; agentVoiceIds: Record<string, PitVoiceId> }
 export interface PocketVoicesInfo { installed: boolean; choices: { id: string; name: string }[]; selection: { defaultVoiceId: string; agentVoiceIds: Record<string, string> } }
@@ -108,7 +108,7 @@ export type WorkspaceEvent =
   | { type: 'browserClosed'; key: string; conversationId: string; agentId: string }
 export interface AppAPI {
   snapshot(): Promise<Snapshot>
-  settingsPreferences(): Promise<{ computerUse: boolean; approvalMode: Agent['approvalMode']; terminalEnabled: boolean }>
+  settingsPreferences(): Promise<{ canWrite: boolean; computerUse: boolean; approvalMode: Agent['approvalMode']; terminalEnabled: boolean }>
   saveAgent(input: Partial<Agent>): Promise<Agent>
   saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>>): Promise<Agent>
   saveTerminalAccess(enabled: boolean): Promise<void>
@@ -147,7 +147,7 @@ export interface AppAPI {
   voiceSpeak(text: string, speed?: number, agentId?: string): Promise<Uint8Array>
   voiceNew(agentId?: string): Promise<Uint8Array>
   voiceResetAgent(agentId: string): Promise<void>
-  voiceSetProvider(provider: 'openrouter' | 'local' | 'pits' | 'pocket'): Promise<VoiceStatus>
+  voiceSetProvider(provider: 'realtime' | 'openrouter' | 'local' | 'pits' | 'pocket'): Promise<VoiceStatus>
   voiceSaveOpenRouterKey(key: string): Promise<VoiceStatus>
   voiceClearOpenRouterKey(): Promise<VoiceStatus>
   cancelDelegation(delegationId: string): Promise<void>

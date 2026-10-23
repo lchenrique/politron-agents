@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { DynamicTool } from './codex'
 
-export const TOOL_BROKER_VERSION = 1
+export const TOOL_BROKER_VERSION = 2
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)

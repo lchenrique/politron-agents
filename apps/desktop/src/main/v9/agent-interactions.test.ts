@@ -57,7 +57,7 @@ describe('Ferramentas de pergunta, plano e autonomia', () => {
     await expect(broker.callTool(context, 'propose_plan', { title: 'Plano', steps: ['Revisar', 'Testar'] })).resolves.toContain('Plano apresentado')
     expect(service.store.approvals().find(item => item.kind === 'plan')?.details.planSteps).toEqual(['Revisar','Testar'])
   })
-  it('bypass permanece selecionável como opção explícita e não libera alteração de equipe', async () => {
+  it('bypass oferece ferramentas habilitadas no agente e no workspace', async () => {
     const { broker, context } = await setup()
     expect(broker.tools(context).map(tool => tool.name)).toContain('workspace_write')
     expect(broker.tools(context).map(tool => tool.name)).toContain('browser_open')

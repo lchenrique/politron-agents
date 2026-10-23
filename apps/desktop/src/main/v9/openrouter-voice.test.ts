@@ -38,7 +38,7 @@ function sent(index: number) {
 describe('Voz Fish Audio fixa em português brasileiro', () => {
   it('rejeita síntese sem chave e jamais envia modelo pago', async () => {
     const service = new OpenRouterVoiceService()
-    expect(await service.provider()).toBe('openrouter')
+    expect(await service.provider()).toBe('realtime')
     await expect(service.speak('Olá mundo', 1)).rejects.toThrow(/Configure uma chave OpenRouter/)
     expect(fetchMock).not.toHaveBeenCalled()
   })

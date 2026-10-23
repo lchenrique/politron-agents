@@ -20,6 +20,7 @@ import { UpdateReadyCallout } from './UpdateReadyCallout'
 import { INHERIT_MODEL_NAME, emptySnapshot, errorText } from './appShellShared'
 import { selectVisibleRunEvidence } from './delegation-evidence'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { replaceEqualDeep } from '@tanstack/react-query'
 
 export default function AppShell() {
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot)
@@ -87,7 +88,8 @@ export default function AppShell() {
     ? visibleFileChanges.filter(change => change.runId === finishedWithChanges.runId && change.status === 'applied') : []
   const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
   const selectedWorkspace = selected ? snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined
-  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(data); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
+  // O IPC recria os objetos: conservar os dados iguais evita invalidar os memos do chat e dos Boos.
+  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => {
     void refresh()
     const applyProviders = (catalog: ProviderSnapshot) => {
@@ -175,7 +177,7 @@ export default function AppShell() {
       const currentSelectedWorkspace = selected?.workspaceId
       await window.appAPI.deleteWorkspace(id)
       const data = await window.appAPI.snapshot()
-      setSnapshot(data)
+      setSnapshot(current => replaceEqualDeep(current, data))
       const activeWorkspaceWasDeleted = !!currentActiveWorkspace && !data.workspaces.some(item => item.id === currentActiveWorkspace && !item.archived)
       if (activeWorkspaceWasDeleted) { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null) }
       const removedCurrentContext = currentActiveWorkspace === id || activeWorkspaceWasDeleted || currentSelectedWorkspace === id || (!!selectedId && !data.conversations.some(item => item.id === selectedId && !item.archived))
@@ -185,7 +187,7 @@ export default function AppShell() {
         else {
           const conversation = await window.appAPI.saveConversation({})
           const updated = await window.appAPI.snapshot()
-          setSnapshot(updated)
+          setSnapshot(current => replaceEqualDeep(current, updated))
           selectConversation(conversation.id)
         }
       } else if (!data.conversations.some(item => item.id === selectedId && !item.archived)) setSelectedId(data.conversations.find(item => !item.archived)?.id || '')
@@ -197,7 +199,7 @@ export default function AppShell() {
       const workspaceId = snapshot.conversations.find(item => item.id === id)?.workspaceId
       await window.appAPI.deleteConversation(id)
       const data = await window.appAPI.snapshot()
-      setSnapshot(data)
+      setSnapshot(current => replaceEqualDeep(current, data))
       if (wasCurrent) {
         const next = data.conversations.find(item => !item.archived && item.workspaceId === workspaceId)
           || data.conversations.find(item => !item.archived)
@@ -205,7 +207,7 @@ export default function AppShell() {
         else {
           const conversation = await window.appAPI.saveConversation({ workspaceId })
           const updated = await window.appAPI.snapshot()
-          setSnapshot(updated)
+          setSnapshot(current => replaceEqualDeep(current, updated))
           selectConversation(conversation.id)
         }
       }

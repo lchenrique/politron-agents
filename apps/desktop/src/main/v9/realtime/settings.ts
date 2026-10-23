@@ -11,6 +11,15 @@ const execFileAsync = promisify(execFile)
 
 export const DEFAULT_SETTINGS: RealtimeSettings = { geminiModel: '', geminiVoice: 'Puck', transcriptionModel: 'whisper-large-v3-turbo', piperVoice: 'faber', ttsEngine: 'piper' }
 const ENV_KEYS: Record<RealtimeProvider, string> = { gemini: 'GEMINI_API_KEY', groq: 'GROQ_API_KEY' }
+function agentVoices(value: unknown): Record<string, PiperVoice> {
+  const result: Record<string, PiperVoice> = {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result
+  for (const [agentId, voice] of Object.entries(value)) {
+    if (/^[a-zA-Z0-9_-]{1,100}$/.test(agentId) && !['__proto__', 'constructor', 'prototype'].includes(agentId)
+      && typeof voice === 'string' && Object.hasOwn(PIPER_VOICES, voice)) result[agentId] = voice as PiperVoice
+  }
+  return result
+}
 
 export const PIPER_VOICES: Record<PiperVoice, { folder: string; model: string; archive: string }> = {
   faber: { folder: 'vits-piper-pt_BR-faber-medium', model: 'pt_BR-faber-medium.onnx', archive: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-pt_BR-faber-medium.tar.bz2' },
@@ -59,6 +68,7 @@ export class RealtimeSettingsStore {
       if (!['whisper-large-v3-turbo', 'whisper-large-v3', 'parakeet-v3'].includes(value.transcriptionModel)) value.transcriptionModel = DEFAULT_SETTINGS.transcriptionModel
       if (!(value.piperVoice in PIPER_VOICES)) value.piperVoice = DEFAULT_SETTINGS.piperVoice
       if (value.ttsEngine !== 'piper' && value.ttsEngine !== 'pocket') value.ttsEngine = 'piper'
+      value.piperAgentVoices = agentVoices(stored.piperAgentVoices)
       return value
     } catch { return { ...DEFAULT_SETTINGS } }
   }
@@ -72,6 +82,7 @@ export class RealtimeSettingsStore {
       transcriptionModel: ['whisper-large-v3-turbo', 'whisper-large-v3', 'parakeet-v3'].includes(String(patch.transcriptionModel)) ? patch.transcriptionModel as RealtimeTranscriptionModel : current.transcriptionModel,
       piperVoice: patch.piperVoice && patch.piperVoice in PIPER_VOICES ? patch.piperVoice as PiperVoice : current.piperVoice,
       ttsEngine: ['piper', 'pocket'].includes(String(patch.ttsEngine)) ? patch.ttsEngine as RealtimeTtsEngine : current.ttsEngine,
+      piperAgentVoices: patch.piperAgentVoices === undefined ? current.piperAgentVoices : agentVoices(patch.piperAgentVoices),
     }
     await fs.mkdir(this.root, { recursive: true })
     await fs.writeFile(this.settingsPath, JSON.stringify(next), { mode: 0o600 })
@@ -84,7 +95,11 @@ export class RealtimeSettingsStore {
   async vadInstalled(): Promise<boolean> { return !!(await fs.stat(this.vadPath).catch(() => null)) }
 
   async localModelsReady(voice: PiperVoice = DEFAULT_SETTINGS.piperVoice): Promise<boolean> {
-    const files = [join(this.piperDir(voice), PIPER_VOICES[voice].model), join(this.piperDir(voice), 'tokens.txt'), join(this.piperDir(voice), 'espeak-ng-data'), this.vadPath]
+    return await this.piperVoiceReady(voice) && await this.vadInstalled()
+  }
+
+  async piperVoiceReady(voice: PiperVoice = DEFAULT_SETTINGS.piperVoice): Promise<boolean> {
+    const files = [join(this.piperDir(voice), PIPER_VOICES[voice].model), join(this.piperDir(voice), 'tokens.txt'), join(this.piperDir(voice), 'espeak-ng-data')]
     return (await Promise.all(files.map(file => fs.stat(file).then(() => true, () => false)))).every(Boolean)
   }
 

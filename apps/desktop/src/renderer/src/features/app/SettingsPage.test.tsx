@@ -4,7 +4,7 @@ import { SettingsPage } from './SettingsPage'
 
 const appAPI = {
   snapshot: vi.fn().mockResolvedValue({ assistant: { computerUse: false, approvalMode: 'ask' }, terminalEnabled: true }),
-  settingsPreferences: vi.fn().mockResolvedValue({ computerUse: false, approvalMode: 'ask', terminalEnabled: true }),
+  settingsPreferences: vi.fn().mockResolvedValue({ canWrite: true, computerUse: false, approvalMode: 'ask', terminalEnabled: true }),
   hasClaudeCredential: vi.fn().mockResolvedValue(false),
   openRouterDecisionStatus: vi.fn().mockResolvedValue({ configured: false, modelId: 'typesafe/jev-1.13' }),
   saveAssistantPreferences: vi.fn().mockResolvedValue(undefined),
@@ -28,6 +28,18 @@ const skillsAPI = {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('carregamento leve das configurações', () => {
+  it('expõe a restrição do Assistente e salva a liberação de escrita', async () => {
+    vi.clearAllMocks()
+    appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: false, computerUse: false, approvalMode: 'ask', terminalEnabled: true })
+    vi.stubGlobal('appAPI', appAPI)
+    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Assistente$/ }))
+    const writing = await screen.findByRole('checkbox', { name: 'Permitir edição de arquivos do workspace' })
+    await waitFor(() => expect(writing).not.toBeChecked())
+    fireEvent.click(writing)
+    await waitFor(() => expect(appAPI.saveAssistantPreferences).toHaveBeenCalledWith({ canWrite: true, computerUse: false, approvalMode: 'ask' }))
+  })
+
   it('ao abrir Geral não pede snapshot completo nem consulta chaves desnecessárias', async () => {
     vi.clearAllMocks()
     vi.stubGlobal('appAPI', appAPI)
