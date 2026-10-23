@@ -29,7 +29,7 @@ async function main() {
   console.log('[PWA E2E] Status HTTP:', response?.status(), 'Title:', await web.title(), 'Preview:', (await web.locator('body').innerText()).slice(0, 170))
   await web.getByLabel('Código de oito dígitos').fill(info.code)
   await web.getByRole('button', { name: 'Conectar dispositivo' }).click()
-  await web.getByText('Continue de onde parou.').waitFor()
+  await web.getByText('Seus Boos, de onde você estiver.').waitFor()
   const status = await web.evaluate(async () => (await fetch('/api/status')).json())
   assert.equal(status.paired, true)
   const snapshot = await web.evaluate(async () => (await fetch('/api/rpc', {

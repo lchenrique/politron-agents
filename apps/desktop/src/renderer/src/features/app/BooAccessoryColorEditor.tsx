@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import type { Agent } from '../../../../shared/v9'
 import { colorsOf } from './BooPetAccessories'
+import { ReactColorField } from '@/components/ui/ReactColorField'
 
 type Props = {
   layer: 'head' | 'face'
@@ -38,14 +39,11 @@ export const BooAccessoryColorEditor = memo(function BooAccessoryColorEditor({
         aria-label={`Restaurar cores de ${accessory}`}>Restaurar cores</button> : null}
     </div>
     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-      {parts.map(([label, defaultColor], index) => <label key={index}
-        className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background/70 px-2 py-1.5 text-[11px]">
-        <span>{label}</span>
-        <input type="color" aria-label={`${accessory} — ${label}`}
-          value={overrides?.[index] || defaultColor}
-          onChange={event => setPart(index, event.currentTarget.value)}
-          className="h-7 w-9 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0.5" />
-      </label>)}
+      {parts.map(([label, defaultColor], index) => <div key={index}
+        className="rounded-md border border-border/60 bg-background/70 px-2 py-1.5">
+        <ReactColorField compact label={`${accessory} — ${label}`}
+          value={overrides?.[index] || defaultColor} onChange={hex => setPart(index, hex)} />
+      </div>)}
     </div>
   </div>
 })

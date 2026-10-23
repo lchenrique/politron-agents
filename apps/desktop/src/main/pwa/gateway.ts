@@ -1,14 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import { URL } from 'node:url'
 import { assertPwaRpcAuthorized, type PwaCapability } from '../../shared/pwa-host-policy'
 
 const ASSETS = new Map<string, [string, string]>([
-  ['/', ['index.html', 'text/html; charset=utf-8']],
-  ['/main.js', ['main.js', 'text/javascript; charset=utf-8']],
-  ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
+  ['/', ['web/pwa.html', 'text/html; charset=utf-8']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json']],
   ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
   ['/icon.svg', ['icon.svg', 'image/svg+xml']],
@@ -20,9 +18,9 @@ const MAX_REPLY = 2_000_000
 const SESSION_MS = 12 * 60 * 60 * 1000
 const CODE_MS = 3 * 60 * 1000
 const COOKIE = 'boobot_pwa'
-type Session = { expires: number; hostId: string; grants: PwaCapability[] }
+type Session = { id: string; label: string; expires: number; hostId: string; grants: PwaCapability[] }
 
-export type PwaStatus = { running: boolean; port: number; sessions: number; codeExpires: number | null }
+export type PwaStatus = { running: boolean; port: number; sessions: number; codeExpires: number | null; devices: { id: string; label: string; chat: boolean; approvals: boolean; expires: number }[] }
 export type PwaGatewayOptions = {
   assets: string
   host: () => { id: string; name: string }
@@ -59,12 +57,24 @@ export class PwaGateway {
   }
   status(): PwaStatus {
     this.prune()
-    return { running: !!this.server, port: this.port, sessions: this.sessions.size, codeExpires: this.code?.expires ?? null }
+    return { running: !!this.server, port: this.port, sessions: this.sessions.size, codeExpires: this.code?.expires ?? null,
+      devices: [...this.sessions.values()].map(session => ({ id: session.id, label: session.label, chat: session.grants.includes('chat'), approvals: session.grants.includes('approvals'), expires: session.expires })) }
   }
   issueCode(): { code: string; expires: number; url: string } {
     if (!this.server) throw new Error('Gateway PWA indisponível.')
     this.code = { value: String(randomInt(0, 100_000_000)).padStart(8, '0'), expires: this.now() + CODE_MS }
     return { code: this.code.value, expires: this.code.expires, url: `http://localhost:${this.port}` }
+  }
+  setDevicePermissions(id: string, grants: { chat: boolean; approvals: boolean }): PwaStatus {
+    const session = [...this.sessions.values()].find(item => item.id === id)
+    if (!session) throw new Error('Dispositivo não encontrado ou sessão expirada.')
+    session.grants = ['read', ...(grants.chat ? ['chat' as const] : []), ...(grants.approvals ? ['approvals' as const] : [])]
+    return this.status()
+  }
+  revokeDevice(id: string): PwaStatus {
+    const token = [...this.sessions].find(([, session]) => session.id === id)?.[0]
+    if (token) this.sessions.delete(token)
+    return this.status()
   }
   revokeAll(): void {
     this.sessions.clear()
@@ -148,6 +158,23 @@ export class PwaGateway {
     const origin = this.origin(request)
     if (!origin) { reply(response, 403, { error: 'Endereço não permitido.' }); return }
     const pathname = new URL(request.url || '/', origin).pathname
+    if (request.method === 'GET' && /^\/web\/(?:assets\/)?[a-zA-Z0-9._-]+\.(?:js|css|svg|png|wasm)$/.test(pathname)) {
+      const file = pathname.slice('/web/'.length)
+      const contents = await readFile(join(this.options.assets, 'web', file))
+      const type = file.endsWith('.css') ? 'text/css; charset=utf-8' :
+        file.endsWith('.js') ? 'text/javascript; charset=utf-8' :
+        file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.wasm') ? 'application/wasm' : 'image/png'
+      response.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=180' })
+      response.end(contents)
+      return
+    }
+    if (request.method === 'GET' && /^\/assets\/[a-zA-Z0-9._-]+\.(?:js|css|svg|png)$/.test(pathname)) {
+      const file = basename(pathname)
+      const contents = await readFile(join(this.options.assets, 'assets', file))
+      response.writeHead(200, { 'Content-Type': file.endsWith('.css') ? 'text/css; charset=utf-8' : file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.svg') ? 'image/svg+xml' : 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' })
+      response.end(contents)
+      return
+    }
     if (request.method === 'GET' && ASSETS.has(pathname)) {
       const [asset, type] = ASSETS.get(pathname)!
       const contents = await readFile(join(this.options.assets, asset))
@@ -159,7 +186,7 @@ export class PwaGateway {
       const session = this.session(request)
       reply(response, 200, {
         paired: !!session, host: session ? this.options.host() : null,
-        readOnly: true, requiresPairing: !session,
+        readOnly: !session?.grants.includes('chat'), capabilities: session?.grants || [], requiresPairing: !session,
       })
       return
     }
@@ -186,7 +213,9 @@ export class PwaGateway {
       this.code = null
       this.attempts.delete(address)
       const token = randomBytes(32).toString('base64url')
-      this.sessions.set(token, { expires: this.now() + SESSION_MS, hostId: this.options.host().id, grants: ['read'] })
+      const label = typeof input.device === 'string' ? input.device.trim().slice(0, 60).replace(/[<>]/g, '') : 'Navegador'
+      this.sessions.set(token, { id: randomBytes(9).toString('hex'), label: label || 'Navegador',
+        expires: this.now() + SESSION_MS, hostId: this.options.host().id, grants: ['read'] })
       response.setHeader('Set-Cookie',
         `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${this.secure(request) ? '; Secure' : ''}`)
       reply(response, 200, { paired: true })
@@ -210,6 +239,21 @@ export class PwaGateway {
     }
     try {
       assertPwaRpcAuthorized(input.method, input.args, session.grants)
+      const authorizedMethod = input.method
+      if (authorizedMethod === 'v9:send') {
+        const [conversationId, message] = input.args
+        if (typeof conversationId !== 'string' || !conversationId ||
+          typeof message !== 'string' || !message.trim() || message.length > 12000) {
+          reply(response, 400, { error: 'Conversa ou mensagem inválida.' })
+          return
+        }
+        // Sending starts on the host and may take minutes. Do not hold a browser request
+        // for a complete coding-agent run; poll history for the real outcome instead.
+        Promise.resolve().then(() => this.options.dispatch(authorizedMethod, [conversationId, message], session.grants))
+          .catch(error => console.warn('[PWA] Envio do agente falhou:', error instanceof Error ? error.message : 'erro'))
+        reply(response, 202, { result: { accepted: true } })
+        return
+      }
       const raw = await this.options.dispatch(input.method, input.args, session.grants)
       // The web app only needs list metadata. Don't expose agent instructions,
       // accumulated file diffs, CLI paths or old execution input to every paired device.
@@ -218,12 +262,17 @@ export class PwaGateway {
           const value = raw as Record<string, unknown>
           const agents = Array.isArray(value.agents) ? value.agents.map((a: Record<string, unknown>) => ({
             id: a.id, name: a.name, alias: a.alias, color: a.color,
+            pitsShape: a.pitsShape, pitsHeadAccessory: a.pitsHeadAccessory, pitsFaceAccessory: a.pitsFaceAccessory,
+            pitsAccessoryColors: a.pitsAccessoryColors, pitsEyeColor: a.pitsEyeColor, pitsCheekColor: a.pitsCheekColor,
+            pitsBodyWidth: a.pitsBodyWidth, pitsBodyHeight: a.pitsBodyHeight, pitsEyeSize: a.pitsEyeSize,
+            pitsEyeSpacing: a.pitsEyeSpacing, pitsMouthSize: a.pitsMouthSize, pitsBlush: a.pitsBlush,
+            pitsAura: a.pitsAura, pitsAnimate: a.pitsAnimate, pitsSpeed: a.pitsSpeed, pitsAmplitude: a.pitsAmplitude,
           })) : []
           const workspaces = Array.isArray(value.workspaces) ? value.workspaces.map((w: Record<string, unknown>) => ({
             id: w.id, name: w.name, kind: w.kind, branch: w.branch, archived: w.archived,
           })) : []
           const conversations = Array.isArray(value.conversations) ? value.conversations.map((c: Record<string, unknown>) => ({
-            id: c.id, workspaceId: c.workspaceId, name: c.name, kind: c.kind, archived: c.archived,
+            id: c.id, workspaceId: c.workspaceId, name: c.name, kind: c.kind, archived: c.archived, agentIds: c.agentIds,
           })) : []
           const runs = Array.isArray(value.runs) ? value.runs.slice(-80).map((r: Record<string, unknown>) => ({
             id: r.id, workspaceId: r.workspaceId, conversationId: r.conversationId,

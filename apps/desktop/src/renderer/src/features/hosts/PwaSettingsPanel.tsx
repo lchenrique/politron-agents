@@ -14,7 +14,8 @@ export function PwaSettingsPanel() {
     if (!api) return
     let alive = true
     void api.status().then(value => { if (alive) setStatus(value) }).catch(error => { if (alive) setFeedback(String(error)) })
-    return () => { alive = false }
+    const interval = window.setInterval(() => { void api.status().then(value => { if (alive) setStatus(value) }).catch(() => undefined) }, 4000)
+    return () => { alive = false; window.clearInterval(interval) }
   }, [api])
   const perform = async (action: () => Promise<void>) => {
     setBusy(true); setFeedback('')
@@ -24,7 +25,7 @@ export function PwaSettingsPanel() {
   if (!api) return <p className="text-xs text-muted-foreground">Configure a PWA no aplicativo para Windows.</p>
   return <div className="space-y-3">
     <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs leading-5 text-muted-foreground">
-      <p className="flex items-center gap-2 font-medium text-foreground"><ShieldCheck className="size-4 text-emerald-500" />Gateway privado · modo leitura</p>
+      <p className="flex items-center gap-2 font-medium text-foreground"><ShieldCheck className="size-4 text-emerald-500" />Gateway privado · permissões por dispositivo</p>
       <p className="mt-1">O gateway aceita conexões somente no próprio PC (porta 6780). Para acessar pelo celular, use HTTPS privado com Tailscale Serve, sem abrir esta porta no roteador.</p>
       <p className="mt-2">{status?.running ? `Gateway ativo · ${status.sessions} dispositivo(s) pareado(s).` : 'Iniciando gateway…'}</p>
     </div>
@@ -45,7 +46,29 @@ export function PwaSettingsPanel() {
       <p className="mt-2 text-xs text-muted-foreground">Abra o navegador do dispositivo em <strong>{pairing.url}</strong> (neste PC) ou no endereço HTTPS do Tailscale Serve (no celular).</p>
       <Button size="sm" variant="outline" className="mt-2" onClick={() => { void navigator.clipboard.writeText(pairing.code).then(() => setFeedback('Código copiado.')).catch(() => setFeedback('Não foi possível copiar.')) }}><Copy data-icon="inline-start" />Copiar código</Button>
     </div>}
-    <p className="text-xs text-muted-foreground">Um código novo invalida o anterior. A sessão dura no máximo 12 horas, não autoriza comandos, edição de arquivos, aprovações ou envio de mensagens e pode ser revogada neste PC.</p>
+    {!!status?.devices?.length && <div className="space-y-2 rounded-lg border border-border p-3">
+      <p className="text-xs font-semibold">Dispositivos pareados</p>
+      {status.devices.map(device => <div key={device.id} className="space-y-2 rounded-lg border border-border/70 p-2 text-xs">
+        <div className="flex items-center justify-between gap-2"><span className="font-medium">{device.label}</span>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void perform(async () =>
+            setStatus(await api.revokeDevice(device.id)))}>Desconectar</Button></div>
+        <label className="flex items-center justify-between gap-2">
+          <span>Permitir enviar mensagens e interromper tarefas</span>
+          <input type="checkbox" aria-label={`Permitir chat para ${device.label}`} checked={device.chat} disabled={busy}
+            onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
+              chat: event.target.checked, approvals: device.approvals,
+            })))} />
+        </label>
+        <label className="flex items-center justify-between gap-2">
+          <span>Permitir aprovar ações pendentes</span>
+          <input type="checkbox" aria-label={`Permitir aprovações para ${device.label}`} checked={device.approvals} disabled={busy}
+            onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
+              chat: device.chat, approvals: event.target.checked,
+            })))} />
+        </label>
+      </div>)}
+    </div>}
+    <p className="text-xs text-muted-foreground">Um código novo invalida o anterior. A sessão expira em 12 horas; chat e aprovações precisam ser autorizados por dispositivo neste PC. A PWA não recebe acesso direto ao terminal nem aos arquivos.</p>
     {feedback && <p role="status" className="text-xs text-muted-foreground">{feedback}</p>}
   </div>
 }

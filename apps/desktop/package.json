@@ -5,7 +5,7 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "set ELECTRON_RUN_AS_NODE=&& electron-vite dev",
-    "build": "set ELECTRON_RUN_AS_NODE=&& electron-vite build",
+    "build": "set ELECTRON_RUN_AS_NODE=&& electron-vite build && npm run build:pwa",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:hosts:electron": "node scripts/verify-hosts-electron.cjs",
@@ -21,7 +21,11 @@
     "verify": "npm run quality:rules && npm run lint && npm run lint:typed && npm run typecheck && npm test && npm run build",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "pack:win": "npm run build && electron-builder --win dir --x64 --publish never",
-    "stage:update": "node scripts/stage-update-release.mjs"
+    "stage:update": "node scripts/stage-update-release.mjs",
+    "build:pwa": "vite build --config vite.pwa.config.mts",
+    "predev": "npm run build:pwa",
+    "test:pwa": "vitest run src/main/pwa/gateway.test.ts src/main/hosts/pwa-policy.test.ts && node scripts/verify-pwa-web.cjs",
+    "pretest": "npm run build:pwa"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.301",
@@ -68,6 +72,7 @@
     "prism-react-renderer": "^2.4.1",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",
+    "react-color": "^2.19.3",
     "react-dom": "^19.3.1",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.14.5",
@@ -89,6 +94,7 @@
     "@types/cross-spawn": "6.0.6",
     "@types/node": "^22.16.5",
     "@types/react": "^19.3.0",
+    "@types/react-color": "^3.0.13",
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.2",
     "@vitejs/plugin-react-swc": "^3.11.0",

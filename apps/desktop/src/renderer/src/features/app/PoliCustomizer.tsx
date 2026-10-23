@@ -5,6 +5,7 @@ import { PIT_COLOR_PALETTE, type Agent } from '../../../../shared/v9'
 import { PoliAvatar, type PoliExpression } from './PoliAvatar'
 import { BOO_BODY_PATHS, BOO_SHAPE_PRESETS, DEFAULT_BOO_APPEARANCE } from './boo-appearance'
 import { BooAccessoryColorEditor } from './BooAccessoryColorEditor'
+import { ReactColorField } from '@/components/ui/ReactColorField'
 
 type Tab = 'appearance' | 'animation' | 'states'
 // Mesma paleta usada para sortear a cor de um Pit novo (ver randomPitColor em shared/v9.ts).
@@ -54,9 +55,9 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
           {tab === 'appearance' && <>
             <p className="text-xs font-medium">Cor do corpo</p>
             <div className="flex flex-wrap gap-2">{swatches.map(value => <button key={value} type="button" aria-label={`Escolher cor ${value}`} aria-pressed={agent.color === value} onClick={() => onChange({color: value})} className={`size-7 rounded-full border-2 ${agent.color === value ? 'border-foreground ring-2 ring-primary/30' : 'border-transparent'}`} style={{backgroundColor:value}} />)}</div>
-            <label className="flex items-center justify-between gap-3 text-xs">Cor personalizada<input type="color" aria-label="Cor do Boo" className="size-8 cursor-pointer" value={agent.color} onChange={event => onChange({color:event.target.value})} /></label>
+            <ReactColorField label="Cor do Boo" value={agent.color} onChange={color => onChange({ color })} />
             <div className="border-t border-border/60 pt-3"><p className="mb-2 text-xs font-medium">Olhos e formato</p><div className="space-y-3">
-              <label className="flex items-center justify-between text-xs">Cor dos olhos<input type="color" aria-label="Cor dos olhos" value={agent.pitsEyeColor || '#ffffff'} onChange={event => onChange({pitsEyeColor:event.target.value})} /></label>
+              <ReactColorField label="Cor dos olhos" value={agent.pitsEyeColor || '#ffffff'} onChange={color => onChange({ pitsEyeColor: color })} />
               <Range label="Tamanho dos olhos" value={agent.pitsEyeSize ?? 8} min={4} max={15} onChange={value => onChange({pitsEyeSize:value})} />
               <Range label="Distância dos olhos" value={(agent.pitsEyeSpacing ?? 26)*2} min={32} max={84} step={2} onChange={value => onChange({pitsEyeSpacing:value/2})} />
               <Range label="Largura do corpo" value={Math.round((agent.pitsBodyWidth ?? 1)*100)} min={75} max={125} step={5} unit="%" onChange={value => onChange({pitsBodyWidth:value/100})} />
@@ -100,7 +101,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
               </div>
               <BooAccessoryColorEditor layer="face" accessory={selectedFace} colors={agent.pitsAccessoryColors} onChange={onChange} />
             </div>
-            <div className="space-y-3 border-t border-border/60 pt-3"><Toggle label="Bochechas rosadas" checked={agent.pitsBlush!==false} onChange={value => onChange({pitsBlush:value})}/>{agent.pitsBlush!==false && <label className="flex items-center justify-between text-xs">Cor das bochechas<input type="color" aria-label="Cor das bochechas" value={agent.pitsCheekColor || '#f5a5d1'} onChange={event => onChange({pitsCheekColor:event.target.value})} /></label>}{agent.pitsBlush !== false && <Range label="Intensidade do rosado" value={Math.round((agent.pitsBlushStrength ?? .45) * 100)} min={0} max={100} step={5} unit="%" onChange={value => onChange({ pitsBlushStrength: value / 100 })} />}<Toggle label="Aura colorida" checked={agent.pitsAura!==false} onChange={value => onChange({pitsAura:value})}/></div>
+            <div className="space-y-3 border-t border-border/60 pt-3"><Toggle label="Bochechas rosadas" checked={agent.pitsBlush!==false} onChange={value => onChange({pitsBlush:value})}/>{agent.pitsBlush!==false && <ReactColorField label="Cor das bochechas" value={agent.pitsCheekColor || '#f5a5d1'} onChange={color => onChange({ pitsCheekColor: color })} />}{agent.pitsBlush !== false && <Range label="Intensidade do rosado" value={Math.round((agent.pitsBlushStrength ?? .45) * 100)} min={0} max={100} step={5} unit="%" onChange={value => onChange({ pitsBlushStrength: value / 100 })} />}<Toggle label="Aura colorida" checked={agent.pitsAura!==false} onChange={value => onChange({pitsAura:value})}/></div>
           </>}
           {tab === 'animation' && <><Toggle label="Ativar animações" checked={agent.pitsAnimate!==false} onChange={value => onChange({pitsAnimate:value})}/><Range label="Velocidade da flutuação" min={1} max={6} step={.5} unit="s" value={agent.pitsSpeed ?? 3} onChange={value => onChange({pitsSpeed:value})}/><Range label="Amplitude do movimento" min={0} max={24} unit="px" value={agent.pitsAmplitude ?? 9} onChange={value => onChange({pitsAmplitude:value})}/><p className="text-[11px] text-muted-foreground">A animação reduz automaticamente quando o sistema prefere menos movimento.</p></>}
           {tab === 'states' && <><p className="text-xs font-medium">Testar expressões</p><div className="grid grid-cols-2 gap-2">{states.map(item => <button key={item.value} type="button" aria-pressed={expression===item.value} onClick={() => setExpression(item.value)} className={`rounded-md border px-2 py-2 text-xs ${expression===item.value ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent/40'}`}>{item.label}</button>)}</div><p className="text-[11px] text-muted-foreground">Durante o uso, o Boobot troca a expressão automaticamente conforme o estado do Boo.</p></>}

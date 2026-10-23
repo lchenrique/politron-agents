@@ -1,0 +1,14 @@
+/* PWA borrows Boobot's renderer tokens, sidebar and mascot. Only shell behavior differs. */
+html,body,#root {height:100%;margin:0;overscroll-behavior:none}
+body {background:var(--background);color:var(--foreground)}
+.boobot-pwa {font-family:var(--font-sans);font-synthesis:none}
+.boobot-pwa-pair {background:var(--background);background-image:radial-gradient(ellipse at top, hsl(223.8136 0% 15%),transparent 65%)}
+.boobot-pwa-sidebar {box-shadow:none}
+.boobot-pwa-nav {min-height:40px}
+.boobot-pwa-sidebar .poli-avatar {flex:none}
+.boobot-pwa-messages {scrollbar-color:var(--border) transparent;scrollbar-width:thin}
+.boobot-pwa-inspector {box-shadow:none}
+.boobot-pwa .glass-header {background:var(--card);backdrop-filter:blur(12px)}
+@media(max-width:1023px){.boobot-pwa-inspector{box-shadow:-18px 0 40px #0005}}
+@media(max-width:767px){.boobot-pwa-sidebar{box-shadow:14px 0 40px #0005}.boobot-pwa textarea{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.boobot-pwa *, .boobot-pwa *::before,.boobot-pwa *::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}

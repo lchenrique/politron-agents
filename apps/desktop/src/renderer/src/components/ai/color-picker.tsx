@@ -2,6 +2,7 @@ import { Popover } from '@base-ui/react/popover'
 import { MinimalisticMagnifierIcon } from '@solar-icons/react/linear/minimalistic-magnifier'
 import { TrashBinMinimalisticIcon } from '@solar-icons/react/linear/trash-bin-minimalistic'
 import * as React from 'react'
+import { ReactColorField } from '@/components/ui/ReactColorField'
 
 import {
   SHADES,
@@ -47,11 +48,8 @@ const MODES: { id: ColorPickerMode; label: string }[] = [
   { id: 'conic', label: 'Conic' },
 ]
 
-const HEX6 = /^#[0-9a-f]{6}$/i
 const CHECKER =
   'bg-[repeating-conic-gradient(#e4e4e7_0_25%,#fafafa_0_50%)] bg-size-[8px_8px] dark:bg-[repeating-conic-gradient(#3f3f46_0_25%,#27272a_0_50%)]'
-const SPECTRUM =
-  'conic-gradient(from 0deg, #ef4444, #f59e0b, #84cc16, #10b981, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)'
 const SCROLLBAR =
   '[&::-webkit-scrollbar]:w-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:border-[3px] [&::-webkit-scrollbar-thumb]:border-solid [&::-webkit-scrollbar-thumb]:border-transparent [&::-webkit-scrollbar-thumb]:bg-foreground/15 [&::-webkit-scrollbar-thumb]:bg-clip-padding [&::-webkit-scrollbar-thumb:hover]:bg-foreground/30 [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-track]:bg-transparent supports-[not_selector(::-webkit-scrollbar)]:[scrollbar-color:color-mix(in_oklch,var(--foreground)_20%,transparent)_transparent] supports-[not_selector(::-webkit-scrollbar)]:[scrollbar-width:thin]'
 const FIELD =
@@ -768,26 +766,16 @@ function ColorPicker({
             value={query}
           />
         </label>
-        <label
-          className="relative size-7 shrink-0 cursor-pointer overflow-hidden rounded-full ring-1 ring-black/10 focus-within:ring-2 focus-within:ring-foreground hover:ring-2 hover:ring-foreground/60 dark:ring-white/20"
-          style={{ background: SPECTRUM }}
-          title="Custom color"
-        >
-          <input
-            aria-label="Custom color"
-            className="absolute inset-0 size-full cursor-pointer opacity-0"
-            onBlur={endLive}
-            onChange={(e) => {
-              const hex = e.target.value
-              if (gradient)
-                live(stringifyGradient(withStop(gradient, selected, { color: hex }).gradient))
-              else live(withAlpha(hex, activeAlpha))
-            }}
-            onPointerDown={endLive}
-            type="color"
-            value={activeHex && HEX6.test(activeHex) ? activeHex : '#000000'}
-          />
-        </label>
+        <ReactColorField
+          compact
+          label="Cor personalizada"
+          value={activeHex && /^#[0-9a-f]{6}$/i.test(activeHex) ? activeHex : '#000000'}
+          onChange={(hex) => {
+            if (gradient) live(stringifyGradient(withStop(gradient, selected, { color: hex }).gradient))
+            else live(withAlpha(hex, activeAlpha))
+            endLive()
+          }}
+        />
       </div>
 
       <div className={cn('flex flex-col gap-2', allowGradient && 'min-h-0 flex-1')}>

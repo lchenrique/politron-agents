@@ -1,12 +1,18 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '../../../../shared/v9'
 import { validateBooAccessoryColors } from '../../../../shared/boo-accessory-colors'
 import { BooHeadAccessory, BooFaceAccessory } from './BooAccessories'
 import { PoliCustomizer } from './PoliCustomizer'
 import { shapeBounds, shapeLineAt, shapeWidthAt } from './boo-pet-geometry'
 
+// These integration tests exercise persistence and palette propagation; the actual
+// React Color popup has dedicated tests in ReactColorField.test.tsx.
+vi.mock('@/components/ui/ReactColorField', () => ({
+  ReactColorField: ({label,value,onChange}: {label:string;value:string;onChange:(hex:string)=>void}) =>
+    <input type="color" aria-label={label} value={value} onChange={e=>onChange(e.target.value)} />,
+}))
 const agent: Agent = {
   id: 'custom-color-1', name: 'Boo', alias: 'boo', description: '', instructions: '',
   runtime: 'codex', model: '', color: '#786bea', avatar: '',

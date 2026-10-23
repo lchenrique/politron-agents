@@ -280,13 +280,23 @@ app.whenReady().then(async () => {
   }).catch(error => console.warn('[PWA] Gateway não pôde iniciar:', error instanceof Error ? error.message : 'erro'))
 
   const pwaWindow = (event: Electron.IpcMainInvokeEvent) => {
-    if (!BrowserWindow.fromWebContents(event.sender)) throw new Error('Janela não autorizada.')
+    if (BrowserWindow.fromWebContents(event.sender) !== mainWindow) throw new Error('Janela não autorizada.')
     if (!pwa) throw new Error('PWA indisponível.')
     return pwa
   }
   ipcMain.handle('pwa:status', event => pwaWindow(event).status())
   ipcMain.handle('pwa:issueCode', event => pwaWindow(event).issueCode())
   ipcMain.handle('pwa:revokeAll', event => { pwaWindow(event).revokeAll(); return pwaWindow(event).status() })
+  ipcMain.handle('pwa:setDevicePermissions', (event, id: unknown, grants: unknown) => {
+    if (typeof id !== 'string' || !grants || typeof grants !== 'object' ||
+      typeof (grants as {chat?: unknown}).chat !== 'boolean' ||
+      typeof (grants as {approvals?: unknown}).approvals !== 'boolean') throw new Error('Permissões inválidas.')
+    return pwaWindow(event).setDevicePermissions(id, grants as { chat: boolean; approvals: boolean })
+  })
+  ipcMain.handle('pwa:revokeDevice', (event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('Dispositivo inválido.')
+    return pwaWindow(event).revokeDevice(id)
+  })
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
