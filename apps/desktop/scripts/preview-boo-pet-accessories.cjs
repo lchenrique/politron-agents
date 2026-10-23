@@ -16,9 +16,9 @@ mod.paths = Module._nodeModulePaths(path.dirname(source))
 mod._compile(code, source)
 const sourceShapes = fs.readFileSync(path.join(cwd, 'src/renderer/src/features/app/boo-appearance.ts'), 'utf8')
 const shapes = Object.fromEntries([...sourceShapes.matchAll(/^  (?:'([^']+)'|([a-z]+)): '([^']+)'/gm)].map(([,quoted, key, d]) => [quoted || key, d]))
-const heads = ['cap','beanie','top-hat','witch-hat','crown','party-hat','chef-hat','bow','flower','halo']
-const faces = ['round-glasses','sunglasses','heart-glasses','star-glasses','monocle','mustache','star-mask']
-const entries = [...heads.map((name,i) => ({name, shape: ['round','ghost-wave','little-cat','drop'][i%4], layer:'head'})), ...faces.map((name,i) => ({name, shape: ['round','ghost-wave','little-cat'][i%3], layer:'face'}))]
+const heads = mod.exports.heads.filter(([id]) => id !== 'none').map(([id]) => id)
+const faces = mod.exports.faces.filter(([id]) => id !== 'none').map(([id]) => id)
+const entries = [...heads.map((name,i) => ({name, shape: ['round','ghost-wave','little-cat','drop','squircle','bean'][i%6], layer:'head'})), ...faces.map((name,i) => ({name, shape: ['round','ghost-wave','little-cat','drop'][i%4], layer:'face'}))]
 function card({name,shape,layer}) {
  const looks = {shape,head:layer==='head'?name:'none',face:layer==='face'?name:'none',width:1,height:1,eyeSize:8,eyeSpacing:26,mouthSize:1,colors:{}}
  const svg = renderToStaticMarkup(React.createElement(mod.exports.ImportedBooPetAccessory,{looks,layer}))

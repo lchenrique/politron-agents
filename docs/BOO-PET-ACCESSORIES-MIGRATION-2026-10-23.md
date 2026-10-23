@@ -1,29 +1,37 @@
-# Boobot — acessórios recuperados do Boo Pet
+# Boobot — migração integral da coleção de acessórios (23/10/2026)
 
-Data: 23/10/2026.
+## Origem e preservação
 
-## Origem
+O projeto `D:\projetos pessoais\boo-pet` continua intacto. Os arquivos de referência aprovados estão em `src/accessories.tsx`; a pasta `acessorios-descartados` não foi usada.
 
-O projeto original continua em `D:\projetos pessoais\boo-pet`, branch `master`, commit consultado `e773ddd`. A coleção aprovada de vetores fica em `src/accessories.tsx`; **não** usamos os arquivos de `acessorios-descartados` porque são descartes do processo de criação. O projeto original não foi modificado.
+A arte original está preservada como vetor em `apps/desktop/src/renderer/src/features/app/BooPetAccessories.tsx`. Os acessórios exclusivos do Boobot foram **redesenhados no mesmo padrão visual**, em `BooPetExtraArt.tsx`, com costuras, gradientes e reflexos. `BooAccessories.tsx` agora é um wrapper único e não tem mais o desenho fixo antigo.
 
-O desenho original foi copiado, sem rasterização, para `apps/desktop/src/renderer/src/features/app/BooPetAccessories.tsx`, com dependências locais `boo-pet-color.ts`, `boo-pet-looks.ts` e `boo-pet-geometry.ts`. Este último usa as **silhuetas atuais do Boobot** em `boo-appearance.ts`, não versões antigas do Boo Pet, e tem cache de contornos/medidas para evitar trabalho repetitivo.
+## Cobertura integral
 
-## Integração
+- **16 opções de cabeça:** antena, chifres, boné curvo original do Boo Pet, boné de aba reta, boné para trás, gorro, bucket, cartola, chapéu de bruxa, fones, coroa, chapéu de festa, chapéu de chef, laço, flor e auréola
+- **8 opções de rosto:** óculos comuns, óculos redondos, escuros, de coração, de estrela, monóculo, bigode e máscara de herói
+- Todos os IDs de versões anteriores continuam aceitos por perfis salvos e ferramentas do workspace; todos aparecem no Boo Studio
 
-`BooAccessories.tsx` roteia itens recuperados para a coleção original, mantendo acessórios exclusivos do Boobot e os bonés de aba reta e virado para trás. `PoliAvatar.tsx` posiciona acessórios importados **fora** da escala do corpo, com cálculo específico de largura/altura/forma; os acessórios antigos permanecem em sua hierarquia de escala anterior. `RiveBooAvatar.tsx` compartilha a coleção visual durante o modo experimental Rive.
+## Encaixe único e desempenho
 
-Modelos de cabeça usados da coleção: boné, gorro, cartola, chapéu de bruxa, coroa, chapéu de festa, chapéu de chef, laço, flor, auréola.
+`ImportedBooPetAccessory` desenha tudo em coordenadas do Boo (240×200), adaptadas ao contorno real da silhueta. `boo-pet-geometry.ts` usa `BOO_BODY_PATHS` do Boobot, consulta largura do corpo na altura de apoio, ajusta escala e altura e aplica largura, altura, espaçamento e tamanho de olhos e boca.
 
-Modelos de rosto usados da coleção: óculos redondos, óculos escuros, óculos de coração, óculos de estrela, monóculo, bigode, máscara de herói.
+O cache de contornos, limites e alturas por razão/silhueta evita recalcular amostras de curvas em toda renderização. Não se pode concluir equivalência pixel a pixel apenas a partir de um teste de coordenadas válidas.
 
-Os dez itens que não existiam antes foram incluídos no seletor do Boo Studio, tipos compartilhados e nas validações de perfil, store e ferramentas do workspace. IDs e configurações antigas continuam aceitos. Cores padrão da coleção estão preservadas; controles individuais de cores por acessório ainda não foram portados.
+## Portabilidade para o renderer Rive
 
-## Visual e validação
+`PoliAvatar` e `RiveBooAvatar` utilizam **a mesma coleção SVG** e o mesmo cálculo de encaixe, com os mesmos parâmetros de silhueta, largura, altura, olhos e boca. Na composição Rive, os vetores ficam no grupo de movimento do personagem (junto do canvas), sem animação independente do acessório. A sombra permanece fora do grupo móvel.
 
-A montagem visual é reproduzível com `node scripts/preview-boo-pet-accessories.cjs`, que gera `%TEMP%\boobot-imported-boo-pet-accessories.jpg` com a arte da coleção importada em silhuetas diferentes. Inclui desenho e gradientes da origem. Os testes `BooPetAccessories.test.tsx` cobrem disponibilidade, adaptação ao formato, convivência com corpo SVG e opções do Studio; `PoliAvatar.test.tsx` e `RiveBooAvatar.test.tsx` verificam compatibilidade.
+O arquivo binário `boo-rive.riv` contém as 12 silhuetas e a animação/estado do corpo; os acessórios continuam **overlays vetoriais SVG sincronizados**, **não** objetos nativos importados no artboard Rive. Essa distinção é importante: todos os acessórios **funcionam visualmente** no modo Rive, mas converter cada um em objeto nativo/rig Rive ainda exigiria outra etapa de autoria RML, comparações e controle de cores. O SVG continua sendo o padrão e o Rive é opt-in em Configurações.
 
-A qualidade aprovada é a referência SVG. Não migrar estes acessórios para PNG, não copiar a pasta descartada e não alterar os corpos para acomodar chapéus. Uma eventual exportação Rive nativa requer rig/âncoras equivalentes.
+## QA / reprodução
 
-## Pendências
+- `node scripts/preview-boo-pet-accessories.cjs`: gera a prancha de revisão de **todos os 24 acessórios** em `%TEMP%\boobot-imported-boo-pet-accessories.jpg`
+- `BooAccessoryMatrix.test.tsx`: posiciona todas as opções nas 12 silhuetas, incluindo proporções modificadas, sem coordenadas inválidas
+- `BooPetAccessories.test.tsx`, `PoliAvatar.test.tsx` e `RiveBooAvatar.test.tsx`: comprovam geometria, apresentação, persistência da seleção e aplicação da mesma coleção em SVG/Rive
+- `node boo-rive/generate.cjs`, `rive boo-rive --verify`, `rive boo-rive --once`: regeneram e validam os 12 artboards; copiar `boo-rive/build/boo-rive.riv` para `src/renderer/public/boo-rive.riv`
+- `node scripts/verify-rive-electron.cjs`: smoke real Electron com perfil descartável, Rive opt-in, sombra fixa, composição única e fallback SVG
 
-Validar o uso com alguns agentes reais no Electron instalado, especialmente escalas extremas, chapéus altos em avatares pequenos e possível clipping em listas. Considerar controles de cores por parte e uma comparação visual das duas variantes exclusivas de boné antes de alterar seus desenhos.
+## Pendências de aceitação visual
+
+Antes de tornar o Rive padrão, validar lado a lado cap/beanie/hat/acessórios laterais em todos os formatos e tamanhos, clipping de chapéus altos em miniaturas, estados de movimento e reação, e CPU/GPU/memória para 1, 10 e 40 Boos. Portar o vetor para dentro do arquivo `.riv` é opcional para funcionamento mas **não está concluído** caso seja requisito explícito de autoria nativa Rive. Paletas individuais por acessório ainda não são configuráveis no estúdio.

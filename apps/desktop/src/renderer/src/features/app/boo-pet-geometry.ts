@@ -52,6 +52,8 @@ export const shapeWidthAt = (shape: string, y: number) => widthAt(polygonOf(shap
 
 /** Topo, base e largura máxima do corpo. */
 export function shapeBounds(shape: string) {
+  const existing = boundsCache.get(shape)
+  if (existing) return existing
   const polygon = polygonOf(shape)
   const ys = polygon.map(([, y]) => y)
   const [top, bottom] = [Math.min(...ys), Math.max(...ys)]
@@ -67,8 +69,12 @@ export function shapeBounds(shape: string) {
  * É o ponto equivalente entre formatos: a ponta da Gota e as orelhas do Gatinho não contam como cabeça.
  */
 export function shapeLineAt(shape: string, ratio: number): number {
+  const key = `${shape}:${ratio.toFixed(5)}`
+  const cached = linesCache.get(key)
+  if (cached !== undefined) return cached
   const {top, bottom, width} = shapeBounds(shape)
   let y = top
   while (y < bottom && shapeWidthAt(shape, y) < width * ratio) y += .5
+  linesCache.set(key, y)
   return y
 }

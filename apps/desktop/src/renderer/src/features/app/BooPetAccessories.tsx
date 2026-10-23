@@ -7,6 +7,7 @@ import {useId, type ReactNode} from 'react'
 import { mix } from './boo-pet-color'
 import {shapeBounds, shapeLineAt, shapeWidthAt} from './boo-pet-geometry'
 import type { BooPetLooks as Looks } from './boo-pet-looks'
+import { extraHeads, extraFaces } from './BooPetExtraArt'
 
 type Paint = {c: string[]; id: (key: string) => string; url: (key: string) => string}
 type Colors = [label: string, color: string][]
@@ -36,6 +37,7 @@ const Gloss = ({d, width = 4}: {d: string; width?: number}) => <path d={d} fill=
 /** Chapéus: `anchor` é o ponto onde o item apoia na cabeça do Boo "Bolinha". */
 type Head = {label: string; colors: Colors; anchor: [number, number]; draw: (p: Paint) => ReactNode}
 const HEADS: Record<string, Head> = {
+ ...extraHeads,
  'cap': {label: 'Boné', colors: [['Copa', '#4a90e2'], ['Aba', '#2c6cb8'], ['Detalhes', '#ffd166']], anchor: [120, 58], draw: ({c, id, url}) => <>
   <defs><Shade id={id('d')} color={c[0]}/><Shade id={id('b')} color={c[1]}/></defs>
   <path d="M56 60 C56 20 84 4 120 4 C156 4 184 20 184 60 Z" fill={url('d')} stroke={edge(c[0])} strokeWidth="2"/>
@@ -128,6 +130,7 @@ type Face = {x1: number; x2: number; y: number; r: number; mouthY: number; mouth
 type FaceItem = {label: string; colors: Colors; draw: (p: Paint, f: Face) => ReactNode}
 
 const FACES: Record<string, FaceItem> = {
+ ...extraFaces,
  'round-glasses': {label: 'Redondos', colors: [['Armação', '#c07a3a'], ['Lente', '#bfe6ff']], draw: ({c}, {x1, x2, y, r}) => <g fill="none" stroke={c[0]} strokeWidth="4" strokeLinecap="round">
   {[x1, x2].map(x => <circle key={x} cx={x} cy={y} r={r} fill={c[1]} fillOpacity=".22"/>)}
   <path d={`M${x1 + r} ${y - 3} Q120 ${y - 9} ${x2 - r} ${y - 3} M${x1 - r} ${y - 4} L${x1 - r - 13} ${y - 8} M${x2 + r} ${y - 4} L${x2 + r + 13} ${y - 8}`}/>

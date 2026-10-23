@@ -26,6 +26,7 @@ const props = {
   faceAccessory: 'none',
   speaking: false,
   expression: 'idle' as const,
+  mood: 'idle', eyeSize: 8, eyeSpacing: 26, mouthSize: 1, bodyWidth: 1, bodyHeight: 1, showAura: true, showBlush: true,
   playing: true,
   visible: true,
   onReady: state.onReady,
@@ -58,6 +59,24 @@ describe('Rive experimental: motion composite and state overlays', () => {
     expect(container.querySelectorAll('.poli-avatar__finger')).toHaveLength(0)
     rerender(<RiveBooAvatar {...props} expression="done" />)
     expect(container.querySelector('path[d="M172 42 l8 8 14 -17"]')).toBeInTheDocument()
+    expect(screen.getByTestId('rive')).toBeInTheDocument()
+  })
+
+  it('monta os mesmos acessórios do SVG com encaixe específico para formato e proporções no Rive', () => {
+    const { container } = render(<RiveBooAvatar {...props} shape="little-cat" headAccessory="horns" faceAccessory="heart-glasses" bodyWidth={1.2} bodyHeight={.85} eyeSize={12} eyeSpacing={34} />)
+    const layer = container.querySelector('.poli-avatar__rive-accessory')
+    const head = layer?.querySelector('[data-boo-accessory="horns"]')
+    const face = layer?.querySelector('[data-boo-accessory="heart-glasses"]')
+    expect(head).toBeInTheDocument()
+    expect(face).toBeInTheDocument()
+    const position = head?.querySelector('g[transform]')?.getAttribute('transform')
+    expect(position).toMatch(/^translate\(/)
+    expect(position).not.toMatch(/NaN|Infinity/)
+    expect(layer?.innerHTML).not.toMatch(/NaN|Infinity/)
+  })
+  it('mostra detalhes das reações no modo Rive sem desmontar o corpo', () => {
+    const { container } = render(<RiveBooAvatar {...props} mood="love" />)
+    expect(container.querySelector('.poli-avatar__heart')).toBeInTheDocument()
     expect(screen.getByTestId('rive')).toBeInTheDocument()
   })
 
