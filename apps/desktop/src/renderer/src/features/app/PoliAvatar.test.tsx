@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '../../../../shared/v9'
 import { PoliAvatar } from './PoliAvatar'
 import { PoliCustomizer } from './PoliCustomizer'
-import { applyGaze, SLEEP_AFTER_MS, STARTLE_EVENT } from './usePoliGaze'
+import { applyGaze, GAZE_EVENT, SLEEP_AFTER_MS, STARTLE_EVENT } from './usePoliGaze'
 
 // jsdom não implementa PointerEvent; sem isso o Testing Library descarta clientX.
 if (typeof window.PointerEvent === 'undefined') Object.defineProperty(window, 'PointerEvent', { configurable: true, value: class extends MouseEvent {} })
@@ -153,6 +153,18 @@ describe('interação do Pits com o mouse', () => {
     expect(element.dataset.near).toBe('true')
   })
 
+  it('envia o deslocamento dos olhos ao renderer Rive quando está visível', () => {
+    const element = document.createElement('span')
+    element.dataset.riveActive = 'true'
+    box(element, 100, 100, 100)
+    const gaze = vi.fn()
+    element.addEventListener(GAZE_EVENT, gaze)
+    applyGaze(element, 260, 150)
+    expect(gaze).toHaveBeenCalledOnce()
+    expect((gaze.mock.calls[0][0] as CustomEvent).detail.x).toBeGreaterThan(0)
+    applyGaze(element, 900, 900)
+    expect((gaze.mock.calls[1][0] as CustomEvent).detail).toEqual({ x: 0, y: 0 })
+  })
   it('volta a olhar para frente quando o cursor está longe', () => {
     const element = document.createElement('span')
     box(element, 100, 100, 56)

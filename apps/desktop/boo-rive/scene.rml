@@ -2,12 +2,13 @@
 <Artboard width="185" height="200" name="round" id="0:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="0:7" styleId="0:5">
 <LayoutComponentStyle name="Artboard Style" id="0:5"/>
 <Node x="-28" name="Boo Artwork" id="0:41">
-<Node name="Blinking eyes" id="0:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="0:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -25,10 +26,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original round">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="63" y="46" inRotation="2.413" inDistance="25.024" outRotation="-0.758" outDistance="52.345"/>
@@ -69,12 +69,13 @@
 <Artboard width="185" height="200" name="flat" id="1:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="1:7" styleId="1:5">
 <LayoutComponentStyle name="Artboard Style" id="1:5"/>
 <Node x="-28" name="Boo Artwork" id="1:41">
-<Node name="Blinking eyes" id="1:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="1:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -92,10 +93,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original flat">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="58" y="72" inRotation="2.382" inDistance="18.391" outRotation="-1.071" outDistance="16.707"/>
@@ -137,12 +137,13 @@
 <Artboard width="185" height="200" name="long" id="2:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="2:7" styleId="2:5">
 <LayoutComponentStyle name="Artboard Style" id="2:5"/>
 <Node x="-28" name="Boo Artwork" id="2:41">
-<Node name="Blinking eyes" id="2:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="2:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -160,10 +161,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original long">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="79" y="30" inRotation="2.444" inDistance="26.973" outRotation="-0.678" outDistance="35.087"/>
@@ -204,12 +204,13 @@
 <Artboard width="185" height="200" name="drop" id="3:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="3:7" styleId="3:5">
 <LayoutComponentStyle name="Artboard Style" id="3:5"/>
 <Node x="-28" name="Boo Artwork" id="3:41">
-<Node name="Blinking eyes" id="3:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="3:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -227,10 +228,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original drop">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="120" y="9" inRotation="2.134" inDistance="29.963" outRotation="1.007" outDistance="29.963"/>
@@ -272,12 +272,13 @@
 <Artboard width="185" height="200" name="squircle" id="4:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="4:7" styleId="4:5">
 <LayoutComponentStyle name="Artboard Style" id="4:5"/>
 <Node x="-28" name="Boo Artwork" id="4:41">
-<Node name="Blinking eyes" id="4:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="4:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -295,10 +296,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original squircle">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="68" y="29" inRotation="2.854" inDistance="18.774" outRotation="-0.333" outDistance="18.342"/>
@@ -343,12 +343,13 @@
 <Artboard width="185" height="200" name="bean" id="5:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="5:7" styleId="5:5">
 <LayoutComponentStyle name="Artboard Style" id="5:5"/>
 <Node x="-28" name="Boo Artwork" id="5:41">
-<Node name="Blinking eyes" id="5:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="5:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -366,10 +367,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original bean">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="87" y="28" inRotation="2.441" inDistance="27.913" outRotation="-0.375" outDistance="23.646"/>
@@ -412,12 +412,13 @@
 <Artboard width="185" height="200" name="ghost-wave" id="6:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="6:7" styleId="6:5">
 <LayoutComponentStyle name="Artboard Style" id="6:5"/>
 <Node x="-28" name="Boo Artwork" id="6:41">
-<Node name="Blinking eyes" id="6:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="6:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -435,10 +436,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original ghost-wave">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="63" y="46" inRotation="2.356" inDistance="25.456" outRotation="-0.73" outDistance="50.99"/>
@@ -484,12 +484,13 @@
 <Artboard width="185" height="200" name="ghost-puff" id="7:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="7:7" styleId="7:5">
 <LayoutComponentStyle name="Artboard Style" id="7:5"/>
 <Node x="-28" name="Boo Artwork" id="7:41">
-<Node name="Blinking eyes" id="7:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="7:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -507,10 +508,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original ghost-puff">
 <PointsPath isClosed="true" isClockwise="false" name="Silhouette">
 <CubicDetachedVertex x="120" y="14" inRotation="0" inDistance="42" outRotation="3.142" outDistance="42"/>
@@ -557,12 +557,13 @@
 <Artboard width="185" height="200" name="cute-squid" id="8:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="8:7" styleId="8:5">
 <LayoutComponentStyle name="Artboard Style" id="8:5"/>
 <Node x="-28" name="Boo Artwork" id="8:41">
-<Node name="Blinking eyes" id="8:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="8:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -580,10 +581,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original cute-squid">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="120" y="14" inRotation="3.142" inDistance="9.333" outRotation="0" outDistance="28.667"/>
@@ -632,12 +632,13 @@
 <Artboard width="185" height="200" name="soft-square" id="9:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="9:7" styleId="9:5">
 <LayoutComponentStyle name="Artboard Style" id="9:5"/>
 <Node x="-28" name="Boo Artwork" id="9:41">
-<Node name="Blinking eyes" id="9:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="9:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -655,10 +656,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original soft-square">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="69" y="23" inRotation="2.737" inDistance="20.309" outRotation="-0.525" outDistance="14.636"/>
@@ -704,12 +704,13 @@
 <Artboard width="185" height="200" name="little-cat" id="10:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="10:7" styleId="10:5">
 <LayoutComponentStyle name="Artboard Style" id="10:5"/>
 <Node x="-28" name="Boo Artwork" id="10:41">
-<Node name="Blinking eyes" id="10:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="10:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -727,10 +728,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original little-cat">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="52" y="16" inRotation="0" inDistance="0" outRotation="-0.133" outDistance="10.088"/>
@@ -775,12 +775,13 @@
 <Artboard width="185" height="200" name="ghost-peak" id="11:2" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="11:7" styleId="11:5">
 <LayoutComponentStyle name="Artboard Style" id="11:5"/>
 <Node x="-28" name="Boo Artwork" id="11:41">
-<Node name="Blinking eyes" id="11:40">
-<Shape x="94" y="94" name="Left eye" >
+<Node name="Blinking eyes" id="11:40" x="120" y="94">
+<DataBindContext sourcePathIds="0:300-0:310" propertyKey="13"/><DataBindContext sourcePathIds="0:300-0:311" propertyKey="14"/>
+<Shape x="-26" y="0" name="Left eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="146" y="94" name="Right eye" >
+<Shape x="26" y="0" name="Right eye" >
 <Ellipse width="16" height="24" originX="0.5" originY="0.5"/>
 
 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext sourcePathIds="0:300-0:305" propertyKey="37"/></SolidColor></Fill></Shape>
@@ -798,10 +799,9 @@
 <Ellipse width="28" height="14" originX="0.5" originY="0.5"/>
 <DataBindContext sourcePathIds="0:300-0:309" propertyKey="18"/>
 <Fill name="Fill"><SolidColor colorValue="73F5A5D1" name="Color"><DataBindContext sourcePathIds="0:300-0:306" propertyKey="37"/></SolidColor></Fill></Shape>
-<Shape x="91" y="43" name="Body highlight" >
-<Ellipse width="65" height="22" originX="0.5" originY="0.5"/>
-
-<Fill name="Fill"><SolidColor colorValue="55FFFFFF" name="Color"></SolidColor></Fill></Shape>
+<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+<Fill name="Fill"><SolidColor colorValue="38FFFFFF" name="Color"></SolidColor></Fill></Shape>
 <Shape name="Original ghost-peak">
 <PointsPath isClosed="true" isClockwise="true" name="Silhouette">
 <CubicDetachedVertex x="120" y="12" inRotation="2.356" inDistance="13.199" outRotation="0.785" outDistance="12.257"/>
@@ -848,6 +848,7 @@
 <ViewModelPropertyColor name="light" id="0:302"/><ViewModelPropertyColor name="base" id="0:303"/><ViewModelPropertyColor name="dark" id="0:304"/>
 <ViewModelPropertyColor name="eyes" id="0:305"/><ViewModelPropertyColor name="cheek" id="0:306"/>
 <ViewModelPropertyNumber name="smileOpacity" id="0:307"/><ViewModelPropertyNumber name="talkOpacity" id="0:308"/><ViewModelPropertyNumber name="blushOpacity" id="0:309"/>
+<ViewModelPropertyNumber name="gazeX" id="0:310"/><ViewModelPropertyNumber name="gazeY" id="0:311"/>
 <ViewModelInstance exports="true" name="Default" id="0:301">
 <ViewModelInstanceColor propertyValue="FFBCB5FF" viewModelPropertyId="0:302"/>
 <ViewModelInstanceColor propertyValue="FF786BEA" viewModelPropertyId="0:303"/>
@@ -857,5 +858,6 @@
 <ViewModelInstanceNumber propertyValue="1" viewModelPropertyId="0:307"/>
 <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:308"/>
 <ViewModelInstanceNumber propertyValue=".45" viewModelPropertyId="0:309"/>
+<ViewModelInstanceNumber propertyValue="120" viewModelPropertyId="0:310"/><ViewModelInstanceNumber propertyValue="94" viewModelPropertyId="0:311"/>
 </ViewModelInstance></ViewModel>
 </Rive>

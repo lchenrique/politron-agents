@@ -15,6 +15,7 @@ export const STARTLE_SPEED = 1.8
 /** Sem mexer mouse nem teclado por esse tempo, os avatares cochilam. */
 export const SLEEP_AFTER_MS = 45_000
 export const STARTLE_EVENT = 'poli-startle'
+export const GAZE_EVENT = 'poli-gaze'
 
 function reset(element: HTMLElement) {
   if (element.dataset.near === 'false') return
@@ -22,6 +23,7 @@ function reset(element: HTMLElement) {
   element.style.setProperty('--poli-look-y', '0')
   element.style.setProperty('--poli-lean', '0deg')
   element.dataset.near = 'false'
+  if (element.dataset.riveActive === 'true') element.dispatchEvent(new CustomEvent(GAZE_EVENT, { detail: { x: 0, y: 0 } }))
 }
 
 /** Olhos apontam para o cursor e o corpo inclina mais quanto mais perto ele está. */
@@ -36,8 +38,11 @@ export function applyGaze(element: HTMLElement, x: number, y: number, pointerSpe
   const unitX = distance ? dx / distance : 0
   const unitY = distance ? dy / distance : 0
   const closeness = 1 - distance / radius
-  element.style.setProperty('--poli-look-x', (unitX * reach * MAX_LOOK_X).toFixed(2))
-  element.style.setProperty('--poli-look-y', (unitY * reach * MAX_LOOK_Y).toFixed(2))
+  const gazeX = unitX * reach * MAX_LOOK_X
+  const gazeY = unitY * reach * MAX_LOOK_Y
+  element.style.setProperty('--poli-look-x', gazeX.toFixed(2))
+  element.style.setProperty('--poli-look-y', gazeY.toFixed(2))
+  if (element.dataset.riveActive === 'true') element.dispatchEvent(new CustomEvent(GAZE_EVENT, { detail: { x: gazeX, y: gazeY } }))
   element.style.setProperty('--poli-lean', `${(unitX * closeness * MAX_LEAN).toFixed(2)}deg`)
   if (element.dataset.near !== 'true' && pointerSpeed > STARTLE_SPEED) element.dispatchEvent(new CustomEvent(STARTLE_EVENT))
   element.dataset.near = 'true'

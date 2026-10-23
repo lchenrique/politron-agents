@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { RuntimeLoader } from '@rive-app/canvas'
 import {
   Fit,
@@ -10,6 +10,7 @@ import {
   useViewModelInstanceNumber,
 } from '@rive-app/react-canvas'
 import { BooFaceAccessory, BooHeadAccessory } from './BooAccessories'
+import { GAZE_EVENT } from './usePoliGaze'
 
 /** WASM local. O Electron instalado não pode depender de CDN para animar mascotes. */
 RuntimeLoader.setWasmUrl('./rive.wasm')
@@ -45,6 +46,7 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
   visible: boolean
   onReady: (ready: boolean) => void
 }) {
+  const layerRef = useRef<HTMLSpanElement>(null)
   const [reducedMotion, setReducedMotion] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
   useEffect(() => {
     const media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
@@ -73,6 +75,8 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
   const { setValue: setSmileOpacity } = useViewModelInstanceNumber('smileOpacity', instance)
   const { setValue: setTalkOpacity } = useViewModelInstanceNumber('talkOpacity', instance)
   const { setValue: setBlushOpacity } = useViewModelInstanceNumber('blushOpacity', instance)
+  const { setValue: setGazeX } = useViewModelInstanceNumber('gazeX', instance)
+  const { setValue: setGazeY } = useViewModelInstanceNumber('gazeY', instance)
 
   useEffect(() => {
     if (!rive || !instance) return
@@ -88,13 +92,27 @@ export const RiveBooAvatar = memo(function RiveBooAvatar({
   }, [rive, instance, color, eyeColor, cheekColor, blushOpacity, speaking,
     setLight, setBase, setDark, setEyes, setCheek, setBlushOpacity, setSmileOpacity, setTalkOpacity, onReady])
 
+  // O hook global do ponteiro emite offsets; o Rive recebe os valores sem renderizar React a cada movimento.
+  useEffect(() => {
+    if (!instance) return
+    const root = layerRef.current?.closest<HTMLElement>('.poli-avatar')
+    if (!root) return
+    const onGaze: EventListener = event => {
+      const { x, y } = (event as CustomEvent<{ x: number; y: number }>).detail
+      setGazeX(120 + x)
+      setGazeY(94 + y)
+    }
+    root.addEventListener(GAZE_EVENT, onGaze)
+    return () => root.removeEventListener(GAZE_EVENT, onGaze)
+  }, [instance, setGazeX, setGazeY])
+
   useEffect(() => {
     if (!rive) return
     if (playing && !reducedMotion) rive.play()
     else rive.pause()
   }, [rive, playing, reducedMotion])
 
-  return <span className="poli-avatar__rive-layer" aria-hidden={!visible}
+  return <span ref={layerRef} className="poli-avatar__rive-layer" aria-hidden={!visible}
     style={{ position: 'absolute', inset: 0, opacity: visible ? 1 : 0, pointerEvents: 'none' }}>
     <RiveComponent role="img" aria-label="Boo animado" style={{ width: '100%', height: '100%', display: 'block' }} />
     {(headAccessory !== 'none' || faceAccessory !== 'none') && (

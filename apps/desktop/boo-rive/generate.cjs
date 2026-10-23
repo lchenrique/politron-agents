@@ -40,7 +40,7 @@ function vertexXml(d) {
   })
   return `<PointsPath isClosed="true" isClockwise="${area>0}" name="Silhouette">\n${lines.join('\n')}\n</PointsPath>`
 }
-const property = {light:'0:302',base:'0:303',dark:'0:304',eyes:'0:305',cheek:'0:306',smileOpacity:'0:307',talkOpacity:'0:308',blushOpacity:'0:309'}
+const property = {light:'0:302',base:'0:303',dark:'0:304',eyes:'0:305',cheek:'0:306',smileOpacity:'0:307',talkOpacity:'0:308',blushOpacity:'0:309',gazeX:'0:310',gazeY:'0:311'}
 const bind=(prop,key)=>`<DataBindContext sourcePathIds="0:300-${property[prop]}" propertyKey="${key}"/>`
 const solid=(value,prop)=>`<SolidColor colorValue="${value}" name="Color">${prop?bind(prop,37):''}</SolidColor>`
 const fill=(value,prop)=>`<Fill name="Fill">${solid(value,prop)}</Fill>`
@@ -61,11 +61,14 @@ ${vertexXml(d)}
 <GradientStop position=".52" colorValue="FF786BEA">${bind('base',38)}</GradientStop>
 <GradientStop position="1" colorValue="FF4A4190">${bind('dark',38)}</GradientStop>
 </RadialGradient></Fill></Shape>`
-  const eyes=`<Node name="Blinking eyes" id="${id(40)}">
-${ellipse('Left eye',94,94,16,24,'FFFFFFFF','eyes')}
-${ellipse('Right eye',146,94,16,24,'FFFFFFFF','eyes')}
+  const eyes=`<Node name="Blinking eyes" id="${id(40)}" x="120" y="94">
+${bind('gazeX',13)}${bind('gazeY',14)}
+${ellipse('Left eye',-26,0,16,24,'FFFFFFFF','eyes')}
+${ellipse('Right eye',26,0,16,24,'FFFFFFFF','eyes')}
 </Node>`
-  const glow=ellipse('Body highlight',91,43,65,22,'55FFFFFF')
+  const glow=`<Shape x="92" y="55" rotation="-0.418879" name="Soft head highlight">
+<Ellipse width="56" height="13" originX=".5" originY=".5"/>
+${fill('38FFFFFF')}</Shape>`
   const blush1=ellipse('Left cheek',77,118,28,14,'73F5A5D1','cheek','blushOpacity')
   const blush2=ellipse('Right cheek',163,118,28,14,'73F5A5D1','cheek','blushOpacity')
   return `<Artboard width="185" height="200" name="${key}" id="${id(2)}" viewModelId="0:300" viewModelInstanceId="0:301" defaultStateMachineId="${id(7)}" styleId="${id(5)}">
@@ -104,6 +107,7 @@ const vm=`<ViewModel name="BooColors" id="0:300" defaultInstanceId="0:301">
 <ViewModelPropertyColor name="light" id="0:302"/><ViewModelPropertyColor name="base" id="0:303"/><ViewModelPropertyColor name="dark" id="0:304"/>
 <ViewModelPropertyColor name="eyes" id="0:305"/><ViewModelPropertyColor name="cheek" id="0:306"/>
 <ViewModelPropertyNumber name="smileOpacity" id="0:307"/><ViewModelPropertyNumber name="talkOpacity" id="0:308"/><ViewModelPropertyNumber name="blushOpacity" id="0:309"/>
+<ViewModelPropertyNumber name="gazeX" id="0:310"/><ViewModelPropertyNumber name="gazeY" id="0:311"/>
 <ViewModelInstance exports="true" name="Default" id="0:301">
 <ViewModelInstanceColor propertyValue="FFBCB5FF" viewModelPropertyId="0:302"/>
 <ViewModelInstanceColor propertyValue="FF786BEA" viewModelPropertyId="0:303"/>
@@ -113,6 +117,7 @@ const vm=`<ViewModel name="BooColors" id="0:300" defaultInstanceId="0:301">
 <ViewModelInstanceNumber propertyValue="1" viewModelPropertyId="0:307"/>
 <ViewModelInstanceNumber propertyValue="0" viewModelPropertyId="0:308"/>
 <ViewModelInstanceNumber propertyValue=".45" viewModelPropertyId="0:309"/>
+<ViewModelInstanceNumber propertyValue="120" viewModelPropertyId="0:310"/><ViewModelInstanceNumber propertyValue="94" viewModelPropertyId="0:311"/>
 </ViewModelInstance></ViewModel>`
 const xml=`<Rive version="1" kind="fragment">\n${shapes.map((s,i)=>board(s.key,i,s.value)).join('\n')}\n${vm}\n</Rive>\n`
 fs.writeFileSync(path.join(__dirname,'scene.rml'), xml, 'utf8')

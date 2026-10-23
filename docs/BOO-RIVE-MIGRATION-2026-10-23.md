@@ -50,3 +50,6 @@ Copy-Item .\node_modules\@rive-app\canvas\rive_fallback.wasm .\src\renderer\publ
 
 ## Compatibilidade dos testes
 Em `import.meta.env.MODE === 'test'`, `PoliAvatar` utiliza somente SVG: `jsdom` não renderiza WebAssembly/Canvas do Rive e o carregamento fazia testes de voz falharem por timeout. O Rive é coberto por `node scripts/verify-rive-electron.cjs` na aplicação Electron real; os testes unitários mantêm as asserts visuais e de interação dos acessórios em SVG.
+
+## Correção visual 23/10 — olhos e reflexo
+O blink escalava um Node posicionado na origem (0,0), deslocando os olhos em direção ao topo. Agora o grupo usa pivô próprio no rosto (120,94), com olhos locais ±26 no eixo X. O reflexo foi reduzido, rotacionado em -24° e inserido dentro da silhueta para evitar a elipse clara fora da cabeça. O acompanhamento do cursor foi conectado aos campos numéricos Rive gazeX/gazeY por evento no DOM, sem re-render React por ponteiro. A validação via CLI Rive capturou ghost-wave e round, abertos e no frame do piscar; TS e testes focados passaram.
