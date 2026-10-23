@@ -26,7 +26,7 @@ Referências consultadas: [Decision model](https://github.com/milind-soni/OpenMa
 - [x] No histórico do chat, remover avatares individuais das mensagens dos agentes, inclusive em conversas de grupo.
 - [x] Identificar o autor no chat com `@nome` em negrito e uma cor consistente por agente; garantir contraste e distinção acessíveis.
 - [x] Manter avatares apenas nos contextos em que ajudam a reconhecer ou escolher um agente, como seleção, lista de equipe ou estado vazio, após confirmar cada uso.
-- [ ] Medir o custo em runtime antes e depois: renders, tempo de atualização ao receber mensagens e uso de memória em conversas longas. A sessão não oferece janela do app nem ferramenta de trace DevTools.
+- [ ] Medir renderizações e memória com histórico longo. O benchmark sintético de streaming com CDP Performance está em docs/PERFORMANCE-RENDERER-2026-10-22.md.
 - [x] Investigar outras fontes de lentidão no chat e corrigir as causas observadas: indexar alterações/aprovações/conversas uma vez por atualização e memorizar linhas de mensagens estáveis.
 
 Impacto estrutural verificado no código: os filtros repetidos por mensagem, de custo O(M × (F + A + C)), viraram indexação e percurso O(M + F + A + C), onde M é o número de mensagens, F alterações de arquivo, A aprovações e C conversas. Essa é uma análise de complexidade, não uma medição de tempo real.
@@ -43,4 +43,4 @@ Impacto estrutural verificado no código: os filtros repetidos por mensagem, de 
 - [x] Revisar o diff existente antes de alterar arquivos e preservar trabalho não relacionado.
 - [x] Comparar o resultado com cada item desta TODO; marcar como concluído apenas o que tiver evidência no código e na validação correspondente.
 - [x] Executar verificações direcionadas para roteamento, persistência, renderização do chat e formulário de agentes.
-- [ ] Registrar medições de desempenho antes e depois e fazer revisão visual. Bloqueado nesta sessão: não há trace DevTools disponível nem janela nativa aberta/acessível pelo CUA.
+- [ ] Revisão visual no aplicativo instalado e perfil de memória em conversas longas. Medições de CPU/layout antes/depois já registradas em docs/PERFORMANCE-RENDERER-2026-10-22.md.

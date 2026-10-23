@@ -1,3 +1,4 @@
+.poli-avatar { contain: layout style; }
 .poli-avatar svg { display: block; }
 .poli-avatar__body-transform { transform-box: view-box; }
 .poli-avatar__aura, .poli-avatar__glow { pointer-events: none; }
