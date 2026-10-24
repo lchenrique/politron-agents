@@ -4,12 +4,12 @@ export type PwaDesktopStatus = {
   port: number
   sessions: number
   codeExpires: number | null
-  devices: { id: string; label: string; chat: boolean; approvals: boolean; expires: number }[]
+  devices: { id: string; label: string; chat: boolean; approvals: boolean; filesRead: boolean; filesWrite: boolean; expires: number }[]
 }
 export interface PwaDesktopAPI {
   status(): Promise<PwaDesktopStatus>
   issueCode(): Promise<{ code: string; expires: number; url: string }>
   revokeAll(): Promise<PwaDesktopStatus>
-  setDevicePermissions(id: string, grants: { chat: boolean; approvals: boolean }): Promise<PwaDesktopStatus>
+  setDevicePermissions(id: string, grants: { chat: boolean; approvals: boolean; filesRead: boolean; filesWrite: boolean }): Promise<PwaDesktopStatus>
   revokeDevice(id: string): Promise<PwaDesktopStatus>
 }

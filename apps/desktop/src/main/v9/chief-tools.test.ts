@@ -39,6 +39,13 @@ function setup(runtime: Agent['runtime'] = 'codex') {
   return { service, chief, workspace, names, propose }
 }
 
+function spyOnApproval(service: AppService) {
+  const approvalService = service as unknown as {
+    requestApproval: (context: unknown, kind: string, details: unknown, forceAsk?: boolean) => Promise<boolean>
+  }
+  return vi.spyOn(approvalService, 'requestApproval')
+}
+
 describe('delegação no workspace correto', () => {
   it('mantém a pasta e o workspace da conversa original no Boo delegado', async () => {
     const { service, chief, workspace } = setup()
@@ -69,7 +76,7 @@ describe('troca segura de runtime pelo Chief', () => {
     expect(names()).toContain('propose_agent_model')
     const result = await call(context, 'propose_agent_model', { agent: '@front', runtime: 'claude', model: 'claude-sonnet-4-6' })
     expect(result).toContain('claude')
-    expect(approval).toHaveBeenCalledWith(context, 'agent-change', expect.any(Object), true)
+    expect(approval).toHaveBeenCalledWith(context, 'agent-change', expect.any(Object))
     expect(service.store.agent(worker.id)).toMatchObject({ runtime: 'claude', model: 'claude-sonnet-4-6', canWrite: false, computerUse: false, name: 'Frontend' })
   })
   it('não altera modelo se a aprovação for negada', async () => {
@@ -93,7 +100,7 @@ describe('autoedição do Chief', () => {
     expect(result).toContain('Perfil de')
     expect(approval).toHaveBeenCalledOnce()
     expect(approval.mock.calls[0][1]).toBe('agent-change')
-    expect(approval.mock.calls[0][3]).toBe(true)
+    expect(approval.mock.calls[0][1]).toBe('agent-change')
     expect(service.store.agent(chief.id)).toMatchObject({ role: 'chief', alias: 'chief', instructions: 'Coordene com clareza.', description: 'Líder estratégico', color: '#abcdef', pitsShape: 'drop', pitsAccessory: 'glasses', canWrite: false, computerUse: false })
   })
   it('mantém a identidade intacta quando o usuário nega e rejeita troca de motor', async () => {
@@ -198,9 +205,33 @@ describe('visibilidade de agentes pelo group_members', () => {
 })
 
 describe('Boos temporários do Chief', () => {
+  it('não cria uma equipe parcialmente quando falta permissão para associá-la', async () => {
+    const { service, workspace, propose } = setup()
+    service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true, chiefManageTeam: false } })
+    const approval = spyOnApproval(service).mockResolvedValue(true)
+
+    await expect(propose('propose_boos', { purpose: 'team', agents: [{ name: 'Nox', instructions: 'Revise a interface.' }] }))
+      .rejects.toThrow(/Nenhum Boo foi criado.*Chief pode propor mudanças na equipe/)
+
+    expect(approval).not.toHaveBeenCalled()
+    expect(service.store.agents().filter(agent => agent.role !== 'chief')).toHaveLength(0)
+    expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
+  })
+
+  it('permite um reforço temporário sem conceder gestão da equipe', async () => {
+    const { service, workspace, propose } = setup()
+    service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true, chiefManageTeam: false } })
+    spyOnApproval(service).mockResolvedValue(true)
+
+    await propose('propose_boos', { purpose: 'task', agents: [{ name: 'Têmis', instructions: 'Valide os testes.' }] })
+
+    expect(service.store.agents().find(agent => agent.name === 'Têmis')).toMatchObject({ temporary: true, temporaryStatus: 'available', temporaryWorkspaceId: workspace.id })
+    expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
+  })
+
   it('invalida aprovação pendente quando o motor falha, impedindo criação tardia', async () => {
     const { service, chief, workspace } = setup('antigravity')
-    service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true } })
+    service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true, chiefManageTeam: true } })
     const conversation = service.store.saveConversation({ name: 'Chief', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
     const controller = new AbortController()
     const message = { id: 'timeout-message', conversationId: conversation.id, agentId: chief.id, author: chief.name, role: 'assistant' as const, text: '', status: 'running' as const, runId: 'timeout-run', createdAt: new Date().toISOString() }

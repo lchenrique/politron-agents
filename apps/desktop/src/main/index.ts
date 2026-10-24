@@ -235,6 +235,7 @@ app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.boobot.desktop')
 
   appService = new AppService(app.getPath('userData'))
+  appService.store.applyAutonomyDefaults()
   hosts = new HostManager(new HostStore(app.getPath('userData')), () => realtimeService?.stop())
   registerV9Ipc(appService, hosts)
   realtimeService = new RealtimeService(app.getPath('userData'), appService)
@@ -260,6 +261,8 @@ app.whenReady().then(async () => {
   })
   // Primeira instalação: descobre uma vez; demais acessos utilizam cache em disco.
   void providerRegistry.list().catch(error => console.error('[Providers] Falha ao carregar catálogo', error))
+    // Missões e rotinas dependem do catálogo de modelos; retoma depois dele, com o chat aberto ou não.
+    .finally(() => setTimeout(() => appService?.resumeAutonomy(), 3_000))
   registerSkillsIpc(new SkillsService(app.getPath('userData')), hosts)
   await hosts.initialize()
   hosts.registerIpc()
@@ -290,8 +293,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('pwa:setDevicePermissions', (event, id: unknown, grants: unknown) => {
     if (typeof id !== 'string' || !grants || typeof grants !== 'object' ||
       typeof (grants as {chat?: unknown}).chat !== 'boolean' ||
-      typeof (grants as {approvals?: unknown}).approvals !== 'boolean') throw new Error('Permissões inválidas.')
-    return pwaWindow(event).setDevicePermissions(id, grants as { chat: boolean; approvals: boolean })
+      typeof (grants as {approvals?: unknown}).approvals !== 'boolean' ||
+      typeof (grants as {filesRead?: unknown}).filesRead !== 'boolean' ||
+      typeof (grants as {filesWrite?: unknown}).filesWrite !== 'boolean') throw new Error('Permissões inválidas.')
+    return pwaWindow(event).setDevicePermissions(id, grants as { chat: boolean; approvals: boolean; filesRead: boolean; filesWrite: boolean })
   })
   ipcMain.handle('pwa:revokeDevice', (event, id: unknown) => {
     if (typeof id !== 'string') throw new Error('Dispositivo inválido.')

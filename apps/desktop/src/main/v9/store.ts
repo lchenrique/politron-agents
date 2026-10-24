@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
-import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Run, type Snapshot, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type Snapshot, type Workspace } from '../../shared/v9'
 import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 
 export const SCHEMA_VERSION = 9
@@ -70,6 +70,9 @@ export class WorkspaceStore {
       CREATE INDEX IF NOT EXISTS v9_checkpoint_scope ON v9_checkpoints(conversation_id, agent_id, created_at);
       CREATE INDEX IF NOT EXISTS v9_delegation_source ON v9_delegations(source_conversation_id);
       CREATE INDEX IF NOT EXISTS v9_delegation_target ON v9_delegations(target_conversation_id);
+      CREATE TABLE IF NOT EXISTS v9_missions (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS v9_mission_conversation ON v9_missions(conversation_id);
+      CREATE TABLE IF NOT EXISTS v9_routines (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       INSERT OR IGNORE INTO v9_meta VALUES ('schema','${previousSchema ?? SCHEMA_VERSION}');`)
     if (previousSchema !== null && previousSchema < 7) this.migrateWorkspaces(previousSchema)
     if (previousSchema !== null && previousSchema < 8) this.migrateSessionBindings()
@@ -315,7 +318,7 @@ export class WorkspaceStore {
       this.db.exec("INSERT INTO v9_message_fts(message_id,conversation_id,author,text) SELECT m.id,m.conversation_id,json_extract(m.data,'$.author'),json_extract(m.data,'$.text') FROM v9_messages m WHERE (json_extract(m.data,'$.role') IN ('user','activity') OR json_extract(m.data,'$.status') IN ('completed','failed','interrupted')) AND NOT EXISTS (SELECT 1 FROM v9_message_fts f WHERE f.message_id=m.id)")
     } catch { /* SQLite sem FTS5 mantém a busca limitada por LIKE. */ }
   }
-  snapshot(): Snapshot { return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.recent<Run>('v9_runs', 100), fileChanges: this.recent<FileChange>('v9_file_changes', 500), approvals: this.approvals(), terminalEnabled: this.terminalEnabled() } }
+  snapshot(): Snapshot { return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.recent<Run>('v9_runs', 100), fileChanges: this.recent<FileChange>('v9_file_changes', 500), approvals: this.approvals(), terminalEnabled: this.terminalEnabled(), missions: this.missions(100), routines: this.routines() } }
   saveAgent(input: Partial<Agent>): Agent {
     const previous = input.id ? this.agent(input.id) : undefined
     const name = requiredText(input.name, 'Nome', 80)
@@ -477,6 +480,7 @@ export class WorkspaceStore {
         this.db.prepare('DELETE FROM v9_runs WHERE id=?').run(runId)
       }
       this.db.prepare('DELETE FROM v9_delegations WHERE source_conversation_id=? OR target_conversation_id=?').run(id, id)
+      this.db.prepare('DELETE FROM v9_missions WHERE conversation_id=?').run(id)
       this.db.prepare('DELETE FROM v9_conversations WHERE id=?').run(id)
       this.db.exec('COMMIT')
     } catch (error) { this.db.exec('ROLLBACK'); throw error }
@@ -589,5 +593,28 @@ export class WorkspaceStore {
   deleteSessionBinding(key: string): void { this.db.prepare('DELETE FROM v9_sessions WHERE key=?').run(key) }
   binding(key: string): string | undefined { return this.sessionBinding(key)?.threadId }
   bind(key: string, threadId: string): void { this.putSessionBinding({ key, threadId, runtime: null, contextVersion: 0, deliveredDigests: {} }) }
+  missions(limit = 200): Mission[] { return (this.db.prepare('SELECT data FROM v9_missions ORDER BY rowid DESC LIMIT ?').all(limit) as { data: string }[]).map(row => JSON.parse(row.data) as Mission).reverse() }
+  mission(id: string): Mission | undefined { return this.get('v9_missions', id) }
+  /** Missão mais recente ainda em andamento (ativa, em espera ou pausada) desta conversa. */
+  openMission(conversationId: string): Mission | undefined {
+    return (this.db.prepare('SELECT data FROM v9_missions WHERE conversation_id=? ORDER BY rowid DESC LIMIT 20').all(conversationId) as { data: string }[])
+      .map(row => JSON.parse(row.data) as Mission).find(item => ['active', 'waiting', 'paused'].includes(item.status))
+  }
+  putMission(value: Mission): void { this.db.prepare('INSERT INTO v9_missions(id,conversation_id,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, conversation_id=excluded.conversation_id').run(value.id, value.conversationId, JSON.stringify(value)) }
+  routines(): Routine[] { return this.all<Routine>('v9_routines') }
+  routine(id: string): Routine { const value = this.get<Routine>('v9_routines', id); if (!value) throw new Error('Rotina não encontrada.'); return value }
+  putRoutine(value: Routine): void { this.put('v9_routines', value) }
+  deleteRoutine(id: string): void { this.db.prepare('DELETE FROM v9_routines WHERE id=?').run(id) }
+  /** Uma vez por banco: agentes em "perguntar" passam ao modo automático com guarda-corpos, e o Chief passa a existir. */
+  applyAutonomyDefaults(): void {
+    if (this.db.prepare("SELECT 1 FROM v9_meta WHERE key='autonomy_defaults_v1'").get()) return
+    for (const agent of this.agents().filter(item => item.approvalMode === 'ask')) this.put('v9_agents', { ...agent, approvalMode: 'automatic' })
+    if (!this.agents().some(agent => agent.role === 'chief')) {
+      this.saveAgent({ name: 'Chief', alias: 'chief', role: 'chief', description: 'Coordena objetivos, equipes e rotinas.', color: '#f0a05b', pitsHeadAccessory: 'crown',
+        instructions: 'Você é o Chief: o principal ponto de contato do usuário. Transforme pedidos em missões, monte e coordene equipes de Boos, delegue, acompanhe e valide até entregar resultados verificáveis. Só procure o usuário quando precisar de uma decisão real.',
+        canWrite: true, computerUse: true, approvalMode: 'automatic' })
+    }
+    this.db.prepare("INSERT INTO v9_meta(key,value) VALUES('autonomy_defaults_v1','1')").run()
+  }
   close(): void { this.db.close() }
 }

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderPlus, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import TitleBar from '@/components/ide/TitleBar'
 import { ASSISTANT_ID, type Agent, type BrowserFrame, type Conversation, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import { Sidebar } from '../sidebar/Sidebar'
+import { SidebarRail } from '../sidebar/SidebarRail'
 import { WorkspaceOverview } from './WorkspaceOverview'
 import { PoliAvatar } from './PoliAvatar'
 import { AgentDetails } from './AgentDetails'
@@ -14,15 +15,31 @@ import { useConversationHistory } from '../chat/useConversationHistory'
 import { Composer } from '../composer/Composer'
 import { modelOptions } from '../composer/model-options'
 import { DockWorkspace, type DockWorkspaceHandle, type DockTool, type DockZone } from '../panels/DockWorkspace'
-import { Editor, type EditorData, type EditorKind } from '../editors/Editor'
-import { SettingsPage, type SettingsSection } from './SettingsPage'
-import { UpdateReadyCallout } from './UpdateReadyCallout'
+import type { EditorData, EditorKind } from '../editors/Editor'
+import type { SettingsSection } from './SettingsPage'
 import { INHERIT_MODEL_NAME, emptySnapshot, errorText } from './appShellShared'
 import { selectVisibleRunEvidence } from './delegation-evidence'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { replaceEqualDeep } from '@tanstack/react-query'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { getPwaCapabilities, onPwaCapabilitiesChanged } from '../../pwa/remote-api'
+import { ChiefHome } from '../work/ChiefHome'
+import { RoutinesPage } from '../work/RoutinesPage'
+import { MissionStrip } from '../work/MissionStrip'
+
+const Editor = lazy(() => import('../editors/Editor').then(module => ({ default: module.Editor })))
+const SettingsPage = lazy(() => import('./SettingsPage').then(module => ({ default: module.SettingsPage })))
+const UpdateReadyCallout = lazy(() => import('./UpdateReadyCallout').then(module => ({ default: module.UpdateReadyCallout })))
 
 export default function AppShell() {
+  const browserMode = !('vibeAPI' in window)
+  const isMobile = useIsMobile()
+  const [pwaCapabilities, setPwaCapabilities] = useState<string[]>(getPwaCapabilities)
+  const canChat = !browserMode || pwaCapabilities.includes('chat')
+  const canApprove = !browserMode || pwaCapabilities.includes('approvals')
+  const canReadFiles = !browserMode || pwaCapabilities.includes('files:read') || pwaCapabilities.includes('files:write')
+  const canWriteFiles = !browserMode || pwaCapabilities.includes('files:write')
+  useEffect(() => onPwaCapabilitiesChanged(setPwaCapabilities), [])
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot)
   const [models, setModels] = useState<Model[]>([])
   const [providerInventory, setProviderInventory] = useState<ProviderSnapshot | null>(null)
@@ -34,6 +51,8 @@ export default function AppShell() {
   const [selectedEffort, setSelectedEffortState] = useState<Agent['effort']>(() => { try { const stored = localStorage.getItem('politron.composer.effort'); return (stored as Agent['effort']) || 'medium' } catch { return 'medium' } })
   const setSelectedEffort = useCallback((effort: Agent['effort']) => { setSelectedEffortState(effort); try { localStorage.setItem('politron.composer.effort', effort || 'medium') } catch { /* preferência opcional */ } }, [])
   const [selectedId, setSelectedId] = useState('')
+  // A Central do Chief é a tela inicial; conversas e projetos continuam a um clique.
+  const [view, setView] = useState<'home' | 'routines' | null>('home')
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const activeWorkspaceIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
@@ -44,7 +63,10 @@ export default function AppShell() {
   })
   const [editor, setEditor] = useState<{ kind: EditorKind; initial?: Agent | Conversation | Workspace; workspaceId?: string | null } | null>(null)
   const [notice, setNotice] = useState('')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => { try { return localStorage.getItem('politron.sidebar.collapsed') === 'true' } catch { return false } })
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (browserMode && window.matchMedia('(max-width: 767px)').matches) return true
+    try { return localStorage.getItem('politron.sidebar.collapsed') === 'true' } catch { return false }
+  })
   const [sidebarSize, setSidebarSize] = useState(() => { try { const value = Number(localStorage.getItem('politron.sidebar.size')); return Number.isFinite(value) && value >= 17 && value <= 34 ? value : 19 } catch { return 19 } })
   const dockRef = useRef<DockWorkspaceHandle>(null)
   useEffect(() => { try { localStorage.setItem('politron.sidebar.collapsed', String(sidebarCollapsed)) } catch { /* preferência opcional */ } }, [sidebarCollapsed])
@@ -58,7 +80,10 @@ export default function AppShell() {
     window.addEventListener('keydown', shortcut)
     return () => window.removeEventListener('keydown', shortcut)
   }, [])
-  const openTool = (kind: DockTool, zone: DockZone = 'side') => dockRef.current?.openTool(kind, zone)
+  const openTool = (kind: DockTool, zone: DockZone = 'side') => {
+    if (browserMode && (kind === 'files' && !canReadFiles || kind === 'terminal' || kind === 'browser' || kind === 'mascot')) return
+    dockRef.current?.openTool(kind, zone)
+  }
   const [browserFrames, setBrowserFrames] = useState<BrowserFrame[]>([])
   const [workspaceDiff, setWorkspaceDiff] = useState('')
   const [loading, setLoading] = useState(true)
@@ -69,11 +94,11 @@ export default function AppShell() {
   const [mascotAgentId, setMascotAgentId] = useState<string | null>(null)
   useEffect(() => { selectedIdRef.current = selectedId; if (selectedId) setUnreadCounts(current => { if (!current[selectedId]) return current; const next = { ...current }; delete next[selectedId]; return next }) }, [selectedId])
   useEffect(() => { localStorage.setItem('politron-unread-counts', JSON.stringify(unreadCounts)) }, [unreadCounts])
-  const selected = activeWorkspaceId ? undefined : snapshot.conversations.find(item => item.id === selectedId && !item.archived) || (!activeWorkspaceId ? snapshot.conversations.find(item => !item.archived) : undefined)
+  const selected = view || activeWorkspaceId ? undefined : snapshot.conversations.find(item => item.id === selectedId && !item.archived) || (!activeWorkspaceId ? snapshot.conversations.find(item => !item.archived) : undefined)
   const activeWorkspace = snapshot.workspaces.find(item => item.id === activeWorkspaceId && !item.archived)
   useEffect(() => { setDetailsAgentId(null); setMascotAgentId(null) }, [selected?.id])
-  const selectConversation = useCallback((id: string) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setSelectedId(id) }, [])
-  const selectWorkspace = useCallback((id: string) => { activeWorkspaceIdRef.current = id; setActiveWorkspaceId(id); setSelectedId('') }, [])
+  const selectConversation = useCallback((id: string) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(null); setSelectedId(id); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
+  const selectWorkspace = useCallback((id: string) => { activeWorkspaceIdRef.current = id; setActiveWorkspaceId(id); setView(null); setSelectedId(''); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
   useEffect(() => { activeWorkspaceIdRef.current = activeWorkspaceId }, [activeWorkspaceId])
   const selectedAgents = useMemo(() => !selected ? [] : selected.agentIds.length ? selected.agentIds.map(id => snapshot.agents.find(agent => agent.id === id)).filter((agent): agent is Agent => !!agent) : [snapshot.assistant], [selected, snapshot.agents, snapshot.assistant])
   const { messages, hasOlderMessages: historyHasMore, hasNewerMessages, focusedMessageId: focusedHistoryMessageId, queueMessage, loadOlder: loadOlderMessages, search: searchHistory, openSearchHit: openHistorySearchHit, returnToLatest: returnToLatestHistory, reconcileAfterReconnect } = useConversationHistory(selected?.id, setNotice)
@@ -133,6 +158,7 @@ export default function AppShell() {
         }
       } else if (event.type === 'fileChange') setSnapshot(current => ({ ...current, fileChanges: [...current.fileChanges.filter(item => item.id !== event.fileChange.id), event.fileChange] }))
       else if (event.type === 'approval') setSnapshot(current => ({ ...current, approvals: [...current.approvals.filter(item => item.id !== event.approval.id), event.approval] }))
+      else if (event.type === 'mission') setSnapshot(current => { const missions = current.missions || []; const at = missions.findIndex(item => item.id === event.mission.id); return { ...current, missions: at < 0 ? [...missions, event.mission] : missions.map(item => item.id === event.mission.id ? event.mission : item) } })
       else if (event.type === 'changed') {
         if (event.reason === 'connection-restored') void reconcileAfterReconnect().catch(error => setNotice(errorText(error)))
         scheduleRefresh()
@@ -249,18 +275,24 @@ export default function AppShell() {
   }
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
+  const openHome = useCallback((next: 'home' | 'routines') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
+  const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
+  const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
   const conversationRuns = snapshot.runs.filter(run => run.conversationId === selected?.id && !run.parentId && ['queued', 'running', 'waiting'].includes(run.status))
   const canSteer = conversationRuns.length > 0 && conversationRuns.every(run => snapshot.steeringRuntimes?.includes(run.agent.runtime) && !!run.threadId && !!run.turnId)
 
-  return <div className="flex h-dvh w-full flex-col overflow-hidden bg-background font-sans text-foreground">
-    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} className="border-b border-border/50" />
-    <div className="min-h-0 flex-1 overflow-hidden">
-      <ResizablePanelGroup key={sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
+  return <div data-pwa-shell={browserMode ? 'true' : undefined} data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-background font-sans text-foreground">
+    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} browserMode={browserMode} browserCanReadFiles={canReadFiles} className="border-b border-border/50" />
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      {!browserMode && <SidebarRail collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenPanel={() => openTool('files', 'side')} />}
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+      {browserMode && isMobile && !sidebarCollapsed && <button type="button" className="boobot-web-sidebar-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarCollapsed(true)} />}
+      <ResizablePanelGroup key={browserMode && isMobile ? 'web-mobile-layout' : sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
         defaultLayout={sidebarCollapsed ? { main: 100 } : { sidebar: sidebarSize, main: 100 - sidebarSize }}
         onLayoutChanged={(layout, meta) => { if (!meta.isUserInteraction || typeof layout.sidebar !== 'number') return; const next = Math.min(34, Math.max(17, layout.sidebar)); setSidebarSize(next); try { localStorage.setItem('politron.sidebar.size', String(next)) } catch { /* preferência opcional */ } }}
-        className="min-h-0 min-w-0">
+        className="boobot-web-layout min-h-0 min-w-0">
       {!sidebarCollapsed && <>
-      <ResizablePanel id="sidebar" defaultSize={`${sidebarSize}%`} minSize="240px" maxSize="400px" className="min-w-0">
+      <ResizablePanel id="sidebar" defaultSize={`${sidebarSize}%`} minSize="240px" maxSize="400px" className={'min-w-0 ' + (browserMode ? 'boobot-web-sidebar-panel' : '')}>
       <Sidebar
         snapshot={snapshot}
         selected={selected}
@@ -270,22 +302,32 @@ export default function AppShell() {
         onSelectWorkspace={selectWorkspace}
         activeWorkspaceId={activeWorkspaceId}
         onStartConversation={startConversation}
-        onOpenAgent={openAgent}
+        onOpenAgent={(agent, newConversation) => {
+          if (canChat) void openAgent(agent, newConversation)
+          else { setDetailsAgentId(agent.id); if (browserMode && isMobile) setSidebarCollapsed(true) }
+        }}
         onOpenEditor={setEditor}
         onOpenSettings={() => setSettingsOpen(true)}
+        view={view}
+        onOpenHome={openHome}
+        attentionCount={attentionCount}
         onDeleteWorkspace={deleteWorkspace}
         onDeleteConversation={deleteConversation}
         onDeleteAgent={deleteAgent}
         onSetChief={setAgentChief}
         onNotice={setNotice}
+        browserMode={browserMode}
+        canChat={canChat}
       />
       </ResizablePanel>
       <ResizableHandle withHandle />
       </>}
-      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className="min-w-0">
-      <DockWorkspace ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} browserFrames={browserFrames.filter(frame => frame.conversationId === selected?.id)} onRefreshBrowser={() => void refreshBrowser()} onChanged={setNotice} workspaceDiff={workspaceDiff}>
+      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 ' + (browserMode ? 'boobot-web-main-panel' : '')}>
+      <DockWorkspace ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} browserFrames={browserFrames.filter(frame => frame.conversationId === selected?.id)} onRefreshBrowser={() => void refreshBrowser()} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {selected ? <>
+        {view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} canChat={canChat} />
+        : view === 'routines' ? <RoutinesPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
+        : selected ? <>
           <ChatHeader
             assistant={snapshot.assistant}
             onOpenAgent={agent => setDetailsAgentId(agent.id)}
@@ -301,7 +343,11 @@ export default function AppShell() {
             onOpenSearchHit={hit => void openHistorySearchHit(hit).catch(error => setNotice(errorText(error)))}
             focusedMessageId={focusedHistoryMessageId}
             onReturnToLatest={() => void returnToLatestHistory().catch(error => setNotice(errorText(error)))}
+            browserMode={browserMode}
+            canReadFiles={canReadFiles}
+            canChat={canChat}
           />
+          {selectedMission && <MissionStrip mission={selectedMission} runs={snapshot.runs} approvals={snapshot.approvals} onNotice={setNotice} />}
           <div className="flex min-h-0 flex-1 flex-col">
             <MessageList
               key={selected.id}
@@ -318,7 +364,10 @@ export default function AppShell() {
               selectedAgents={selectedAgents}
               onOpenRelatedConversation={selectConversation}
               onNotice={setNotice}
+              canSpeak={!browserMode || canChat}
+              canApprove={canApprove}
             />
+            <fieldset disabled={!canChat} className="m-0 min-w-0 border-0 p-0">
             <Composer
               mentionAgents={selectedAgents}
               working={conversationRuns.length > 0}
@@ -335,17 +384,25 @@ export default function AppShell() {
               onStop={() => void window.appAPI.stop(selected.id)}
               onVoiceNotice={setNotice}
             />
+            </fieldset>
+            {browserMode && !canChat && <p className="px-4 pb-2 text-center text-[10px] text-muted-foreground">O host está em leitura para este dispositivo. Libere o chat nas permissões PWA do Boobot.</p>}
           </div>
-        </> : activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} conversations={snapshot.conversations} workspaces={snapshot.workspaces} agents={snapshot.agents} onCreateSession={() => void startConversation(activeWorkspace.id)} onOpenConversation={selectConversation} onEdit={() => setEditor({ kind: 'workspace', initial: activeWorkspace })} onOpenAgent={agent => void openWorkspaceAgent(activeWorkspace.id, agent)} /> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><div className="mx-auto mb-4 flex items-center justify-center"><PoliAvatar agent={{ ...snapshot.assistant, name: 'Boo' }} size={112} /></div><h1 className="text-xl font-semibold">Seu espaço de trabalho</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em workspaces e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-5 flex justify-center gap-2"><Button onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button><Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo workspace</Button></div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
+        </> : activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} conversations={snapshot.conversations} workspaces={snapshot.workspaces} agents={snapshot.agents} onCreateSession={() => void startConversation(activeWorkspace.id)} onOpenConversation={selectConversation} onEdit={() => setEditor({ kind: 'workspace', initial: activeWorkspace })} onOpenAgent={agent => {
+          if (canChat) void openWorkspaceAgent(activeWorkspace.id, agent)
+          else { setDetailsAgentId(agent.id); if (browserMode && isMobile) setSidebarCollapsed(true) }
+        }} browserMode={browserMode} canChat={canChat} /> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><div className="mx-auto mb-4 flex items-center justify-center"><PoliAvatar agent={{ ...snapshot.assistant, name: 'Boo' }} size={112} /></div><h1 className="text-xl font-semibold">Seu espaço de trabalho</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em workspaces e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-5 flex justify-center gap-2"><Button disabled={!canChat} onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button>{!browserMode && <Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo workspace</Button>}</div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
       </main>
       </DockWorkspace>
       </ResizablePanel>
       </ResizablePanelGroup>
+      </div>
     </div>
-    <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} />
-    <UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} />
+    <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} browserMode={browserMode} />
+    {!browserMode && <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} /></Suspense>}
     {notice && <div role="status" className="fixed bottom-5 right-5 z-[60] max-w-md rounded-xl border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-xl">{notice}</div>}
-    <SettingsPage open={settingsOpen} onOpenChange={setSettingsOpen} initialSection={settingsSection} />
-    {editor && <Editor kind={editor.kind} initial={editor.initial} workspaceId={editor.workspaceId} defaultAgentIds={editor.workspaceId ? snapshot.workspaces.find(workspace => workspace.id === editor.workspaceId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'workspace' ? saveWorkspace : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
+    {!browserMode && <Suspense fallback={null}>
+      <SettingsPage open={settingsOpen} onOpenChange={setSettingsOpen} initialSection={settingsSection} />
+      {editor && <Editor kind={editor.kind} initial={editor.initial} workspaceId={editor.workspaceId} defaultAgentIds={editor.workspaceId ? snapshot.workspaces.find(workspace => workspace.id === editor.workspaceId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'workspace' ? saveWorkspace : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
+    </Suspense>}
   </div>
 }

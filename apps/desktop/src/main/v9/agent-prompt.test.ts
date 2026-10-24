@@ -13,6 +13,8 @@ describe('preâmbulo de sistema compartilhado entre Codex e Claude', () => {
     expect(prompt).toContain('delegation_result')
     expect(prompt).toContain('ask_agent com delegation_id')
     expect(prompt).toContain('Não afirme ter feito uma ação sem resultado real de ferramenta.')
+    expect(prompt).toContain('não são ferramentas nem dependências disponíveis')
+    expect(prompt).toContain('Não execute CLIs desses produtos')
     expect(prompt).toContain('@nina')
   })
 

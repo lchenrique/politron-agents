@@ -6,7 +6,7 @@ import { Avatar } from '../app/Avatar'
 import { assistantPlaceholder } from '../app/appShellShared'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
-export function ChatHeader({ selected, agents, onOpenComputerUse, onOpenProjectFiles, onOpenMascot, onEditConversation, onSearchHistory, onOpenSearchHit, focusedMessageId, onReturnToLatest, assistant, onOpenAgent }: {
+export function ChatHeader({ selected, agents, onOpenComputerUse, onOpenProjectFiles, onOpenMascot, onEditConversation, onSearchHistory, onOpenSearchHit, focusedMessageId, onReturnToLatest, assistant, onOpenAgent, browserMode = false, canReadFiles = true, canChat = true }: {
   assistant?: Agent
   onOpenAgent?: (agent: Agent) => void
   selected: Conversation
@@ -21,6 +21,9 @@ export function ChatHeader({ selected, agents, onOpenComputerUse, onOpenProjectF
   onOpenSearchHit?: (hit: MessageSearchHit) => void
   focusedMessageId?: string | null
   onReturnToLatest?: () => void
+  browserMode?: boolean
+  canReadFiles?: boolean
+  canChat?: boolean
 }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -55,7 +58,7 @@ export function ChatHeader({ selected, agents, onOpenComputerUse, onOpenProjectF
   return <header data-testid="compact-chat-header" className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/40 px-3 sm:px-5">
     <div className="flex min-w-0 flex-1 items-center gap-2.5">
       {isGroup
-        ? <button type="button" aria-label="Ver participantes do grupo" title={identities.map(agent => agent.name).join(', ')} onClick={onEditConversation}
+        ? <button type="button" aria-label="Ver participantes do grupo" title={identities.map(agent => agent.name).join(', ')} onClick={onEditConversation} disabled={browserMode || !canChat}
             className="relative flex h-10 w-12 shrink-0 items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary">
             {identities.slice(0, 3).map((agent, index) =>
               <span key={agent.id} className="absolute top-1 overflow-hidden rounded-full ring-2 ring-background" style={{ left: index * 9, zIndex: 3 - index }}>
@@ -90,10 +93,10 @@ export function ChatHeader({ selected, agents, onOpenComputerUse, onOpenProjectF
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Ações da conversa"><MoreHorizontal /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuGroup>
-            <DropdownMenuItem onSelect={() => { if (onOpenProjectFiles) onOpenProjectFiles(); else void window.appAPI.openFolder(selected.id) }}><FolderOpen />Arquivos</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onOpenMascot}><UserRound />Mascote e voz</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onOpenComputerUse}><Globe />Navegador</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onEditConversation}><Settings2 />Conversa e equipe</DropdownMenuItem>
+            {(!browserMode || canReadFiles) && <DropdownMenuItem onSelect={() => { if (onOpenProjectFiles) onOpenProjectFiles(); else void window.appAPI.openFolder(selected.id) }}><FolderOpen />Arquivos</DropdownMenuItem>}
+            {!browserMode && <DropdownMenuItem onSelect={onOpenMascot}><UserRound />Mascote e voz</DropdownMenuItem>}
+            {!browserMode && <DropdownMenuItem onSelect={onOpenComputerUse}><Globe />Navegador</DropdownMenuItem>}
+            {!browserMode && <DropdownMenuItem onSelect={onEditConversation}><Settings2 />Conversa e equipe</DropdownMenuItem>}
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>

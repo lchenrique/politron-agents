@@ -1,5 +1,5 @@
 /* Only public app shell assets are cached. No API, chat history, files or credentials. */
-const CACHE='boobot-react-shell-v4'
+const CACHE='boobot-react-shell-v5'
 const SHELL=['/','/web/app.js','/web/app.css','/icon.svg','/icon-192.png','/icon-512.png','/manifest.webmanifest']
 const isShell=url=>url.origin===self.location.origin&&(SHELL.includes(url.pathname)||/^\/web\/(?:assets\/)?[a-zA-Z0-9._-]+\.(?:js|css|svg|png)$/.test(url.pathname))
 self.addEventListener('install',event=>{

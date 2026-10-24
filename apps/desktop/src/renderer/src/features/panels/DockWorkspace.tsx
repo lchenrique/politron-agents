@@ -1,21 +1,22 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
+import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
 import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import TerminalPanel from '@/components/ide/TerminalPanel'
 import type { Agent, BrowserFrame } from '../../../../shared/v9'
 import { ProjectExplorer } from './ProjectExplorer'
 import { FilePreview, type FileDraft, type FileDraftChange } from './FilePreview'
-import { BrowserPanel } from './BrowserPanel'
 import { PoliAvatar } from '../app/PoliAvatar'
 import { MascotStatusBubble } from '../app/MascotStatusBubble'
-import { RealtimeCall } from '../realtime/RealtimeCall'
 import { useVoicePreferences } from '../realtime/preferences'
 import type { RealtimeMode, RealtimePhase } from '../../../../shared/realtime'
 import type { AgentAvatarState } from '../app/Avatar'
 import { changeActive, changeRatio, developmentDockLayout, deserializeDockLayout, fileTab, getGroup, groupWithTab, groups, initialDockLayout, placeTab, pruneEmpty, removeGroup, splitGroup, toolTab, type DockEdge, type DockGroup, type DockLayoutState, type DockNode, type DockTab, type DockTool, type DockZone } from './dock-layout'
+
+const TerminalPanel = lazy(() => import('@/components/ide/TerminalPanel'))
+const BrowserPanel = lazy(() => import('./BrowserPanel').then(module => ({ default: module.BrowserPanel })))
+const RealtimeCall = lazy(() => import('../realtime/RealtimeCall').then(module => ({ default: module.RealtimeCall })))
 export type { DockTool, DockZone } from './dock-layout'
 
 export interface DockWorkspaceHandle {
@@ -41,10 +42,11 @@ function loadLayout(): DockLayoutState {
   } catch { return initialDockLayout() }
 }
 
-function DockAddMenu({ groupId, onOpen, label = 'Nova aba' }: { groupId: string; onOpen: (kind: DockTool, groupId: string) => void; label?: string }) {
+function DockAddMenu({ groupId, onOpen, label = 'Nova aba', browserMode = false, canReadFiles = true }: { groupId: string; onOpen: (kind: DockTool, groupId: string) => void; label?: string; browserMode?: boolean; canReadFiles?: boolean }) {
+  const available = browserMode ? toolKinds.filter(kind => kind === 'chat' || kind === 'diff' || kind === 'files' && canReadFiles) : toolKinds
   return <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="size-7 shrink-0" aria-label={label} title={label}><Plus className="size-4" /></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      {toolKinds.map(kind => { const Icon = icons[kind]; return <DropdownMenuItem key={kind} onSelect={() => onOpen(kind, groupId)}><Icon className="mr-2 size-4" />{labels[kind]}</DropdownMenuItem> })}
+      {available.map(kind => { const Icon = icons[kind]; return <DropdownMenuItem key={kind} onSelect={() => onOpen(kind, groupId)}><Icon className="mr-2 size-4" />{labels[kind]}</DropdownMenuItem> })}
     </DropdownMenuContent>
   </DropdownMenu>
 }
@@ -74,7 +76,7 @@ function MascotView({ assistant, agents, selectedAgents, agentStates, conversati
       {visible.avatar ? <img src={visible.avatar} alt={'Avatar de ' + visible.name} data-speaking={state === 'speaking'} className="mascot-custom-avatar size-52 max-w-full rounded-full object-cover" /> : <PoliAvatar agent={visible} size={215} state={state} motionPolicy="auto" />}
       <div><h2 className="text-base font-semibold">{visible.name}</h2><p className="mt-1 max-w-xs text-xs text-muted-foreground">{visible.description || '@' + visible.alias}</p></div>
     </> : <p className="text-sm text-muted-foreground">Crie um Boo para exibi-lo aqui.</p>}</div>
-    <RealtimeCall conversationId={conversationId} agentId={visible?.id} agentName={visible?.name || 'Assistente'} mode={mode} headphones={headphones} refreshToken={refreshToken} onPhaseChange={handleCallPhase} onErrorChange={setCallError} />
+    <Suspense fallback={null}><RealtimeCall conversationId={conversationId} agentId={visible?.id} agentName={visible?.name || 'Assistente'} mode={mode} headphones={headphones} refreshToken={refreshToken} onPhaseChange={handleCallPhase} onErrorChange={setCallError} /></Suspense>
   </section>
 }
 
@@ -92,7 +94,10 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   onRefreshBrowser: () => void
   onChanged: (value: string) => void
   workspaceDiff: string
-}>(function DockWorkspace({ children, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, browserFrames, onRefreshBrowser, onChanged, workspaceDiff }, ref) {
+  browserMode?: boolean
+  canReadFiles?: boolean
+  canWriteFiles?: boolean
+}>(function DockWorkspace({ children, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, browserFrames, onRefreshBrowser, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
   const [layout, setLayout] = useState<DockLayoutState>(loadLayout)
   const [drafts, setDrafts] = useState<Record<string, FileDraft>>({})
   const changeDraft = useCallback((id: string, updater: Parameters<FileDraftChange>[0]) => setDrafts(current => {
@@ -100,6 +105,21 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     if (!next) { const copy = { ...current }; delete copy[id]; return copy }
     return { ...current, [id]: next }
   }), [])
+  useEffect(() => {
+    if (!browserMode) return
+    setLayout(current => {
+      const unavailable = groups(current.root).flatMap(group => group.tabs
+        .filter(tab => tab.kind === 'terminal' || tab.kind === 'browser' || tab.kind === 'mascot' || !canReadFiles && (tab.kind === 'files' || tab.kind === 'file'))
+        .map(tab => ({ groupId: group.id, tabId: tab.id })))
+      if (!unavailable.length) return current
+      let next = current
+      for (const item of unavailable) {
+        if (!groupWithTab(next.root, item.tabId)) continue
+        next = pruneEmpty({ ...next, root: removeTabFromTree(next.root, item.groupId, item.tabId) })
+      }
+      return next
+    })
+  }, [browserMode, canReadFiles])
   useEffect(() => {
     if (!Object.values(drafts).some(item => item.content !== item.baseline)) return
     const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
@@ -123,8 +143,12 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     if (zone === 'main') return mainGroup(state)
     return groups(state.root).find(group => group.id !== mainGroup(state).id && group.tabs.some(tab => tab.kind === 'files')) || groups(state.root).find(group => group.id !== mainGroup(state).id && group.tabs.length > 0) || groups(state.root).find(group => group.id !== mainGroup(state).id)
   }
-  const openInGroup = (kind: DockTool, groupId: string) => setLayout(current => placeTab(current, toolTab(kind), groupId))
+  const openInGroup = (kind: DockTool, groupId: string) => {
+    if (browserMode && (kind === 'terminal' || kind === 'browser' || kind === 'mascot' || kind === 'files' && !canReadFiles)) return
+    setLayout(current => placeTab(current, toolTab(kind), groupId))
+  }
   const openTool = (kind: DockTool, zone: DockZone = 'side') => setLayout(current => {
+    if (browserMode && (kind === 'terminal' || kind === 'browser' || kind === 'mascot' || kind === 'files' && !canReadFiles)) return current
     const destination = toolGroup(current, zone)
     if (destination) return placeTab(current, toolTab(kind), destination.id)
     return splitGroup(current, mainGroup(current).id, 'right', toolTab(kind))
@@ -184,14 +208,15 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     const tab = activeTabId ? group.tabs.find(item => item.id === activeTabId) : undefined
     return splitGroup(current, groupId, edge, tab)
   })
-  const resetLayout = () => { if (groups(layout.root).some(group => group.tabs.some(tab => tab.id === 'terminal'))) void window.vibeAPI.terminal.close().catch(() => undefined); setLayout(initialDockLayout()) }
+  const resetLayout = () => { if (groups(layout.root).some(group => group.tabs.some(tab => tab.id === 'terminal'))) void window.vibeAPI?.terminal?.close?.().catch(() => undefined); setLayout(initialDockLayout()) }
   const renderTab = (tab: DockTab): ReactNode => {
+    if (browserMode && (tab.kind === 'terminal' || tab.kind === 'browser' || tab.kind === 'mascot' || (tab.kind === 'files' || tab.kind === 'file') && !canReadFiles)) return null
     switch (tab.kind) {
       case 'chat': return children
       case 'files': return <ProjectExplorer workspaceId={workspaceId} onOpenFile={(id, path) => openFile(id, path)} />
-      case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} /> : null
-      case 'terminal': return <TerminalPanel workspaceId={workspaceId} showLogs={false} />
-      case 'browser': return <BrowserPanel frames={browserFrames} agents={agents} onRefresh={onRefreshBrowser} onChanged={onChanged} />
+      case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} readOnly={browserMode && !canWriteFiles} /> : null
+      case 'terminal': return <Suspense fallback={null}><TerminalPanel workspaceId={workspaceId} showLogs={false} /></Suspense>
+      case 'browser': return <Suspense fallback={null}><BrowserPanel frames={browserFrames} agents={agents} onRefresh={onRefreshBrowser} onChanged={onChanged} /></Suspense>
       case 'mascot': return <MascotView assistant={assistant} agents={agents} selectedAgents={selectedAgents} agentStates={agentStates} conversationId={conversationId} voiceAgentId={voiceAgentId} />
       case 'diff': return <div className="h-full overflow-auto p-4"><h2 className="mb-3 text-xs font-semibold text-muted-foreground">Alterações versus HEAD</h2><pre className="min-w-max whitespace-pre font-mono text-[11px] leading-5">{workspaceDiff || 'Nenhuma alteração rastreada.'}</pre></div>
     }
@@ -245,7 +270,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
             </div>
           })}
         </div>
-        <DockAddMenu groupId={group.id} onOpen={openInGroup} />
+        <DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} />
         <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label={'Organizar ' + (primary ? 'área principal' : 'painel auxiliar')}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {group.active && groups(layout.root).length > 1 && groups(layout.root).filter(item => item.id !== group.id).map(item =>
@@ -261,7 +286,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
       </header>
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         {group.tabs.length ? group.tabs.map(tab => <div key={tab.id} className={group.active === tab.id ? 'flex h-full min-h-0 min-w-0 flex-col' : 'hidden'}>{tab.kind === 'file' && group.active !== tab.id ? null : renderTab(tab)}</div>)
-          : <div className="flex h-full flex-col items-center justify-center gap-3 p-5 text-center"><Code2 className="size-8 text-muted-foreground/50" /><p className="text-xs text-muted-foreground">Escolha o conteúdo deste painel.</p><DockAddMenu groupId={group.id} onOpen={openInGroup} label="Escolher conteúdo da nova aba" /></div>}
+          : <div className="flex h-full flex-col items-center justify-center gap-3 p-5 text-center"><Code2 className="size-8 text-muted-foreground/50" /><p className="text-xs text-muted-foreground">Escolha o conteúdo deste painel.</p><DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} label="Escolher conteúdo da nova aba" /></div>}
       </div>
     </section>
   }

@@ -10,8 +10,8 @@ import { buildTurnContext, messageDigest } from './conversation-context'
 import { fingerprintTools, TOOL_BROKER_VERSION } from './tool-contract'
 import { delegationEligibility } from './delegation-eligibility'
 import { createCommandEvidence, formatCommandEvidence, runCommand } from './command-evidence'
-import { shouldAutoApprove } from './approval-policy'
-import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type Model, type Run, type Workspace, type WorkspaceEvent } from '../../shared/v9'
+import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
+import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type MissionAction, type Model, type Routine, type Run, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import { BrowserService } from './browser'
 import { GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, mentionedRecipients, recipients, type WorkspaceLease } from './routing'
@@ -27,6 +27,8 @@ import { SessionUnavailableError, type AgentRuntime, type RuntimeThread } from '
 import { ClaudeCredentialStore } from './credentials'
 import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
 import { SkillsService } from './skills/service'
+import { MissionEngine } from './missions'
+import { describeTrigger, validateTrigger } from '../../shared/missions'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
 
@@ -60,6 +62,7 @@ export class AppService extends EventEmitter {
   readonly gitWorkspaces: GitWorkspaceService
   // Mesma pasta de dados do app; tools de skill (list_skills/read_skill/save_skill) usam esta instância direto, sem passar por IPC.
   private readonly skills: SkillsService
+  readonly missions: MissionEngine
   private readonly queue = new WorkspaceQueue()
   private readonly active = new Map<string, AbortController>()
   private readonly contexts = new Map<string, RunContext>()
@@ -91,6 +94,14 @@ export class AppService extends EventEmitter {
     this.antigravityRuntime = new HeadlessCliRuntime('antigravity', join(dataDirectory, 'antigravity-chat'))
     this.gitWorkspaces = new GitWorkspaceService(join(dataDirectory, 'worktrees'))
     this.skills = new SkillsService(dataDirectory)
+    this.missions = new MissionEngine({
+      store: this.store,
+      send: (conversationId, input, model, agentId) => this.send(conversationId, input, model, undefined, agentId, false, false),
+      stop: conversationId => this.stop(conversationId),
+      post: (conversationId, role, agentId, value) => { this.addMessage(conversationId, agentId ? this.store.agent(agentId) : null, role, value, 'completed', null) },
+      emit: event => this.emitEvent(event),
+      notify: (conversationId, title, body) => this.notifyWhenAway(conversationId, title, body),
+    })
     this.statusTimer = setInterval(() => void this.refreshWorkspaceStatuses(), 5000)
     this.statusTimer.unref?.()
     this.runtime.on('event', (event: any) => void this.onRuntimeEvent(event, this.runtime))
@@ -132,7 +143,7 @@ export class AppService extends EventEmitter {
         const current = this.store.workspaces().find(item => item.id === workspace.id)
         if (!current || current.archived) continue
         if (info.branch !== current.branch || info.changes !== current.changes) {
-          if (this.store.updateWorkspaceGitStatus(workspace.id, info)) this.emitEvent({ type: 'changed' })
+          if (this.store.updateWorkspaceGitStatus(workspace.id, info)) { this.emitEvent({ type: 'changed' }); if (info.changes !== current.changes) this.missions.onProjectChanged(workspace.id) }
         }
       } catch { /* pasta removida ou inacessível: preserva o último estado salvo */ }
     }
@@ -207,6 +218,13 @@ export class AppService extends EventEmitter {
     this.store.deleteAgent(agentId)
     this.emitEvent({ type: 'changed' })
   }
+  startMission(input: StartMissionInput) { return this.missions.start(input) }
+  missionAction(missionId: string, action: MissionAction, value?: string) { return this.missions.action(missionId, action, value) }
+  saveRoutine(input: Partial<Routine>) { return this.missions.saveRoutine(input) }
+  deleteRoutine(routineId: string) { this.missions.deleteRoutine(routineId) }
+  runRoutine(routineId: string) { return this.missions.runRoutine(routineId) }
+  /** Chamado uma vez quando os provedores estão prontos: retoma missões ativas e agenda rotinas. */
+  resumeAutonomy() { this.missions.resumeAfterRestart() }
   workspacePath(workspaceId: string) { const workspace = this.store.workspace(workspaceId); if (workspace.archived) throw new Error('Este workspace está arquivado.'); return workspace.path }
   workspaceDiff(workspaceId: string) { return this.gitWorkspaces.diff(this.workspacePath(workspaceId)) }
   listProjectFiles(workspaceId: string, directory = '') { return listProjectDirectory(this.workspacePath(workspaceId), directory) }
@@ -277,9 +295,9 @@ export class AppService extends EventEmitter {
       this.notifyWhenAway(context.conversation.id, 'Pergunta do Boo', question.slice(0, 140))
     })
   }
-  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], forceAsk = false): Promise<boolean> {
+  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false): Promise<boolean> {
     if (context.signal?.aborted) return false
-    if (shouldAutoApprove(context.agent.approvalMode, kind, forceAsk)) return true
+    if (shouldAutoApprove(context.agent.approvalMode, kind, sensitive)) return true
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
     this.store.putApproval(approval)
     context.run.status = 'waiting'; this.store.putRun(context.run)
@@ -368,6 +386,7 @@ export class AppService extends EventEmitter {
       ? this.addMessage(conversationId, null, 'user', input, turnAlreadyActive ? 'queued' : 'completed', null)
       : { id: randomUUID(), conversationId, agentId: null, author: 'Você', role: 'user', text: input, status: turnAlreadyActive ? 'queued' : 'completed', runId: null, createdAt }
     if (recordInput && conversation.titleAuto) { this.store.autoTitle(conversationId, input); this.emitEvent({ type: 'changed' }) }
+    if (recordInput) this.missions.onUserMessage(conversationId, input)
     if (steeringTargets.length) {
       try {
         for (const target of steeringTargets) {
@@ -668,7 +687,8 @@ export class AppService extends EventEmitter {
     // Encerra também as esperas de aprovação: uma decisão tardia não pode executar
     // uma ferramenta depois de timeout, falha de protocolo ou interrupção do motor.
     if (status === 'failed' || status === 'interrupted') this.active.get(context.run.id)?.abort()
-    if (status === 'completed') this.notifyWhenAway(context.conversation.id, 'Tarefa concluída', `${context.agent.name} concluiu a resposta.`)
+    this.missions.onRunFinished(context.run)
+    if (status === 'completed' && !this.store.openMission(context.conversation.id)) this.notifyWhenAway(context.conversation.id, 'Tarefa concluída', `${context.agent.name} concluiu a resposta.`)
     else if (status === 'failed') this.notifyWhenAway(context.conversation.id, 'Tarefa precisa de atenção', `${context.agent.name} não conseguiu concluir a resposta.`)
   }
   /** Chamado dentro da transação que cria/associa o time. Não inicia execuções. */
@@ -726,6 +746,16 @@ export class AppService extends EventEmitter {
         pitsBlush: { type: 'boolean' }, pitsAura: { type: 'boolean' }, pitsAnimate: { type: 'boolean' },
         pitsSpeed: { type: 'number' }, pitsAmplitude: { type: 'number' },
       }, [])] : []),
+      ...(!planning ? [
+        ...(!context.run.parentId ? [tool('mission_start', 'Transforma o pedido atual em missão persistente quando ele exige várias etapas, pesquisa, equipe ou validação. O Boobot passa a continuar seus turnos automaticamente até mission_complete ou mission_block, inclusive após reinício. Não use para perguntas simples.', { title: { type: 'string', description: 'Título curto do objetivo.' }, goal: { type: 'string', description: 'Objetivo completo, critérios de sucesso e restrições.' }, steps: { type: 'array', items: { type: 'string' }, maxItems: 30, description: 'Plano inicial em passos verificáveis.' }, max_turns: { type: 'number', description: 'Orçamento de turnos (padrão 20).' } }, ['goal'])] : []),
+        tool('mission_update', 'Registra o plano e o progresso da missão aberta nesta conversa. Envie a lista completa de passos com status (pending, doing, done, blocked, skipped) e assignee quando delegado, e/ou uma nota curta do que foi feito com evidência.', { steps: { type: 'array', maxItems: 30, items: { type: 'object', properties: { title: { type: 'string' }, status: { type: 'string', enum: ['pending', 'doing', 'done', 'blocked', 'skipped'] }, assignee: { type: 'string' }, note: { type: 'string' } }, required: ['title'] } }, note: { type: 'string' } }, []),
+        tool('mission_complete', 'Encerra a missão aberta somente depois de executar e validar o objetivo. Informe o resultado, o que foi entregue, onde está e as evidências (testes, comandos, arquivos, fontes).', { result: { type: 'string' } }, ['result']),
+        tool('mission_block', 'Pausa a missão aberta porque falta uma decisão real do usuário, credencial, acesso ou aprovação externa. Não use para decisões triviais que você pode tomar dentro das permissões.', { question: { type: 'string' }, options: { type: 'array', items: { type: 'string' }, maxItems: 6 } }, ['question']),
+      ] : []),
+      ...(context.agent.role === 'chief' && !planning ? [
+        tool('routine_create', 'Cria uma rotina permanente (responsabilidade contínua) neste projeto: o Boobot dispara uma missão a cada execução, mesmo com o chat fechado. Use quando o usuário pedir acompanhamento recorrente, revisão diária, monitoramento ou reação a mudanças.', { name: { type: 'string' }, instructions: { type: 'string', description: 'O que verificar, o que pode corrigir sozinho e o que entregar no resumo.' }, schedule: { type: 'string', enum: ['daily', 'interval', 'app-start', 'project-changed'] }, time: { type: 'string', description: 'HH:MM para daily.' }, weekdays: { type: 'array', items: { type: 'number' }, description: '0=domingo até 6=sábado; vazio = todos.' }, minutes: { type: 'number', description: 'Para interval, mínimo 15.' }, agent: { type: 'string', description: 'Responsável; padrão é você.' }, max_turns: { type: 'number' } }, ['name', 'instructions', 'schedule']),
+        tool('routine_list', 'Lista as rotinas configuradas, seus gatilhos e últimas execuções.', {}, []),
+      ] : []),
       tool('group_members', context.agent.role === 'chief' ? 'Lista o catálogo de Boos e informa separadamente disponibilidade e se este Chief pode delegar para cada um neste workspace. Reutilize especialistas elegíveis antes de criar novos.' : 'Mostra os agentes desta conversa e a equipe padrão do workspace, com disponibilidade e elegibilidade para delegação.', {}, []),
       tool('search_history', 'Busca mensagens nesta conversa para recuperar o pedido e o contexto antes de responder a um follow-up curto ou ambíguo, como “encaminha”, “faz isso” ou “continua”. Consulte o histórico antes de pedir ao usuário que repita algo já explicado. A busca é limitada à conversa atual.', { query: { type: 'string', description: 'Termos concretos do pedido anterior, da correção ou do assunto citado pelo usuário.' } }, ['query']),
       tool('save_context_checkpoint', 'Salva um resumo de continuidade deste trabalho para uma futura sessão nova. Use em trabalhos longos ou antes de uma troca de contexto; não substitui os registros originais nem repete ações.', { summary: { type: 'string', description: 'Objetivo, progresso com evidências e próximos passos.' }, decisions: { type: 'array', items: { type: 'string' }, maxItems: 20 }, pending: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, ['summary']),
@@ -735,7 +765,7 @@ export class AppService extends EventEmitter {
       ...(context.agent.role === 'chief' && !planning ? [
         tool('propose_agent', 'Propõe criar um agente novo (um "Boo" novo) ou alterar o perfil de um agente que já participa desta equipe. A confirmação segue o modo do Chief. Agentes novos herdam acesso a arquivos, navegador e modo de aprovação do Chief, respeitando a política do workspace. Se o usuário pedir para "criar um Boo", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
         tool('propose_agent_model', 'Propõe mudar o runtime/modelo/esforço de um Boo da equipe. Use quando o usuário pedir para trocar GPT por Claude, Codex por outro motor ou definir outro modelo para front-end/back-end. A confirmação segue o modo de aprovação do Chief; NÃO muda permissões, papel, nome nem avatar. Modelo vazio seleciona o padrão do runtime.', { agent: { type: 'string', description: 'Nome ou @menção do Boo a reconfigurar.' }, runtime: { type: 'string', enum: ['codex','claude','pi','opencode','antigravity'] }, model: { type: 'string', description: 'Identificador exato do modelo; vazio usa o padrão do motor.' }, effort: { type: 'string', enum: ['low','medium','high','xhigh','max'] } }, ['agent','runtime']),
-        tool('propose_boos', 'Propõe 1 a 5 Boos com UMA aprovação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Herda as permissões e o modo de aprovação do Chief, sem ampliar seu acesso. Para purpose=team e chiefManageTeam habilitado, associa os Boos à equipe padrão e à conversa atual na mesma operação. Continue com ask_agent se o pedido incluir trabalho para o time.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário proposto espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' } }, required: ['instructions'] } } }, ['agents']),
+        tool('propose_boos', 'Propõe 1 a 5 Boos com UMA aprovação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Herda as permissões e o modo de aprovação do Chief, sem ampliar seu acesso. Para purpose=team, exige chiefManageTeam e associa os Boos à equipe padrão e à conversa atual na mesma operação; sem essa permissão, falha antes de criar qualquer Boo. Continue com ask_agent se o pedido incluir trabalho para o time.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário proposto espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' } }, required: ['instructions'] } } }, ['agents']),
         tool('propose_team', 'Altera a equipe padrão deste workspace e adiciona os Boos à conversa atual, preservando o coordenador e sem iniciar broadcast. A confirmação segue o modo do Chief.', { agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['agents']),
         tool('propose_session', 'Propõe criar uma nova sessão neste workspace, com a equipe informada ou o Assistente padrão. A confirmação segue o modo do Chief.', { name: { type: 'string' }, agents: { type: 'array', items: { type: 'string' }, maxItems: 10 } }, ['name', 'agents']),
       ] : []),
@@ -798,6 +828,21 @@ export class AppService extends EventEmitter {
       return target
     }
     const workspace = this.store.workspace(context.run.workspaceId)
+    if (name.startsWith('mission_') && !context.run.planMode) return this.missions.tool({ conversationId: context.conversation.id, agentId: context.agent.id, runId: context.run.id, parentRunId: context.run.parentId, workspaceId: context.run.workspaceId }, name, args)
+    if (name === 'routine_list') return JSON.stringify(this.store.routines().map(routine => ({ id: routine.id, name: routine.name, enabled: routine.enabled, trigger: describeTrigger(routine.trigger), agentId: routine.agentId, workspaceId: routine.workspaceId, lastRunAt: routine.lastRunAt, nextRunAt: routine.nextRunAt })))
+    if (name === 'routine_create') {
+      if (context.agent.role !== 'chief' || context.run.planMode) throw new Error('Somente o Chief cria rotinas fora do modo plano.')
+      const schedule = String(args.schedule)
+      const trigger = validateTrigger(schedule === 'daily' ? { kind: 'daily', time: args.time, weekdays: args.weekdays } : schedule === 'interval' ? { kind: 'interval', minutes: args.minutes } : { kind: 'event', event: schedule })
+      const requested = typeof args.agent === 'string' ? args.agent.replace(/^@/, '').trim().toLocaleLowerCase('pt-BR') : ''
+      const agent = requested ? this.store.agents().find(item => item.temporaryStatus !== 'retired' && (item.alias.toLocaleLowerCase('pt-BR') === requested || item.name.toLocaleLowerCase('pt-BR') === requested)) : context.agent
+      if (!agent) throw new Error('Responsável não encontrado.')
+      const routineName = text(args.name, 80).trim()
+      const instructions = text(args.instructions, 8000).trim()
+      if (!await this.requestApproval(context, 'agent-change', { action: `Criar rotina ${routineName} (${describeTrigger(trigger)})`, recipientName: agent.name, task: instructions })) return 'Criação da rotina negada pelo usuário.'
+      const routine = this.missions.saveRoutine({ name: routineName, instructions, agentId: agent.id, workspaceId: context.run.workspaceId, trigger, maxTurns: typeof args.max_turns === 'number' ? args.max_turns : undefined, enabled: true })
+      return `Rotina ${routine.name} criada (${describeTrigger(routine.trigger)}${routine.nextRunAt ? `, próxima em ${new Date(routine.nextRunAt).toLocaleString('pt-BR')}` : ''}). Ela aparece em Rotinas e roda mesmo com o chat fechado enquanto o Boobot estiver aberto ou na bandeja.`
+    }
     if (name === 'ask_user') {
       const question = text(args.question, 500).trim()
       const raw = args.options
@@ -829,7 +874,7 @@ export class AppService extends EventEmitter {
       if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia comandos que podem alterar arquivos.')
       const command = text(args.command, 8000).trim()
       if (!command) throw new Error('Informe um comando para executar.')
-      if (!await this.requestApproval(context, 'command', { command, cwd: root }, true)) return 'O usuário não aprovou a execução do comando.'
+      if (!await this.requestApproval(context, 'command', { command, cwd: root }, isSensitiveCommand(command))) return 'O usuário não aprovou a execução do comando.'
       return runWorkspaceCommand(command, root, context, callId || randomUUID(), this.store)
     }
     if (name === 'workspace_list') {
@@ -955,7 +1000,7 @@ export class AppService extends EventEmitter {
         action: 'Editar meu perfil no Boobot: ' + original.name,
         task: 'Alterar: ' + description,
         proposal: JSON.stringify(proposal),
-      }, true)) return 'Autoedição cancelada: o usuário não aprovou a proposta.'
+      })) return 'Autoedição cancelada: o usuário não aprovou a proposta.'
       // Reaplicar sobre a versão mais recente evita sobrescrever outras edições enquanto a aprovação estava pendente.
       const current = this.store.agent(context.agent.id)
       const saved = this.store.saveAgent(buildSelfProfileUpdate(current, args))
@@ -967,6 +1012,7 @@ export class AppService extends EventEmitter {
       if (!workspace.permissions?.chiefCreateAgents) throw new Error('O Chief não pode criar agentes neste workspace ainda.' + howToEnablePermission('Chief pode propor novos agentes'))
       if (args.purpose !== undefined && args.purpose !== 'team' && args.purpose !== 'task') throw new Error('Finalidade inválida: use team ou task.')
       const purpose = args.purpose === 'task' ? 'task' : 'team'
+      if (purpose === 'team' && !workspace.permissions?.chiefManageTeam) throw new Error('O Chief não pode formar uma equipe neste workspace porque a permissão de associação está desativada. Nenhum Boo foi criado.' + howToEnablePermission('Chief pode propor mudanças na equipe'))
       if (!Array.isArray(args.agents) || !args.agents.length || args.agents.length > 5) throw new Error('Informe entre um e cinco Boos.')
       const existingAgents = this.store.agents()
       const currentTemp = existingAgents.filter(agent => agent.temporary && agent.temporaryWorkspaceId === workspace.id && agent.temporaryStatus !== 'retired').length
@@ -985,11 +1031,11 @@ export class AppService extends EventEmitter {
       }
       if (currentTemp + proposed.filter(item => item.temporary).length > 10) throw new Error('Limite de dez Boos temporários ativos por workspace.')
       const taskLabel = proposed.map(item => String(item.name) + ': ' + String(item.description || item.instructions)).join('\n').slice(0, 5000)
-      const attachTeam = purpose === 'team' && workspace.permissions?.chiefManageTeam === true
+      const attachTeam = purpose === 'team'
       const proposal = { workspaceId: workspace.id, purpose, conversationId: attachTeam ? context.conversation.id : undefined,
         access: { canWrite: context.agent.canWrite, computerUse: context.agent.computerUse, approvalMode: context.agent.approvalMode },
         agents: proposed.map(item => ({ name: item.name, alias: item.alias, color: item.color, temporary: item.temporary, description: item.description, instructions: item.instructions })) }
-      if (!await this.requestApproval(context, 'agent-change', { action: (purpose === 'team' ? 'Criar equipe de ' : 'Criar reforço de ') + proposed.length + (proposed.length === 1 ? ' Boo' : ' Boos'), task: taskLabel, proposal: JSON.stringify(proposal) }, true)) return 'Criação dos Boos negada pelo usuário.'
+      if (!await this.requestApproval(context, 'agent-change', { action: (purpose === 'team' ? 'Criar equipe de ' : 'Criar reforço de ') + proposed.length + (proposed.length === 1 ? ' Boo' : ' Boos'), task: taskLabel, proposal: JSON.stringify(proposal) })) return 'Criação dos Boos negada pelo usuário.'
       this.store.db.exec('BEGIN IMMEDIATE')
       let saved: Agent[]
       let updatedConversation: Conversation | undefined
@@ -1007,7 +1053,7 @@ export class AppService extends EventEmitter {
       if (updatedConversation) context.conversation = updatedConversation
       this.emitEvent({ type: 'changed' })
       return 'Boos criados: ' + saved.map(agent => agent.name + ' (@' + agent.alias + ', ' + agent.color + (agent.temporary ? ', temporário' : ', permanente') + ')').join('; ') + '.'
-        + (attachTeam ? ' Equipe associada ao workspace e à conversa atual. Continue com ask_agent para executar as tarefas solicitadas.' : ' Os Boos estão no catálogo; a associação à equipe exige chiefManageTeam habilitado e propose_team.')
+        + ' Equipe associada ao workspace e à conversa atual. Continue com ask_agent para executar as tarefas solicitadas.'
         + (saved.some(agent => agent.temporary) ? ' Os temporários estão disponíveis via ask_agent neste workspace e serão aposentados após uma tarefa, sem apagar o histórico.' : ' Os Boos são permanentes.')
     }
     if (name === 'propose_agent_model') {
@@ -1022,7 +1068,7 @@ export class AppService extends EventEmitter {
       const effort = args.effort === undefined ? candidate.effort || 'medium' : String(args.effort)
       if (!['low','medium','high','xhigh','max'].includes(effort)) throw new Error('Esforço inválido.')
       const proposal = { agentId: candidate.id, agent: candidate.name, previous: { runtime: candidate.runtime, model: candidate.model, effort: candidate.effort }, next: { runtime, model, effort } }
-      const approved = await this.requestApproval(context, 'agent-change', { action: 'Trocar modelo de ' + candidate.name, recipientName: candidate.name, proposal: JSON.stringify(proposal) }, true)
+      const approved = await this.requestApproval(context, 'agent-change', { action: 'Trocar modelo de ' + candidate.name, recipientName: candidate.name, proposal: JSON.stringify(proposal) })
       if (!approved) return 'Troca de modelo não aprovada.'
       const current = this.store.agent(candidate.id)
       this.store.saveAgent({ ...current, runtime: runtime as Agent['runtime'], model, effort: effort as Agent['effort'] })
@@ -1048,7 +1094,7 @@ export class AppService extends EventEmitter {
         ? { operation, name: nameValue, alias: desiredAlias, description, instructions, runtime: context.agent.runtime, model: context.agent.model, effort: context.agent.effort, canWrite: context.agent.canWrite, computerUse: context.agent.computerUse, approvalMode: context.agent.approvalMode }
         : { operation, id: existing!.id, previousName: existing!.name, name: nameValue, alias: desiredAlias, description, instructions, runtime: existing!.runtime, model: existing!.model, effort: existing!.effort, role: existing!.role || 'agent', color: existing!.color, avatar: existing!.avatar ? 'Imagem existente preservada' : '', pitsShape: existing!.pitsShape, pitsEyeColor: existing!.pitsEyeColor, pitsEyeSize: existing!.pitsEyeSize, pitsEyeSpacing: existing!.pitsEyeSpacing, pitsCheekColor: existing!.pitsCheekColor, pitsBlush: existing!.pitsBlush, pitsAura: existing!.pitsAura, pitsAnimate: existing!.pitsAnimate, pitsSpeed: existing!.pitsSpeed, pitsAmplitude: existing!.pitsAmplitude, canWrite: existing!.canWrite, computerUse: existing!.computerUse, approvalMode: existing!.approvalMode }
       const label = operation === 'create' ? `Criar agente ${nameValue}` : `Atualizar agente ${existing!.name}`
-      if (!await this.requestApproval(context, 'agent-change', { action: label, recipientName: nameValue, task: instructions, proposal: JSON.stringify(proposal) }, true)) return `Proposta negada: ${label}.`
+      if (!await this.requestApproval(context, 'agent-change', { action: label, recipientName: nameValue, task: instructions, proposal: JSON.stringify(proposal) })) return `Proposta negada: ${label}.`
       const saveInput = operation === 'create' ? proposal as Partial<Agent> : { ...existing!, name: nameValue, alias: desiredAlias, description, instructions }
       const saved = this.store.saveAgent(saveInput)
       this.emitEvent({ type: 'changed' })
@@ -1063,7 +1109,7 @@ export class AppService extends EventEmitter {
       if (team.some(agent => !agent)) throw new Error('A proposta inclui um agente que não existe.')
       const agentIds = [...new Set(team.map(agent => agent!.id))]
       const proposal = { workspaceId: workspace.id, workspace: workspace.name, conversationId: context.conversation.id, agentIds, agents: team.map(agent => agent!.name) }
-      if (!await this.requestApproval(context, 'agent-change', { action: `Alterar equipe de ${workspace.name}`, task: team.map(agent => agent!.name).join(', ') || 'Equipe vazia', proposal: JSON.stringify(proposal) }, true)) return `Proposta de equipe negada para ${workspace.name}.`
+      if (!await this.requestApproval(context, 'agent-change', { action: `Alterar equipe de ${workspace.name}`, task: team.map(agent => agent!.name).join(', ') || 'Equipe vazia', proposal: JSON.stringify(proposal) })) return `Proposta de equipe negada para ${workspace.name}.`
       this.store.db.exec('BEGIN IMMEDIATE')
       let updatedConversation: Conversation
       try {
@@ -1089,7 +1135,7 @@ export class AppService extends EventEmitter {
       if (team.some(agent => !agent)) throw new Error('A sessão proposta só pode incluir agentes desta equipe.')
       const agentIds = [...new Set(team.map(agent => agent!.id))]
       const proposal = { workspaceId: workspace.id, workspace: workspace.name, name: sessionName, kind: agentIds.length > 1 ? 'group' : 'direct', agentIds, agents: team.map(agent => agent!.name) }
-      if (!await this.requestApproval(context, 'agent-change', { action: `Criar sessão ${sessionName} em ${workspace.name}`, task: agentIds.length ? `Participantes: ${team.map(agent => agent!.name).join(', ')}` : 'Assistente padrão', proposal: JSON.stringify(proposal) }, true)) return `Proposta de sessão negada: ${sessionName}.`
+      if (!await this.requestApproval(context, 'agent-change', { action: `Criar sessão ${sessionName} em ${workspace.name}`, task: agentIds.length ? `Participantes: ${team.map(agent => agent!.name).join(', ')}` : 'Assistente padrão', proposal: JSON.stringify(proposal) })) return `Proposta de sessão negada: ${sessionName}.`
       const conversation = this.store.saveConversation({ workspaceId: workspace.id, name: sessionName, kind: agentIds.length > 1 ? 'group' : 'direct', agentIds })
       this.emitEvent({ type: 'changed' })
       return `Sessão ${conversation.name} aprovada e criada em ${workspace.name}.`
@@ -1144,7 +1190,7 @@ export class AppService extends EventEmitter {
       if (previousDelegation) this.validateDelegationContinuation(context, candidate, previousDelegation)
       let eligibility = delegationEligibility(eligibilityContext, candidate)
       if (!eligibility.canDelegate) throw new Error(eligibility.reason || 'Esse agente não pode receber esta delegação.')
-      if (context.agent.role === 'chief' && !await this.requestApproval(context, 'delegation', { action: previousDelegation ? `Continuar a delegação ${previousDelegation.id} com ${candidate.name}` : `Enviar uma tarefa para ${candidate.name}`, recipientName: candidate.name, task }, true)) return `Delegação para ${candidate.name} negada pelo usuário.`
+      if (context.agent.role === 'chief' && !await this.requestApproval(context, 'delegation', { action: previousDelegation ? `Continuar a delegação ${previousDelegation.id} com ${candidate.name}` : `Enviar uma tarefa para ${candidate.name}`, recipientName: candidate.name, task })) return `Delegação para ${candidate.name} negada pelo usuário.`
       if (context.agent.role === 'chief') {
         const latestConversation = this.store.conversation(context.conversation.id)
         if (latestConversation.archived || latestConversation.workspaceId !== context.run.workspaceId) throw new Error('A conversa ou o workspace mudou durante a aprovação; a delegação foi cancelada.')
@@ -1274,6 +1320,7 @@ export class AppService extends EventEmitter {
     const finalOrigin = { ...runningOrigin, status: completed.status, text: completed.status === 'completed' ? `Pedido concluído por ${recipient.name}. Resultado disponível na conversa relacionada.\n\n${result}` : `Pedido para ${recipient.name}: ${task}\n${completed.status === 'interrupted' ? 'Cancelado.' : `Falhou: ${delegation.error}`}` }
     const finalRequest = { ...runningRequest, status: completed.status }
     this.store.putMessage(finalOrigin); this.emitEvent({ type: 'message', message: finalOrigin }); this.store.putMessage(finalRequest); this.emitEvent({ type: 'message', message: finalRequest })
+    this.missions.onDelegationFinished(parent.conversation.id)
     if (completed.status !== 'completed') throw new Error(delegation.error || `${recipient.name} não concluiu o pedido.`)
     return result
   }
@@ -1302,6 +1349,7 @@ export class AppService extends EventEmitter {
   dispose() {
     if (this.statusSignal.signal.aborted) return
     clearInterval(this.statusTimer)
+    this.missions.dispose()
     this.statusSignal.abort()
     for (const context of this.contexts.values()) if (context.flushTimer) clearTimeout(context.flushTimer)
     void this.browser.close(); this.runtime.close(); this.claudeRuntime.close(); this.piRuntime.close(); this.openCodeRuntime.close(); this.antigravityRuntime.close(); this.store.close()

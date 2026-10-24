@@ -11,7 +11,7 @@ export default defineConfig({
     // dezenas de workers sem aumentar timeouts nem serializar tarefas do produto.
     maxWorkers: 2,
     setupFiles: ["./src/renderer/src/test/setup.ts"],
-    include: ["src/renderer/src/**/*.{test,spec}.{ts,tsx}", "src/main/**/*.{test,spec}.ts"],
+    include: ["src/renderer/src/**/*.{test,spec}.{ts,tsx}", "src/main/**/*.{test,spec}.ts", "src/shared/**/*.{test,spec}.ts"],
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src/renderer/src") },

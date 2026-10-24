@@ -59,6 +59,7 @@ dist/
 dist-ssr/
 build/
 out/
+dist-release-*/
 
 # Vite
 vite.config.js.timestamp-*
@@ -76,6 +77,9 @@ vite.config.ts.timestamp-*
 # Project specific
 .vibecoding
 .vendor/
+
+# REA - staging local de artefato extraido, sem versionar
+.rea_tmp/
 
 # Graphify - extração local, sem versionar artefatos
 graphify-out/

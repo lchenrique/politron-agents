@@ -10,7 +10,7 @@ const STICK_TO_BOTTOM_PX = 96
 const ESTIMATED_MESSAGE_HEIGHT = 180
 const OVERSCAN_PX = 900
 
-export function MessageList({ messages, fileChanges, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest }: {
+export function MessageList({ messages, fileChanges, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true }: {
   messages: Message[]
   fileChanges: FileChange[]
   approvals: Approval[]
@@ -24,6 +24,8 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
   focusedMessageId?: string | null
   hasNewerMessages?: boolean
   onReturnToLatest?: () => void
+  canSpeak?: boolean
+  canApprove?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -31,7 +33,9 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
   const [measurementVersion, setMeasurementVersion] = useState(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [hasNewMessages, setHasNewMessages] = useState(false)
+  const [enteringMessageId, setEnteringMessageId] = useState<string | null>(null)
   const lastMessageId = useRef<string | null>(null)
+  const hasInitializedMessageList = useRef(false)
   const lastFocusedId = useRef<string | null>(null)
   const heights = useRef(new Map<string, number>())
   const messageNodes = useRef(new Map<string, HTMLDivElement>())
@@ -151,6 +155,8 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
       return
     }
     const latestId = messages[messages.length - 1]?.id || null
+    if (hasInitializedMessageList.current && latestId && latestId !== lastMessageId.current) setEnteringMessageId(latestId)
+    hasInitializedMessageList.current = true
     if (stickToBottom.current) { element.scrollTop = element.scrollHeight; setScrollTop(element.scrollTop); setHasNewMessages(false) }
     else if (lastMessageId.current && latestId !== lastMessageId.current) setHasNewMessages(true)
     lastMessageId.current = latestId
@@ -197,9 +203,9 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
         const agent = agentOf(message.agentId)
         const relatedConversation = message.relatedConversationId ? conversationsById.get(message.relatedConversationId) : undefined
         const runApprovals = message.runId ? approvalsByRun.get(message.runId) || [] : []
-        return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className="mb-6 space-y-2">
-          <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} />
-          {runApprovals.map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} />)}
+        return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className={`mb-6 space-y-2${enteringMessageId === message.id ? ' chat-message-enter' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && enteringMessageId === message.id) setEnteringMessageId(null) }}>
+          <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} />
+          {runApprovals.map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} canApprove={canApprove} />)}
 
         </div>
       })}

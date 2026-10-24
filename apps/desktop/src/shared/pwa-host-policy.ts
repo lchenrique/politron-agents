@@ -14,17 +14,24 @@ export const PWA_METHOD_CAPABILITIES = {
   'v9:historyAround': 'read',
   'v9:searchHistory': 'read',
   'v9:workspaceDiff': 'read',
-  'v9:listProjectFiles': 'read',
+  'v9:listProjectFiles': 'files:read',
+  'v9:voiceStatus': 'read',
 
   'v9:send': 'chat',
   'v9:stop': 'chat',
   'v9:respondToAgent': 'chat',
   'v9:saveConversation': 'chat',
+  'v9:voiceSpeak': 'chat',
+  'v9:voiceTranscribe': 'chat',
 
   'v9:respondApproval': 'approvals',
+  'v9:answerQuestion': 'approvals',
 
   'v9:readProjectFile': 'files:read',
   'v9:writeProjectFile': 'files:write',
+  'v9:cancelDelegation': 'chat',
+  'v9:startMission': 'chat',
+  'v9:missionAction': 'chat',
 } as const
 
 export type PwaCapability = typeof PWA_METHOD_CAPABILITIES[keyof typeof PWA_METHOD_CAPABILITIES]

@@ -92,7 +92,9 @@ describe('PWA gateway / read-only security', () => {
       req.end()
     })
     expect(forgedStatus).toBe(403)
-    const tooLarge = await request('/api/pair', { payload: 'x'.repeat(40_000) })
+    // O limite de corpo vale acima de 2 MB. Precisa de um servidor novo: o anterior esta bloqueado por tentativas.
+    const fresh = await make()
+    const tooLarge = await fresh.request('/api/pair', { payload: 'x'.repeat(2_100_000) })
     expect(tooLarge.response.status).toBe(400)
   })
   it('grants chat to exactly one device, rejects approval without grant, and revokes immediately', async () => {
@@ -110,7 +112,8 @@ describe('PWA gateway / read-only security', () => {
     const sent = await request('/api/rpc', { method: 'v9:send', args: ['c1', 'olá'] }, { cookie: token })
     expect(sent.response.status).toBe(202)
     expect(sent.json).toEqual({ result: { accepted: true } })
-    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith('v9:send', ['c1', 'olá'], ['read', 'chat']))
+    // O envio sempre encaminha modelo, esforco e modo de plano, mesmo quando o pareamento nao os define.
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith('v9:send', ['c1', 'olá', undefined, undefined, undefined], ['read', 'chat']))
     expect((await request('/api/rpc', { method: 'v9:respondApproval', args: ['approval', true] }, { cookie: token })).response.status).toBe(403)
     server.revokeDevice(device.id)
     expect((await request('/api/rpc', { method: 'v9:snapshot', args: [] }, { cookie: token })).response.status).toBe(401)

@@ -17,7 +17,7 @@ const approvalKind = {
 /** Confirmação extra fica armada por esse tempo antes de voltar ao normal, pra não aprovar sem querer num clique tardio. */
 const ARM_TIMEOUT_MS = 4000
 
-export function PolitronToolApproval({ approval, onNotice }: { approval: Approval; onNotice: (text: string) => void }) {
+export function PolitronToolApproval({ approval, onNotice, canApprove = true }: { approval: Approval; onNotice: (text: string) => void; canApprove?: boolean }) {
   // A trava síncrona impede duplo envio mesmo antes do próximo render do React.
   const lock = useRef(false)
   const [submitting, setSubmitting] = useState(false)
@@ -25,6 +25,7 @@ export function PolitronToolApproval({ approval, onNotice }: { approval: Approva
   const armTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(armTimer.current), [])
 
+  if (approval.status === 'pending' && !canApprove) return <section role="status" className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">Ação aguardando aprovação. Libere aprovações para este dispositivo no Boobot do host.</section>
   if (approval.kind === 'question' || approval.kind === 'plan') return <AgentInteractionCard approval={approval} onNotice={onNotice} />
   const definition = approvalKind[approval.kind]
   const details = approval.details

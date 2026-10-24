@@ -56,19 +56,33 @@ export function PwaSettingsPanel() {
           <span>Permitir enviar mensagens e interromper tarefas</span>
           <input type="checkbox" aria-label={`Permitir chat para ${device.label}`} checked={device.chat} disabled={busy}
             onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
-              chat: event.target.checked, approvals: device.approvals,
+              chat: event.target.checked, approvals: device.approvals, filesRead: device.filesRead, filesWrite: device.filesWrite,
             })))} />
         </label>
         <label className="flex items-center justify-between gap-2">
           <span>Permitir aprovar ações pendentes</span>
           <input type="checkbox" aria-label={`Permitir aprovações para ${device.label}`} checked={device.approvals} disabled={busy}
             onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
-              chat: device.chat, approvals: event.target.checked,
+              chat: device.chat, approvals: event.target.checked, filesRead: device.filesRead, filesWrite: device.filesWrite,
+            })))} />
+        </label>
+        <label className="flex items-center justify-between gap-2">
+          <span>Permitir ler arquivos dos workspaces</span>
+          <input type="checkbox" aria-label={`Permitir leitura de arquivos para ${device.label}`} checked={device.filesRead} disabled={busy || device.filesWrite}
+            onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
+              chat: device.chat, approvals: device.approvals, filesRead: event.target.checked, filesWrite: device.filesWrite,
+            })))} />
+        </label>
+        <label className="flex items-center justify-between gap-2">
+          <span>Permitir salvar edições de arquivos</span>
+          <input type="checkbox" aria-label={`Permitir edição de arquivos para ${device.label}`} checked={device.filesWrite} disabled={busy}
+            onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
+              chat: device.chat, approvals: device.approvals, filesRead: device.filesRead || event.target.checked, filesWrite: event.target.checked,
             })))} />
         </label>
       </div>)}
     </div>}
-    <p className="text-xs text-muted-foreground">Um código novo invalida o anterior. A sessão expira em 12 horas; chat e aprovações precisam ser autorizados por dispositivo neste PC. A PWA não recebe acesso direto ao terminal nem aos arquivos.</p>
+    <p className="text-xs text-muted-foreground">Um código novo invalida o anterior. A sessão expira em 12 horas. Chat, aprovações, leitura e edição de arquivos são permissões separadas por dispositivo. O terminal continua restrito ao desktop.</p>
     {feedback && <p role="status" className="text-xs text-muted-foreground">{feedback}</p>}
   </div>
 }

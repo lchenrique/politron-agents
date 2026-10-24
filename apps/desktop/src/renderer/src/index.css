@@ -1565,6 +1565,24 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   animation: pits-float 4s ease-in-out infinite;
 }
 
+@keyframes chat-message-enter {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-message-enter {
+  animation: chat-message-enter 220ms cubic-bezier(.2,.75,.25,1) both;
+}
+
+@keyframes chat-stream-text-appear {
+  from { opacity: .42; transform: translateY(1px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-stream-text-chunk {
+  animation: chat-stream-text-appear 120ms ease-out both;
+}
+
 .agent-avatar svg { overflow: visible; }
 .agent-avatar__features { transform-box: fill-box; transform-origin: center; transition: transform 220ms cubic-bezier(.2,.8,.2,1); }
 .agent-avatar[data-shape="flat"] .agent-avatar__features { transform: scale(1.14,.86); }
@@ -1594,6 +1612,8 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
 
 @media (prefers-reduced-motion: reduce) {
   .pits-mark { animation: none; }
+  .chat-message-enter { animation: none; }
+  .chat-stream-text-chunk { animation: none; }
   .agent-avatar__features, .agent-avatar__body, .agent-avatar__eyes, .agent-avatar__pupils, .agent-avatar__fallback { transition: none; }
   .agent-avatar[data-state="working"] .agent-avatar__body { animation: none; }
   .agent-presence[data-state="working"] i { animation: none; }

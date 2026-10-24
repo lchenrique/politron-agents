@@ -80,6 +80,29 @@ export interface Delegation {
   previousDelegationId?: string
   continuationRunId?: string
 }
+export type MissionStatus = 'active' | 'waiting' | 'paused' | 'completed' | 'failed' | 'cancelled'
+export interface MissionStep { id: string; title: string; status: 'pending' | 'doing' | 'done' | 'blocked' | 'skipped'; assignee?: string; note?: string }
+export interface MissionUpdate { at: string; agentId: string | null; kind: 'progress' | 'decision' | 'error' | 'system' | 'result'; text: string }
+/** Objetivo persistente: o motor continua os turnos do responsável até concluir, bloquear ou esgotar o orçamento. */
+export interface Mission {
+  id: string; title: string; goal: string; workspaceId: string; conversationId: string; ownerAgentId: string
+  routineId: string | null; model: string | null; status: MissionStatus
+  steps: MissionStep[]; updates: MissionUpdate[]; question: string | null; options: string[]; result: string | null
+  turns: number; maxTurns: number; idleTurns: number; failures: number; lastProgressAt: string | null
+  createdAt: string; updatedAt: string; completedAt: string | null
+}
+export type RoutineTrigger =
+  | { kind: 'daily'; time: string; weekdays: number[] }
+  | { kind: 'interval'; minutes: number }
+  | { kind: 'event'; event: 'app-start' | 'project-changed' }
+/** Responsabilidade contínua: cada disparo abre uma missão na mesma conversa da rotina. */
+export interface Routine {
+  id: string; name: string; instructions: string; agentId: string; workspaceId: string; trigger: RoutineTrigger
+  enabled: boolean; maxTurns: number; model: string | null; conversationId: string | null
+  lastRunAt: string | null; nextRunAt: string | null; lastMissionId: string | null; createdAt: string; updatedAt: string
+}
+export interface StartMissionInput { goal: string; title?: string; workspaceId?: string | null; conversationId?: string; agentId?: string; maxTurns?: number; model?: string | null }
+export type MissionAction = 'pause' | 'resume' | 'cancel' | 'reply' | 'extend'
 export type ModelEffort = NonNullable<Agent['effort']>
 export interface Model {
   id: string; name: string; runtime: 'codex' | 'claude' | 'pi' | 'antigravity' | 'opencode'; isDefault: boolean
@@ -87,7 +110,7 @@ export interface Model {
   supportedEfforts?: ModelEffort[]
   defaultEffort?: ModelEffort
 }
-export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][] }
+export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][]; missions?: Mission[]; routines?: Routine[] }
 export interface VoiceStatus { transcription: boolean; speech: boolean; provider?: 'realtime' | 'openrouter' | 'local' | 'pits' | 'pocket'; engine: 'piper' | 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }
 export type PitVoiceId = 'f1' | 'f2' | 'f3' | 'f4' | 'm1' | 'm1-young' | 'dora' | 'alex' | 'santa'
 export interface PitVoiceSelection { defaultVoiceId: PitVoiceId; agentVoiceIds: Record<string, PitVoiceId> }
@@ -108,6 +131,7 @@ export type WorkspaceEvent =
   | { type: 'message'; message: Message }
   | { type: 'fileChange'; fileChange: FileChange }
   | { type: 'approval'; approval: Approval }
+  | { type: 'mission'; mission: Mission }
   | { type: 'browser'; frame: BrowserFrame }
   | { type: 'browserClosed'; key: string; conversationId: string; agentId: string }
 export interface AppAPI {
@@ -169,5 +193,10 @@ export interface AppAPI {
   browserFrames(conversationId: string): Promise<BrowserFrame[]>
   browserControl(key: string, human: boolean): Promise<void>
   browserAction(key: string, action: { type: 'click' | 'type' | 'scroll' | 'key' | 'refresh'; x?: number; y?: number; text?: string }): Promise<void>
+  startMission(input: StartMissionInput): Promise<Mission>
+  missionAction(missionId: string, action: MissionAction, text?: string): Promise<Mission>
+  saveRoutine(input: Partial<Routine>): Promise<Routine>
+  deleteRoutine(routineId: string): Promise<void>
+  runRoutine(routineId: string): Promise<Mission>
   onEvent(callback: (event: WorkspaceEvent) => void): () => void
 }

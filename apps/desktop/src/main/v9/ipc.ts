@@ -75,6 +75,11 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('voiceSaveOpenRouterKey', (key) => voice.saveOpenRouterKey(key))
   invoke('voiceClearOpenRouterKey', () => voice.clearOpenRouterKey())
   invoke('cancelDelegation', (id) => service.cancelDelegation(id))
+  invoke('startMission', (input) => service.startMission(input))
+  invoke('missionAction', (id, action, text) => service.missionAction(id, action, text))
+  invoke('saveRoutine', (input) => service.saveRoutine(input))
+  invoke('deleteRoutine', (id) => service.deleteRoutine(id))
+  invoke('runRoutine', (id) => service.runRoutine(id))
   invoke('models', (runtime) => service.models(runtime))
   invoke('pickFolder', () => service.pickFolder())
   invoke('openFolder', (id) => service.openFolder(id))
@@ -90,6 +95,6 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     service.off('workspace-event', send)
     voice.close()
     ipcMain.removeHandler('v9:clearClaudeCredential')
-    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'startMission', 'missionAction', 'saveRoutine', 'deleteRoutine', 'runRoutine', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

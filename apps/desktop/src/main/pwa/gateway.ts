@@ -13,14 +13,14 @@ const ASSETS = new Map<string, [string, string]>([
   ['/icon-192.png', ['icon-192.png', 'image/png']],
   ['/icon-512.png', ['icon-512.png', 'image/png']],
 ])
-const MAX_BODY = 32_768
+const MAX_BODY = 2_000_000
 const MAX_REPLY = 2_000_000
 const SESSION_MS = 12 * 60 * 60 * 1000
 const CODE_MS = 3 * 60 * 1000
 const COOKIE = 'boobot_pwa'
 type Session = { id: string; label: string; expires: number; hostId: string; grants: PwaCapability[] }
 
-export type PwaStatus = { running: boolean; port: number; sessions: number; codeExpires: number | null; devices: { id: string; label: string; chat: boolean; approvals: boolean; expires: number }[] }
+export type PwaStatus = { running: boolean; port: number; sessions: number; codeExpires: number | null; devices: { id: string; label: string; chat: boolean; approvals: boolean; filesRead: boolean; filesWrite: boolean; expires: number }[] }
 export type PwaGatewayOptions = {
   assets: string
   host: () => { id: string; name: string }
@@ -58,17 +58,21 @@ export class PwaGateway {
   status(): PwaStatus {
     this.prune()
     return { running: !!this.server, port: this.port, sessions: this.sessions.size, codeExpires: this.code?.expires ?? null,
-      devices: [...this.sessions.values()].map(session => ({ id: session.id, label: session.label, chat: session.grants.includes('chat'), approvals: session.grants.includes('approvals'), expires: session.expires })) }
+      devices: [...this.sessions.values()].map(session => ({ id: session.id, label: session.label,
+        chat: session.grants.includes('chat'), approvals: session.grants.includes('approvals'),
+        filesRead: session.grants.includes('files:read') || session.grants.includes('files:write'),
+        filesWrite: session.grants.includes('files:write'), expires: session.expires })) }
   }
   issueCode(): { code: string; expires: number; url: string } {
     if (!this.server) throw new Error('Gateway PWA indisponível.')
     this.code = { value: String(randomInt(0, 100_000_000)).padStart(8, '0'), expires: this.now() + CODE_MS }
     return { code: this.code.value, expires: this.code.expires, url: `http://localhost:${this.port}` }
   }
-  setDevicePermissions(id: string, grants: { chat: boolean; approvals: boolean }): PwaStatus {
+  setDevicePermissions(id: string, grants: { chat: boolean; approvals: boolean; filesRead?: boolean; filesWrite?: boolean }): PwaStatus {
     const session = [...this.sessions.values()].find(item => item.id === id)
     if (!session) throw new Error('Dispositivo não encontrado ou sessão expirada.')
-    session.grants = ['read', ...(grants.chat ? ['chat' as const] : []), ...(grants.approvals ? ['approvals' as const] : [])]
+    session.grants = ['read', ...(grants.chat ? ['chat' as const] : []), ...(grants.approvals ? ['approvals' as const] : []),
+      ...((grants.filesRead || grants.filesWrite) ? ['files:read' as const] : []), ...(grants.filesWrite ? ['files:write' as const] : [])]
     return this.status()
   }
   revokeDevice(id: string): PwaStatus {
@@ -240,54 +244,99 @@ export class PwaGateway {
     try {
       assertPwaRpcAuthorized(input.method, input.args, session.grants)
       const authorizedMethod = input.method
+      if (authorizedMethod === 'v9:models' && (input.args.length > 1 || input.args[0] != null &&
+        !['codex', 'claude', 'pi', 'opencode', 'antigravity'].includes(String(input.args[0])))) {
+        reply(response, 400, { error: 'Provedor de modelos inválido.' })
+        return
+      }
       if (authorizedMethod === 'v9:send') {
-        const [conversationId, message] = input.args
+        const [conversationId, message, model, effort, planMode] = input.args
         if (typeof conversationId !== 'string' || !conversationId ||
-          typeof message !== 'string' || !message.trim() || message.length > 12000) {
+          typeof message !== 'string' || !message.trim() || message.length > 12000 ||
+          model != null && (typeof model !== 'string' || model.length > 200) ||
+          effort != null && !['low', 'medium', 'high', 'xhigh', 'max'].includes(String(effort)) ||
+          planMode != null && typeof planMode !== 'boolean') {
           reply(response, 400, { error: 'Conversa ou mensagem inválida.' })
           return
         }
         // Sending starts on the host and may take minutes. Do not hold a browser request
         // for a complete coding-agent run; poll history for the real outcome instead.
-        Promise.resolve().then(() => this.options.dispatch(authorizedMethod, [conversationId, message], session.grants))
+        Promise.resolve().then(() => this.options.dispatch(authorizedMethod,
+          [conversationId, message, model ?? undefined, effort ?? undefined, planMode ?? undefined], session.grants))
           .catch(error => console.warn('[PWA] Envio do agente falhou:', error instanceof Error ? error.message : 'erro'))
         reply(response, 202, { result: { accepted: true } })
         return
       }
-      const raw = await this.options.dispatch(input.method, input.args, session.grants)
+      let args = input.args
+      if (input.method === 'v9:voiceSpeak') {
+        const [text, speed, agentId] = args
+        if (typeof text !== 'string' || !text.trim() || text.length > 12_000 ||
+          speed != null && (typeof speed !== 'number' || speed < 0.5 || speed > 2) ||
+          agentId != null && (typeof agentId !== 'string' || agentId.length > 200)) {
+          reply(response, 400, { error: 'Parâmetros de voz inválidos.' }); return
+        }
+      }
+      if (input.method === 'v9:voiceTranscribe') {
+        const [samples] = args
+        if (args.length !== 1 || !Array.isArray(samples) || !samples.length || samples.length > 500_000 ||
+          !samples.every(value => Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 255)) {
+          reply(response, 400, { error: 'Áudio inválido ou muito longo.' }); return
+        }
+        args = [Uint8Array.from(samples as number[])]
+      }
+      const raw = await this.options.dispatch(input.method, args, session.grants)
       // The web app only needs list metadata. Don't expose agent instructions,
       // accumulated file diffs, CLI paths or old execution input to every paired device.
       const output = input.method === 'v9:snapshot' && raw && typeof raw === 'object'
         ? (() => {
           const value = raw as Record<string, unknown>
-          const agents = Array.isArray(value.agents) ? value.agents.map((a: Record<string, unknown>) => ({
-            id: a.id, name: a.name, alias: a.alias, color: a.color,
+          let avatarBudget = 800_000
+          const safeAgent = (a: Record<string, unknown>) => {
+            const avatar = typeof a.avatar === 'string' && a.avatar.startsWith('data:image/') && a.avatar.length <= Math.min(100_000, avatarBudget) ? a.avatar : ''
+            avatarBudget -= avatar.length
+            return ({
+            id: a.id, name: a.name, alias: a.alias, description: a.description,
+            runtime: a.runtime, model: a.model, role: a.role, color: a.color,
+            avatar,
+            temporary: a.temporary, temporaryStatus: a.temporaryStatus,
+            canWrite: a.canWrite, computerUse: a.computerUse, approvalMode: a.approvalMode,
+            effort: a.effort, revision: a.revision, createdAt: a.createdAt,
             pitsShape: a.pitsShape, pitsHeadAccessory: a.pitsHeadAccessory, pitsFaceAccessory: a.pitsFaceAccessory,
             pitsAccessoryColors: a.pitsAccessoryColors, pitsEyeColor: a.pitsEyeColor, pitsCheekColor: a.pitsCheekColor,
             pitsBodyWidth: a.pitsBodyWidth, pitsBodyHeight: a.pitsBodyHeight, pitsEyeSize: a.pitsEyeSize,
             pitsEyeSpacing: a.pitsEyeSpacing, pitsMouthSize: a.pitsMouthSize, pitsBlush: a.pitsBlush,
             pitsAura: a.pitsAura, pitsAnimate: a.pitsAnimate, pitsSpeed: a.pitsSpeed, pitsAmplitude: a.pitsAmplitude,
-          })) : []
+          })
+          }
+          const agents = Array.isArray(value.agents) ? value.agents.map((a: Record<string, unknown>) => safeAgent(a)) : []
+          const assistant = value.assistant && typeof value.assistant === 'object'
+            ? safeAgent(value.assistant as Record<string, unknown>) : null
           const workspaces = Array.isArray(value.workspaces) ? value.workspaces.map((w: Record<string, unknown>) => ({
             id: w.id, name: w.name, kind: w.kind, branch: w.branch, archived: w.archived,
+            parentWorkspaceId: w.parentWorkspaceId, defaultAgentIds: w.defaultAgentIds, changes: w.changes, createdAt: w.createdAt,
           })) : []
           const conversations = Array.isArray(value.conversations) ? value.conversations.map((c: Record<string, unknown>) => ({
             id: c.id, workspaceId: c.workspaceId, name: c.name, kind: c.kind, archived: c.archived, agentIds: c.agentIds,
+            responseMode: c.responseMode, leaderAgentId: c.leaderAgentId, titleAuto: c.titleAuto, revision: c.revision, createdAt: c.createdAt,
           })) : []
           const runs = Array.isArray(value.runs) ? value.runs.slice(-80).map((r: Record<string, unknown>) => ({
             id: r.id, workspaceId: r.workspaceId, conversationId: r.conversationId,
-            agentId: r.agentId, status: r.status, input: typeof r.input === 'string' ? r.input.slice(0, 200) : '',
-            createdAt: r.createdAt,
+            agentId: r.agentId, status: r.status, input: '', createdAt: r.createdAt,
+            threadId: r.threadId, turnId: r.turnId, parentId: r.parentId,
+            agent: { runtime: agents.find((a: Record<string, unknown>) => a.id === r.agentId)?.runtime },
           })) : []
           const approvals = Array.isArray(value.approvals) ? value.approvals
             .filter((a: Record<string, unknown>) => a.status === 'pending')
             .map((a: Record<string, unknown>) => ({ id: a.id, kind: a.kind, status: a.status, runId: a.runId,
               createdAt: a.createdAt, details: typeof a.details === 'object' && a.details
-                ? { action: (a.details as Record<string, unknown>).action, path: (a.details as Record<string, unknown>).path } : {} })) : []
-          return { agents, workspaces, conversations, runs, approvals }
+                ? { action: (a.details as Record<string, unknown>).action } : {} })) : []
+          return { assistant, agents, workspaces, conversations, messages: [], runs, fileChanges: [], approvals,
+            terminalEnabled: false, steeringRuntimes: value.steeringRuntimes }
         })()
         : raw
-      const result = JSON.stringify({ result: output ?? null })
+      const safeOutput = input.method === 'v9:voiceSpeak' && raw instanceof Uint8Array
+        ? { audioBase64: Buffer.from(raw).toString('base64') } : output
+      const result = JSON.stringify({ result: safeOutput ?? null })
       if (Buffer.byteLength(result) > MAX_REPLY) { reply(response, 413, { error: 'Resultado grande demais.' }); return }
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
       response.end(result)
