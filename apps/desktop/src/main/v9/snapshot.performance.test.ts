@@ -16,10 +16,15 @@ it.skipIf(process.env.POLITRON_RUN_PERFORMANCE !== '1')('mede snapshot com hist√
     try {
       db.exec('BEGIN')
       for (const table of ['v9_runs', 'v9_file_changes']) {
-        const insert = db.prepare(`INSERT INTO ${table}(id,data) VALUES(?,?)`)
+        // v9_file_changes exige run_id, tool_call_id e workspace_id; o harness antigo nao conhecia essas colunas.
+        const insert = table === 'v9_runs'
+          ? db.prepare('INSERT INTO v9_runs(id,data) VALUES(?,?)')
+          : db.prepare('INSERT INTO v9_file_changes(id,run_id,tool_call_id,workspace_id,data) VALUES(?,?,?,?,?)')
         for (let index = 0; index < count; index++) {
           const id = `${table}-${index}`
-          insert.run(id, JSON.stringify({ id, detail: 'x'.repeat(2048) }))
+          const data = JSON.stringify({ id, detail: 'x'.repeat(2048) })
+          if (table === 'v9_runs') insert.run(id, data)
+          else insert.run(id, 'run-benchmark', `tool-${index}`, 'workspace-benchmark', data)
         }
       }
       db.exec('COMMIT')

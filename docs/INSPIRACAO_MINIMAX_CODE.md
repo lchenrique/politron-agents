@@ -144,18 +144,50 @@ Limite conhecido: por estar em `localStorage` do renderer, o agrupamento não é
 
 Arquivos: `apps/desktop/src/renderer/src/features/sidebar/projectGroups.ts` (estado e persistência), `apps/desktop/src/renderer/src/features/sidebar/ProjectGroupSection.tsx` (cabeçalho da pasta), `apps/desktop/src/renderer/src/features/sidebar/GroupDialog.tsx` (diálogo de criação e renomeação), `apps/desktop/src/renderer/src/features/sidebar/Sidebar.tsx` (integração).
 
-### Frente 4. Listagem de projetos com leitura em três etapas
+### Frente 4. Desempenho da listagem
 
-O Politron ainda não tem equivalente ao que foi encontrado no MiniMax Code. Quando a lista de projetos crescer, o caminho crítico é o mesmo: manter contadores materializados, ordenar por índice e paginar por cursor.
+O `AGENT.md` do projeto pede: "Meça desempenho antes de afirmar que o aplicativo ficou mais rápido ou mais leve". A medição foi feita antes de qualquer otimização, e ela mudou o desenho.
 
-Antes de mexer nisso é preciso medir. O `AGENT.md` do projeto é explícito: "Meça desempenho antes de afirmar que o aplicativo ficou mais rápido ou mais leve". O trabalho pendente da sessão anterior, com missões, política de aprovação e rotinas, ainda não foi commitado e o repositório tem alterações de grande volume em `src/main/v9`. Medir a lista de projetos sobre essa base seria medir sobre código instável.
+**Medição.** Um benchmark novo, `apps/desktop/src/renderer/src/features/sidebar/Sidebar.performance.test.tsx`, renderiza a barra lateral com 120 projetos e 600 sessões, 8 pastas e carga concentrada em poucos projetos, que é o pior caso real. O ambiente é jsdom, então os números absolutos exageram o custo de DOM em relação ao navegador; o que interessa é a comparação no mesmo ambiente.
+
+| Cenário | Antes | Depois |
+| --- | --- | --- |
+| Montagem completa | 998 a 1115 ms | 409 a 620 ms |
+| Atualização com snapshot novo | 410 a 544 ms | 161 a 361 ms |
+| Varreduras da lista de sessões por render | 242 | 2 |
+
+**O que a medição apontou.** A barra lateral filtrava a lista de sessões uma vez por projeto e, dentro desse filtro, procurava o workspace de cada sessão com busca linear. Com N projetos e C sessões isso é O(N² × C): 242 varreduras da lista inteira em 120 projetos. Além disso, a barra montava todas as sessões de todos os projetos e a busca rápida reconstruía um item por sessão a cada render, mesmo fechada.
+
+**O que mudou.**
+
+- `features/sidebar/sidebarIndex.ts` novo: índices em `Map` construídos numa passagem só. `conversationsOf`, `childWorkspaces` e `needsAttention` viram consulta direta, sem varrer o snapshot.
+- A paleta da busca rápida é memorizada e deixa de ser reconstruída a cada render.
+- A partição dos projetos por pasta é uma passagem única, em vez de um filtro por pasta.
+- Cada projeto mostra as 10 sessões mais recentes, com "ver mais N sessões" sob demanda. É a mesma ideia do `sessionLimit` do MiniMax Code: o sidebar navega, não arquiva.
+
+**Como isso fica protegido.** O teste determinístico conta quantas vezes a lista de sessões é filtrada durante o render e exige menos de seis. Com a implementação anterior ele reprova com 242. O teste de tempo ficou com orçamento largo, porque em jsdom o número varia com a carga da máquina; ele é rede de seguranca, não a garantia principal.
+
+**O que continua em aberto.** A paginação da lista de projetos por cursor, como o MiniMax Code faz no catálogo, ainda não existe aqui: a barra mostra todos os projetos. Com 120 projetos isso é aceitável e o custo medido é baixo, mas é o próximo degrau se a lista crescer muito.
+
+### O processo principal já está no caminho certo
+
+O repositório tinha um harness de desempenho do snapshot que nunca mais rodou: o esquema da tabela `v9_file_changes` mudou e passou a exigir `run_id`, `tool_call_id` e `workspace_id`, então o `INSERT` do harness quebrava com `NOT NULL constraint failed`. O harness foi corrigido e roda com `POLITRON_RUN_PERFORMANCE=1`.
+
+| registros por tabela | p50 | p95 |
+| --- | --- | --- |
+| 100 | 0,67 ms | 2,50 ms |
+| 500 | 3,46 ms | 6,78 ms |
+| 2.000 | 4,04 ms | 9,77 ms |
+| 10.000 | 4,58 ms | 8,21 ms |
+
+O custo estabiliza em ~4,6 ms mesmo com 10.000 registros por tabela, porque o snapshot lê apenas os 100 runs e as 500 alterações de arquivo mais recentes. A leitura é limitada na origem, que é a mesma ideia do `sessionLimit` e do `LIMIT` do catálogo do MiniMax Code: o custo não cresce com o histórico. O gargalo estava só no renderer.
 
 ## Ordem sugerida
 
 1. Botão rápido do painel direito e reposicionamento do toggle do sidebar. **Feito.**
 2. Rail fixo à esquerda, com botão de recolher sempre alcançável. **Feito.**
 3. Pastas de projetos, com rótulo persistido e agrupamento apenas visual. **Feito**, com persistência em `localStorage`; falta o campo `groupId` no `Workspace` para sincronizar entre dispositivos.
-4. Medição de desempenho da listagem de projetos, antes de qualquer otimização.
+4. Desempenho da barra lateral: medição antes de otimizar, índices em `Map`, limite de sessões por projeto. **Feito.** Falta a paginação por cursor da lista de projetos e a medição do custo do snapshot no processo principal.
 
 ## Registro de evidências
 

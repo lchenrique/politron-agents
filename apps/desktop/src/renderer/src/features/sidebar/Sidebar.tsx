@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Archive, CalendarClock, ChevronDown, ChevronRight, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
 import { ProjectGroupSection } from './ProjectGroupSection'
+import { buildPaletteItems, useSidebarIndex } from './sidebarIndex'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import ActionSearchBar, { type CommandItem } from '@/components/kokonutui/action-search-bar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -13,6 +14,9 @@ import { errorText } from '../app/appShellShared'
 import type { EditorKind } from '../editors/Editor'
 import { HostSelector } from '../hosts/HostSelector'
 import { useProjectGroups } from './projectGroups'
+
+/** Quantas sessoes cada projeto mostra antes de exigir "ver mais". Limita o DOM do sidebar sem esconder o trabalho recente. */
+const SESSION_LIMIT = 10
 
 function readSet(key: string): Set<string> {
   try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []) } catch { return new Set() }
@@ -48,6 +52,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null)
   const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null)
   const [openWorkspaceMenuId, setOpenWorkspaceMenuId] = useState<string | null>(null)
+  // Projetos com muitas sessoes mostram so as mais recentes; o resto fica sob demanda.
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(() => new Set())
   const [deleteRequest, setDeleteRequest] = useState<{ kind: 'workspace' | 'conversation' | 'agent'; id: string; title: string; description: string } | null>(null)
   useEffect(() => { localStorage.setItem('politron.sidebar.collapsed-workspaces', JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { localStorage.setItem('politron.sidebar.favorites', JSON.stringify([...favorites])) }, [favorites])
@@ -68,14 +74,9 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const favoriteKey = (type: 'workspace' | 'conversation' | 'agent', id: string) => `${type}:${id}`
   const toggleFavorite = (key: string) => setFavorites(current => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next })
   const isFavorite = (type: 'workspace' | 'conversation' | 'agent', id: string) => favorites.has(favoriteKey(type, id))
-  const workspaceOf = (id: string) => snapshot.workspaces.find(item => item.id === id)
-  const named = (workspace: Workspace | undefined) => !!workspace?.name
-  const conversationsOf = (workspaceId: string) => snapshot.conversations.filter(item => !item.archived && (item.workspaceId === workspaceId || (workspaceOf(workspaceId)?.name === 'Livre' && workspaceOf(workspaceId)?.kind === 'free' && !named(workspaceOf(item.workspaceId))))).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  // Sessões legadas conservam os diretórios originais, mas não aparecem soltas.
-  const legacyConversations = snapshot.conversations.filter(item => !item.archived && !named(workspaceOf(item.workspaceId)))
-  const rootWorkspaces = snapshot.workspaces.filter(item => !item.archived && !item.parentWorkspaceId && item.name).sort((a, b) => Number(b.name === 'Livre' && b.kind === 'free') - Number(a.name === 'Livre' && a.kind === 'free') || a.name.localeCompare(b.name, 'pt-BR'))
-  const childWorkspaces = (id: string) => snapshot.workspaces.filter(item => !item.archived && item.parentWorkspaceId === id)
-  const needsAttention = (conversationId: string) => snapshot.approvals.some(approval => approval.conversationId === conversationId && approval.status === 'pending')
+  // Indices derivados do snapshot: a barra lateral nao pode varrer o snapshot inteiro por projeto.
+  const { workspacesById, agentsById, legacyConversations, rootWorkspaces, childWorkspaces, conversationsOf, needsAttention } = useSidebarIndex(snapshot)
+  const workspaceOf = (id: string) => workspacesById.get(id)
   const workspaceNeedsAttention = (workspaceId: string) => conversationsOf(workspaceId).some(conversation => (unreadCounts[conversation.id] || 0) > 0 || needsAttention(conversation.id))
   const archiveWorkspace = async (workspace: Workspace) => {
     const preserve = workspace.changes > 0
@@ -132,9 +133,9 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </DropdownMenuContent>
     </DropdownMenu>
   </div>
-  const chiefAgent = snapshot.agents.find(agent => agent.role === 'chief')
+  const chiefAgent = useMemo(() => snapshot.agents.find(agent => agent.role === 'chief'), [snapshot.agents])
   const showChief = !!chiefAgent
-  const regularAgents = snapshot.agents.filter(agent => agent.role !== 'chief' && agent.temporaryStatus !== 'retired')
+  const regularAgents = useMemo(() => snapshot.agents.filter(agent => agent.role !== 'chief' && agent.temporaryStatus !== 'retired'), [snapshot.agents])
 
 
   const conversationButton = (conversation: Conversation) =>
@@ -158,7 +159,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
 
   const workspaceNode = (workspace: Workspace, depth = 0) => {
     const isCollapsed = collapsed.has(workspace.id)
-    const conversations = conversationsOf(workspace.id)
+    const allConversations = conversationsOf(workspace.id)
+    const showAllSessions = expandedSessions.has(workspace.id)
+    const conversations = showAllSessions ? allConversations : allConversations.slice(0, SESSION_LIMIT)
+    const hiddenSessions = allConversations.length - conversations.length
     const children = childWorkspaces(workspace.id)
     return <div key={workspace.id} className={depth ? 'ml-4 border-l border-border/40 pl-2' : ''}>
       <div className="group flex items-center gap-1 rounded-lg px-1 py-1 hover:bg-accent/40" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
@@ -193,6 +197,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       {!isCollapsed && <div className="ml-6 space-y-0.5">
         {children.map(child => workspaceNode(child, depth + 1))}
         {conversations.map(conversationButton)}
+        {!!hiddenSessions && <button type="button" onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="flex w-full items-center gap-1 rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent/40 hover:text-foreground">Ver mais {hiddenSessions} sessões</button>}
         {!conversations.length && !children.length && <p className="px-2 py-1 text-[10px] text-muted-foreground">Nenhuma conversa ainda.</p>}
       </div>}
     </div>
@@ -203,28 +208,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     return <ProjectGroupSection name={name} items={items} collapsed={collapsedGroups.has(name)} editable={editable} onToggle={() => toggleGroup(name)} onRename={() => openGroupDialog('rename', { name })} onRemove={() => removeGroup(name)} renderWorkspace={workspace => workspaceNode(workspace)} />
   }
 
-  const paletteItems: CommandItem[] = [
-    ...(canChat ? [{ id: 'create:session', group: 'Criar', label: 'Nova sessão livre', icon: <MessageSquarePlus className="size-4" />, keywords: ['conversa', 'chat', 'livre'] }] : []),
-    ...(!browserMode ? [
-      { id: 'create:workspace', group: 'Criar', label: 'Novo projeto', icon: <FolderPlus className="size-4" />, keywords: ['pasta', 'workspace'] },
-      { id: 'create:agent', group: 'Criar', label: 'Novo Boo', icon: <Plus className="size-4" />, keywords: ['boo', 'boos', 'bot'] },
-    ] : []),
-    ...snapshot.workspaces.filter(workspace => workspace.name && !workspace.archived).map(workspace => ({
-      id: 'workspace:' + workspace.id, group: 'Projetos', label: workspace.name,
-      keywords: [workspace.path, workspace.branch || '', 'workspace', 'projeto'],
-      icon: <FolderOpen className="size-4" />
-    })),
-    ...snapshot.conversations.filter(conversation => !conversation.archived).map(conversation => ({
-      id: 'conversation:' + conversation.id, group: 'Sessões', label: conversation.name,
-      keywords: [workspaceOf(conversation.workspaceId)?.name || '', ...conversation.agentIds.map(id => snapshot.agents.find(a => a.id === id)?.name || ''), 'conversa'],
-      icon: <MessageSquarePlus className="size-4" />
-    })),
-    ...snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired').map(agent => ({
-      id: 'agent:' + agent.id, group: 'Agentes', label: agent.name,
-      keywords: [agent.alias, agent.description, agent.role === 'chief' ? 'chief' : 'boo'],
-      icon: <Users className="size-4" />
-    }))
-  ]
+  // A paleta fica fechada na maior parte do tempo: construir esses itens a cada render custava um elemento por sessao.
+  const paletteItems = useMemo(() => buildPaletteItems(snapshot, { canChat, browserMode }, workspacesById, agentsById), [snapshot, canChat, browserMode, workspacesById, agentsById])
   const openPaletteItem = (item: CommandItem) => {
     const [type, id] = item.id.split(':')
     if (type === 'create') {
@@ -238,8 +223,21 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       if (agent) { setSection('agents'); void onOpenAgent(agent) }
     }
   }
-  const visibleAgents = regularAgents.sort((a, b) =>
-    Number(isFavorite('agent', b.id)) - Number(isFavorite('agent', a.id)) || a.name.localeCompare(b.name, 'pt-BR'))
+  const visibleAgents = useMemo(() => regularAgents.sort((a, b) =>
+    Number(favorites.has(favoriteKey('agent', b.id))) - Number(favorites.has(favoriteKey('agent', a.id))) || a.name.localeCompare(b.name, 'pt-BR')), [regularAgents, favorites])
+  // Partition projects by folder in a single pass: filtering per folder cost O(folders * projects).
+  const workspacesByGroup = useMemo(() => {
+    const map = new Map<string, Workspace[]>()
+    const ungrouped: Workspace[] = []
+    for (const workspace of rootWorkspaces) {
+      const group = workspaceGroup[workspace.id]
+      if (!group) { ungrouped.push(workspace); continue }
+      const list = map.get(group)
+      if (list) list.push(workspace)
+      else map.set(group, [workspace])
+    }
+    return { map, ungrouped }
+  }, [rootWorkspaces, workspaceGroup])
 
   return <aside className="boobot-sidebar flex h-full min-w-0 flex-col border-r border-sidebar-border/75 bg-sidebar text-sidebar-foreground" aria-label="Barra lateral do Boobot">
     <header className="space-y-1.5 border-b border-sidebar-border/65 px-3 pb-3 pt-2">
@@ -296,8 +294,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             <p className="flex-1 px-2 py-1 text-[10px] font-semibold uppercase tracking-[.12em] text-muted-foreground">Pastas</p>
             <Button variant="ghost" size="icon" className="size-6" aria-label="Nova pasta de projetos" title="Criar pasta de projetos" onClick={() => openGroupDialog('create')}><FolderPlus className="size-3.5" /></Button>
           </div>}
-          {groups.map(group => groupSection(group, rootWorkspaces.filter(workspace => workspaceGroup[workspace.id] === group)))}
-          {groupSection(groups.length ? 'Outros' : null, rootWorkspaces.filter(workspace => !workspaceGroup[workspace.id]), false)}
+          {groups.map(group => groupSection(group, workspacesByGroup.map.get(group) || []))}
+          {groupSection(groups.length ? 'Outros' : null, workspacesByGroup.ungrouped, false)}
           {!rootWorkspaces.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Crie um projeto pelo botão + para organizar suas sessões.</p>}
           {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="mt-2"><Button variant="ghost" className="h-8 w-full justify-start gap-1.5 px-2 text-xs" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}>{collapsed.has('legacy') ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}<FolderOpen className="size-3.5" />Sessões antigas<span className="ml-auto text-[10px]">{legacyConversations.length}</span></Button>{!collapsed.has('legacy') && <div className="ml-5 border-l border-border/50 pl-1">{legacyConversations.map(conversationButton)}</div>}</div>}
         </section>
