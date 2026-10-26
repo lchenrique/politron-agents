@@ -24,20 +24,37 @@ export function AgentTerminalSessions({ workspaceId, conversationId, onStarted }
   selectedRef.current = selectedId
   const onStartedRef = useRef(onStarted)
   onStartedRef.current = onStarted
+  const requestVersion = useRef(0)
 
   const load = useCallback(() => {
+    const version = ++requestVersion.current
     void window.appAPI.agentTerminalSessions(conversationId, workspaceId).then(list => {
+      if (version !== requestVersion.current) return
       outputs.current = new Map(list.map(item => [item.id, item.output]))
       setSessions(list.map(({ output: _output, ...session }) => session))
       setSelectedId(current => current && list.some(item => item.id === current) ? current : list.at(-1)?.id || null)
       setError('')
       setLoaded(value => value + 1)
-    }).catch(reason => setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os processos dos agentes.'))
+    }).catch(reason => {
+      if (version !== requestVersion.current) return
+      outputs.current = new Map()
+      setSessions([])
+      setSelectedId(null)
+      setLoaded(value => value + 1)
+      setError(reason instanceof Error ? reason.message : 'Não foi possível carregar os processos dos agentes.')
+    })
   }, [conversationId, workspaceId])
 
   useEffect(() => {
+    // Fail closed on scope changes; do not retain another conversation's terminal output.
+    requestVersion.current++
+    outputs.current = new Map()
+    setSessions([])
+    setSelectedId(null)
+    setError('')
+    setLoaded(value => value + 1)
     load()
-    return window.appAPI.onEvent(event => {
+    const unsubscribe = window.appAPI.onEvent(event => {
       if (event.type === 'changed' && event.reason === 'connection-restored') { load(); return }
       if (event.type !== 'agentTerminal' || event.session.conversationId !== conversationId || event.session.workspaceId !== workspaceId) return
       const { session } = event
@@ -49,6 +66,7 @@ export function AgentTerminalSessions({ workspaceId, conversationId, onStarted }
       setSessions(current => current.some(item => item.id === session.id) ? current.map(item => item.id === session.id ? session : item) : [...current, session])
       if (event.event === 'started') { setSelectedId(session.id); onStartedRef.current?.() }
     })
+    return () => { requestVersion.current++; unsubscribe() }
   }, [conversationId, workspaceId, load])
 
   useEffect(() => {

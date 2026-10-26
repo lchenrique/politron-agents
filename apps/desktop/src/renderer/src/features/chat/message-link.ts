@@ -1,4 +1,5 @@
 import { safeWebUrl } from '../../../../shared/platform-browser'
+import type { Workspace } from '../../../../shared/v9'
 
 export type MessageLinkTarget = { kind: 'anchor' } | { kind: 'url'; url: string } | { kind: 'file'; path: string } | { kind: 'blocked' }
 const blocked: MessageLinkTarget = { kind: 'blocked' }
@@ -20,4 +21,9 @@ export function classifyMessageLink(href: string | undefined): MessageLinkTarget
   const segments = path.replace(/\\/g, '/').split('/').filter(segment => segment && segment !== '.')
   if (!segments.length || segments.includes('..') || /^[a-z]:/i.test(segments[0]) || /^[\\/]/.test(path)) return blocked
   return { kind: 'file', path: segments.join('/') }
+}
+
+/** Projeto livre recebe um diretório interno gerenciado: para links, conta como conversa sem pasta de projeto. */
+export function linkFileWorkspaceId(workspace: Pick<Workspace, 'id' | 'kind'> | undefined): string | null {
+  return workspace && workspace.kind !== 'free' ? workspace.id : null
 }

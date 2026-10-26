@@ -12,6 +12,7 @@ import { AgentDetails } from './AgentDetails'
 import { ChatHeader, ConversationAvatar, ConversationTools, conversationIdentity, type ConversationChromeProps } from '../chat/ChatHeader'
 import { MessageList } from '../chat/MessageList'
 import { MessageLinkContext, type MessageLinkHandlers } from '../chat/MessageMarkdown'
+import { linkFileWorkspaceId } from '../chat/message-link'
 import { useConversationHistory } from '../chat/useConversationHistory'
 import { Composer } from '../composer/Composer'
 import { modelOptions } from '../composer/model-options'
@@ -116,7 +117,7 @@ export default function AppShell() {
     ? visibleFileChanges.filter(change => change.runId === finishedWithChanges.runId && change.status === 'applied') : []
   const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
   const selectedWorkspace = selected ? snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined
-  const linkWorkspaceId = selectedWorkspace?.path ? selectedWorkspace.id : null
+  const linkWorkspaceId = linkFileWorkspaceId(selectedWorkspace)
   // Links das respostas no Desktop: arquivos no editor do dock, web no navegador da plataforma. A PWA não recebe provider.
   const messageLinks = useMemo<MessageLinkHandlers | null>(() => browserMode ? null : {
     openFile: path => {

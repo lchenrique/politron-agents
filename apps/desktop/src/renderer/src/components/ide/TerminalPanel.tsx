@@ -182,7 +182,7 @@ const TerminalPanel = memo(({ workspaceId, conversationId, showLogs = true }: { 
         </div>
 
         {conversationId && <div className={`h-full ${activeTab === "agents" ? "block" : "hidden"}`}>
-          {hasProject ? <AgentTerminalSessions workspaceId={workspaceId!} conversationId={conversationId} onStarted={() => setActiveTab("agents")} /> : <TerminalPlaceholder />}
+          {hasProject ? <AgentTerminalSessions key={`${workspaceId}:${conversationId}`} workspaceId={workspaceId!} conversationId={conversationId} onStarted={() => setActiveTab("agents")} /> : <TerminalPlaceholder />}
         </div>}
 
         <div className={`flex-1 overflow-y-auto p-2.5 flex flex-col gap-0.5 scrollbar-thin h-full ${activeTab === "logs" ? "block" : "hidden"}`}>
