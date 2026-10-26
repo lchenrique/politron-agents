@@ -52,6 +52,8 @@ it('roteia RPC para o host escolhido, revoga pareamento e não faz fallback loca
   const local = vi.fn(() => 'local')
   expect(await client.invoke('v9:snapshot', [], local)).toEqual({ marker: 'host' }); expect(local).not.toHaveBeenCalled()
   expect(() => client.invoke('v9:voiceSpeak', ['oi'], local)).toThrow('host')
+  for (const method of ['v9:createProjectFolder', 'v9:cloneRepository']) expect(() => client.invoke(method, [{}], local)).toThrow('este computador selecionado')
+  expect(local).not.toHaveBeenCalled()
   expect(JSON.stringify(client.snapshot())).not.toContain('secretKey')
   const link = ui.clipboard
   await host.revoke()

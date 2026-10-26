@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 beforeEach(() => { Element.prototype.scrollIntoView = vi.fn() })
@@ -47,6 +47,56 @@ describe('criação simples de conversa', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'Automático · Jev pelo OpenRouter' }))
     fireEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ responseMode: 'auto', leaderAgentId: 'a' })))
+  })
+})
+
+describe('novo projeto por origem', () => {
+  const stubApi = (api: Partial<typeof window.appAPI>) => { Object.assign(window, { appAPI: api }) }
+
+  it('cria pasta nova no destino escolhido e salva com agente opcional', async () => {
+    const createProjectFolder = vi.fn().mockResolvedValue('C:\\dev\\landing')
+    stubApi({ createProjectFolder })
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<Editor kind="workspace" agents={[agent('a', 'Alice')]} models={[]} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue('C:\\dev')} />)
+    expect(screen.getByRole('radio', { name: /Criar pasta nova/ })).toBeChecked()
+    fireEvent.change(screen.getByLabelText('Nome do projeto'), { target: { value: 'landing' } })
+    fireEvent.click(screen.getByRole('button', { name: /Escolher/ }))
+    expect(await screen.findByText('Será criada: C:\\dev\\landing')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: /Alice/ }))
+    expect(screen.getByText('Um agente forma a equipe padrão do projeto.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Criar projeto' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'landing', path: 'C:\\dev\\landing', defaultAgentIds: ['a'] })))
+    expect(createProjectFolder).toHaveBeenCalledWith({ parent: 'C:\\dev', name: 'landing' })
+  })
+
+  it('mostra só os campos do GitHub e exibe erro recuperável da clonagem', async () => {
+    const cloneRepository = vi.fn().mockRejectedValue(new Error(`Error invoking remote method 'v9:cloneRepository': Error: Já existe uma pasta chamada "repo" neste local.`))
+    stubApi({ cloneRepository })
+    const onSave = vi.fn()
+    render(<Editor kind="workspace" agents={[]} models={[]} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue('C:\\dev')} />)
+    fireEvent.click(screen.getByRole('radio', { name: /Clonar do GitHub/ }))
+    expect(screen.getByRole('radio', { name: /Clonar do GitHub/ })).toBeChecked()
+    expect(screen.queryByLabelText('Pasta do projeto')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/Repositório do GitHub/), { target: { value: 'carlos/repo' } })
+    fireEvent.click(screen.getByRole('button', { name: /Escolher/ }))
+    await screen.findByText('Destino: C:\\dev\\repo')
+    fireEvent.click(screen.getByRole('button', { name: 'Clonar e criar projeto' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/^Já existe uma pasta chamada "repo" neste local\.$/)
+    // No rodapé fixo: o erro fica visível mesmo com o formulário rolado.
+    expect(alert.closest('footer')).not.toBeNull()
+    expect(cloneRepository).toHaveBeenCalledWith({ repository: 'carlos/repo', parent: 'C:\\dev', name: undefined })
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('abre pasta existente sem exigir agentes', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<Editor kind="workspace" agents={[]} models={[]} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn().mockResolvedValue('C:\\dev\\site')} />)
+    fireEvent.click(screen.getByRole('radio', { name: /Abrir pasta existente/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Escolher/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Abrir projeto' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir projeto' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'site', path: 'C:\\dev\\site', defaultAgentIds: [] })))
   })
 })
 
@@ -109,6 +159,69 @@ describe('editor de agentes com Poli Studio', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'Chief coordenador' }))
     fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-1', name: 'Atlas', role: 'chief' })))
+  })
+
+  it('organiza o drawer em três seções com painel rolável e rodapé fora da rolagem', () => {
+    render(<Editor kind="agent" agents={[]} models={[]} initial={agent('atlas', 'Atlas')} onClose={vi.fn()} onSave={vi.fn()} onPickFolder={vi.fn()} />)
+    const tablist = screen.getByRole('tablist', { name: 'Seções do agente' })
+    expect(within(tablist).getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Identidade', 'Aparência', 'Modelo e permissões'])
+    const panel = screen.getByRole('tabpanel', { name: 'Identidade' })
+    expect(panel).toHaveClass('overflow-y-auto', 'min-h-0')
+    expect(within(panel).getByRole('region', { name: 'Como aparece na conversa' })).toContainElement(screen.getByLabelText('Menção'))
+    expect(within(panel).getByRole('region', { name: 'Papel na equipe' })).toContainElement(screen.getByRole('combobox', { name: 'Papel do agente' }))
+    const save = screen.getByRole('button', { name: 'Salvar alterações' })
+    expect(panel).not.toContainElement(save)
+    expect(save.closest('footer')).toHaveClass('shrink-0')
+    for (const name of ['Aparência', 'Modelo e permissões']) {
+      fireEvent.click(screen.getByRole('tab', { name }))
+      expect(screen.getByRole('tabpanel', { name })).not.toContainElement(screen.getByRole('button', { name: 'Salvar alterações' }))
+    }
+  })
+
+  it('navega entre as seções pelo teclado com foco móvel', () => {
+    render(<Editor kind="agent" agents={[]} models={[]} initial={agent('atlas', 'Atlas')} onClose={vi.fn()} onSave={vi.fn()} onPickFolder={vi.fn()} />)
+    const agentTabs = within(screen.getByRole('tablist', { name: 'Seções do agente' }))
+    const identity = agentTabs.getByRole('tab', { name: 'Identidade' })
+    expect(identity).toHaveAttribute('tabindex', '0')
+    expect(agentTabs.getByRole('tab', { name: 'Aparência' })).toHaveAttribute('tabindex', '-1')
+    fireEvent.keyDown(identity, { key: 'ArrowDown' })
+    expect(agentTabs.getByRole('tab', { name: 'Aparência' })).toHaveAttribute('aria-selected', 'true')
+    expect(agentTabs.getByRole('tab', { name: 'Aparência' })).toHaveFocus()
+    fireEvent.keyDown(agentTabs.getByRole('tab', { name: 'Aparência' }), { key: 'End' })
+    expect(agentTabs.getByRole('tab', { name: 'Modelo e permissões' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(agentTabs.getByRole('tab', { name: 'Modelo e permissões' }), { key: 'ArrowRight' })
+    expect(agentTabs.getByRole('tab', { name: 'Identidade' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('mantém o risco do Bypass ao lado do modo de aprovação e salva os mesmos campos', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<Editor kind="agent" agents={[]} models={[]} initial={{ ...agent('atlas', 'Atlas'), approvalMode: 'bypass' }} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Menção'), { target: { value: 'Atlas QA' } })
+    fireEvent.click(screen.getByRole('tab', { name: 'Modelo e permissões' }))
+    const permissions = screen.getByRole('region', { name: 'Permissões' })
+    const note = within(permissions).getByTestId('approval-mode-note')
+    expect(note).toHaveAttribute('data-tone', 'warning')
+    expect(note).toHaveTextContent('O terminal não é isolado e pode afetar todo o computador.')
+    expect(note.previousElementSibling).toContainElement(screen.getByRole('combobox', { name: 'Modo de aprovação' }))
+    expect(within(permissions).getByRole('checkbox', { name: /Permitir Computer Use/ })).not.toBeChecked()
+    expect(screen.getByRole('region', { name: 'Modelo' })).toContainElement(screen.getByRole('combobox', { name: 'Motor' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'atlas', name: 'Atlas', alias: 'atlas-qa', instructions: 'Instruções do agente', role: 'agent',
+      runtime: 'codex', canWrite: false, computerUse: false, approvalMode: 'bypass',
+    })))
+  })
+
+  it('mostra no rodapé o erro de instruções vazias e volta para Identidade', async () => {
+    const onSave = vi.fn()
+    render(<Editor kind="agent" agents={[]} models={[]} initial={{ ...agent('atlas', 'Atlas'), instructions: '' }} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn()} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Modelo e permissões' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Escreva as instruções de trabalho do agente para continuar.')
+    expect(alert.closest('footer')).not.toBeNull()
+    expect(screen.getByRole('tab', { name: 'Identidade' })).toHaveAttribute('aria-selected', 'true')
+    expect(onSave).not.toHaveBeenCalled()
   })
 
   it('envia configurações personalizadas junto com o agente', async () => {

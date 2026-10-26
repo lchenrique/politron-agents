@@ -1,70 +1,41 @@
-export type ThemeId =
-  | 'default'
-  | 'dark-matter'
-  | 'zen'
-  | 'cafeine'
-  | 'claude'
-  | 'ember'
-  | 'nordic'
-  | 'evergreen'
-  | 'violet-bloom'
-  | 't3chat'
-  | 'terminal-muted'
+/**
+ * Registry de temas. Hoje existe um único sistema visual (Boobot) com dois modos.
+ * Para adicionar um tema: inclua o id em ThemeId e em THEMES e defina os tokens de paleta
+ * em index.css sob `[data-theme="id"]` e `.dark[data-theme="id"]`. Componentes não mudam.
+ */
+export type ThemeId = 'boobot'
+export type ColorMode = 'light' | 'dark'
 
 export interface ThemeDefinition {
   id: ThemeId
   label: string
   description: string
-  swatch: string
+  modes: readonly ColorMode[]
 }
 
-export const THEME_GROUPS: ReadonlyArray<{ label: string; themes: readonly ThemeDefinition[] }> = [
-  {
-    label: 'Essenciais',
-    themes: [
-      { id: 'default', label: 'Vibe', description: 'Preto e branco', swatch: '#9BA3B5' },
-      { id: 'dark-matter', label: 'Dark Matter', description: 'Grafite e cobre', swatch: '#D87943' },
-      { id: 'zen', label: 'Zen', description: 'Neutros suaves', swatch: '#9F9885' },
-    ],
-  },
-  {
-    label: 'Aconchegantes',
-    themes: [
-      { id: 'cafeine', label: 'Cafeine', description: 'Café e creme', swatch: '#B68A6B' },
-      { id: 'claude', label: 'Claude', description: 'Terracota', swatch: '#C46A4D' },
-      { id: 'ember', label: 'Ember', description: 'Âmbar e bronze', swatch: '#DA9252' },
-    ],
-  },
-  {
-    label: 'Cores e personalidade',
-    themes: [
-      { id: 'nordic', label: 'Nordic', description: 'Azul glacial', swatch: '#78B3DE' },
-      { id: 'evergreen', label: 'Evergreen', description: 'Verde floresta', swatch: '#64A77F' },
-      { id: 'violet-bloom', label: 'Violet Bloom', description: 'Roxo vibrante', swatch: '#8C5CFF' },
-      { id: 't3chat', label: 'T3 Rose', description: 'Rosa ameixa', swatch: '#A84370' },
-      { id: 'terminal-muted', label: 'Terminal Green', description: 'Verde terminal', swatch: '#45A167' },
-    ],
-  },
+export const DEFAULT_THEME: ThemeId = 'boobot'
+
+export const THEMES: readonly ThemeDefinition[] = [
+  { id: 'boobot', label: 'Boobot', description: 'Grafite com acento íris', modes: ['light', 'dark'] },
 ]
 
-export const THEMES = THEME_GROUPS.flatMap(group => group.themes)
+/** Os únicos modos oferecidos na interface. */
+export const COLOR_MODES: ReadonlyArray<{ id: ColorMode; label: string }> = [
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+]
 
-export const LEGACY_THEME_MIGRATIONS: Readonly<Record<string, ThemeId>> = {
-  candyland: 't3chat',
-  tangerine: 'ember',
-  cyberpunk: 'violet-bloom',
-  omegon: 'nordic',
-  msn: 'nordic',
-  melancholik: 'zen',
-}
+/**
+ * IDs de paletas aposentadas, mantidos só para migrar preferências salvas.
+ * Todas convergem para o tema único; o modo claro/escuro salvo é preservado à parte.
+ */
+export const LEGACY_THEME_IDS: readonly string[] = [
+  'default', 'dark-matter', 'zen', 'cafeine', 'claude', 'ember', 'nordic', 'evergreen', 'violet-bloom', 't3chat', 'terminal-muted',
+  'candyland', 'tangerine', 'cyberpunk', 'omegon', 'msn', 'melancholik',
+]
 
-/** Persisted names may outlive retired themes. Resolve instead of leaving an unstyled selection. */
+/** Preferências antigas ou desconhecidas resolvem para um tema registrado em vez de ficar sem estilo. */
 export function resolveThemeName(value: string | null | undefined): ThemeId {
-  if (value) {
-    const replacement = LEGACY_THEME_MIGRATIONS[value]
-    if (replacement) return replacement
-    const existing = THEMES.find(theme => theme.id === value)
-    if (existing) return existing.id
-  }
-  return 'default'
+  const existing = THEMES.find(theme => theme.id === value)
+  return existing ? existing.id : DEFAULT_THEME
 }

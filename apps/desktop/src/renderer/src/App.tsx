@@ -16,7 +16,7 @@ const isDesktopRenderer = typeof window !== "undefined" && "vibeAPI" in window;
 const AppRouter = isDesktopRenderer ? HashRouter : BrowserRouter;
 
 const App = () => (
-  <ThemeProvider defaultMode="dark" defaultTheme="default" storageKey="politron-ui-theme">
+  <ThemeProvider defaultMode="dark" defaultTheme="boobot" storageKey="politron-ui-theme">
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />

@@ -17,11 +17,11 @@ export function ProjectGroupSection({ name, items, collapsed, editable, onToggle
 }) {
   return <div className="mt-1">
     <div className="group flex items-center gap-1">
-      <Button variant="ghost" className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs" onClick={onToggle} aria-label={collapsed ? `Expandir ${name}` : `Recolher ${name}`}>
+      <Button variant="ghost" className="h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[12px] font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" onClick={onToggle} aria-label={collapsed ? `Expandir ${name}` : `Recolher ${name}`}>
         {collapsed ? <ChevronRight className="size-3 shrink-0" /> : <ChevronDown className="size-3 shrink-0" />}
         <Folder className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-left">{name}</span>
-        <span className="text-[10px] tabular-nums text-muted-foreground">{items.length}</span>
+        <span className="ds-count">{items.length}</span>
       </Button>
       {editable && <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Ações da pasta ${name}`} title="Ações da pasta"><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger>
@@ -31,6 +31,6 @@ export function ProjectGroupSection({ name, items, collapsed, editable, onToggle
         </DropdownMenuContent>
       </DropdownMenu>}
     </div>
-    {!collapsed && !!items.length && <div className="ml-5 border-l border-border/50 pl-1">{items.map(workspace => renderWorkspace(workspace))}</div>}
+    {!collapsed && !!items.length && <div className="ml-4 border-l border-sidebar-border pl-1.5">{items.map(workspace => renderWorkspace(workspace))}</div>}
   </div>
 }

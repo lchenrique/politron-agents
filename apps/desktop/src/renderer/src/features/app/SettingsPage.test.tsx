@@ -1,5 +1,5 @@
 ﻿import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { SettingsPage } from './SettingsPage'
 
 const appAPI = {
@@ -59,7 +59,7 @@ describe('carregamento leve das configurações', () => {
     vi.stubGlobal('appAPI', appAPI)
     render(<SettingsPage open onOpenChange={vi.fn()} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText('Tema e modo de cor')).toBeInTheDocument()
+    expect(screen.getByText('Aparência')).toBeInTheDocument()
     expect(appAPI.snapshot).not.toHaveBeenCalled()
     expect(appAPI.settingsPreferences).not.toHaveBeenCalled()
     expect(appAPI.hasClaudeCredential).not.toHaveBeenCalled()
@@ -108,7 +108,7 @@ describe('painel de configurações', () => {
     vi.stubGlobal('skillsAPI', skillsAPI)
     render(<SettingsPage open onOpenChange={vi.fn()} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByText('Tema e modo de cor')).toBeInTheDocument()
+    expect(screen.getByText('Aparência')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Provedores/ }))
     await waitFor(() => expect(providersAPI.list).toHaveBeenCalled())
     expect(await screen.findByText('codex-cli 0.160.1')).toBeInTheDocument()
@@ -157,6 +157,52 @@ describe('painel de configurações', () => {
     expect(screen.getByText('Codex')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar pasta de skill' }))
     await waitFor(() => expect(skillsAPI.addFromFolder).toHaveBeenCalled())
+  })
+})
+
+describe('hierarquia das seções', () => {
+  const sections: [string, RegExp][] = [
+    ['Geral', /Modo visual/], ['Assistente', /Assistente padrão/], ['Ferramentas', /terminal/],
+    ['Provedores', /CLIs detectadas/], ['Skills', /SKILL\.md/], ['Voz em tempo real', /transcrição/],
+    ['Conexões', /outros dispositivos/], ['Atualizações', /canal de atualização/],
+  ]
+
+  it('mantém as oito seções na navegação e dá a cada página título e propósito próprios', () => {
+    vi.stubGlobal('appAPI', { ...appAPI, voiceStatus: vi.fn().mockResolvedValue({ voiceKeyConfigured: false }) })
+    vi.stubGlobal('providersAPI', providersAPI)
+    vi.stubGlobal('skillsAPI', skillsAPI)
+    const { unmount } = render(<SettingsPage open onOpenChange={vi.fn()} />)
+    const nav = screen.getByRole('navigation', { name: 'Seções de configurações' })
+    expect(within(nav).getAllByRole('button').map(button => button.textContent)).toEqual(sections.map(([label]) => label))
+    // Troca somente o título/descrição do topo; os painéis pesados de Voz/Conexões/Atualizações não são exercitados aqui.
+    for (const [label, purpose] of sections.slice(0, 5)) {
+      fireEvent.click(within(nav).getByRole('button', { name: label }))
+      expect(within(nav).getByRole('button', { name: label })).toHaveAttribute('aria-current', 'page')
+      expect(screen.getByRole('heading', { level: 2, name: label })).toBeInTheDocument()
+      const page = screen.getByRole('region', { name: label })
+      expect(page).toHaveClass('overflow-y-auto', 'min-h-0')
+      expect(screen.getByRole('heading', { level: 2, name: label }).nextElementSibling?.textContent).toMatch(purpose)
+    }
+    unmount()
+  })
+
+  it('agrupa os controles em cartões nomeados abaixo do título da página', () => {
+    vi.stubGlobal('appAPI', appAPI)
+    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    const page = screen.getByRole('region', { name: 'Geral' })
+    const cards = within(page).getAllByRole('region')
+    expect(cards.map(card => within(card).getByRole('heading', { level: 3 }).textContent)).toEqual(['Aparência', 'Animação dos Boos'])
+    expect(within(cards[1]).getByRole('checkbox', { name: 'Experimentar renderer Rive (incompleto)' })).toBeInTheDocument()
+  })
+
+  it('destaca o aviso de Bypass ao lado do modo de aprovação do Assistente', async () => {
+    vi.clearAllMocks()
+    appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: true, computerUse: false, approvalMode: 'bypass', terminalEnabled: true })
+    vi.stubGlobal('appAPI', appAPI)
+    render(<SettingsPage open onOpenChange={vi.fn()} initialSection="assistente" />)
+    const warning = await screen.findByText(/No Bypass, o terminal pode alterar outros caminhos/)
+    await waitFor(() => expect(warning).toHaveAttribute('data-tone', 'warning'))
+    expect(warning.previousElementSibling).toContainElement(screen.getByRole('combobox', { name: 'Modo de aprovação' }))
   })
 })
 

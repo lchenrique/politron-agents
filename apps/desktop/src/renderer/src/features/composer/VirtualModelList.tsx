@@ -81,7 +81,7 @@ export function VirtualModelList({ models, providerName, value, search, onSearch
     </div>
     {filtered.length === 0
       ? <p className="px-3 py-6 text-center text-sm text-muted-foreground" role="status">{models.length ? 'Nenhum resultado encontrado.' : `Nenhum modelo disponível em ${providerName}.`}</p>
-      : <div id={listId} role="listbox" aria-label={`Modelos de ${providerName}`} ref={scrollRef} className="overflow-y-auto overscroll-contain"
+      : <div id={listId} role="listbox" aria-label={`Modelos de ${providerName}`} ref={scrollRef} className="overflow-y-auto overscroll-contain px-1.5"
           style={{ height: Math.min(filtered.length * ROW_HEIGHT, MAX_HEIGHT) }}>
           <div className="relative w-full" style={{ height: Math.max(virtualizer.getTotalSize(), filtered.length * ROW_HEIGHT) }}>
             {visibleRows.map(row => {
@@ -93,7 +93,7 @@ export function VirtualModelList({ models, providerName, value, search, onSearch
                 aria-selected={selected} aria-disabled={disabled} disabled={disabled}
                 title={model.description || model.id} onClick={() => onChoose(id)}
                 onMouseEnter={() => setActiveIndex(row.index)}
-                className={cn('absolute left-0 flex w-full items-center gap-2 rounded-sm px-3 text-left text-sm outline-none',
+                className={cn('absolute left-0 flex w-full items-center gap-2 rounded-md px-2.5 text-left text-sm outline-none',
                   'hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground',
                   'disabled:pointer-events-none disabled:opacity-50',
                   activeIndex === row.index && 'bg-accent text-accent-foreground')}

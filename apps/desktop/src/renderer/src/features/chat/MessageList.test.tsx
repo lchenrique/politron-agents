@@ -1,4 +1,4 @@
-﻿import { act, fireEvent, render, screen } from '@testing-library/react'
+﻿import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Approval, FileChange, Message } from '../../../../shared/v9'
 import { MessageList } from './MessageList'
@@ -15,14 +15,79 @@ const change: FileChange = { id: 'change-1', runId: 'run-1', messageId: message.
 const approval: Approval = { id: 'approval-1', runId: 'run-1', conversationId: message.conversationId, agentId: 'agent-1', kind: 'write', details: { path: 'notes.md', before: 'antes', after: 'depois' }, status: 'pending', createdAt: '', resolvedAt: null }
 
 describe('diffs e aprovações no chat', () => {
-  it('mostra o arquivo alterado ligado ao turno e a decisão pendente inline', () => {
-    render(<MessageList messages={[message]} fileChanges={[change]} approvals={[approval]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    // Applied changes are reviewed above the composer, not duplicated inside every message.
+  it('não duplica no histórico o run revisado acima do composer e mantém a decisão pendente inline', () => {
+    render(<MessageList messages={[message]} fileChanges={[change]} reviewRunId="run-1" approvals={[approval]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    expect(screen.queryByRole('region', { name: 'Arquivos modificados nesta resposta' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Arquivos alterados neste turno' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Aprovação de ferramenta' })).toHaveTextContent('Aguardando sua decisão')
     expect(screen.getByRole('button', { name: 'Confirmar e aprovar' })).toBeInTheDocument()
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Negar' })).toBeInTheDocument()
+  })
+})
+
+describe('diffs de runs anteriores no histórico', () => {
+  const reply = (id: string, runId: string): Message => ({ ...message, id, runId, text: `Resposta ${id}` })
+  const write = (id: string, messageId: string, runId: string, path: string, status: FileChange['status'] = 'applied'): FileChange =>
+    ({ ...change, id, messageId, runId, toolCallId: `tool-${id}`, path, status, before: `antes ${path}\n`, after: `depois ${path}\n` })
+  const list = (messages: Message[], fileChanges: FileChange[], reviewRunId: string | null = null) => <MessageList messages={messages} fileChanges={fileChanges} reviewRunId={reviewRunId} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+  const wrapperOf = (container: HTMLElement, id: string) => container.querySelector<HTMLElement>(`[data-message-id="${id}"]`)!
+  const expandedText = (region: HTMLElement) => { fireEvent.click(within(region).getByRole('button', { name: 'Revisar arquivos modificados' })); return region.textContent || '' }
+
+  it('associa cada diff à mensagem do seu FileChange.messageId e omite só o run do composer', () => {
+    const { container } = render(list(
+      [reply('m1', 'run-1'), reply('m2', 'run-2'), reply('m3', 'run-3')],
+      // Ordem invertida de propósito: a associação vem do messageId, não da posição.
+      [write('c3', 'm3', 'run-3', 'docs/ultimo.md'), write('c2', 'm2', 'run-2', 'src/segundo.ts'), write('c1', 'm1', 'run-1', 'src/primeiro.ts')],
+      'run-3',
+    ))
+    const first = within(wrapperOf(container, 'm1')).getByRole('region', { name: 'Arquivos modificados nesta resposta' })
+    const second = within(wrapperOf(container, 'm2')).getByRole('region', { name: 'Arquivos modificados nesta resposta' })
+    expect(expandedText(first)).toContain('src/primeiro.ts')
+    expect(first).not.toHaveTextContent('src/segundo.ts')
+    expect(expandedText(second)).toContain('src/segundo.ts')
+    expect(second).not.toHaveTextContent('src/primeiro.ts')
+    // O run 3 está na revisão do composer: nenhuma cópia dele no histórico.
+    expect(within(wrapperOf(container, 'm3')).queryByRole('region', { name: 'Arquivos modificados nesta resposta' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('region', { name: 'Arquivos modificados nesta resposta' })).toHaveLength(2)
+    expect(container).not.toHaveTextContent('docs/ultimo.md')
+  })
+
+  it('não apresenta como aplicadas escritas falhas, indeterminadas ou sem mudança', () => {
+    const { container } = render(list([reply('m1', 'run-1')], [
+      write('failed', 'm1', 'run-1', 'falhou.ts', 'failed'),
+      write('unknown', 'm1', 'run-1', 'incerto.ts', 'unknown'),
+      write('same', 'm1', 'run-1', 'igual.ts', 'unchanged'),
+    ]))
+    expect(within(wrapperOf(container, 'm1')).queryByRole('region', { name: 'Arquivos modificados nesta resposta' })).not.toBeInTheDocument()
+  })
+
+  it('mostra só os aplicados quando o mesmo run mistura estados', () => {
+    const { container } = render(list([reply('m1', 'run-1')], [
+      write('ok', 'm1', 'run-1', 'aplicado.ts'),
+      write('failed', 'm1', 'run-1', 'falhou.ts', 'failed'),
+    ]))
+    const region = within(wrapperOf(container, 'm1')).getByRole('region', { name: 'Arquivos modificados nesta resposta' })
+    expect(region).toHaveTextContent('1 arquivo modificado')
+    const text = expandedText(region)
+    expect(text).toContain('aplicado.ts')
+    expect(text).not.toContain('falhou.ts')
+  })
+
+  it('não atribui um registro cujo run diverge do run da mensagem indicada', () => {
+    const { container } = render(list([reply('m1', 'run-1')], [write('stray', 'm1', 'run-other', 'estranho.ts')]))
+    expect(within(wrapperOf(container, 'm1')).queryByRole('region', { name: 'Arquivos modificados nesta resposta' })).not.toBeInTheDocument()
+  })
+
+  it('mantém a revisão dentro do wrapper observado pela virtualização', () => {
+    const observed: Element[] = []
+    class TestResizeObserver { observe = (element: Element) => { observed.push(element) }; unobserve = () => undefined; disconnect = () => undefined }
+    vi.stubGlobal('ResizeObserver', TestResizeObserver)
+    const { container } = render(list([reply('m1', 'run-1')], [write('c1', 'm1', 'run-1', 'src/primeiro.ts')]))
+    const wrapper = wrapperOf(container, 'm1')
+    expect(observed).toContain(wrapper)
+    expect(wrapper).toContainElement(screen.getByRole('region', { name: 'Arquivos modificados nesta resposta' }))
+    vi.unstubAllGlobals()
   })
 })
 

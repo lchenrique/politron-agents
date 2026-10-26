@@ -1,14 +1,16 @@
 /* PWA uses the Electron renderer and keeps its navigation model. */
 html,body,#root {height:100%;margin:0;overscroll-behavior:none}
-body {background:var(--background);color:var(--foreground)}
+body {background:var(--chrome);color:var(--foreground)}
 .boobot-pwa {font-family:var(--font-sans);font-synthesis:none}
-.boobot-pwa-pair {background:var(--background);background-image:radial-gradient(ellipse at top, hsl(223.8136 0% 15%),transparent 65%)}
+.boobot-pwa-pair {background:var(--chrome);background-image:radial-gradient(ellipse 80% 55% at 50% 0%,color-mix(in srgb,var(--primary) 12%,transparent),transparent 70%)}
 .boobot-web-sidebar-backdrop {position:fixed;inset:40px 0 0;z-index:40;background:rgb(0 0 0/.48)}
 @media(max-width:767px){
   [data-pwa-shell="true"] .boobot-web-sidebar-panel {flex:0 0 0!important;width:0!important;min-width:0!important;max-width:0!important;overflow:visible!important}
-  [data-pwa-shell="true"] .boobot-web-main-panel {flex:1 1 100%!important;width:100%!important;min-width:0!important;max-width:100%!important}
+  [data-pwa-shell="true"] .boobot-web-main-panel {flex:1 1 100%!important;width:100%!important;min-width:0!important;max-width:100%!important;padding:0!important}
   [data-pwa-shell="true"] .boobot-web-layout [data-slot="resizable-handle"] {display:none}
-  [data-pwa-shell="true"] .boobot-web-sidebar-panel>.boobot-sidebar {position:fixed;top:40px;bottom:0;left:0;z-index:50;width:min(88vw,360px);max-width:none;transform:translateX(-105%);transition:transform 180ms ease;box-shadow:14px 0 40px #0005}
+  /* No celular o canvas ocupa a tela inteira: sem moldura, a barra superior já separa as áreas. */
+  [data-pwa-shell="true"] .boobot-canvas {border-radius:0;border-width:1px 0 0;box-shadow:none}
+  [data-pwa-shell="true"] .boobot-web-sidebar-panel>.boobot-sidebar {position:fixed;top:40px;bottom:0;left:0;z-index:50;width:min(88vw,360px);max-width:none;background:var(--chrome);border-right:1px solid var(--border);transform:translateX(-105%);transition:transform 180ms ease;box-shadow:var(--shadow-xl)}
   [data-pwa-shell="true"][data-sidebar-collapsed="false"] .boobot-web-sidebar-panel>.boobot-sidebar {transform:translateX(0)}
   [data-pwa-shell="true"] textarea {font-size:16px}
 }

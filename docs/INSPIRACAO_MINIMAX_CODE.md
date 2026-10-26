@@ -4,26 +4,29 @@ Atualizado em 24/10/2026. Documento de referência e plano. Nada aqui está impl
 
 ## Objetivo
 
-Entender como o MiniMax Code organiza o sidebar e como ele mantém a lista de projetos leve, para levar essas decisões ao Politron sem copiar componentes, marca ou layout.
+Reproduzir no Politron a hierarquia visual do sidebar mostrada na referência do MiniMax Code, preservando as funções próprias do produto e usando REA para investigar o artefato instalado quando a evidência for relevante.
 
 ## Como a evidência foi obtida
 
 O CLI do MiniMax Code é open source MIT (`github.com/MiniMax-AI/minimax-code`). O aplicativo desktop **não** é open source, então o código do app foi analisado como artefato fechado.
 
-Duas fontes foram usadas:
+Fontes e limites desta revisão visual:
 
-1. **REA (Reverse Engineer Anything)**, repositório `morluto/rea`, executado contra `resources/app.asar` do app instalado. A análise estática foi descartada por custo: são 29.102 arquivos e o REA processa cerca de um arquivo por segundo. O REA continua sendo a ferramenta indicada para perguntas pontuais sobre um alvo específico.
-2. **Leitura direta do `app.asar`**. O pacote empacotado inclui o código TypeScript original do runtime interno `@mavis/local-runtime-v2`, incluindo o módulo `projects/sidebar` e o schema do banco. Essa foi a fonte mais rica de evidência.
+1. **REA (Reverse Engineer Anything), versão pinada `rea-agents@6.4.0`**: `inspect-artifact` confirmou que o alvo instalado é um ASAR, com SHA-256 `724914d17c1b73de6c7c069dead9bfe998b1697ee0b5b87064f58a077eb56994` (Evidence `ev_d4da9de8a33877c275f6ec7f585df26b1fff0a131c80cf9bafbb89bce9b5696e`). Isso identifica o artefato, não descreve o layout.
+2. `analyze-javascript-application` foi iniciado sobre esse artefato; a análise completa cobre 29.102 fontes e não terminou nesta revisão. Portanto, nenhuma afirmação de componente visual foi atribuída ao resultado parcial.
+3. A disposição visual abaixo foi verificada na captura fornecida pelo usuário e na janela ao vivo do app. A evidência REA anterior `ev_159c5d0e85deef004d0a5b11c18ddcf796f56abfe6f4976c00927abd2ba95894` é apenas sobre ordenação/paginação de projetos, não sobre CSS.
 
-Caminho do artefato analisado: `C:\Users\lchen\AppData\Local\Programs\MiniMax Code\resources\app.asar`.
+Caminho do artefato: `C:\Users\lchen\AppData\Local\Programs\MiniMax Code\resources\app.asar`.
 
 ## Organização do sidebar no MiniMax Code
 
-O sidebar do app desktop é composto por:
+Na captura de referência do app desktop, o sidebar é composto por:
 
-- Um **rail estreito fixo** no topo esquerdo, com o logotipo, o botão de recolher o painel e o buscador.
-- Uma coluna de navegação com as entradas de topo (`New task`, `Site`, `Remote`) e o seletor `Local` / `Cloud`.
-- Uma lista de projetos com seções nomeadas.
+- Uma fileira horizontal de ícones no topo: logotipo, recolher painel e busca.
+- A ação `New task`, seguida das entradas `Plugins · Skills`, `Scheduled`, `Site` e `Remote`.
+- O seletor segmentado `Local` / `Cloud`, seguido do título `Projects` e da árvore/lista de projetos.
+
+Para o Politron, a correspondência pedida é: `Nova sessão`; `Central do Chief`; `Rotinas`; `Remoto`; seletor `Projetos` / `Boos`; título `Projetos` e pastas. `Site` não é incluído, e o topo permanece numa fileira horizontal, sem rail separado.
 
 As seções reconhecidas nas chaves de internacionalização do bundle do renderer:
 
@@ -98,25 +101,29 @@ Isso significa que a ideia de agrupar projetos em pastas como "Projetos Pessoais
 
 ## Proposta para o Politron
 
-### Frente 1. Navegação em rail fixo mais painel recolhível
+### Frente 1. Controles superiores e painel recolhível
 
-O MiniMax Code mantém um rail estreito sempre visível e recolhe apenas a coluna larga. O Politron recolhe a coluna inteira, e por isso o botão de recolher precisava ficar na TitleBar, no grupo da direita junto do seletor de tema e do mascote, posição que atrapalhava a leitura e não correspondia a nenhum padrão.
+A referência fornecida coloca identidade, recolhimento e busca na **barra superior da janela (TitleBar)**, não em uma fileira dentro do sidebar. Não acrescentar um rail ou ícone lateral separado.
 
-**Feito em 24/10/2026:** existe um rail fixo à esquerda com a marca do Boobot, o botão de recolher e o atalho do painel direito, sempre visíveis mesmo com a barra recolhida. O botão saiu da TitleBar e foi para o rail, e a marca deixou a TitleBar do desktop para não duplicar. O rail é exclusivo do Electron: a PWA mantém o drawer e o toggle próprios, sem mudança no mobile.
+**Corrigido em 24/10/2026:** no Electron, logo, toggle e lupa ficam à esquerda da TitleBar, na mesma altura dos controles da janela. O sidebar começa em `Nova sessão`, sem duplicar esses controles. A paleta de busca permanece montada na TitleBar mesmo com a lateral recolhida e preserva o atalho `Ctrl/Cmd+K`. O toggle permanece disponível nos dois estados; a área vazia da TitleBar continua arrastável. A PWA continua com seu drawer e toggle próprios. A coluna desktop usa 32% de largura inicial (limite de 400 px), preservando uma largura salva pelo usuário.
 
-Arquivos: `apps/desktop/src/renderer/src/features/sidebar/SidebarRail.tsx` (novo), `apps/desktop/src/renderer/src/features/app/AppShell.tsx` (render do rail), `apps/desktop/src/renderer/src/components/ide/TitleBar.tsx` (retirada da marca e do toggle no desktop).
+A navegação desktop mantém a Central do Chief e Rotinas e posiciona o seletor de host como a entrada `Remoto`, antes das abas `Projetos` / `Boos`. A árvore agora tem o título `Projetos`; as pastas e sessões continuam organizadas abaixo.
 
-### Frente 2. Botão rápido do painel direito
+Arquivos: `apps/desktop/src/renderer/src/features/sidebar/Sidebar.tsx`, `apps/desktop/src/renderer/src/features/app/AppShell.tsx`, `apps/desktop/src/renderer/src/components/ide/TitleBar.tsx` e `apps/desktop/src/renderer/src/components/kokonutui/action-search-bar.tsx`.
+
+### Frente 2. Acesso ao painel direito
 
 O MiniMax Code abre o painel direito por um botão único no canto superior direito do cabeçalho da conversa, com a escolha do conteúdo já dentro do painel.
 
-O Politron já tem o dock (`DockZone = 'main' | 'side'`) e o menu "Abrir painéis e abas", que abre a ferramenta escolhida na zona `side`. Falta o botão único de abertura rápida.
+O Politron mantém o dock (`DockZone = 'main' | 'side'`) e o menu "Abrir painéis e abas" na TitleBar, que abre a ferramenta escolhida na zona `side`. O atalho lateral dedicado foi retirado junto com o rail; os painéis continuam acessíveis pelo menu da TitleBar e pelas ações contextuais já existentes no chat.
 
-**Feito em 24/10/2026:** o atalho do painel direito foi para o rail, junto da marca e do toggle da barra lateral. O rail do desktop passou a ter os três controles do app empilhados, como no MiniMax Code. A TitleBar do desktop ficou sem esses botões, sobrando apenas a área de arraste da janela. O botão de recolher do sidebar saiu da TitleBar e foi para o rail (Frente 1).
+**Revisão em 24/10/2026:** a TitleBar mantém seu menu de ferramentas, sem acrescentar um ícone lateral separado às abas Projetos/Boos.
 
-Verificação: `npm run typecheck` sem erros e `TitleBar.tsx` sem erros de lint. As falhas de lint existentes no repositório estão em outros arquivos, principalmente `src/main/v9`, e são anteriores a esta alteração. A suíte `npm test` terminou com 563 testes passando, 2 falhando e 23 pulados. As duas falhas ficam em `src/main/pwa/gateway.test.ts` e vêm das mudanças não commitadas do gateway PWA (o limite de tentativas responde 429 antes do 400 de corpo grande), sem relação com o renderer.
+Verificações desta revisão: `npm run typecheck` sem erros; ESLint focado sem erros e com 6 avisos de tamanho/fast-refresh/dependências em `action-search-bar.tsx` e `AppShell.tsx`; 16 testes do sidebar, 1 do AppShell e 2 de desempenho passaram. O benchmark isolado usou 120 projetos e 600 sessões: montagem 626,8 ms e atualização 358,5 ms no jsdom. Esses números são específicos do ambiente de teste, não uma medição no navegador real.
 
-Validação visual feita com o app de desenvolvimento em execução (`npm run dev`, renderer em `localhost:5173` e gateway em `127.0.0.1:6780`): a captura da janela do Boobot confirma o logotipo BOOBOT seguido dos dois botões à esquerda, e o clique no botão novo abre o painel direito na aba Arquivos. O aceite do usuário ainda é o passo que falta.
+Na correção da TitleBar, 29 testes focados passaram (4 da barra da janela, 18 do sidebar, 3 do shell, 2 do host e 2 de desempenho), além de typecheck e build Electron/PWA. O lint focado ficou sem erros e com dois avisos em AppShell; o build manteve avisos de sourcemap, diretivas `use client` e tipo de módulo.
+
+A janela Electron ao vivo confirmou os três controles dentro da barra superior da janela, acima de `Nova sessão`, sem duplicação no sidebar. Recolher/expandir e abrir a busca com a lateral recolhida foram conferidos por clique; o atalho foi coberto por teste automatizado, pois a ferramenta nativa recusou foco no campo. A análise integral REA foi interrompida sem resultado de componentes visuais; a comparação usa a captura do usuário e a tela ao vivo, sem atribuir CSS ao REA.
 
 ### Frente 3. Pastas de projetos
 
@@ -133,10 +140,10 @@ A pasta é uma organização de navegação. Ela não muda o diretório do proje
 
 **Feito em 24/10/2026:** o agrupamento existe no sidebar da aba Projetos, sem criar entidade de domínio e sem tocar nos contratos de IPC ou no store de workspaces.
 
-- A aba Projetos ganha o cabeçalho **Pastas**, com botão de criar pasta, e cada pasta aparece como cabeçalho recolhível com a contagem de projetos.
+- A aba Projetos mostra o cabeçalho **Projetos**, com botão de criar pasta, e cada pasta aparece como cabeçalho recolhível com a contagem de projetos.
 - O menu do workspace ganhou **Mover para pasta**, com as pastas existentes, a opção "Sem pasta" e "Nova pasta…". Criar a pasta por esse caminho já move o projeto.
 - Cada pasta tem renomear e excluir; excluir a pasta devolve os projetos para "Outros" sem apagar nada.
-- Projetos sem pasta ficam em **Outros**, e quando não existe nenhuma pasta a lista aparece exatamente como antes, sem cabeçalho.
+- Projetos sem pasta ficam em **Outros**; o título **Projetos** permanece visível mesmo sem pastas, para espelhar a hierarquia da referência.
 - A criação e a renomeação usam um diálogo do próprio app, não `window.prompt`.
 - A associação é organização de navegação e fica em `localStorage` (`politron.sidebar.groups`, `politron.sidebar.workspace-groups`, `politron.sidebar.collapsed-groups`), no mesmo padrão já usado por favoritos e pelo colapso de workspaces.
 
@@ -185,7 +192,7 @@ O custo estabiliza em ~4,6 ms mesmo com 10.000 registros por tabela, porque o sn
 ## Ordem sugerida
 
 1. Botão rápido do painel direito e reposicionamento do toggle do sidebar. **Feito.**
-2. Rail fixo à esquerda, com botão de recolher sempre alcançável. **Feito.**
+2. Controles horizontais no topo do sidebar, sem rail lateral; expansão acessível também quando recolhido. **Feito.**
 3. Pastas de projetos, com rótulo persistido e agrupamento apenas visual. **Feito**, com persistência em `localStorage`; falta o campo `groupId` no `Workspace` para sincronizar entre dispositivos.
 4. Desempenho da barra lateral: medição antes de otimizar, índices em `Map`, limite de sessões por projeto. **Feito.** Falta a paginação por cursor da lista de projetos e a medição do custo do snapshot no processo principal.
 

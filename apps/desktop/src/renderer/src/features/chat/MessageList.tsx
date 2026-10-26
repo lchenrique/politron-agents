@@ -3,6 +3,9 @@ import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
 import { MessageItem } from './MessageItem'
 import { PolitronToolApproval } from './PolitronToolApproval'
+import { CompletedFileReview } from '../diff/CompletedFileReview'
+
+const INLINE_REVIEW_LABEL = 'Arquivos modificados nesta resposta'
 
 /** Distância do fim ainda considerada "no final", para decidir se um novo evento deve puxar o scroll junto. */
 const STICK_TO_BOTTOM_PX = 96
@@ -10,9 +13,11 @@ const STICK_TO_BOTTOM_PX = 96
 const ESTIMATED_MESSAGE_HEIGHT = 180
 const OVERSCAN_PX = 900
 
-export function MessageList({ messages, fileChanges, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true }: {
+export function MessageList({ messages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true }: {
   messages: Message[]
   fileChanges: FileChange[]
+  /** Run cuja revisão já aparece acima do composer; não é repetido no histórico. */
+  reviewRunId?: string | null
   approvals: Approval[]
   conversations: Conversation[]
   agentOf: (id: string | null) => Agent | undefined
@@ -52,6 +57,29 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
     for (const approval of approvals) { const items = result.get(approval.runId); if (items) items.push(approval); else result.set(approval.runId, [approval]) }
     return result
   }, [approvals])
+  // Escritas confirmadas ficam sob a resposta que as produziu (FileChange.messageId). Falhas, resultados
+  // indeterminados e escritas sem mudança nunca aparecem como aplicados. O registro também precisa pertencer
+  // ao run da mensagem; sem essa coerência nada é atribuído. Arrays estáveis evitam recalcular diffs ao rolar.
+  const appliedCache = useRef(new Map<string, FileChange[]>())
+  // O streaming troca o array de mensagens a cada fragmento; a associação só muda quando muda o par id→run.
+  const messageRuns = useMemo(() => messages.map(message => `${message.id}\u0000${message.runId || ''}`).join('\u0001'), [messages])
+  const appliedByMessage = useMemo(() => {
+    const runOfMessage = new Map(messageRuns ? messageRuns.split('\u0001').map(entry => entry.split('\u0000') as [string, string]) : [])
+    const result = new Map<string, FileChange[]>()
+    for (const change of fileChanges) {
+      if (change.status !== 'applied' || (reviewRunId && change.runId === reviewRunId)) continue
+      if (!change.runId || runOfMessage.get(change.messageId) !== change.runId) continue
+      const items = result.get(change.messageId)
+      if (items) items.push(change); else result.set(change.messageId, [change])
+    }
+    // Reaproveita o array anterior quando os registros são os mesmos, para a revisão não recalcular o diff.
+    for (const [id, items] of result) {
+      const previous = appliedCache.current.get(id)
+      if (previous && previous.length === items.length && previous.every((change, index) => change === items[index])) result.set(id, previous)
+    }
+    appliedCache.current = result
+    return result
+  }, [messageRuns, fileChanges, reviewRunId])
   // Só gruda no final se o usuário já estava lá; rolar pra ler o histórico não é interrompido por uma resposta chegando.
   const stickToBottom = useRef(true)
   const itemHeights = useMemo(() => messages.map(message => heights.current.get(message.id) || ESTIMATED_MESSAGE_HEIGHT), [messages, measurementVersion])
@@ -203,8 +231,11 @@ export function MessageList({ messages, fileChanges, approvals, conversations, a
         const agent = agentOf(message.agentId)
         const relatedConversation = message.relatedConversationId ? conversationsById.get(message.relatedConversationId) : undefined
         const runApprovals = message.runId ? approvalsByRun.get(message.runId) || [] : []
+        const appliedChanges = appliedByMessage.get(message.id)
+        // A revisão fica dentro do wrapper medido pelo ResizeObserver: expandir o diff atualiza a virtualização.
         return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className={`mb-6 space-y-2${enteringMessageId === message.id ? ' chat-message-enter' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && enteringMessageId === message.id) setEnteringMessageId(null) }}>
           <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} />
+          {appliedChanges && <CompletedFileReview changes={appliedChanges} label={INLINE_REVIEW_LABEL} />}
           {runApprovals.map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} canApprove={canApprove} />)}
 
         </div>

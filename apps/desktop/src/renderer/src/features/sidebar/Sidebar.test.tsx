@@ -1,14 +1,38 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 beforeEach(() => localStorage.clear())
+afterEach(() => { delete window.hostsAPI })
 import { emptySnapshot } from '../app/appShellShared'
+import type { HostsAPI, HostsSnapshot } from '../../../../shared/hosts'
 import type { Agent, Conversation, Snapshot, Workspace } from '../../../../shared/v9'
 import { Sidebar } from './Sidebar'
+
+const hostsSnapshot: HostsSnapshot = { selectedId: 'local', hosts: [{ id: 'local', name: 'Este PC', endpoint: 'local', transport: 'local', status: 'connected' }], local: { enabled: false, address: '127.0.0.1', port: 6778, advertisedUrl: 'ws://127.0.0.1:6778/boobot', relayUrl: '', running: false } }
+function installHostsAPI() {
+  window.hostsAPI = { snapshot: vi.fn(async () => hostsSnapshot), onChanged: () => () => undefined, configure: vi.fn(async () => hostsSnapshot), add: vi.fn(async () => ({ id: 'home', name: 'Casa', endpoint: 'ws://casa:6778', transport: 'direct' as const, status: 'connected' as const })), select: vi.fn(async () => undefined), remove: vi.fn(), copyPairing: vi.fn(), revoke: vi.fn(), browse: vi.fn(), resolveFolder: vi.fn(), onFolderRequest: () => () => undefined } satisfies HostsAPI
+}
 
 const agent: Agent = { id: 'agent-1', name: 'Lyra', alias: 'lyra', description: '', instructions: 'Ajude.', runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-16T12:00:00.000Z' }
 const workspace: Workspace = { id: 'workspace-1', name: 'Instruções de Paz', kind: 'free', path: 'C:/workspace', branch: null, baseBranch: null, parentWorkspaceId: null, instructions: '', defaultAgentIds: [], changes: 0, archived: false, createdAt: '2026-10-16T12:00:00.000Z' }
 const snapshot: Snapshot = { ...emptySnapshot, agents: [agent], workspaces: [workspace] }
+
+describe('hierarquia visual do sidebar', () => {
+  it('coloca o host na navegação antes do seletor Projetos/Boos', async () => {
+    installHostsAPI()
+    renderSidebar({ onOpenHome: vi.fn() })
+    const navigation = screen.getByRole('navigation', { name: 'Trabalho' })
+    const host = await screen.findByRole('button', { name: 'Selecionar host' })
+    expect(host).toHaveTextContent('Remoto')
+    expect(navigation).toContainElement(host)
+    expect(navigation.compareDocumentPosition(screen.getByRole('tablist')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('identifica a árvore com o título Projetos', () => {
+    renderSidebar({ onOpenHome: vi.fn() })
+    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
+  })
+})
 
 function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
   return render(<Sidebar snapshot={snapshot} selected={undefined} unreadCounts={{}} agentStates={{}} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} onOpenSettings={vi.fn()} onDeleteWorkspace={vi.fn()} onDeleteConversation={vi.fn()} onDeleteAgent={vi.fn()} onSetChief={vi.fn()} onNotice={vi.fn()} {...overrides} />)
@@ -18,43 +42,54 @@ describe('contatos de agentes na barra lateral', () => {
   it('abre a conversa direta ao selecionar um agente', () => {
     const onOpenAgent = vi.fn()
     renderSidebar({ onOpenAgent })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Boos/ }), { button: 0 })
     fireEvent.click(screen.getByRole('button', { name: /Lyra @lyra/ }))
     expect(onOpenAgent).toHaveBeenCalledWith(agent)
   })
 
-  it('mantém a navegação compacta sem repetir o símbolo antigo do Politron', () => {
-    renderSidebar()
+  it('mantém a criação de sessão direta e o menu para novos projetos e Boos', () => {
+    const onStartConversation = vi.fn()
+    renderSidebar({ onStartConversation })
     expect(screen.getByRole('button', { name: 'Criar novo' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Nova sessão livre' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão' }))
+    expect(onStartConversation).toHaveBeenCalledOnce()
     fireEvent.keyDown(screen.getByRole('button', { name: 'Criar novo' }), { key: 'Enter' })
-    expect(screen.getByRole('menuitem', { name: 'Nova sessão livre' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Novo projeto' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Novo Boo' })).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
   })
 
-  it('oferece uma única busca para projetos e agentes', () => {
-    renderSidebar()
-    expect(screen.getAllByRole('combobox')).toHaveLength(1)
-    expect(screen.queryByRole('textbox', { name: 'Filtrar lista' })).not.toBeInTheDocument()
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
-    expect(screen.getAllByRole('combobox')).toHaveLength(1)
+  it('preserva a busca inline da PWA ao alternar Projetos e Boos', () => {
+    renderSidebar({ browserMode: true })
+    expect(screen.getByRole('combobox', { name: 'Busca rápida' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Busca rápida' })).not.toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Boos/ }), { button: 0 })
+    expect(screen.getByRole('combobox', { name: 'Busca rápida' })).toBeInTheDocument()
   })
 
-  it('reserva altura para a busca sem sobrepor as abas', () => {
-    renderSidebar()
-    const palette = screen.getByRole('combobox', { name: 'Busca rápida' })
-    const container = palette.closest('div.relative')
-    expect(container).toHaveClass('h-[46px]')
-    expect(container).not.toHaveClass('!h-auto')
+  it('não duplica no sidebar desktop os controles da barra da janela', () => {
+    renderSidebar({ onOpenHome: vi.fn() })
+    expect(screen.queryByRole('button', { name: 'Ir para a central' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Recolher barra lateral' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Busca rápida' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Nova sessão' })).toBeVisible()
     expect(screen.getByRole('tab', { name: /Projetos/ })).toBeVisible()
-    expect(screen.getByRole('tab', { name: /Agentes/ })).toBeVisible()
+    expect(screen.getByRole('tab', { name: /Boos/ })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: /Agentes/ })).not.toBeInTheDocument()
   })
 
-  it('encontra um projeto pela busca rápida do Kokonut UI', () => {
+  it('cria sessão livre na PWA por ação direta, sem menu de um item só', () => {
+    const onStartConversation = vi.fn()
+    renderSidebar({ browserMode: true, onStartConversation })
+    expect(screen.queryByRole('button', { name: 'Criar novo' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão' }))
+    expect(onStartConversation).toHaveBeenCalledOnce()
+  })
+
+  it('encontra um projeto pela busca rápida da PWA', () => {
     const onSelectWorkspace = vi.fn()
-    renderSidebar({ onSelectWorkspace })
+    renderSidebar({ browserMode: true, onSelectWorkspace })
     const palette = screen.getByRole('combobox', { name: 'Busca rápida' })
-    fireEvent.focus(palette)
     fireEvent.change(palette, { target: { value: 'Instruções de Paz' } })
     fireEvent.keyDown(palette, { key: 'Enter' })
     expect(onSelectWorkspace).toHaveBeenCalledWith(workspace.id)
@@ -74,7 +109,7 @@ describe('contatos de agentes na barra lateral', () => {
     expect(card).toHaveTextContent('Chief · Coordenação')
     expect(card.querySelector('[style*="width: 30px"]')).not.toBeNull()
     expect(card.querySelector('[style*="width: 42px"]')).toBeNull()
-    expect(screen.getByRole('tab', { name: /Agentes 1/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Boos' })).toBeInTheDocument()
     expect(card.querySelectorAll('[aria-label="Chief"]')).toHaveLength(1)
   })
 
@@ -92,7 +127,7 @@ describe('contatos de agentes na barra lateral', () => {
   it('promove agente a Chief pelo menu de contexto', () => {
     const onSetChief = vi.fn()
     renderSidebar({ onSetChief })
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Boos/ }), { button: 0 })
     fireEvent.contextMenu(screen.getByRole('button', { name: /Lyra @lyra/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Promover a Chief' }))
     expect(onSetChief).toHaveBeenCalledExactlyOnceWith(agent, true)
@@ -175,7 +210,7 @@ describe('navegação orientada a workspaces', () => {
     renderSidebar()
     expect(screen.queryByRole('button', { name: 'Recolher workspaces' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Novo workspace' })).not.toBeInTheDocument()
-    fireEvent.mouseDown(screen.getByRole('tab', { name: /Agentes/ }), { button: 0 })
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Boos/ }), { button: 0 })
     expect(screen.getByRole('button', { name: /Lyra @lyra/ })).toBeInTheDocument()
     expect(screen.queryByText('Meus Polis')).not.toBeInTheDocument()
     fireEvent.mouseDown(screen.getByRole('tab', { name: /Projetos/ }), { button: 0 })

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { createRef } from 'react'
+import { createRef, type ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DockWorkspace, type DockWorkspaceHandle } from './DockWorkspace'
 
@@ -27,13 +27,59 @@ beforeEach(() => {
   })
 })
 
-function setup() {
+function setup(chrome: Pick<ComponentProps<typeof DockWorkspace>, 'chatTab' | 'chatHeader'> = {}) {
   const ref = createRef<DockWorkspaceHandle>()
-  const result = render(<DockWorkspace ref={ref} workspaceId="workspace-1" agents={[]} selectedAgents={[]} browserFrames={[]} onRefreshBrowser={vi.fn()} onChanged={vi.fn()} workspaceDiff=""><div>Chat existente</div></DockWorkspace>)
+  const result = render(<DockWorkspace ref={ref} {...chrome} workspaceId="workspace-1" agents={[]} selectedAgents={[]} browserFrames={[]} onRefreshBrowser={vi.fn()} onChanged={vi.fn()} workspaceDiff=""><div>Chat existente</div></DockWorkspace>)
   return { ref, ...result }
 }
 
 describe('abas e painéis móveis do Politron', () => {
+  it('mostra a faixa de abas só quando há mais de uma aba no layout', async () => {
+    const { ref } = setup()
+    expect(screen.getByText('Chat existente')).toBeInTheDocument()
+    expect(screen.queryByTestId('dock-group-header')).not.toBeInTheDocument()
+
+    act(() => ref.current!.openTool('files', 'main'))
+    expect(screen.getByTestId('dock-group-header')).toContainElement(screen.getByRole('button', { name: 'Aba Chat' }))
+    await screen.findByRole('tree', { name: 'Arquivos do projeto' })
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar Arquivos' }))
+    expect(screen.queryByTestId('dock-group-header')).not.toBeInTheDocument()
+    expect(screen.getByText('Chat existente')).toBeVisible()
+  })
+
+  it('nomeia a aba principal pelo conteúdo exibido', () => {
+    const { ref } = setup({ chatTab: { label: 'Central' } })
+    act(() => ref.current!.openTool('diff', 'main'))
+    expect(screen.getByRole('button', { name: 'Aba Central' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Aba Chat' })).not.toBeInTheDocument()
+  })
+
+  it('nunca empilha faixa de abas e faixa da conversa: a aba do chat assume a identidade', () => {
+    const { ref } = setup({
+      chatHeader: <header data-testid="conversation-row">Lyra · Planejamento</header>,
+      chatTab: { label: 'Lyra', title: 'Lyra · Planejamento', leading: <button type="button">Ver detalhes de Lyra</button>, trailing: <button type="button">Buscar no histórico desta conversa</button> },
+    })
+    expect(screen.getByTestId('conversation-row')).toBeInTheDocument()
+    expect(screen.queryByTestId('dock-group-header')).not.toBeInTheDocument()
+
+    act(() => ref.current!.openTool('files', 'side'))
+    expect(screen.queryByTestId('conversation-row')).not.toBeInTheDocument()
+    const chatTab = screen.getByTestId('chat-tab')
+    expect(chatTab).toContainElement(screen.getByRole('button', { name: 'Aba Lyra' }))
+    expect(chatTab).toContainElement(screen.getByRole('button', { name: 'Ver detalhes de Lyra' }))
+    expect(chatTab).toContainElement(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' }))
+    expect(chatTab).toContainElement(screen.getByRole('button', { name: 'Fechar Lyra' }))
+    expect(screen.queryByRole('button', { name: 'Aba Chat' })).not.toBeInTheDocument()
+
+    // Com outra aba ativa no mesmo grupo, a aba do chat fica compacta (sem busca e ações).
+    act(() => ref.current!.openTool('diff', 'main'))
+    expect(screen.queryByTestId('conversation-row')).not.toBeInTheDocument()
+    expect(screen.getByTestId('chat-tab')).toContainElement(screen.getByRole('button', { name: 'Ver detalhes de Lyra' }))
+    expect(screen.queryByRole('button', { name: 'Buscar no histórico desta conversa' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Aba Lyra' }))
+    expect(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' })).toBeInTheDocument()
+  })
+
   it('abre explorador na lateral e arquivo na área principal', async () => {
     const { ref } = setup()
     expect(screen.getByText('Chat existente')).toBeInTheDocument()

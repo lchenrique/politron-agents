@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { AudioLines, Download, FolderPlus, GraduationCap, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench } from 'lucide-react'
 import type { Agent, DecisionModel, OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
@@ -19,25 +19,26 @@ import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/fiel
 
 export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'skills' | 'voz' | 'conexoes' | 'atualizacoes'
 type Section = SettingsSection
-const SECTIONS: { id: Section; label: string; icon: typeof Palette }[] = [
-  { id: 'geral', label: 'Geral', icon: Palette },
-  { id: 'assistente', label: 'Assistente', icon: KeyRound },
-  { id: 'ferramentas', label: 'Ferramentas', icon: Wrench },
-  { id: 'provedores', label: 'Provedores', icon: Plug },
-  { id: 'skills', label: 'Skills', icon: GraduationCap },
-  { id: 'voz', label: 'Voz em tempo real', icon: AudioLines },
-  { id: 'conexoes', label: 'Conexões', icon: Monitor },
-  { id: 'atualizacoes', label: 'Atualizações', icon: Download },
+const SECTIONS: { id: Section; label: string; icon: typeof Palette; description: string }[] = [
+  { id: 'geral', label: 'Geral', icon: Palette, description: 'Modo visual do Boobot e animação dos Boos neste dispositivo.' },
+  { id: 'assistente', label: 'Assistente', icon: KeyRound, description: 'Permissões e modo de aprovação do Assistente padrão.' },
+  { id: 'ferramentas', label: 'Ferramentas', icon: Wrench, description: 'Recursos compartilhados por todos os agentes, como o terminal.' },
+  { id: 'provedores', label: 'Provedores', icon: Plug, description: 'CLIs detectadas, chaves de API e o modelo que escolhe quem responde em grupo.' },
+  { id: 'skills', label: 'Skills', icon: GraduationCap, description: 'Skills SKILL.md encontradas nesta máquina e pastas adicionadas por você.' },
+  { id: 'voz', label: 'Voz em tempo real', icon: AudioLines, description: 'Chaves, transcrição e vozes das ligações e da leitura de mensagens.' },
+  { id: 'conexoes', label: 'Conexões', icon: Monitor, description: 'Acesso a este computador pelos seus outros dispositivos e pelo navegador.' },
+  { id: 'atualizacoes', label: 'Atualizações', icon: Download, description: 'Versão instalada, canal de atualização e instalação de novas versões.' },
 ]
 const SOURCE_LABEL: Record<SkillInfo['source'], string> = { codex: 'Codex', claude: 'Claude Code', custom: 'Adicionada aqui', learned: 'Aprendida por um agente' }
 
 function Field({ icon: Icon, title, description, children }: { icon?: typeof Palette; title: string; description: string; children: React.ReactNode }) {
-  return <section className="space-y-4 rounded-xl border border-border/70 bg-card p-5">
+  const titleId = useId()
+  return <section aria-labelledby={titleId} className="ds-panel p-4 sm:p-5">
     <div className="flex items-start gap-3">
-      {Icon && <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="size-4" /></span>}
-      <div><h2 className="text-sm font-medium">{title}</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p></div>
+      {Icon && <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary-soft-foreground"><Icon className="size-4" /></span>}
+      <div className="min-w-0"><h3 id={titleId} className="ds-section-title">{title}</h3><p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p></div>
     </div>
-    {children}
+    <div className="mt-4 space-y-4 border-t border-border pt-4">{children}</div>
   </section>
 }
 
@@ -59,12 +60,12 @@ function ProvidersSection() {
     finally { setChecking(false) }
   }
   return <Field icon={Plug} title="CLIs de agentes instaladas" description="O inventário fica salvo no dispositivo. A atualização só é executada quando você solicita. Modelos de configurações locais não garantem autenticação ou suporte à execução no Boobot.">
-    <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60">
+    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
       {(inventory?.providers || []).map(provider => <li key={provider.id} className="px-3 py-2.5 text-sm">
         <details>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <span aria-hidden="true" className={'size-2 rounded-full ' + (provider.executable ? 'bg-emerald-500' : provider.found ? 'bg-amber-500' : 'bg-muted-foreground/30')} />
+              <span aria-hidden="true" className={'size-2 rounded-full ' + (provider.executable ? 'bg-success' : provider.found ? 'bg-warning' : 'bg-muted-foreground/30')} />
               <span className="font-medium">{provider.name}</span>
             </div>
             <span className="text-right text-xs text-muted-foreground">
@@ -82,7 +83,7 @@ function ProvidersSection() {
       </li>)}
       {!inventory && <li className="px-3 py-3 text-xs text-muted-foreground">Carregando inventário salvo…</li>}
     </ul>
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <Button variant="outline" size="sm" disabled={checking} onClick={() => void refresh()}>{checking ? 'Atualizando…' : 'Atualizar detecção'}</Button>
       {inventory?.checkedAt && <span className="text-[11px] text-muted-foreground">Última verificação: {new Date(inventory.checkedAt).toLocaleString('pt-BR')}</span>}
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
@@ -118,7 +119,7 @@ function SkillsSection() {
       {skills && !skills.length && <li className="px-3 py-3 text-xs text-muted-foreground">Nenhuma skill encontrada.</li>}
       {!skills && <li className="px-3 py-3 text-xs text-muted-foreground">Procurando…</li>}
     </ul>
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <Button variant="outline" size="sm" disabled={busy} onClick={() => void add()}><FolderPlus className="size-3.5" />Adicionar pasta de skill</Button>
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>
@@ -129,7 +130,7 @@ function SpeechKeySettings() {
   const [configured, setConfigured] = useState(false), [key, setKey] = useState(''), [busy, setBusy] = useState(false), [feedback, setFeedback] = useState('')
   useEffect(() => { void window.appAPI.voiceStatus().then(status => setConfigured(status.voiceKeyConfigured)).catch(error => setFeedback(errorText(error))) }, [])
   const save = async (remove = false) => { setBusy(true); setFeedback(''); try { const status = remove ? await window.appAPI.voiceClearOpenRouterKey() : await window.appAPI.voiceSaveOpenRouterKey(key); setConfigured(status.voiceKeyConfigured); setKey(''); setFeedback(remove ? 'Chave removida.' : 'Chave de voz substituída e salva.') } catch (error) { setFeedback(errorText(error)) } finally { setBusy(false) } }
-  return <Field icon={KeyRound} title="OpenRouter para leitura de mensagens" description="Chave usada pela síntese de voz das mensagens quando esse motor está selecionado. É independente da chave de decisão dos grupos."><FieldGroup><FormField><FieldLabel htmlFor="speech-router-key">Chave OpenRouter de voz</FieldLabel><Input id="speech-router-key" type="password" autoComplete="off" value={key} onChange={event => setKey(event.target.value)} placeholder={configured ? 'Chave configurada; cole outra para substituir' : 'Cole a chave OpenRouter'} /></FormField><div className="flex gap-2"><Button disabled={busy || !key.trim()} onClick={() => void save()}>{configured ? 'Substituir chave de voz' : 'Salvar chave de voz'}</Button>{configured && <Button variant="outline" disabled={busy} onClick={() => void save(true)}>Remover chave de voz</Button>}</div>{feedback && <p role="status" className="text-xs text-muted-foreground">{feedback}</p>}</FieldGroup></Field>
+  return <Field icon={KeyRound} title="OpenRouter para leitura de mensagens" description="Chave usada pela síntese de voz das mensagens quando esse motor está selecionado. É independente da chave de decisão dos grupos."><FieldGroup><FormField><FieldLabel htmlFor="speech-router-key">Chave OpenRouter de voz</FieldLabel><Input id="speech-router-key" type="password" autoComplete="off" value={key} onChange={event => setKey(event.target.value)} placeholder={configured ? 'Chave configurada; cole outra para substituir' : 'Cole a chave OpenRouter'} /></FormField><div className="flex flex-wrap gap-2"><Button disabled={busy || !key.trim()} onClick={() => void save()}>{configured ? 'Substituir chave de voz' : 'Salvar chave de voz'}</Button>{configured && <Button variant="outline" disabled={busy} onClick={() => void save(true)}>Remover chave de voz</Button>}</div>{feedback && <p role="status" className="text-xs text-muted-foreground">{feedback}</p>}</FieldGroup></Field>
 }
 
 export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: { open: boolean; onOpenChange: (open: boolean) => void; initialSection?: SettingsSection }) {
@@ -212,21 +213,32 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
     catch (error) { setDecisionFeedback(error instanceof Error ? error.message : 'Não foi possível remover a chave.') }
   }
 
+  const current = SECTIONS.find(item => item.id === section) || SECTIONS[0]
+
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent overlayClassName="!backdrop-blur-none bg-black/55" className="grid h-[min(44rem,85vh)] w-[min(64rem,92vw)] max-w-none grid-cols-[13rem_1fr] gap-0 overflow-hidden p-0">
+    {/* Em janelas estreitas a navegação vira uma faixa rolável acima do conteúdo; o X do diálogo fica fora das duas áreas de rolagem. */}
+    <DialogContent overlayClassName="!backdrop-blur-none bg-black/55" className="flex h-[min(44rem,calc(100dvh-2rem))] w-[min(64rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:grid sm:grid-cols-[13rem_minmax(0,1fr)]">
       <DialogTitle className="sr-only">Configurações</DialogTitle>
       <DialogDescription className="sr-only">Preferências do Boobot</DialogDescription>
-      <nav aria-label="Seções de configurações" className="flex flex-col gap-0.5 overflow-y-auto border-r border-border/60 bg-muted/20 p-3">
-        <p className="px-2 pb-2 pt-1 text-xs font-semibold text-muted-foreground">Configurações</p>
-        {SECTIONS.map(item => <button key={item.id} type="button" onClick={() => setSection(item.id)}
-          className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${section === item.id ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}>
+      <nav aria-label="Seções de configurações" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-chrome p-2 pr-12 sm:flex-col sm:gap-px sm:overflow-y-auto sm:overflow-x-hidden sm:border-b-0 sm:border-r sm:p-2.5">
+        <p className="ds-eyebrow hidden px-2 pb-2 pt-1.5 sm:block">Configurações</p>
+        {SECTIONS.map(item => <button key={item.id} type="button" onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined}
+          className="ds-nav-item flex h-8 shrink-0 items-center gap-2.5 whitespace-nowrap px-2.5 text-left text-[13px] font-medium">
           <item.icon className="size-4 shrink-0" />{item.label}
         </button>)}
       </nav>
-      <div className="min-w-0 space-y-5 overflow-y-auto p-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+        <header className="flex shrink-0 items-start gap-3 border-b border-border px-5 py-4 sm:px-8 sm:py-5 sm:pr-14">
+          <span aria-hidden="true" className="mt-0.5 hidden size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground sm:flex"><current.icon className="size-[18px]" /></span>
+          <div className="min-w-0">
+            <h2 id="settings-section-title" className="ds-page-title text-xl">{current.label}</h2>
+            <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">{current.description}</p>
+          </div>
+        </header>
+        <div role="region" aria-labelledby="settings-section-title" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-8 sm:py-6">
+        <div className="mx-auto max-w-3xl space-y-4">
         {section === 'geral' && <>
-          <h2 className="text-lg font-semibold">Geral</h2>
-          <Field icon={Palette} title="Tema e modo de cor" description="Escolha uma paleta e alterne entre claro e escuro."><ThemeSelector /></Field>
+          <Field icon={Palette} title="Aparência" description="O Boobot usa um único sistema visual com dois modos. A escolha fica salva neste dispositivo."><ThemeSelector /></Field>
           <Field title="Animação dos Boos" description="O SVG original preserva brilho, sombra, acessórios e reações. O renderer Rive ainda está em desenvolvimento e não possui paridade visual.">
             <label className="flex items-start gap-3 text-sm">
               <Checkbox aria-label="Experimentar renderer Rive (incompleto)" checked={rivePreview} onCheckedChange={checked => setRivePreview(checked === true)} className="mt-1" />
@@ -235,23 +247,25 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
           </Field>
         </>}
         {section === 'assistente' && <>
-          <h2 className="text-lg font-semibold">Assistente</h2>
           <Field title="Assistente padrão" description="Escolha as permissões específicas do Assistente. A edição de arquivos respeita também a política do workspace.">
-            <label className="flex items-center gap-3 text-sm"><Checkbox checked={assistantAccess.canWrite} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, canWrite: checked === true })} /><span>Permitir edição de arquivos do workspace</span></label>
-            <label className="flex items-start gap-3 text-sm"><Checkbox checked={assistantAccess.computerUse} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, computerUse: checked === true })} className="mt-0.5" /><span><span className="font-medium">Permitir uso do navegador</span><span className="mt-0.5 block text-xs text-muted-foreground">Ações no navegador respeitam o modo de aprovação deste Assistente.</span></span></label>
-            <label className="block space-y-1.5 text-sm">Modo de aprovação do Assistente<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as Agent['approvalMode'] })}><SelectTrigger aria-label="Modo de aprovação"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de cada ação</SelectItem><SelectItem value="automatic">Automático · pede só ações sensíveis (recomendado)</SelectItem><SelectItem value="bypass">Bypass · autonomia total</SelectItem></SelectContent></Select></label>
-            <p className="text-xs leading-5 text-muted-foreground">Esta configuração vale somente para o Assistente padrão. Conversas com um Boo, como Atlas, usam o modo salvo no editor daquele agente. No Bypass, o terminal pode alterar outros caminhos do computador sem pedir confirmação; o Chief em Bypass também pode criar equipes e delegar dentro das permissões do workspace.</p><p role="status" className="text-xs text-muted-foreground">{assistantFeedback}</p>
+            <div className="divide-y divide-border rounded-lg border border-border">
+              <label className="flex items-center gap-3 px-3 py-2.5 text-sm"><Checkbox checked={assistantAccess.canWrite} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, canWrite: checked === true })} /><span>Permitir edição de arquivos do workspace</span></label>
+              <label className="flex items-start gap-3 px-3 py-2.5 text-sm"><Checkbox checked={assistantAccess.computerUse} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, computerUse: checked === true })} className="mt-0.5" /><span><span className="font-medium">Permitir uso do navegador</span><span className="mt-0.5 block text-xs text-muted-foreground">Ações no navegador respeitam o modo de aprovação deste Assistente.</span></span></label>
+            </div>
+            <div className="space-y-2">
+              <label className="block space-y-1.5 text-sm">Modo de aprovação do Assistente<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as Agent['approvalMode'] })}><SelectTrigger aria-label="Modo de aprovação"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de cada ação</SelectItem><SelectItem value="automatic">Automático · pede só ações sensíveis (recomendado)</SelectItem><SelectItem value="bypass">Bypass · autonomia total</SelectItem></SelectContent></Select></label>
+              <p data-tone={assistantAccess.approvalMode === 'bypass' ? 'warning' : undefined} className="rounded-lg text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">Esta configuração vale somente para o Assistente padrão. Conversas com um Boo, como Atlas, usam o modo salvo no editor daquele agente. No Bypass, o terminal pode alterar outros caminhos do computador sem pedir confirmação; o Chief em Bypass também pode criar equipes e delegar dentro das permissões do workspace.</p>
+            </div>
+            <p role="status" className="text-xs text-muted-foreground empty:hidden">{assistantFeedback}</p>
           </Field>
         </>}
         {section === 'ferramentas' && <>
-          <h2 className="text-lg font-semibold">Ferramentas</h2>
           <Field title="Terminal · todos os agentes" description="Agentes com edição habilitada podem alterar arquivos do workspace. O terminal executa na pasta da conversa, mas não é isolado pelo sistema operacional. O modo Bypass de cada agente permite executar comandos sem confirmação.">
             <label className="flex items-start gap-3 text-sm"><Checkbox checked={terminalEnabled} onCheckedChange={checked => void updateTerminalAccess(checked === true)} className="mt-0.5" /><span><span className="font-medium">Habilitar terminal para todos os agentes</span><span className="mt-0.5 block text-xs text-muted-foreground">A alteração vale para o Assistente padrão e todos os agentes cadastrados.</span></span></label>
             <p role="status" className="text-xs text-muted-foreground">{terminalFeedback || (terminalEnabled ? 'Terminal habilitado para todos os agentes.' : 'Terminal desabilitado.')}</p>
           </Field>
         </>}
         {section === 'provedores' && <>
-          <h2 className="text-lg font-semibold">Provedores</h2>
           <ProvidersSection />
           <Field icon={Router} title="OpenRouter para respostas em grupo" description="Informe sua chave OpenRouter e busque o catálogo. O Boobot mostra apenas modelos que aceitam decisões; TypeSafe/Jev é um deles. A chave fica criptografada neste computador. O texto novo, os participantes e até oito mensagens recentes são enviados ao OpenRouter para escolher um único agente. Confiança baixa ou falha usa o líder do grupo.">
             <label className="block space-y-1.5 text-xs font-medium">Chave de API OpenRouter<Input aria-label="Chave de API OpenRouter" type="password" autoComplete="off" value={openRouterKey} onChange={event => { setOpenRouterKey(event.target.value); setDecisionModels([]) }} placeholder={decisionStatus.configured ? 'Chave configurada; digite outra para substituir' : 'sk-or-…'} className="h-10 w-full rounded-lg border border-input bg-background px-3 font-mono text-xs" /></label>
@@ -261,20 +275,20 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
           </Field>
           <Field icon={KeyRound} title="Claude Agent SDK" description="Configure uma chave de API Anthropic. Ela é criptografada pelo sistema operacional e não é salva no banco de conversas.">
             <label className="block space-y-1.5 text-xs font-medium">Chave de API<Input aria-label="Chave de API Anthropic" type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={configured ? 'Chave configurada; digite outra para substituir' : 'sk-ant-…'} className="h-10 w-full rounded-lg border border-input bg-background px-3 font-mono text-xs" /></label>
-            <div className="flex flex-wrap items-center justify-between gap-3"><span role="status" className="text-xs text-muted-foreground">{feedback || (configured ? 'Chave Anthropic configurada' : 'Sem chave Anthropic no Boobot; o CLI pode usar suas credenciais próprias')}</span><Button disabled={saving || !apiKey.trim()} onClick={() => void saveKey()}>{saving ? 'Salvando…' : configured ? 'Substituir chave Anthropic' : 'Salvar chave'}</Button>{configured && <Button variant="outline" disabled={saving} onClick={() => void removeKey()}>Remover chave Anthropic</Button>}</div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><span role="status" className="min-w-0 flex-1 basis-56 text-xs text-muted-foreground">{feedback || (configured ? 'Chave Anthropic configurada' : 'Sem chave Anthropic no Boobot; o CLI pode usar suas credenciais próprias')}</span><div className="flex flex-wrap gap-2"><Button disabled={saving || !apiKey.trim()} onClick={() => void saveKey()}>{saving ? 'Salvando…' : configured ? 'Substituir chave Anthropic' : 'Salvar chave'}</Button>{configured && <Button variant="outline" disabled={saving} onClick={() => void removeKey()}>Remover chave Anthropic</Button>}</div></div>
           </Field>
         </>}
         {section === 'skills' && <>
-          <h2 className="text-lg font-semibold">Skills</h2>
           <SkillsSection />
         </>}
-        {section === 'conexoes' && <><h2 className="text-lg font-semibold">Conexões</h2><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field><Field icon={Monitor} title="Acesso PWA no navegador" description="Pareie o navegador e escolha, por dispositivo, acesso ao chat, aprovações e leitura ou edição de arquivos do host."><PwaSettingsPanel /></Field></>}
-        {section === 'atualizacoes' && <><h2 className="text-lg font-semibold">Atualizações</h2><AppUpdatesPanel /></>}
+        {section === 'conexoes' && <><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field><Field icon={Monitor} title="Acesso PWA no navegador" description="Pareie o navegador e escolha, por dispositivo, acesso ao chat, aprovações e leitura ou edição de arquivos do host."><PwaSettingsPanel /></Field></>}
+        {section === 'atualizacoes' && <AppUpdatesPanel />}
         {section === 'voz' && <>
-          <h2 className="text-lg font-semibold">Voz em tempo real</h2>
           <Field icon={AudioLines} title="Ligações do mascote" description="Configure aqui as chaves, transcrição e vozes. O mascote dentro do app e o flutuante usam estas mesmas preferências."><RealtimeSettingsPanel /></Field>
           <SpeechKeySettings />
         </>}
+        </div>
+        </div>
       </div>
     </DialogContent>
   </Dialog>

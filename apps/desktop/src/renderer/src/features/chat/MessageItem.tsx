@@ -1,15 +1,49 @@
-import { memo, useState } from 'react'
-import { Volume2, LoaderCircle, Square } from 'lucide-react'
+import { memo, useEffect, useRef, useState } from 'react'
+import { Check, Copy, Volume2, LoaderCircle, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
 import { RunProgress } from './RunProgress'
 import { speakVoice, stopVoice } from '../voice/voice-player'
-import { Message as ChatMessage, MessageContent, MessageHeader } from '@/components/ui/message'
+import { Message as ChatMessage, MessageContent, MessageFooter, MessageHeader } from '@/components/ui/message'
 import { Trace, TraceLine, TraceTitle } from '@/components/ui/trace'
 import { MessageMarkdown } from './MessageMarkdown'
 import { StreamingText } from './StreamingText'
 import { MessageBubble as PastaMessageBubble } from '@/components/ai/message-bubble'
+
+const COPY_FEEDBACK_MS = 2000
+const COPY_SUCCESS_NOTICE = 'Mensagem copiada.'
+const COPY_FAILURE_NOTICE = 'Não foi possível copiar a mensagem. Verifique o acesso à área de transferência.'
+
+function messageTime(createdAt: string) {
+  const date = new Date(createdAt)
+  if (!createdAt || Number.isNaN(date.getTime())) return null
+  return { short: date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), full: date.toLocaleString('pt-BR') }
+}
+
+/** Copia o texto bruto da mensagem. O conteúdo nunca vai para log nem para o aviso; só o resultado é comunicado. */
+function CopyMessageButton({ text, onNotice, className }: { text: string; onNotice: (value: string) => void; className?: string }) {
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<number | null>(null)
+  useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current) }, [])
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard indisponível')
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      onNotice(COPY_SUCCESS_NOTICE)
+      if (timer.current !== null) window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => { timer.current = null; setCopied(false) }, COPY_FEEDBACK_MS)
+    } catch {
+      setCopied(false)
+      onNotice(COPY_FAILURE_NOTICE)
+    }
+  }
+  return <Button type="button" size="icon" variant="ghost" className={'size-6 text-muted-foreground ' + (className || '')}
+    aria-label={copied ? 'Mensagem copiada' : 'Copiar mensagem'} title="Copiar mensagem" onClick={() => void copy()}>
+    {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+  </Button>
+}
 
 export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice, canSpeak = true }: {
   message: Message
@@ -29,6 +63,9 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
     finally { setAudioState('idle') }
   }
   const human = message.role === 'user'
+  const time = messageTime(message.createdAt)
+  // Durante o streaming o texto ainda está incompleto; copiar só depois que a resposta assenta.
+  const canCopy = !!message.text.trim() && (human || (message.status !== 'running' && message.status !== 'waiting'))
   if (message.role === 'activity') return <Trace role="status" className="my-1.5 max-w-3xl"><TraceLine status={message.status === 'running' ? 'running' : message.status === 'failed' ? 'error' : message.status === 'queued' ? 'pending' : 'complete'}><TraceTitle>{message.text}</TraceTitle></TraceLine>
     {relatedConversation && <button onClick={() => onOpenRelatedConversation(relatedConversation.id)} className="ml-6 mt-1 text-xs font-medium text-primary underline-offset-4 hover:underline">Abrir conversa relacionada: {relatedConversation.name}</button>}
     {message.delegationId && ['queued', 'running', 'waiting'].includes(message.status) && <button onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(error => onNotice(errorText(error)))} className="ml-6 mt-1 text-xs font-medium text-destructive underline-offset-4 hover:underline">Cancelar pedido</button>}
@@ -37,14 +74,23 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
     <MessageContent className={human ? 'w-fit max-w-[85%] gap-1' : 'max-w-[90%] gap-1'}>
       {!human && <MessageHeader className="mb-1 flex items-center gap-2 px-0 text-foreground">
         <span className="font-bold" title={agent?.name || message.author} style={agent?.color ? { color: agent.color } : undefined}>@{agent?.alias || message.author}</span>
-        {canSpeak && message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 text-muted-foreground" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz configurada no host." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
-        {message.status === 'waiting' && <span className="font-normal text-amber-600">aguarda sua aprovação</span>}
+        {time && <time dateTime={message.createdAt} title={time.full} className="font-normal tabular-nums text-muted-foreground">{time.short}</time>}
+        {message.status === 'waiting' && <span className="font-normal text-warning">aguarda sua aprovação</span>}
         {message.status === 'queued' && <span className="font-normal text-muted-foreground">na fila</span>}
         {message.status === 'failed' && <span className="font-normal text-destructive">falhou</span>}
         {message.status === 'interrupted' && <span className="font-normal text-muted-foreground">cancelada</span>}
+        <span role="group" aria-label="Ações da mensagem" className="ml-auto flex items-center gap-0.5 empty:hidden">
+          {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} />}
+          {canSpeak && message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 text-muted-foreground" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz configurada no host." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
+        </span>
       </MessageHeader>}
       {!human && message.role === 'assistant' && <RunProgress status={message.status} agentName={agent?.name || message.author} />}
-      {human ? <><PastaMessageBubble from="user" status={message.status === 'failed' ? 'failed' : message.status === 'queued' || message.status === 'running' ? 'sending' : 'sent'} className="whitespace-pre-wrap">{message.text}</PastaMessageBubble>{message.status === 'failed' && <span className="text-xs text-destructive">Falha no envio da instrução.</span>}</>
+      {human ? <><PastaMessageBubble from="user" status={message.status === 'failed' ? 'failed' : message.status === 'queued' || message.status === 'running' ? 'sending' : 'sent'} className="whitespace-pre-wrap">{message.text}</PastaMessageBubble>{message.status === 'failed' && <span className="text-xs text-destructive">Falha no envio da instrução.</span>}
+        {/* Ações do usuário aparecem ao passar o mouse ou focar; em telas sem hover ficam sempre visíveis. */}
+        {(canCopy || time) && <MessageFooter role="group" aria-label="Ações da mensagem" className="gap-1 px-0 opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+          {time && <time dateTime={message.createdAt} title={time.full} className="font-normal tabular-nums">{time.short}</time>}
+          {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} />}
+        </MessageFooter>}</>
         : message.status === 'running' || message.status === 'waiting'
           ? <StreamingText text={message.text || ' '} />
           : <MessageMarkdown>{message.text}</MessageMarkdown>}

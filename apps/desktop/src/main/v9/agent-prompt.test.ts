@@ -40,6 +40,14 @@ describe('preâmbulo de sistema compartilhado entre Codex e Claude', () => {
     expect(prompt).toContain('continue_on_result=true')
   })
 
+  it('pede links Markdown relativos para arquivos e terminal interno sem janela externa', () => {
+    const prompt = buildAgentSystemPrompt(agent)
+    expect(prompt).toContain('[src/app.ts](src/app.ts)')
+    expect(prompt).toContain('não transforme em link caminhos dentro de blocos de código')
+    expect(prompt).toContain('workspace_start_process')
+    expect(prompt).toContain('Nunca abra um terminal ou janela externa')
+  })
+
   it('anexa as instruções do projeto só quando existem', () => {
     expect(buildAgentSystemPrompt(agent)).not.toContain('Instruções do projeto')
     expect(buildAgentSystemPrompt(agent, 'Use TypeScript estrito.')).toContain('Instruções do projeto:\nUse TypeScript estrito.')

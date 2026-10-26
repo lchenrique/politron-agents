@@ -1,7 +1,32 @@
-import { memo } from 'react'
+import { createContext, memo, useContext, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { CodeBlock } from '@/components/ai/code-block'
+import { classifyMessageLink } from './message-link'
+
+/** Roteamento de links do Desktop. Sem provider (PWA), o link mantém o comportamento web normal. */
+export interface MessageLinkHandlers {
+  openUrl: (url: string, mode: 'internal' | 'external') => void
+  openFile: (path: string) => void
+  blocked: () => void
+}
+export const MessageLinkContext = createContext<MessageLinkHandlers | null>(null)
+
+function MessageLink({ href, children }: { href?: string; children?: ReactNode }) {
+  const handlers = useContext(MessageLinkContext)
+  if (!handlers) return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+  const target = classifyMessageLink(href)
+  if (target.kind === 'anchor') return <a href={href}>{children}</a>
+  return <a href={href} title={target.kind === 'url' ? `${target.url}\nCtrl+clique abre no navegador do sistema` : target.kind === 'file' ? `Abrir ${target.path} no editor` : undefined}
+    // Clique do meio abriria uma janela nova pelo Electron, fora do roteamento validado.
+    onAuxClick={event => event.preventDefault()}
+    onClick={event => {
+      event.preventDefault()
+      if (target.kind === 'url') handlers.openUrl(target.url, event.ctrlKey || event.metaKey ? 'external' : 'internal')
+      else if (target.kind === 'file') handlers.openFile(target.path)
+      else handlers.blocked()
+    }}>{children}</a>
+}
 
 /** O mesmo conteúdo e os mesmos componentes no aplicativo e na PWA. */
 export const MessageMarkdown = memo(function MessageMarkdown({ children }: { children: string }) {
@@ -19,7 +44,7 @@ export const MessageMarkdown = memo(function MessageMarkdown({ children }: { chi
           <table>{children}</table>
         </div>
       },
-      a({ href, children }) { return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> },
+      a: MessageLink,
     }}>{children}</ReactMarkdown>
   </div>
 })

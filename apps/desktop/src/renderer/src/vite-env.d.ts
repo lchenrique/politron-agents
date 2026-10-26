@@ -9,6 +9,8 @@ declare global {
 interface Window {
   pwaAPI?: import('../../shared/pwa-desktop').PwaDesktopAPI
   hostsAPI?: import('../../shared/hosts').HostsAPI
+  /** Só no Electron Desktop; ausente na PWA. */
+  platformBrowserAPI?: import('../../shared/platform-browser').PlatformBrowserAPI
  vibeAPI: {
  windowControls: {
  minimize: () => Promise<void>;

@@ -15,12 +15,12 @@ export function missionPhase(mission: Mission, runs: Run[], approvals: Approval[
 }
 
 const PHASE: Record<MissionPhase, { label: string; tone: string }> = {
-  running: { label: 'Trabalhando', tone: 'text-sky-600 dark:text-sky-400' },
-  active: { label: 'Em andamento', tone: 'text-sky-600 dark:text-sky-400' },
-  approval: { label: 'Aguardando aprovação', tone: 'text-amber-600 dark:text-amber-400' },
-  waiting: { label: 'Precisa de você', tone: 'text-amber-600 dark:text-amber-400' },
+  running: { label: 'Trabalhando', tone: 'text-info' },
+  active: { label: 'Em andamento', tone: 'text-info' },
+  approval: { label: 'Aguardando aprovação', tone: 'text-warning' },
+  waiting: { label: 'Precisa de você', tone: 'text-warning' },
   paused: { label: 'Pausada', tone: 'text-muted-foreground' },
-  completed: { label: 'Concluída', tone: 'text-emerald-600 dark:text-emerald-400' },
+  completed: { label: 'Concluída', tone: 'text-success' },
   failed: { label: 'Falhou', tone: 'text-destructive' },
   cancelled: { label: 'Cancelada', tone: 'text-muted-foreground' },
 }
@@ -43,15 +43,15 @@ export function ProgressBar({ mission }: { mission: Mission }) {
   const { done, total } = missionProgress(mission)
   const value = total ? done / total : mission.status === 'completed' ? 1 : 0
   return <div role="progressbar" aria-label="Progresso do plano" aria-valuemin={0} aria-valuemax={total || 1} aria-valuenow={total ? done : value} className="h-1 w-full overflow-hidden rounded-full bg-muted">
-    <div className={cn('h-full rounded-full transition-[width] duration-300 ease-out', mission.status === 'failed' ? 'bg-destructive' : mission.status === 'completed' ? 'bg-emerald-500' : 'bg-primary')} style={{ width: `${Math.round(value * 100)}%` }} />
+    <div className={cn('h-full rounded-full transition-[width] duration-300 ease-out', mission.status === 'failed' ? 'bg-destructive' : mission.status === 'completed' ? 'bg-success' : 'bg-primary')} style={{ width: `${Math.round(value * 100)}%` }} />
   </div>
 }
 
 const STEP_ICON: Record<MissionStep['status'], { icon: typeof Check; className: string; label: string }> = {
-  done: { icon: Check, className: 'text-emerald-600 dark:text-emerald-400', label: 'Feito' },
-  doing: { icon: Loader2, className: 'animate-spin text-sky-600 motion-reduce:animate-none dark:text-sky-400', label: 'Em execução' },
+  done: { icon: Check, className: 'text-success', label: 'Feito' },
+  doing: { icon: Loader2, className: 'animate-spin text-info motion-reduce:animate-none', label: 'Em execução' },
   pending: { icon: CircleDashed, className: 'text-muted-foreground', label: 'Pendente' },
-  blocked: { icon: TriangleAlert, className: 'text-amber-600 dark:text-amber-400', label: 'Bloqueado' },
+  blocked: { icon: TriangleAlert, className: 'text-warning', label: 'Bloqueado' },
   skipped: { icon: CircleSlash, className: 'text-muted-foreground', label: 'Ignorado' },
 }
 

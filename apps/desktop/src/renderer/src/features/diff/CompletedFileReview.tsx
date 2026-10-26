@@ -4,8 +4,8 @@ import AIDiffReview, { type FileChange as ReviewFile } from '@/components/kokonu
 import type { FileChange } from '../../../../shared/v9'
 import { toFileDiff } from './file-diff-model'
 
-/** Read-only review docked above the composer. Actual changes are already applied. */
-export function CompletedFileReview({ changes }: { changes: FileChange[] }) {
+/** Read-only review of already applied changes: docked above the composer or inline under older replies. */
+export function CompletedFileReview({ changes, label = 'Revisão de arquivos modificados' }: { changes: FileChange[]; label?: string }) {
   const [expanded, setExpanded] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const applied = useMemo(() => {
@@ -43,7 +43,7 @@ export function CompletedFileReview({ changes }: { changes: FileChange[] }) {
   }, { added: 0, removed: 0 })
   const unavailable = applied.filter(change => change.binary || change.truncated)
 
-  return <section aria-label="Revisão de arquivos modificados" className="mb-2 overflow-hidden rounded-xl border border-border/70 bg-card/95 shadow-sm">
+  return <section aria-label={label} className="mb-2 overflow-hidden rounded-xl border border-border/70 bg-card/95 shadow-sm">
     <div className="flex min-h-9 items-center gap-2 px-2.5">
       <button type="button" aria-label="Revisar arquivos modificados" aria-expanded={expanded}
         onClick={() => setExpanded(open => !open)}

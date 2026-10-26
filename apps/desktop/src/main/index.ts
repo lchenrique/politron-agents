@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerTerminalHandlers } from './ipc/terminal'
 import { registerWindowControlHandlers } from './ipc/window-controls'
+import { PlatformBrowser, registerPlatformBrowserIpc } from './ipc/platform-browser'
+import { safeWebUrl } from '../shared/platform-browser'
 import { createAppWindow, destroyAppWindow } from './windows/manager'
 import { AppService } from './v9/workspace'
 import { registerV9Ipc } from './v9/ipc'
@@ -44,6 +46,7 @@ let appService: AppService | null = null
 let realtimeService: RealtimeService | null = null
 let hosts: HostManager | null = null
 let pwa: PwaGateway | null = null
+let platformBrowser: PlatformBrowser | null = null
 
 // Marca nova, mantendo os dados do Politron já instalado. Em uma instalação nova,
 // o diretório de dados é boobot-desktop. Não renomear o banco nem copiar cegamente.
@@ -163,10 +166,13 @@ function createWindow(): BrowserWindow {
     console.log('[Main] Window shown')
   })
 
+  // Somente HTTP/HTTPS chega ao navegador do sistema; outros protocolos são descartados.
   window.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    const url = safeWebUrl(details.url)
+    if (url) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  window.on('closed', () => platformBrowser?.close())
 
   // Load the app
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -213,7 +219,7 @@ function showMascotWindow() {
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false, contextIsolation: true, nodeIntegration: false },
   })
   mascotWindow.on('closed', () => { mascotWindow = null })
-  mascotWindow.webContents.setWindowOpenHandler(details => { shell.openExternal(details.url); return { action: 'deny' } })
+  mascotWindow.webContents.setWindowOpenHandler(details => { const url = safeWebUrl(details.url); if (url) void shell.openExternal(url); return { action: 'deny' } })
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) void mascotWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/mascot`)
   else void mascotWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/mascot' })
 }
@@ -308,6 +314,8 @@ app.whenReady().then(async () => {
   })
 
   registerTerminalHandlers(workspaceId => appService!.workspacePath(workspaceId), () => !!hosts?.remote)
+  platformBrowser = new PlatformBrowser(() => mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
+  registerPlatformBrowserIpc(platformBrowser, event => !!mainWindow && BrowserWindow.fromWebContents(event.sender) === mainWindow)
   registerWindowControlHandlers({ showMain: showMainWindow, showMascot: showMascotWindow, closeMascot: () => mascotWindow?.close() })
   initAutoUpdater()
   console.log('[Main] IPC handlers registered')
@@ -336,6 +344,7 @@ app.on('before-quit', () => {
   void hosts?.close()
   void pwa?.close()
   pwa = null
+  platformBrowser?.close()
   appService?.dispose()
   appService = null
 })

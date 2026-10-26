@@ -21,7 +21,7 @@ export function HostSelector() {
   const openLocal = () => window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'conexoes' }))
   return <>
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" className="w-full justify-start gap-2" aria-label="Selecionar host"><Monitor data-icon="inline-start" /><span className="min-w-0 flex-1 truncate text-left">{selected?.name || 'Host indisponível'}</span><span className="text-xs text-muted-foreground">{selected ? statuses[selected.status] : ''}</span><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" className="h-9 w-full justify-start gap-2 px-2 text-xs" aria-label="Selecionar host" title={selected?.name || 'Host indisponível'}><Monitor data-icon="inline-start" /><span className="min-w-0 flex-1 truncate text-left">Remoto</span><span className="text-xs text-muted-foreground">{selected ? statuses[selected.status] : ''}</span><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-80">
         <DropdownMenuGroup>{snapshot.hosts.map(host => <DropdownMenuItem key={host.id} disabled={busy} onSelect={() => void run(() => api.select(host.id))}><Monitor /><span className="flex min-w-0 flex-1 flex-col"><span className="truncate">{host.name}</span><span className="truncate text-xs text-muted-foreground">{host.transport === 'local' ? 'Este computador' : host.endpoint}</span></span>{host.id === snapshot.selectedId && <Check />}</DropdownMenuItem>)}</DropdownMenuGroup>
         <DropdownMenuSeparator />

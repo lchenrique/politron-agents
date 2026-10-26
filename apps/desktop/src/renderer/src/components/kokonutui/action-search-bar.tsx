@@ -85,6 +85,8 @@ export interface ActionSearchBarProps {
   label?: string;
   placeholder?: string;
   className?: string;
+  /** Render only an icon trigger while keeping the same command palette. */
+  iconOnly?: boolean;
   /** Override the palette surface without changing the global Kokonut style. */
   surfaceClassName?: string;
 }
@@ -506,6 +508,7 @@ function ActionSearchBar({
   label = "Search commands",
   placeholder = "Search or jump to…",
   className,
+  iconOnly = false,
   surfaceClassName,
 }: ActionSearchBarProps) {
   const uid = useId();
@@ -528,6 +531,7 @@ function ActionSearchBar({
   const [announcement, setAnnouncement] = useState("");
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -599,6 +603,10 @@ function ActionSearchBar({
     [setOpenState]
   );
 
+  useLayoutEffect(() => {
+    if (iconOnly && open) inputRef.current?.focus();
+  }, [iconOnly, open]);
+
   useEffect(() => () => window.clearTimeout(holdTimer.current), []);
 
   /* -- ⌘K, only while the palette is on screen -- */
@@ -651,14 +659,16 @@ function ActionSearchBar({
       if (focused instanceof HTMLElement && !focusedInside) {
         returnFocus.current = focused;
       }
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      if (!iconOnly) {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
       state.openPalette("keyboard");
     };
     // Capture, so the host page's ⌘K does not also fire when this one takes it.
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [shortcut]);
+  }, [shortcut, iconOnly]);
 
   /* -- motion: fade on pointer open; slide + spring on pointer page change -- */
 
@@ -668,10 +678,12 @@ function ActionSearchBar({
       return;
     }
     fadeNextOpen.current = false;
-    panel.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: 120,
-      easing: EASE_OUT,
-    });
+    if (typeof panel.animate === "function") {
+      panel.animate([{ opacity: 0 }, { opacity: 1 }], {
+        duration: 120,
+        easing: EASE_OUT,
+      });
+    }
   }, [open]);
 
   useLayoutEffect(() => {
@@ -932,7 +944,7 @@ function ActionSearchBar({
     // biome-ignore lint/a11y/noStaticElementInteractions: focusout from the whole palette closes it
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: same focusout handler
     <div
-      className={cn("relative h-[46px] w-full max-w-md", className)}
+      className={cn(iconOnly ? "relative size-8 shrink-0" : "relative h-[46px] w-full max-w-md", className)}
       onBlur={handleBlur}
       onPointerEnter={(e) => {
         hoverRef.current = e.pointerType === "mouse";
@@ -942,9 +954,26 @@ function ActionSearchBar({
       }}
       ref={rootRef}
     >
+      {iconOnly && <button
+        aria-expanded={open}
+        aria-label={label}
+        className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => {
+          if (!open) {
+            returnFocus.current = triggerRef.current;
+            openPalette("pointer");
+          }
+        }}
+        ref={triggerRef}
+        title={label}
+        type="button"
+      ><Search aria-hidden="true" className="size-4" /></button>}
       <div
+        aria-hidden={iconOnly && !open}
         className={cn(
-          "@container/palette absolute inset-x-0 top-0 z-30 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
+          "@container/palette absolute left-0 top-0 z-30 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950",
+          iconOnly ? "w-80 max-w-[calc(100vw-2rem)]" : "w-full",
+          iconOnly && !open && "hidden",
           open
             ? "shadow-[0_16px_40px_-16px_rgb(0_0_0/0.2)] dark:shadow-[0_16px_40px_-16px_rgb(0_0_0/0.7)]"
             : "shadow-xs",

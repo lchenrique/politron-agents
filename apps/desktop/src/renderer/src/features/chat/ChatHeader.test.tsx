@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Agent, Conversation } from '../../../../shared/v9'
-import { ChatHeader } from './ChatHeader'
+import type { Agent, Conversation, MessageSearchHit } from '../../../../shared/v9'
+import { ChatHeader, ConversationAvatar, ConversationTools } from './ChatHeader'
 
 const agent: Agent = { id: 'a1', name: 'Lyra', alias: 'lyra', description: '', instructions: '', runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-16T12:00:00.000Z' }
 const conversation: Conversation = { id: 'c1', kind: 'direct', name: 'Planejamento', agentIds: ['a1'], workspaceId: 'ws1', titleAuto: false, revision: 1, archived: false, createdAt: '2026-10-16T12:00:00.000Z' }
@@ -20,10 +20,19 @@ describe('cabeçalho da conversa', () => {
 
   it('usa barra compacta, com avatar no canto e titulo legivel', () => {
     render(<ChatHeader selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
-    expect(screen.getByTestId('compact-chat-header')).toHaveClass('h-14')
+    const header = screen.getByTestId('compact-chat-header')
+    expect(header).toHaveClass('h-12')
+    expect(header.tagName).toBe('HEADER')
     expect(screen.getByRole('heading', { name: 'Lyra' })).toBeInTheDocument()
     expect(screen.getByText('Planejamento')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ver detalhes de Lyra' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' })).toBeInTheDocument()
+  })
+
+  it('na PWA sem leitura de arquivos não oferece um menu de ações vazio', () => {
+    render(<ChatHeader browserMode canReadFiles={false} selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Ações da conversa' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' })).toBeInTheDocument()
   })
 
   it('mostra grupo com avatares sobrepostos e permite editar participantes', () => {
@@ -36,6 +45,26 @@ describe('cabeçalho da conversa', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver participantes do grupo' }))
     expect(onEditConversation).toHaveBeenCalledOnce()
     expect(screen.getByRole('button', { name: 'Ações da conversa' })).toBeInTheDocument()
+  })
+
+  it('busca no histórico pelo popover e abre o resultado', async () => {
+    const hit = { message: { id: 'm1', author: 'Lyra', createdAt: '2026-10-16T12:00:00.000Z' }, snippet: 'trecho encontrado' } as unknown as MessageSearchHit
+    const onSearchHistory = vi.fn(async () => [hit])
+    const onOpenSearchHit = vi.fn()
+    render(<ConversationTools compact selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} onSearchHistory={onSearchHistory} onOpenSearchHit={onOpenSearchHit} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Buscar no histórico desta conversa' }), { target: { value: 'trecho' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar' }))
+    fireEvent.click(await screen.findByText('trecho encontrado'))
+    expect(onSearchHistory).toHaveBeenCalledWith('trecho')
+    expect(onOpenSearchHit).toHaveBeenCalledWith(hit)
+  })
+
+  it('o avatar compacto da aba mantém os detalhes do Boo', () => {
+    const onOpenAgent = vi.fn()
+    render(<ConversationAvatar compact onOpenAgent={onOpenAgent} selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes de Lyra' }))
+    expect(onOpenAgent).toHaveBeenCalledWith(agent)
   })
 
   it('não duplica a seleção de modelo: o cabeçalho não tem seletor próprio', () => {

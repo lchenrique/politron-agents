@@ -9,11 +9,12 @@ import { captureFileVersion, commitFileWrite, fileContentMatches, FileVersionCon
 import { buildTurnContext, messageDigest } from './conversation-context'
 import { fingerprintTools, TOOL_BROKER_VERSION } from './tool-contract'
 import { delegationEligibility } from './delegation-eligibility'
-import { createCommandEvidence, formatCommandEvidence, runCommand } from './command-evidence'
+import { createCommandEvidence, formatCommandEvidence } from './command-evidence'
+import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
 import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type MissionAction, type Model, type Routine, type Run, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import { BrowserService } from './browser'
-import { GitWorkspaceService } from './git-workspaces'
+import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, mentionedRecipients, recipients, type WorkspaceLease } from './routing'
 import { OpenRouterDecisionService } from './decision-routing'
 import { CodexRuntime, type DynamicTool } from './codex'
@@ -34,14 +35,11 @@ const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claud
 
 type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
-async function runWorkspaceCommand(command: string, cwd: string, context: RunContext, toolCallId: string, store: WorkspaceStore): Promise<string> {
-  const env: NodeJS.ProcessEnv = {}
-  const allowedEnv = process.platform === 'win32'
-    ? ['PATH', 'PATHEXT', 'COMSPEC', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'ProgramFiles', 'ProgramFiles(x86)']
-    : ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TERM']
-  for (const key of allowedEnv) if (process.env[key]) env[key] = process.env[key]
+const terminalOwner = (context: RunContext) => ({ workspaceId: context.run.workspaceId, conversationId: context.conversation.id, runId: context.run.id, agentId: context.agent.id, agentName: context.agent.name })
+async function runWorkspaceCommand(command: string, cwd: string, context: RunContext, toolCallId: string, store: WorkspaceStore, terminals: AgentTerminalService): Promise<string> {
   const createdAt = new Date().toISOString()
-  const result = await runCommand(command, cwd, context.signal, { env })
+  // PTY visível no painel Terminal; mesmas regras de ambiente, limite, timeout e cancelamento do comando oculto anterior.
+  const result = await terminals.run({ command, cwd, owner: terminalOwner(context), signal: context.signal })
   const evidence = createCommandEvidence({ runId: context.run.id, toolCallId, agentId: context.agent.id, conversationId: context.conversation.id, workspaceId: context.run.workspaceId, command, cwd }, result, createdAt)
   const persisted = store.putCommandEvidence(evidence)
   return formatCommandEvidence(persisted, persisted.id)
@@ -59,6 +57,7 @@ export class AppService extends EventEmitter {
   readonly credentials: ClaudeCredentialStore
   readonly decisionRouting: OpenRouterDecisionService
   readonly browser = new BrowserService()
+  readonly agentTerminals = new AgentTerminalService()
   readonly gitWorkspaces: GitWorkspaceService
   // Mesma pasta de dados do app; tools de skill (list_skills/read_skill/save_skill) usam esta instância direto, sem passar por IPC.
   private readonly skills: SkillsService
@@ -110,6 +109,7 @@ export class AppService extends EventEmitter {
     this.openCodeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.openCodeRuntime))
     this.antigravityRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.antigravityRuntime))
     this.browser.on('frame', frame => this.emitEvent({ type: 'browser', frame }))
+    this.agentTerminals.on('event', (event: WorkspaceEvent) => this.emitEvent(event))
     this.browser.on('frameClosed', frame => this.emitEvent({ type: 'browserClosed', ...frame }))
     for (const [name, runtime] of [['Codex', this.runtime], ['Claude', this.claudeRuntime], ['Pi', this.piRuntime], ['OpenCode', this.openCodeRuntime], ['Antigravity', this.antigravityRuntime]] as const) {
       runtime.on('disconnected', (error: Error) => {
@@ -161,6 +161,14 @@ export class AppService extends EventEmitter {
     const workspace = this.store.saveWorkspace({ ...input, ...info })
     this.emitEvent({ type: 'changed' }); return workspace
   }
+  createProjectFolder(input: { parent: string; name: string }) { return createProjectFolder(input.parent, input.name) }
+  private cloneAbort: AbortController | null = null
+  async cloneRepository(input: { repository: string; parent: string; name?: string }) {
+    if (this.cloneAbort) throw new Error('Já existe uma clonagem em andamento.')
+    const abort = this.cloneAbort = new AbortController()
+    try { return await cloneGithubRepository(input, abort.signal) } finally { this.cloneAbort = null }
+  }
+  cancelClone() { this.cloneAbort?.abort() }
   async createWorktree(input: { sourceWorkspaceId: string; branch: string; baseBranch?: string }) {
     const source = this.store.workspace(input.sourceWorkspaceId)
     if (source.archived) throw new Error('Escolha um workspace ativo como origem.')
@@ -720,7 +728,10 @@ export class AppService extends EventEmitter {
       tool('workspace_list', 'Lista arquivos e pastas dentro da pasta deste grupo.', { path: { type: 'string', description: 'Caminho relativo; use . para a raiz.' } }, ['path']),
       tool('workspace_read', 'Lê um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' } }, ['path']),
       ...(canWrite && !planning ? [tool('workspace_write', 'Cria ou substitui um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
-      ...(canWrite && !planning && this.store.terminalEnabled() ? [tool('workspace_run_command', 'Executa um comando não interativo no terminal com diretório de trabalho nesta conversa. Não há sandbox do sistema operacional: o comando aprovado pode acessar outros caminhos. A confirmação segue o modo de aprovação do agente; no Bypass, executa sem perguntar. Comandos podem ler ou alterar arquivos e usar programas instalados; não use para comandos interativos.', { command: { type: 'string', description: 'Comando de shell a executar.' } }, ['command'])] : []),
+      ...(canWrite && !planning && this.store.terminalEnabled() ? [tool('workspace_run_command', 'Executa um comando não interativo no terminal com diretório de trabalho nesta conversa. Não há sandbox do sistema operacional: o comando aprovado pode acessar outros caminhos. A confirmação segue o modo de aprovação do agente; no Bypass, executa sem perguntar. Comandos podem ler ou alterar arquivos e usar programas instalados; não use para comandos interativos. A execução aparece no painel Terminal do Boobot. Para servidores e processos que não terminam, use workspace_start_process.', { command: { type: 'string', description: 'Comando de shell a executar.' } }, ['command']),
+        tool('workspace_start_process', 'Inicia um processo longo (por exemplo, servidor de desenvolvimento) no painel Terminal do Boobot, nesta pasta, e devolve o ID da sessão sem esperar o fim. Mesma aprovação de workspace_run_command; não há sandbox do sistema operacional. Nunca abre terminal externo.', { command: { type: 'string', description: 'Comando de shell a iniciar.' } }, ['command']),
+        tool('workspace_process_status', 'Consulta status, código de saída e o final da saída de um processo iniciado nesta conversa.', { session_id: { type: 'string' } }, ['session_id']),
+        tool('workspace_stop_process', 'Encerra um processo iniciado nesta conversa e seus processos filhos.', { session_id: { type: 'string' } }, ['session_id'])] : []),
       ...(canUseComputer && !planning ? [
         tool('browser_open', 'Abre um endereço HTTP ou HTTPS na sessão privada deste agente.', { url: { type: 'string' } }, ['url']),
         tool('browser_observe', 'Lê o conteúdo visível e os controles da página aberta pelo agente.', {}, []),
@@ -875,7 +886,30 @@ export class AppService extends EventEmitter {
       const command = text(args.command, 8000).trim()
       if (!command) throw new Error('Informe um comando para executar.')
       if (!await this.requestApproval(context, 'command', { command, cwd: root }, isSensitiveCommand(command))) return 'O usuário não aprovou a execução do comando.'
-      return runWorkspaceCommand(command, root, context, callId || randomUUID(), this.store)
+      return runWorkspaceCommand(command, root, context, callId || randomUUID(), this.store, this.agentTerminals)
+    }
+    if (name === 'workspace_start_process') {
+      if (!this.store.terminalEnabled()) throw new Error('A execução de comandos no terminal está desativada nas configurações globais.')
+      if (!context.agent.canWrite) throw new Error('Este agente não tem permissão de escrita para executar comandos.')
+      if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia comandos que podem alterar arquivos.')
+      const command = text(args.command, 8000).trim()
+      if (!command) throw new Error('Informe um comando para iniciar.')
+      if (!await this.requestApproval(context, 'command', { command, cwd: root }, isSensitiveCommand(command))) return 'O usuário não aprovou a execução do comando.'
+      const toolCallId = callId || randomUUID(), createdAt = new Date().toISOString()
+      const session = this.agentTerminals.start({ command, cwd: root, owner: terminalOwner(context), onFinish: done => {
+        if (done.status === 'running') return
+        this.store.putCommandEvidence(createCommandEvidence({ runId: context.run.id, toolCallId, agentId: context.agent.id, conversationId: context.conversation.id, workspaceId: context.run.workspaceId, command, cwd: root },
+          { output: stripTerminalControls(done.output), exitCode: done.exitCode, status: done.status, truncated: done.truncated }, createdAt))
+      } })
+      return `Processo iniciado no painel Terminal do Boobot. Sessão: ${session.id}. Status: ${session.status}. Use workspace_process_status para acompanhar e workspace_stop_process para encerrar.`
+    }
+    if (name === 'workspace_process_status' || name === 'workspace_stop_process') {
+      const sessionId = text(args.session_id, 100)
+      const scope = { workspaceId: context.run.workspaceId, conversationId: context.conversation.id }
+      if (name === 'workspace_stop_process') this.agentTerminals.stop(sessionId, scope)
+      const session = this.agentTerminals.get(sessionId, scope)
+      const output = stripTerminalControls(session.output).slice(-8000)
+      return `Sessão ${session.id} (${session.command}): ${session.status}${session.exitCode !== null ? `, código ${session.exitCode}` : ''}.${name === 'workspace_stop_process' ? ' Encerramento solicitado.' : ''}\nSaída recente${session.truncated ? ' (truncada)' : ''}:\n${output}`
     }
     if (name === 'workspace_list') {
       const target = inside(args.path || '.')
@@ -1346,8 +1380,25 @@ export class AppService extends EventEmitter {
     const controller = new AbortController(); this.active.set(run.id, controller)
     await this.queue.enqueue(workspace.path, controller.signal, lease => this.execute({ run, message, conversation, agent: requester, lease }, controller.signal))
   }
+  agentTerminalSessions(conversationId: string, workspaceId: string) { return this.agentTerminals.list(this.terminalScope(conversationId, workspaceId)) }
+  agentTerminalStop(sessionId: string, conversationId: string, workspaceId: string) { return this.agentTerminals.stop(text(sessionId, 100), this.terminalScope(conversationId, workspaceId)) }
+  private terminalScope(conversationId: string, workspaceId: string) {
+    const conversation = this.store.conversation(text(conversationId, 100))
+    if (conversation.workspaceId !== workspaceId) throw new Error('A conversa não pertence a este workspace.')
+    return { workspaceId, conversationId: conversation.id }
+  }
+  /** Ação separada e explícita do usuário. Não é chamada por ferramentas de agente nem pela RPC remota. */
+  openExternalTerminal(workspaceId: string) {
+    const cwd = this.workspacePath(workspaceId)
+    if (!cwd) throw new Error('Este projeto não tem pasta.')
+    const [command, args] = process.platform === 'win32' ? ['powershell.exe', ['-NoExit']] : process.platform === 'darwin' ? ['open', ['-a', 'Terminal', cwd]] : ['x-terminal-emulator', []]
+    const child = spawn(command as string, args as string[], { cwd, detached: true, stdio: 'ignore', shell: false })
+    child.once('error', () => undefined)
+    child.unref()
+  }
   dispose() {
     if (this.statusSignal.signal.aborted) return
+    this.agentTerminals.terminateAll()
     clearInterval(this.statusTimer)
     this.missions.dispose()
     this.statusSignal.abort()

@@ -1,8 +1,5 @@
 import { atom } from 'jotai'
-import { atomWithStorage } from 'jotai/utils'
 import type { Agent, Team, Workspace } from '@/types/workspace'
-
-export const themeAtom = atomWithStorage<string>('vibe-ide-theme', 'default')
 
 // NOTA (Fase 0 da limpeza): estas eram declaradas com uma anotação separada
 // `WritableAtom<T, [T], void>`, incompatível com a versão instalada do

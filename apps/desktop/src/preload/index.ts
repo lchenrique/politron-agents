@@ -52,6 +52,9 @@ const appAPI: AppAPI = {
   saveConversation: (input) => ipcRenderer.invoke('v9:saveConversation', input),
   saveWorkspace: (input) => ipcRenderer.invoke('v9:saveWorkspace', input),
   createWorktree: (input) => ipcRenderer.invoke('v9:createWorktree', input),
+  createProjectFolder: (input) => ipcRenderer.invoke('v9:createProjectFolder', input),
+  cloneRepository: (input) => ipcRenderer.invoke('v9:cloneRepository', input),
+  cancelClone: () => ipcRenderer.invoke('v9:cancelClone'),
   archiveWorkspace: (id, preserveDirtyWorktree) => ipcRenderer.invoke('v9:archiveWorkspace', id, preserveDirtyWorktree),
   deleteWorkspace: (id) => ipcRenderer.invoke('v9:deleteWorkspace', id),
   deleteConversation: (id) => ipcRenderer.invoke('v9:deleteConversation', id),
@@ -107,6 +110,9 @@ const appAPI: AppAPI = {
   browserFrames: (id) => ipcRenderer.invoke('v9:browserFrames', id),
   browserControl: (key, human) => ipcRenderer.invoke('v9:browserControl', key, human),
   browserAction: (key, action) => ipcRenderer.invoke('v9:browserAction', key, action),
+  agentTerminalSessions: (conversationId, workspaceId) => ipcRenderer.invoke('v9:agentTerminalSessions', conversationId, workspaceId),
+  agentTerminalStop: (sessionId, conversationId, workspaceId) => ipcRenderer.invoke('v9:agentTerminalStop', sessionId, conversationId, workspaceId),
+  openExternalTerminal: (workspaceId) => ipcRenderer.invoke('v9:openExternalTerminal', workspaceId),
   onEvent: (callback) => {
     const listener = (_event: IpcRendererEvent, payload: WorkspaceEvent) => callback(payload)
     ipcRenderer.on('v9:event', listener)
@@ -181,3 +187,16 @@ const pwaAPI: import('../shared/pwa-desktop').PwaDesktopAPI = {
   revokeDevice: (id) => ipcRenderer.invoke('pwa:revokeDevice', id),
 }
 contextBridge.exposeInMainWorld('pwaAPI', pwaAPI)
+
+const platformBrowserAPI: import('../shared/platform-browser').PlatformBrowserAPI = {
+  navigate: url => ipcRenderer.invoke('platformBrowser:navigate', url),
+  state: () => ipcRenderer.invoke('platformBrowser:state'),
+  setBounds: (bounds, visible) => ipcRenderer.invoke('platformBrowser:setBounds', bounds, visible),
+  back: () => ipcRenderer.invoke('platformBrowser:back'),
+  forward: () => ipcRenderer.invoke('platformBrowser:forward'),
+  reload: () => ipcRenderer.invoke('platformBrowser:reload'),
+  openExternal: url => ipcRenderer.invoke('platformBrowser:openExternal', url),
+  close: () => ipcRenderer.invoke('platformBrowser:close'),
+  onState: callback => onChannel('platformBrowser:state', callback),
+}
+contextBridge.exposeInMainWorld('platformBrowserAPI', platformBrowserAPI)

@@ -5,12 +5,13 @@ import TitleBar from '@/components/ide/TitleBar'
 import { ASSISTANT_ID, type Agent, type BrowserFrame, type Conversation, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import { Sidebar } from '../sidebar/Sidebar'
-import { SidebarRail } from '../sidebar/SidebarRail'
+import { WorkspaceSearch } from '../sidebar/WorkspaceSearch'
 import { WorkspaceOverview } from './WorkspaceOverview'
 import { PoliAvatar } from './PoliAvatar'
 import { AgentDetails } from './AgentDetails'
-import { ChatHeader } from '../chat/ChatHeader'
+import { ChatHeader, ConversationAvatar, ConversationTools, conversationIdentity, type ConversationChromeProps } from '../chat/ChatHeader'
 import { MessageList } from '../chat/MessageList'
+import { MessageLinkContext, type MessageLinkHandlers } from '../chat/MessageMarkdown'
 import { useConversationHistory } from '../chat/useConversationHistory'
 import { Composer } from '../composer/Composer'
 import { modelOptions } from '../composer/model-options'
@@ -67,7 +68,9 @@ export default function AppShell() {
     if (browserMode && window.matchMedia('(max-width: 767px)').matches) return true
     try { return localStorage.getItem('politron.sidebar.collapsed') === 'true' } catch { return false }
   })
-  const [sidebarSize, setSidebarSize] = useState(() => { try { const value = Number(localStorage.getItem('politron.sidebar.size')); return Number.isFinite(value) && value >= 17 && value <= 34 ? value : 19 } catch { return 19 } })
+  const [sidebarSection, setSidebarSection] = useState<'projects' | 'agents'>(() => { try { return localStorage.getItem('politron.sidebar.section') === 'agents' ? 'agents' : 'projects' } catch { return 'projects' } })
+  useEffect(() => { try { localStorage.setItem('politron.sidebar.section', sidebarSection) } catch { /* preferência opcional */ } }, [sidebarSection])
+  const [sidebarSize, setSidebarSize] = useState(() => { try { const value = Number(localStorage.getItem('politron.sidebar.size')); return Number.isFinite(value) && value >= 17 && value <= 34 ? value : 32 } catch { return 32 } })
   const dockRef = useRef<DockWorkspaceHandle>(null)
   useEffect(() => { try { localStorage.setItem('politron.sidebar.collapsed', String(sidebarCollapsed)) } catch { /* preferência opcional */ } }, [sidebarCollapsed])
   useEffect(() => {
@@ -81,7 +84,7 @@ export default function AppShell() {
     return () => window.removeEventListener('keydown', shortcut)
   }, [])
   const openTool = (kind: DockTool, zone: DockZone = 'side') => {
-    if (browserMode && (kind === 'files' && !canReadFiles || kind === 'terminal' || kind === 'browser' || kind === 'mascot')) return
+    if (browserMode && (kind === 'files' && !canReadFiles || kind === 'terminal' || kind === 'browser' || kind === 'web' || kind === 'mascot')) return
     dockRef.current?.openTool(kind, zone)
   }
   const [browserFrames, setBrowserFrames] = useState<BrowserFrame[]>([])
@@ -113,6 +116,22 @@ export default function AppShell() {
     ? visibleFileChanges.filter(change => change.runId === finishedWithChanges.runId && change.status === 'applied') : []
   const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
   const selectedWorkspace = selected ? snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined
+  const linkWorkspaceId = selectedWorkspace?.path ? selectedWorkspace.id : null
+  // Links das respostas no Desktop: arquivos no editor do dock, web no navegador da plataforma. A PWA não recebe provider.
+  const messageLinks = useMemo<MessageLinkHandlers | null>(() => browserMode ? null : {
+    openFile: path => {
+      if (!linkWorkspaceId) { setNotice('Esta conversa não tem pasta de projeto; o arquivo não pode ser aberto.'); return }
+      dockRef.current?.openFile(linkWorkspaceId, path)
+    },
+    openUrl: (url, mode) => {
+      const api = window.platformBrowserAPI
+      if (!api) return
+      if (mode === 'external') { void api.openExternal(url).catch(error => setNotice(errorText(error))); return }
+      dockRef.current?.revealTool('web')
+      void api.navigate(url).catch(error => setNotice(errorText(error)))
+    },
+    blocked: () => setNotice('Link não aberto: somente HTTP/HTTPS ou arquivos dentro da pasta do projeto são permitidos.'),
+  }, [browserMode, linkWorkspaceId])
   // O IPC recria os objetos: conservar os dados iguais evita invalidar os memos do chat e dos Boos.
   const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => {
@@ -169,9 +188,11 @@ export default function AppShell() {
         const next = [...current]; next[at] = event.frame; return next
       })
       else if (event.type === 'browserClosed') setBrowserFrames(current => current.filter(frame => frame.key !== event.key))
+      // Comando de agente desta conversa: mostra o painel Terminal sem mover a aba se ela já existe.
+      else if (event.type === 'agentTerminal' && event.event === 'started' && !browserMode && event.session.conversationId === selectedIdRef.current) dockRef.current?.revealTool('terminal')
     })
     return () => { off(); offProviders(); if (refreshTimer !== null) clearTimeout(refreshTimer) }
-  }, [refresh, queueMessage, reconcileAfterReconnect])
+  }, [refresh, queueMessage, reconcileAfterReconnect, browserMode])
   useEffect(() => { void window.appAPI.setVisibleConversation(selected?.id || null).catch(error => setNotice(errorText(error))) }, [selected?.id])
   const refreshBrowser = useCallback(async () => { if (!selected) { setBrowserFrames([]); return } try { setBrowserFrames(await window.appAPI.browserFrames(selected.id)) } catch (error) { setNotice(errorText(error)) } }, [selected?.id])
   useEffect(() => { void refreshBrowser() }, [refreshBrowser])
@@ -280,11 +301,41 @@ export default function AppShell() {
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
   const conversationRuns = snapshot.runs.filter(run => run.conversationId === selected?.id && !run.parentId && ['queued', 'running', 'waiting'].includes(run.status))
   const canSteer = conversationRuns.length > 0 && conversationRuns.every(run => snapshot.steeringRuntimes?.includes(run.agent.runtime) && !!run.threadId && !!run.turnId)
+  // A barra da janela diz onde se está; quem participa e as ações da conversa ficam na faixa da conversa.
+  const chiefName = snapshot.agents.find(agent => agent.role === 'chief')?.name
+  const contextWorkspace = activeWorkspace || selectedWorkspace
+  const parentWorkspace = contextWorkspace?.kind === 'worktree' ? snapshot.workspaces.find(item => item.id === contextWorkspace.parentWorkspaceId) : undefined
+  const windowLocation = view === 'home' ? { label: `Central do ${chiefName || 'Chief'}` }
+    : view === 'routines' ? { label: 'Rotinas' }
+    : contextWorkspace && (parentWorkspace?.name || contextWorkspace.name) ? { label: parentWorkspace?.name || contextWorkspace.name, detail: contextWorkspace.kind === 'worktree' ? contextWorkspace.branch || contextWorkspace.name : undefined }
+    : undefined
+  const mainTabLabel = view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : activeWorkspace ? 'Projeto' : undefined
+  // Mesmos dados para a faixa da conversa (chat sozinho) e para a aba do chat (com outras abas): nunca as duas ao mesmo tempo.
+  const conversationChrome: ConversationChromeProps | null = selected ? {
+    assistant: snapshot.assistant,
+    onOpenAgent: agent => setDetailsAgentId(agent.id),
+    selected,
+    agents: snapshot.agents,
+    selectedWorkspace,
+    onParticipantsChange: updateParticipants,
+    onOpenComputerUse: () => openTool('browser'),
+    onOpenProjectFiles: () => openTool('files'),
+    onOpenMascot: () => openTool('mascot'),
+    onEditConversation: () => setEditor({ kind: 'conversation', initial: selected }),
+    onSearchHistory: searchHistory,
+    onOpenSearchHit: hit => void openHistorySearchHit(hit).catch(error => setNotice(errorText(error))),
+    focusedMessageId: focusedHistoryMessageId,
+    onReturnToLatest: () => void returnToLatestHistory().catch(error => setNotice(errorText(error))),
+    browserMode,
+    canReadFiles,
+    canChat,
+  } : null
+  const conversationTitle = selected ? conversationIdentity(selected, snapshot.agents, snapshot.assistant) : null
 
-  return <div data-pwa-shell={browserMode ? 'true' : undefined} data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-background font-sans text-foreground">
-    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} browserMode={browserMode} browserCanReadFiles={canReadFiles} className="border-b border-border/50" />
+  return <div data-pwa-shell={browserMode ? 'true' : undefined} data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-chrome font-sans text-foreground">
+    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} browserMode={browserMode} browserCanReadFiles={canReadFiles} location={windowLocation}
+      search={!browserMode && <WorkspaceSearch snapshot={snapshot} canChat={canChat} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} onSectionChange={setSidebarSection} />} />
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      {!browserMode && <SidebarRail collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenPanel={() => openTool('files', 'side')} />}
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
       {browserMode && isMobile && !sidebarCollapsed && <button type="button" className="boobot-web-sidebar-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarCollapsed(true)} />}
       <ResizablePanelGroup key={browserMode && isMobile ? 'web-mobile-layout' : sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
@@ -310,6 +361,8 @@ export default function AppShell() {
         onOpenSettings={() => setSettingsOpen(true)}
         view={view}
         onOpenHome={openHome}
+        section={sidebarSection}
+        onSectionChange={setSidebarSection}
         attentionCount={attentionCount}
         onDeleteWorkspace={deleteWorkspace}
         onDeleteConversation={deleteConversation}
@@ -320,35 +373,21 @@ export default function AppShell() {
         canChat={canChat}
       />
       </ResizablePanel>
-      <ResizableHandle withHandle />
+      {/* O vão entre navegação e canvas é a própria alça: sem linha extra, realçada ao passar o mouse. */}
+      <ResizableHandle aria-label="Redimensionar barra lateral" className="w-1.5 bg-transparent transition-colors hover:bg-ring/25 focus-visible:bg-ring/35" />
       </>}
-      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 ' + (browserMode ? 'boobot-web-main-panel' : '')}>
-      <DockWorkspace ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} browserFrames={browserFrames.filter(frame => frame.conversationId === selected?.id)} onRefreshBrowser={() => void refreshBrowser()} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}>
+      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 pb-1.5 pr-1.5 ' + (sidebarCollapsed ? 'pl-1.5 ' : '') + (browserMode ? 'boobot-web-main-panel' : '')}>
+      <div className="boobot-canvas ds-canvas flex h-full min-h-0 min-w-0">
+      <DockWorkspace ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} browserFrames={browserFrames.filter(frame => frame.conversationId === selected?.id)} onRefreshBrowser={() => void refreshBrowser()} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}
+        chatHeader={conversationChrome && <ChatHeader {...conversationChrome} />}
+        chatTab={conversationChrome && conversationTitle ? { label: conversationTitle.title, title: [conversationTitle.title, conversationTitle.subtitle].filter(Boolean).join(' · '), leading: <ConversationAvatar compact {...conversationChrome} />, trailing: <ConversationTools compact {...conversationChrome} /> } : mainTabLabel ? { label: mainTabLabel } : undefined}>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} canChat={canChat} />
         : view === 'routines' ? <RoutinesPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
         : selected ? <>
-          <ChatHeader
-            assistant={snapshot.assistant}
-            onOpenAgent={agent => setDetailsAgentId(agent.id)}
-            selected={selected}
-            agents={snapshot.agents}
-            selectedWorkspace={selectedWorkspace}
-            onParticipantsChange={updateParticipants}
-            onOpenComputerUse={() => openTool('browser')}
-            onOpenProjectFiles={() => openTool('files')}
-            onOpenMascot={() => openTool('mascot')}
-            onEditConversation={() => setEditor({ kind: 'conversation', initial: selected })}
-            onSearchHistory={searchHistory}
-            onOpenSearchHit={hit => void openHistorySearchHit(hit).catch(error => setNotice(errorText(error)))}
-            focusedMessageId={focusedHistoryMessageId}
-            onReturnToLatest={() => void returnToLatestHistory().catch(error => setNotice(errorText(error)))}
-            browserMode={browserMode}
-            canReadFiles={canReadFiles}
-            canChat={canChat}
-          />
           {selectedMission && <MissionStrip mission={selectedMission} runs={snapshot.runs} approvals={snapshot.approvals} onNotice={setNotice} />}
           <div className="flex min-h-0 flex-1 flex-col">
+            <MessageLinkContext.Provider value={messageLinks}>
             <MessageList
               key={selected.id}
               messages={messages}
@@ -358,6 +397,7 @@ export default function AppShell() {
               onLoadOlder={loadOlderMessages}
               focusedMessageId={focusedHistoryMessageId}
               fileChanges={visibleFileChanges}
+              reviewRunId={latestReview.length ? finishedWithChanges?.runId || null : null}
               approvals={visibleApprovals}
               conversations={snapshot.conversations}
               agentOf={agentOf}
@@ -367,6 +407,7 @@ export default function AppShell() {
               canSpeak={!browserMode || canChat}
               canApprove={canApprove}
             />
+            </MessageLinkContext.Provider>
             <fieldset disabled={!canChat} className="m-0 min-w-0 border-0 p-0">
             <Composer
               mentionAgents={selectedAgents}
@@ -385,21 +426,23 @@ export default function AppShell() {
               onVoiceNotice={setNotice}
             />
             </fieldset>
-            {browserMode && !canChat && <p className="px-4 pb-2 text-center text-[10px] text-muted-foreground">O host está em leitura para este dispositivo. Libere o chat nas permissões PWA do Boobot.</p>}
+            {browserMode && !canChat && <p className="mx-3 mb-2 rounded-lg bg-warning-soft px-3 py-2 text-center text-xs text-warning sm:mx-auto sm:max-w-3xl">O host está em leitura para este dispositivo. Libere o chat nas permissões PWA do Boobot.</p>}
           </div>
         </> : activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} conversations={snapshot.conversations} workspaces={snapshot.workspaces} agents={snapshot.agents} onCreateSession={() => void startConversation(activeWorkspace.id)} onOpenConversation={selectConversation} onEdit={() => setEditor({ kind: 'workspace', initial: activeWorkspace })} onOpenAgent={agent => {
           if (canChat) void openWorkspaceAgent(activeWorkspace.id, agent)
           else { setDetailsAgentId(agent.id); if (browserMode && isMobile) setSidebarCollapsed(true) }
-        }} browserMode={browserMode} canChat={canChat} /> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><div className="mx-auto mb-4 flex items-center justify-center"><PoliAvatar agent={{ ...snapshot.assistant, name: 'Boo' }} size={112} /></div><h1 className="text-xl font-semibold">Seu espaço de trabalho</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em workspaces e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-5 flex justify-center gap-2"><Button disabled={!canChat} onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button>{!browserMode && <Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo workspace</Button>}</div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
+        }} browserMode={browserMode} canChat={canChat} /> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><div className="mx-auto mb-5 flex items-center justify-center"><PoliAvatar agent={{ ...snapshot.assistant, name: 'Boo' }} size={104} /></div><h1 className="ds-page-title">Seu espaço de trabalho</h1><p className="ds-page-lede mx-auto">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em projetos e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-6 flex flex-wrap justify-center gap-2"><Button disabled={!canChat} onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button>{!browserMode && <Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo projeto</Button>}</div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
       </main>
       </DockWorkspace>
+      </div>
       </ResizablePanel>
       </ResizablePanelGroup>
       </div>
     </div>
     <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} browserMode={browserMode} />
     {!browserMode && <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} /></Suspense>}
-    {notice && <div role="status" className="fixed bottom-5 right-5 z-[60] max-w-md rounded-xl border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-xl">{notice}</div>}
+    {/* No celular o composer ocupa toda a largura: o aviso sobe para não cobrir o botão de enviar. */}
+    {notice && <div role="status" className="fixed inset-x-3 bottom-32 z-[60] mx-auto max-w-md rounded-xl sm:inset-x-auto sm:bottom-5 sm:right-5 sm:mx-0 border border-border bg-popover px-4 py-3 text-[13px] leading-5 text-popover-foreground shadow-lg">{notice}</div>}
     {!browserMode && <Suspense fallback={null}>
       <SettingsPage open={settingsOpen} onOpenChange={setSettingsOpen} initialSection={settingsSection} />
       {editor && <Editor kind={editor.kind} initial={editor.initial} workspaceId={editor.workspaceId} defaultAgentIds={editor.workspaceId ? snapshot.workspaces.find(workspace => workspace.id === editor.workspaceId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'workspace' ? saveWorkspace : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}

@@ -14,7 +14,7 @@ describe('capacidades explícitas do gateway PWA', () => {
   })
   it('mantém métodos perigosos fora do browser mesmo quando todas as capacidades foram concedidas', () => {
     const grants: PwaCapability[] = ['read', 'chat', 'approvals', 'files:read', 'files:write']
-    for (const method of ['v9:saveTerminalAccess', 'v9:saveAssistantPreferences', 'v9:browserControl', 'v9:browserAction', 'v9:deleteWorkspace', 'providers:refresh', 'hosts:browse', '__proto__', 'constructor']) {
+    for (const method of ['v9:agentTerminalSessions', 'v9:agentTerminalStop', 'v9:openExternalTerminal', 'v9:saveTerminalAccess', 'v9:saveAssistantPreferences', 'v9:browserControl', 'v9:browserAction', 'v9:deleteWorkspace', 'providers:refresh', 'hosts:browse', '__proto__', 'constructor']) {
       expect(() => assertPwaRpcAuthorized(method, [], grants)).toThrow(/não está disponível/)
     }
   })

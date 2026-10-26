@@ -23,6 +23,9 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('saveConversation', (input) => service.saveConversation(input))
   invoke('saveWorkspace', (input) => service.saveWorkspace(input))
   invoke('createWorktree', (input) => service.createWorktree(input))
+  invoke('createProjectFolder', (input) => service.createProjectFolder(input))
+  invoke('cloneRepository', (input) => service.cloneRepository(input))
+  invoke('cancelClone', () => service.cancelClone())
   invoke('archiveWorkspace', (id, preserveDirtyWorktree) => service.archiveWorkspace(id, preserveDirtyWorktree))
   invoke('deleteWorkspace', (id) => service.deleteWorkspace(id))
   invoke('deleteConversation', (id) => service.deleteConversation(id))
@@ -86,6 +89,10 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('browserFrames', (id) => service.browserFrames(id))
   invoke('browserControl', (key, human) => service.browserControl(key, human))
   invoke('browserAction', (key, action) => service.browserAction(key, action))
+  invoke('agentTerminalSessions', (conversationId, workspaceId) => service.agentTerminalSessions(conversationId, workspaceId))
+  invoke('agentTerminalStop', (sessionId, conversationId, workspaceId) => service.agentTerminalStop(sessionId, conversationId, workspaceId))
+  // Fora da RPC: com host remoto selecionado o roteamento recusa, então nunca abre janela no host remoto.
+  invoke('openExternalTerminal', (workspaceId) => service.openExternalTerminal(workspaceId))
   const send = (event: unknown) => {
     if (routing && !routing.publish({ channel: 'v9:event', data: event })) return
     for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('v9:event', event)
@@ -95,6 +102,6 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     service.off('workspace-event', send)
     voice.close()
     ipcMain.removeHandler('v9:clearClaudeCredential')
-    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'startMission', 'missionAction', 'saveRoutine', 'deleteRoutine', 'runRoutine', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'createProjectFolder', 'cloneRepository', 'cancelClone', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'startMission', 'missionAction', 'saveRoutine', 'deleteRoutine', 'runRoutine', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction', 'agentTerminalSessions', 'agentTerminalStop', 'openExternalTerminal']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

@@ -22,7 +22,7 @@ const fromRoutine = (routine: Routine): Draft => ({ id: routine.id, name: routin
   kind: routine.trigger.kind === 'event' ? routine.trigger.event : routine.trigger.kind, time: routine.trigger.kind === 'daily' ? routine.trigger.time : '09:00',
   weekdays: routine.trigger.kind === 'daily' ? routine.trigger.weekdays : [1, 2, 3, 4, 5], hours: routine.trigger.kind === 'interval' ? routine.trigger.minutes / 60 : 4 })
 
-const field = 'h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40'
+const field = 'h-9 w-full rounded-md border border-input bg-card px-3 text-sm shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
 
 export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snapshot: Snapshot; onOpenConversation: (id: string) => void; onNotice: (text: string) => void }) {
   const routines = snapshot.routines || []
@@ -50,8 +50,8 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
   const runNow = (routine: Routine) => void window.appAPI.runRoutine(routine.id).then(mission => { onNotice(`${routine.name} iniciada.`); onOpenConversation(mission.conversationId) }).catch(error => onNotice(errorText(error)))
   const remove = (routine: Routine) => { if (window.confirm(`Excluir a rotina “${routine.name}”? As missões já executadas continuam no histórico.`)) void window.appAPI.deleteRoutine(routine.id).catch(error => onNotice(errorText(error))) }
 
-  const editor = draft && <form className="space-y-5 rounded-2xl border border-border/80 bg-card/50 p-5" onSubmit={event => { event.preventDefault(); void save() }}>
-    {!draft.id && <div className="flex flex-wrap gap-1.5">{TEMPLATES.map(template => <button key={template.name} type="button" onClick={() => patch(template)} className="rounded-full border border-border/70 px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">{template.name}</button>)}</div>}
+  const editor = draft && <form className="ds-panel space-y-5 p-5" onSubmit={event => { event.preventDefault(); void save() }}>
+    {!draft.id && <div className="flex flex-wrap gap-1.5">{TEMPLATES.map(template => <button key={template.name} type="button" onClick={() => patch(template)} className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground shadow-xs transition-colors hover:border-border-strong hover:text-foreground">{template.name}</button>)}</div>}
     <div className="grid gap-4 sm:grid-cols-2">
       <label className="space-y-1.5 text-xs font-medium sm:col-span-2">Nome<input required maxLength={80} value={draft.name} onChange={event => patch({ name: event.target.value })} placeholder="Ex.: Revisão diária do projeto" className={field} /></label>
       <label className="space-y-1.5 text-xs font-medium sm:col-span-2">O que fazer a cada execução
@@ -64,7 +64,7 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
       <legend className="mb-2 text-xs font-medium">Quando</legend>
       <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Gatilho">
         {([['daily', 'Em horário fixo'], ['interval', 'A cada intervalo'], ['app-start', 'Ao abrir o Boobot'], ['project-changed', 'Quando o projeto mudar']] as const).map(([kind, label]) =>
-          <button key={kind} type="button" role="radio" aria-checked={draft.kind === kind} onClick={() => patch({ kind })} className={cn('rounded-lg border px-3 py-1.5 text-xs transition-colors', draft.kind === kind ? 'border-primary/60 bg-primary/10 text-foreground' : 'border-border/70 text-muted-foreground hover:bg-accent')}>{label}</button>)}
+          <button key={kind} type="button" role="radio" aria-checked={draft.kind === kind} onClick={() => patch({ kind })} className={cn('rounded-lg border px-3 py-1.5 text-xs transition-colors', draft.kind === kind ? 'border-primary/50 bg-primary-soft text-primary-soft-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground')}>{label}</button>)}
       </div>
       {draft.kind === 'daily' && <div className="flex flex-wrap items-center gap-3">
         <input type="time" aria-label="Horário" required value={draft.time} onChange={event => patch({ time: event.target.value })} className={cn(field, 'w-28')} />
@@ -79,13 +79,13 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
   </form>
 
   return <div className="min-h-0 flex-1 overflow-auto">
-    <div className="mx-auto w-full max-w-3xl space-y-8 px-5 pb-16 pt-10 sm:px-8">
+    <div className="ds-page max-w-3xl space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0"><h1 className="text-2xl font-semibold tracking-tight">Rotinas</h1><p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">Responsabilidades contínuas. Cada execução vira uma missão do responsável e roda mesmo com o chat fechado, enquanto o Boobot estiver aberto ou na bandeja.</p></div>
+        <div className="min-w-0"><p className="ds-eyebrow mb-2">Automação</p><h1 className="ds-page-title">Rotinas</h1><p className="ds-page-lede max-w-xl">Responsabilidades contínuas. Cada execução vira uma missão do responsável e roda mesmo com o chat fechado, enquanto o Boobot estiver aberto ou na bandeja.</p></div>
         {!draft && <Button onClick={() => setDraft(blank())}><Plus className="size-4" />Nova rotina</Button>}
       </header>
       {draft && !draft.id && editor}
-      {routines.length ? <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70">
+      {routines.length ? <ul className="ds-list">
         {routines.map(routine => {
           if (draft?.id === routine.id) return <li key={routine.id} className="p-3">{editor}</li>
           const mission = lastMission(routine)
@@ -110,7 +110,7 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
             </div>
           </li>
         })}
-      </ul> : !draft && <div className="rounded-xl border border-dashed border-border/80 px-6 py-10 text-center">
+      </ul> : !draft && <div className="ds-empty px-6 py-10 text-center">
         <p className="text-sm font-medium">Nenhuma rotina ainda</p>
         <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-muted-foreground">Crie aqui ou peça ao Chief: “acompanhe meus projetos diariamente e resolva o que estiver dentro das suas permissões”.</p>
         <Button variant="outline" className="mt-4" onClick={() => setDraft(blank())}><Plus className="size-4" />Criar primeira rotina</Button>

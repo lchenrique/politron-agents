@@ -1,10 +1,10 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { GitWorkspaceService } from './git-workspaces'
+import { cloneGithubRepository, createProjectFolder, GitWorkspaceService, parseGithubRepository } from './git-workspaces'
 
 const execFileAsync = promisify(execFile)
 const temporaryDirectories: string[] = []
@@ -60,4 +60,42 @@ describe('GitWorkspaceService', () => {
     await expect(service.createWorktree({ sourcePath, workspaceName: 'Project', branch: '../escape' })).rejects.toThrow('branch')
     await expect(service.removeWorktree(directory)).rejects.toThrow('fora da pasta permitida')
   }, 30000)
+})
+
+describe('novo projeto: pasta local e clone do GitHub', () => {
+  it('aceita só endereços do GitHub sem credenciais embutidas', () => {
+    expect(parseGithubRepository('octocat/hello-world')).toEqual({ cloneUrl: 'https://github.com/octocat/hello-world.git', name: 'hello-world' })
+    expect(parseGithubRepository('https://github.com/octocat/Hello.World.git')).toEqual({ cloneUrl: 'https://github.com/octocat/Hello.World.git', name: 'Hello.World' })
+    expect(parseGithubRepository('git@github.com:octocat/hello-world.git')).toEqual({ cloneUrl: 'git@github.com:octocat/hello-world.git', name: 'hello-world' })
+    for (const bad of ['https://user:token@github.com/o/r', 'ext::sh -c touch% /tmp/x', 'file:///c/repo', 'https://gitlab.com/o/r', '--upload-pack=x/r', 'o/..', 'https://github.com/o/r/tree/main']) expect(parseGithubRepository(bad)).toBeNull()
+  })
+
+  it('cria pasta nova e recusa destino ocupado ou nome com barras', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'politron-new-project-'))
+    temporaryDirectories.push(parent)
+    expect(await createProjectFolder(parent, 'landing')).toBe(join(await realpath(parent), 'landing'))
+    await expect(createProjectFolder(parent, 'landing')).rejects.toThrow('Já existe uma pasta')
+    await expect(createProjectFolder(parent, '../fora')).rejects.toThrow('nome de pasta simples')
+  })
+
+  it('valida repositório e destino antes de chamar o Git', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'politron-clone-'))
+    temporaryDirectories.push(parent)
+    await mkdir(join(parent, 'hello-world'))
+    await writeFile(join(parent, 'hello-world', 'meu-trabalho.txt'), 'não apagar\n')
+    await expect(cloneGithubRepository({ repository: 'https://example.com/x/y', parent })).rejects.toThrow('URL do GitHub')
+    await expect(cloneGithubRepository({ repository: 'octocat/hello-world', parent })).rejects.toThrow('Já existe uma pasta')
+    expect(await readFile(join(parent, 'hello-world', 'meu-trabalho.txt'), 'utf8')).toBe('não apagar\n')
+    const aborted = new AbortController(); aborted.abort()
+    await expect(cloneGithubRepository({ repository: 'octocat/hello-world', parent, name: 'cancelado' }, aborted.signal)).rejects.toThrow('cancelada')
+    await expect(readFile(join(parent, 'cancelado'))).rejects.toThrow()
+  })
+
+  it('clona de verdade quando POLITRON_RUN_GITHUB_CLONE=1 e apaga só a pasta reservada em falha', async () => {
+    if (process.env.POLITRON_RUN_GITHUB_CLONE !== '1') return
+    const parent = await mkdtemp(join(tmpdir(), 'politron-clone-real-'))
+    temporaryDirectories.push(parent)
+    await expect(cloneGithubRepository({ repository: 'octocat/este-repositorio-nao-existe-politron', parent })).rejects.toThrow('Não foi possível acessar')
+    await expect(readFile(join(parent, 'este-repositorio-nao-existe-politron'))).rejects.toThrow()
+  }, 60000)
 })

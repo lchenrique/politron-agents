@@ -1,6 +1,62 @@
 import { promises as fs } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { parseGitStatus, runGit } from './git-processes'
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
+
+const execFileAsync = promisify(execFile)
+
+/** Aceita owner/repo ou URL do GitHub (HTTPS/SSH). Só github.com: evita transportes como ext:: e file://. */
+export function parseGithubRepository(value: string): { cloneUrl: string; name: string } | null {
+  const input = value.trim()
+  const match = /^(?:https:\/\/(?:www\.)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)?([A-Za-z0-9-]{1,39})\/([A-Za-z0-9._-]{1,100}?)(?:\.git)?\/?$/.exec(input)
+  if (!match || match[2] === '.' || match[2] === '..') return null
+  const [, owner, repo] = match
+  return { cloneUrl: input.startsWith('git@') || input.startsWith('ssh://') ? `git@github.com:${owner}/${repo}.git` : `https://github.com/${owner}/${repo}.git`, name: repo }
+}
+
+export function validProjectFolderName(value: string): string {
+  const name = value.trim()
+  // Caracteres de controle (< 0x20) também são inválidos em nomes de pasta no Windows.
+  const hasControl = [...name].some(char => char.charCodeAt(0) < 32)
+  if (!name || name === '.' || name === '..' || name.length > 120 || hasControl || /[<>:"/\\|?*]/.test(name) || /[. ]$/.test(name)) throw new Error('Use um nome de pasta simples, sem barras nem caracteres especiais.')
+  return name
+}
+
+/** Reserva o destino com mkdir não recursivo: atômico, falha se a pasta já existir. A pasta criada é inequivocamente nossa. */
+async function reserveProjectFolder(parent: string, name: string): Promise<string> {
+  const realParent = await fs.realpath(resolve(parent)).catch(() => { throw new Error('A pasta de destino não existe mais. Escolha outra.') })
+  const target = resolve(realParent, validProjectFolderName(name))
+  try { await fs.mkdir(target) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`Já existe uma pasta chamada "${basename(target)}" neste local. Escolha outro nome ou outro destino.`)
+    throw error
+  }
+  return target
+}
+
+/** Cria uma pasta vazia nova; nunca reaproveita uma existente. */
+export const createProjectFolder = reserveProjectFolder
+
+/** Clona com a autenticação Git já configurada, sem prompt de senha; em falha ou cancelamento remove só a pasta que esta chamada reservou. */
+export async function cloneGithubRepository(input: { repository: string; parent: string; name?: string }, signal?: AbortSignal): Promise<string> {
+  const repository = parseGithubRepository(input.repository)
+  if (!repository) throw new Error('Informe uma URL do GitHub ou owner/repositório válido, por exemplo octocat/hello-world.')
+  if (signal?.aborted) throw new Error('Clonagem cancelada. Nenhuma pasta foi mantida.')
+  const target = await reserveProjectFolder(input.parent, input.name?.trim() || repository.name)
+  try {
+    await execFileAsync('git', ['clone', '--', repository.cloneUrl, target], { windowsHide: true, signal, timeout: 15 * 60_000, maxBuffer: 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' } })
+    return target
+  } catch (caught) {
+    const error = caught as NodeJS.ErrnoException & { stderr?: string }
+    await fs.rm(target, { recursive: true, force: true, maxRetries: 2 }).catch(() => undefined)
+    if (signal?.aborted || error.name === 'AbortError') throw new Error('Clonagem cancelada. Nenhuma pasta foi mantida.')
+    const detail = String(error.stderr || '')
+    // stderr do Git não é repassado: pode conter URLs de remotos configurados.
+    if (/not found|authentication|could not read|permission denied|terminal prompts disabled/i.test(detail)) throw new Error('Não foi possível acessar o repositório. Confira o endereço e se a autenticação do Git/GitHub neste computador tem acesso a ele.')
+    if (error.code === 'ENOENT') throw new Error('Git não encontrado neste computador. Instale o Git para clonar repositórios.')
+    throw new Error('A clonagem falhou. Verifique a conexão e tente novamente.')
+  }
+}
 
 const isWithin = (parent: string, target: string) => {
   const rel = relative(parent, target)

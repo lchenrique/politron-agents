@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, memo } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { AgentTerminalSessions } from "./AgentTerminalSessions";
 
 const RealTerminal = memo(({ workspaceId }: { workspaceId?: string | null }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -13,19 +14,22 @@ const RealTerminal = memo(({ workspaceId }: { workspaceId?: string | null }) => 
     const style = getComputedStyle(document.documentElement);
     const getVar = (name: string) => style.getPropertyValue(name).trim();
 
+    // Tokens do sistema em hex: o terminal segue o modo Light/Dark sem paleta própria.
+    const primary = getVar('--primary') || '#a197ff';
     return {
       background: 'transparent !important',
-      foreground: getVar('--foreground') || '#cccccc',
-      cursor: getVar('--primary') || '#6366f1',
-      selectionBackground: 'rgba(99, 102, 241, 0.3)',
-      black: '#000000',
-      red: getVar('--destructive') || '#f87171',
-      green: '#4ade80',
-      yellow: '#fbbf24',
-      blue: '#60a5fa',
-      magenta: '#c084fc',
-      cyan: '#22d3ee',
-      white: '#ffffff',
+      foreground: getVar('--foreground') || '#ececf1',
+      cursor: primary,
+      cursorAccent: getVar('--background') || '#16171b',
+      selectionBackground: /^#[0-9a-f]{6}$/i.test(primary) ? primary + '40' : 'rgba(140, 130, 245, 0.25)',
+      black: getVar('--muted') || '#202127',
+      red: getVar('--destructive') || '#ef6168',
+      green: getVar('--success') || '#43c38a',
+      yellow: getVar('--warning') || '#e8a840',
+      blue: getVar('--info') || '#6ea8fa',
+      magenta: getVar('--syntax-keyword') || '#b9a6ff',
+      cyan: getVar('--syntax-function') || '#8fb8ff',
+      white: getVar('--foreground') || '#ececf1',
     };
   };
 
@@ -56,11 +60,12 @@ const RealTerminal = memo(({ workspaceId }: { workspaceId?: string | null }) => 
     const vibeAPI = (window as any).vibeAPI;
     vibeAPIRef.current = vibeAPI;
     if (vibeAPI?.terminal) {
-      vibeAPI.terminal.create({
+      // Host remoto: o terminal manual continua indisponível; mostra o motivo em vez de falhar em silêncio.
+      Promise.resolve(vibeAPI.terminal.create({
         rows: term.rows,
         cols: term.cols,
         workspaceId
-      });
+      })).catch((error: unknown) => term.write('\r\n' + (error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : 'Terminal indisponível.') + '\r\n'));
 
       const unbindData = vibeAPI.terminal.onData((data: string) => {
         term.write(data);
@@ -115,9 +120,9 @@ RealTerminal.displayName = 'RealTerminal';
 
 const TerminalPlaceholder = () => (
   <div className="flex-1 w-full h-full bg-background flex flex-col items-center justify-center text-center p-8">
-    <div className="w-16 h-16 rounded-2xl bg-ide-surface-1 border border-ide-border flex items-center justify-center mb-4">
-      <svg 
-        className="w-8 h-8 text-ide-text-dim" 
+    <div className="w-14 h-14 rounded-xl bg-muted border border-border flex items-center justify-center mb-4">
+      <svg
+        className="w-7 h-7 text-muted-foreground"
         fill="none" 
         viewBox="0 0 24 24" 
         stroke="currentColor"
@@ -130,58 +135,74 @@ const TerminalPlaceholder = () => (
         />
       </svg>
     </div>
-    <h3 className="text-ide-text font-medium text-sm mb-1">Nenhum projeto selecionado</h3>
-    <p className="text-ide-text-dim text-xs max-w-[200px]">
+    <h3 className="text-foreground font-medium text-sm mb-1">Nenhum projeto selecionado</h3>
+    <p className="text-muted-foreground text-xs max-w-[220px]">
       Selecione um projeto na barra lateral para abrir o terminal
     </p>
   </div>
 );
 
-const TerminalPanel = memo(({ workspaceId, showLogs = true }: { workspaceId?: string | null; showLogs?: boolean }) => {
-  const [activeTab, setActiveTab] = useState("terminal");
+const TAB_LABELS: Record<string, string> = { terminal: "Terminal", agents: "Agentes", logs: "Logs" };
+
+const TerminalPanel = memo(({ workspaceId, conversationId, showLogs = true }: { workspaceId?: string | null; conversationId?: string; showLogs?: boolean }) => {
+  const [activeTab, setActiveTab] = useState(conversationId ? "agents" : "terminal");
+  const [externalError, setExternalError] = useState("");
   const hasProject = !!workspaceId;
+  const tabs = ["terminal", ...(conversationId ? ["agents"] : []), ...(showLogs ? ["logs"] : [])];
+  // Ação separada e explícita: abre o terminal do sistema só neste computador, nunca no host remoto.
+  const openExternal = () => {
+    if (!workspaceId) return;
+    setExternalError("");
+    void window.appAPI.openExternalTerminal(workspaceId).catch((error: unknown) => setExternalError(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : "Não foi possível abrir o terminal do sistema."));
+  };
 
   return (
     <div className="flex flex-col h-full flex-1 min-h-[150px]">
-      <div className="flex border-ide-border border-b h-[38px] items-center px-3 gap-0.5 shrink-0 bg-ide-surface-1">
-        {(showLogs ? ["terminal", "logs"] : ["terminal"]).map((tab) => (
+      <div className="flex border-border border-b h-[34px] items-center px-2 gap-0.5 shrink-0 bg-muted/40">
+        {tabs.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-3 h-[38px] flex items-center text-[11px] font-medium transition-all cursor-pointer border-b-2 ${
+            className={`px-2.5 h-[34px] flex items-center text-[11px] font-medium transition-colors cursor-pointer border-b-2 ${
               activeTab === tab
-                ? "text-ide-text border-b-ide-indigo"
-                : "text-ide-text-dim border-b-transparent hover:text-ide-text-dim/80"
+                ? "text-foreground border-b-primary"
+                : "text-muted-foreground border-b-transparent hover:text-foreground"
             }`}
           >
-            <span className="capitalize">{tab}</span>
+            <span>{TAB_LABELS[tab]}</span>
           </button>
         ))}
+        {hasProject && <button type="button" onClick={openExternal} title="Abre o terminal do sistema na pasta do projeto, fora do Boobot" className="ml-auto px-2 h-[26px] rounded text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground">Abrir terminal externo</button>}
       </div>
+      {externalError && <p role="alert" className="shrink-0 px-3 py-1 text-[11px] text-destructive">{externalError}</p>}
 
       <div className="flex-1 relative overflow-hidden h-full">
         <div className={`h-full ${activeTab === "terminal" ? "block" : "hidden"}`}>
           {hasProject ? <RealTerminal workspaceId={workspaceId} /> : <TerminalPlaceholder />}
         </div>
 
+        {conversationId && <div className={`h-full ${activeTab === "agents" ? "block" : "hidden"}`}>
+          {hasProject ? <AgentTerminalSessions workspaceId={workspaceId!} conversationId={conversationId} onStarted={() => setActiveTab("agents")} /> : <TerminalPlaceholder />}
+        </div>}
+
         <div className={`flex-1 overflow-y-auto p-2.5 flex flex-col gap-0.5 scrollbar-thin h-full ${activeTab === "logs" ? "block" : "hidden"}`}>
           {[
-            { time: "14:32:01", from: "SP", fromColor: "text-ide-indigo", to: "FE", toColor: "text-ide-green-bright", msg: "task assigned: LoginForm.tsx" },
-            { time: "14:32:01", from: "SP", fromColor: "text-ide-indigo", to: "BA", toColor: "text-ide-amber-bright", msg: "task assigned: auth.service.ts" },
-            { time: "14:32:05", from: "FE", fromColor: "text-ide-green-bright", to: "", toColor: "", msg: "começando LoginForm...", ok: true },
-            { time: "14:32:08", from: "BA", fromColor: "text-ide-amber-bright", to: "", toColor: "", msg: "configurando JWT strategy", ok: false },
-            { time: "14:32:12", from: "FE", fromColor: "text-ide-green-bright", to: "", toColor: "", msg: "LoginForm.tsx saved \u2713", ok: true },
+            { time: "14:32:01", from: "SP", fromColor: "text-primary", to: "FE", toColor: "text-success", msg: "task assigned: LoginForm.tsx" },
+            { time: "14:32:01", from: "SP", fromColor: "text-primary", to: "BA", toColor: "text-warning", msg: "task assigned: auth.service.ts" },
+            { time: "14:32:05", from: "FE", fromColor: "text-success", to: "", toColor: "", msg: "começando LoginForm...", ok: true },
+            { time: "14:32:08", from: "BA", fromColor: "text-warning", to: "", toColor: "", msg: "configurando JWT strategy", ok: false },
+            { time: "14:32:12", from: "FE", fromColor: "text-success", to: "", toColor: "", msg: "LoginForm.tsx saved \u2713", ok: true },
           ].map((log, i) => (
-            <div key={i} className="text-[10px] font-mono flex gap-1.5 items-start px-1 py-0.5 rounded hover:bg-white/5 transition-colors">
-              <span className="text-white/20 shrink-0">{log.time}</span>
+            <div key={i} className="text-[10px] font-mono flex gap-1.5 items-start px-1 py-0.5 rounded hover:bg-accent transition-colors">
+              <span className="text-faint-foreground shrink-0">{log.time}</span>
               <span className={`font-medium shrink-0 ${log.fromColor}`}>{log.from}</span>
               {log.to && (
                 <>
-                  <span className="text-white/20 shrink-0">→</span>
+                  <span className="text-faint-foreground shrink-0">→</span>
                   <span className={`shrink-0 ${log.toColor}`}>{log.to}</span>
                 </>
               )}
-              <span className={`flex-1 ${log.ok ? "text-ide-green-bright" : "text-ide-text-dim"}`}>{log.msg}</span>
+              <span className={`flex-1 ${log.ok ? "text-success" : "text-muted-foreground"}`}>{log.msg}</span>
             </div>
           ))}
         </div>

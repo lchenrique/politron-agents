@@ -1,5 +1,5 @@
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
-import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, X } from 'lucide-react'
+import { Bot, Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -16,17 +16,22 @@ import { changeActive, changeRatio, developmentDockLayout, deserializeDockLayout
 
 const TerminalPanel = lazy(() => import('@/components/ide/TerminalPanel'))
 const BrowserPanel = lazy(() => import('./BrowserPanel').then(module => ({ default: module.BrowserPanel })))
+const PlatformBrowserPanel = lazy(() => import('./PlatformBrowserPanel').then(module => ({ default: module.PlatformBrowserPanel })))
 const RealtimeCall = lazy(() => import('../realtime/RealtimeCall').then(module => ({ default: module.RealtimeCall })))
 export type { DockTool, DockZone } from './dock-layout'
 
 export interface DockWorkspaceHandle {
   openTool: (kind: DockTool, zone?: DockZone) => void
   openFile: (workspaceId: string, path: string, zone?: DockZone) => void
+  /** Ativa a aba onde ela já estiver; só abre uma nova quando não existe. */
+  revealTool: (kind: DockTool) => void
   useDevelopmentLayout: () => void
 }
-const labels: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', browser: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
-const icons = { chat: MessageSquare, files: Files, terminal: Terminal, browser: Globe, mascot: UserRound, diff: FileDiff, file: Code2 }
-const toolKinds: DockTool[] = ['chat', 'files', 'terminal', 'browser', 'mascot', 'diff']
+const labels: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', browser: 'Navegador do agente', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
+const icons = { chat: MessageSquare, files: Files, terminal: Terminal, browser: Bot, web: Globe, mascot: UserRound, diff: FileDiff, file: Code2 }
+const toolKinds: DockTool[] = ['chat', 'files', 'terminal', 'browser', 'web', 'mascot', 'diff']
+/** Ferramentas que dependem do Electron local; a PWA nunca as monta. */
+const desktopOnly = (kind: DockTab['kind']) => kind === 'terminal' || kind === 'browser' || kind === 'web' || kind === 'mascot'
 const positions = [
   { value: 'left', label: 'Dividir à esquerda', icon: PanelLeft },
   { value: 'right', label: 'Dividir à direita', icon: PanelRight },
@@ -83,6 +88,13 @@ function MascotView({ assistant, agents, selectedAgents, agentStates, conversati
 type DropLocation = { groupId: string; edge: DockEdge | 'center' }
 export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   children: ReactNode
+  /**
+   * Como a aba principal se apresenta: a mesma aba mostra conversa, Central, Rotinas ou projeto.
+   * `leading` (avatar) e `trailing` (busca e ações) substituem o rótulo genérico quando há faixa de abas.
+   */
+  chatTab?: { label: string; title?: string; leading?: ReactNode; trailing?: ReactNode }
+  /** Faixa da conversa, exibida somente quando o chat é a única aba e a faixa de abas está oculta. */
+  chatHeader?: ReactNode
   workspaceId?: string | null
   conversationId?: string
   voiceAgentId?: string
@@ -97,7 +109,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   browserMode?: boolean
   canReadFiles?: boolean
   canWriteFiles?: boolean
-}>(function DockWorkspace({ children, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, browserFrames, onRefreshBrowser, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
+}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, browserFrames, onRefreshBrowser, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
   const [layout, setLayout] = useState<DockLayoutState>(loadLayout)
   const [drafts, setDrafts] = useState<Record<string, FileDraft>>({})
   const changeDraft = useCallback((id: string, updater: Parameters<FileDraftChange>[0]) => setDrafts(current => {
@@ -109,7 +121,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     if (!browserMode) return
     setLayout(current => {
       const unavailable = groups(current.root).flatMap(group => group.tabs
-        .filter(tab => tab.kind === 'terminal' || tab.kind === 'browser' || tab.kind === 'mascot' || !canReadFiles && (tab.kind === 'files' || tab.kind === 'file'))
+        .filter(tab => desktopOnly(tab.kind) || !canReadFiles && (tab.kind === 'files' || tab.kind === 'file'))
         .map(tab => ({ groupId: group.id, tabId: tab.id })))
       if (!unavailable.length) return current
       let next = current
@@ -144,11 +156,11 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     return groups(state.root).find(group => group.id !== mainGroup(state).id && group.tabs.some(tab => tab.kind === 'files')) || groups(state.root).find(group => group.id !== mainGroup(state).id && group.tabs.length > 0) || groups(state.root).find(group => group.id !== mainGroup(state).id)
   }
   const openInGroup = (kind: DockTool, groupId: string) => {
-    if (browserMode && (kind === 'terminal' || kind === 'browser' || kind === 'mascot' || kind === 'files' && !canReadFiles)) return
+    if (browserMode && (desktopOnly(kind) || kind === 'files' && !canReadFiles)) return
     setLayout(current => placeTab(current, toolTab(kind), groupId))
   }
   const openTool = (kind: DockTool, zone: DockZone = 'side') => setLayout(current => {
-    if (browserMode && (kind === 'terminal' || kind === 'browser' || kind === 'mascot' || kind === 'files' && !canReadFiles)) return current
+    if (browserMode && (desktopOnly(kind) || kind === 'files' && !canReadFiles)) return current
     const destination = toolGroup(current, zone)
     if (destination) return placeTab(current, toolTab(kind), destination.id)
     return splitGroup(current, mainGroup(current).id, 'right', toolTab(kind))
@@ -164,7 +176,12 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     const destination = zone === 'side' ? toolGroup(current, 'side') || mainGroup(current) : mainGroup(current)
     return placeTab(current, tab, destination.id)
   })
-  useImperativeHandle(ref, () => ({ openTool, openFile, useDevelopmentLayout: () => setLayout(current => developmentDockLayout(current)) }))
+  const revealTool = (kind: DockTool) => {
+    const existing = groupWithTab(layout.root, kind)
+    if (existing) setLayout(current => changeActive(current, existing.id, kind))
+    else openTool(kind)
+  }
+  useImperativeHandle(ref, () => ({ openTool, openFile, revealTool, useDevelopmentLayout: () => setLayout(current => developmentDockLayout(current)) }))
   const closeTab = (id: string) => {
     const draft = drafts[id]
     if (draft && draft.content !== draft.baseline && !window.confirm('Descartar as alterações não salvas deste arquivo?')) return
@@ -179,6 +196,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
       })
     }
     if (id === 'terminal') void window.vibeAPI?.terminal?.close?.().catch(() => undefined)
+    if (id === 'web') void window.platformBrowserAPI?.close().catch(() => undefined)
     setLayout(current => {
       const source = groupWithTab(current.root, id)
       if (!source) return current
@@ -208,15 +226,20 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     const tab = activeTabId ? group.tabs.find(item => item.id === activeTabId) : undefined
     return splitGroup(current, groupId, edge, tab)
   })
-  const resetLayout = () => { if (groups(layout.root).some(group => group.tabs.some(tab => tab.id === 'terminal'))) void window.vibeAPI?.terminal?.close?.().catch(() => undefined); setLayout(initialDockLayout()) }
+  const resetLayout = () => {
+    if (groups(layout.root).some(group => group.tabs.some(tab => tab.id === 'terminal'))) void window.vibeAPI?.terminal?.close?.().catch(() => undefined)
+    if (groups(layout.root).some(group => group.tabs.some(tab => tab.id === 'web'))) void window.platformBrowserAPI?.close().catch(() => undefined)
+    setLayout(initialDockLayout())
+  }
   const renderTab = (tab: DockTab): ReactNode => {
-    if (browserMode && (tab.kind === 'terminal' || tab.kind === 'browser' || tab.kind === 'mascot' || (tab.kind === 'files' || tab.kind === 'file') && !canReadFiles)) return null
+    if (browserMode && (desktopOnly(tab.kind) || (tab.kind === 'files' || tab.kind === 'file') && !canReadFiles)) return null
     switch (tab.kind) {
       case 'chat': return children
       case 'files': return <ProjectExplorer workspaceId={workspaceId} onOpenFile={(id, path) => openFile(id, path)} />
       case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} readOnly={browserMode && !canWriteFiles} /> : null
-      case 'terminal': return <Suspense fallback={null}><TerminalPanel workspaceId={workspaceId} showLogs={false} /></Suspense>
+      case 'terminal': return <Suspense fallback={null}><TerminalPanel workspaceId={workspaceId} conversationId={conversationId} showLogs={false} /></Suspense>
       case 'browser': return <Suspense fallback={null}><BrowserPanel frames={browserFrames} agents={agents} onRefresh={onRefreshBrowser} onChanged={onChanged} /></Suspense>
+      case 'web': return <Suspense fallback={null}><PlatformBrowserPanel onNotice={onChanged} /></Suspense>
       case 'mascot': return <MascotView assistant={assistant} agents={agents} selectedAgents={selectedAgents} agentStates={agentStates} conversationId={conversationId} voiceAgentId={voiceAgentId} />
       case 'diff': return <div className="h-full overflow-auto p-4"><h2 className="mb-3 text-xs font-semibold text-muted-foreground">Alterações versus HEAD</h2><pre className="min-w-max whitespace-pre font-mono text-[11px] leading-5">{workspaceDiff || 'Nenhuma alteração rastreada.'}</pre></div>
     }
@@ -229,13 +252,17 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     const closest = scores.sort((a, b) => a[1] - b[1])[0]
     return closest[1] < 0.24 ? closest[0] : 'center'
   }
+  const tabLabel = (tab: DockTab) => tab.kind === 'chat' && chatTab ? chatTab.label : tab.label
   const pane = (group: DockGroup) => {
+    const split = groups(layout.root).length > 1
     const primary = group.id === groups(layout.root)[0].id
     const isFocused = group.id === layout.activeGroup
     const hover = drop?.groupId === group.id ? drop.edge : null
+    // Uma única aba de chat não precisa de faixa: os painéis abrem pela barra da janela e a faixa volta com a segunda aba.
+    const soloChat = !split && group.tabs.length === 1 && group.tabs[0].kind === 'chat'
     return <section key={group.id} aria-label={primary ? 'Área de trabalho principal' : 'Painel auxiliar'} data-dock-group={group.id}
       onMouseDown={() => { if (!isFocused) setLayout(current => ({ ...current, activeGroup: group.id })) }}
-      className={'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background ' + (isFocused ? 'ring-1 ring-inset ring-border/60' : '')}
+      className={'relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background ' + (isFocused && split ? 'ring-1 ring-inset ring-primary/25' : '')}
       onDragOver={event => {
         if (!event.dataTransfer.types.includes('application/x-politron-tab')) return
         event.preventDefault()
@@ -254,38 +281,46 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
         hover === 'left' ? 'inset-y-0 left-0 w-1/3' : hover === 'right' ? 'inset-y-0 right-0 w-1/3' :
           hover === 'top' ? 'inset-x-0 top-0 h-1/3' : hover === 'bottom' ? 'inset-x-0 bottom-0 h-1/3' : 'inset-0'
       )} />}
-      <header className="flex h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-card/45 px-2">
+      {!soloChat && <header data-testid="dock-group-header" className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-muted/45 px-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
           {group.tabs.map(tab => {
             const Icon = icons[tab.kind]
-            return <div key={tab.id} className={'group flex h-8 max-w-44 shrink-0 items-center gap-0.5 rounded-md pr-0.5 ' + (group.active === tab.id ? 'border border-border/70 bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent/50')}>
-              <button type="button" draggable aria-label={'Aba ' + tab.label} title={tab.path || tab.label}
+            const label = tabLabel(tab)
+            const active = group.active === tab.id
+            // A aba do chat é a identidade da conversa: avatar, título e, quando ativa, busca e ações.
+            const chat = tab.kind === 'chat' ? chatTab : undefined
+            return <div key={tab.id} data-testid={tab.kind === 'chat' ? 'chat-tab' : undefined} className={'group flex h-7 shrink-0 items-center gap-0.5 rounded-md pr-0.5 ' + (chat?.trailing && active ? 'max-w-80 ' : 'max-w-48 ') + (chat?.leading ? 'pl-0.5 ' : '') + (active ? 'bg-background text-foreground shadow-xs ring-1 ring-border' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
+              {chat?.leading}
+              <button type="button" draggable aria-label={'Aba ' + label} title={tab.path || chat?.title || label}
                 onDragStart={event => { event.dataTransfer.setData('application/x-politron-tab', tab.id); event.dataTransfer.effectAllowed = 'move' }}
                 onDragEnd={() => setDrop(null)}
                 onClick={() => setLayout(current => changeActive(current, group.id, tab.id))}
-                className="flex h-7 min-w-0 items-center gap-1.5 pl-2 text-[11px] font-medium">
-                <Icon className="size-3.5 shrink-0" /><span className="truncate">{tab.label}</span>{drafts[tab.id] && drafts[tab.id].content !== drafts[tab.id].baseline && <span aria-label="Arquivo modificado" className="size-2 shrink-0 rounded-full bg-amber-500" />}
+                className={'flex h-7 min-w-0 items-center gap-1.5 text-[11px] ' + (chat?.leading ? 'pl-1 font-semibold' : 'pl-2 font-medium')}>
+                {!chat?.leading && <Icon className="size-3.5 shrink-0" />}<span className="truncate">{label}</span>{drafts[tab.id] && drafts[tab.id].content !== drafts[tab.id].baseline && <span aria-label="Arquivo modificado" className="size-2 shrink-0 rounded-full bg-warning" />}
               </button>
-              <Button variant="ghost" size="icon" className="size-5 shrink-0 opacity-65 hover:opacity-100" aria-label={'Fechar ' + tab.label} title="Fechar aba" onClick={() => closeTab(tab.id)}><X className="size-3" /></Button>
+              {active && chat?.trailing}
+              <Button variant="ghost" size="icon" className={'size-5 shrink-0 hover:opacity-100 focus-visible:opacity-100 ' + (active ? 'opacity-65' : 'opacity-0 group-hover:opacity-65')} aria-label={'Fechar ' + label} title="Fechar aba" onClick={() => closeTab(tab.id)}><X className="size-3" /></Button>
             </div>
           })}
         </div>
-        <DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} />
-        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label={'Organizar ' + (primary ? 'área principal' : 'painel auxiliar')}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {group.active && groups(layout.root).length > 1 && groups(layout.root).filter(item => item.id !== group.id).map(item =>
-              <DropdownMenuItem key={item.id} onSelect={() => moveTab(group.active, item.id)}><Columns2 className="mr-2 size-4" />Mover aba para {item.tabs.map(tab => tab.label).join(', ') || 'painel vazio'}</DropdownMenuItem>)}
-            {group.active && <DropdownMenuSeparator />}
-            {positions.map(position => { const Icon = position.icon; return <DropdownMenuItem key={position.value} disabled={groups(layout.root).length >= 8} onSelect={() => splitEmpty(group.id, position.value, group.active)}><Icon className="mr-2 size-4" />{position.label} com aba atual</DropdownMenuItem> })}
-            <DropdownMenuSeparator />
-            {positions.map(position => { const Icon = position.icon; return <DropdownMenuItem key={'empty-' + position.value} disabled={groups(layout.root).length >= 8} onSelect={() => splitEmpty(group.id, position.value)}><Icon className="mr-2 size-4" />Novo painel {position.value === 'left' ? 'à esquerda' : position.value === 'right' ? 'à direita' : position.value === 'top' ? 'acima' : 'abaixo'}</DropdownMenuItem> })}
-            {groups(layout.root).length > 1 && <><DropdownMenuSeparator /><DropdownMenuItem disabled={group.tabs.length > 0} onSelect={() => setLayout(current => removeGroup(current, group.id))}>Fechar painel vazio</DropdownMenuItem></>}
-            <DropdownMenuSeparator /><DropdownMenuItem onSelect={resetLayout}><RotateCcw className="mr-2 size-4" />Restaurar layout inicial</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </header>
+        <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-border/50 pl-1">
+          <DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} />
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label={'Organizar ' + (primary ? 'área principal' : 'painel auxiliar')}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {group.active && groups(layout.root).length > 1 && groups(layout.root).filter(item => item.id !== group.id).map(item =>
+                <DropdownMenuItem key={item.id} onSelect={() => moveTab(group.active, item.id)}><Columns2 className="mr-2 size-4" />Mover aba para {item.tabs.map(tabLabel).join(', ') || 'painel vazio'}</DropdownMenuItem>)}
+              {group.active && <DropdownMenuSeparator />}
+              {positions.map(position => { const Icon = position.icon; return <DropdownMenuItem key={position.value} disabled={groups(layout.root).length >= 8} onSelect={() => splitEmpty(group.id, position.value, group.active)}><Icon className="mr-2 size-4" />{position.label} com aba atual</DropdownMenuItem> })}
+              <DropdownMenuSeparator />
+              {positions.map(position => { const Icon = position.icon; return <DropdownMenuItem key={'empty-' + position.value} disabled={groups(layout.root).length >= 8} onSelect={() => splitEmpty(group.id, position.value)}><Icon className="mr-2 size-4" />Novo painel {position.value === 'left' ? 'à esquerda' : position.value === 'right' ? 'à direita' : position.value === 'top' ? 'acima' : 'abaixo'}</DropdownMenuItem> })}
+              {groups(layout.root).length > 1 && <><DropdownMenuSeparator /><DropdownMenuItem disabled={group.tabs.length > 0} onSelect={() => setLayout(current => removeGroup(current, group.id))}>Fechar painel vazio</DropdownMenuItem></>}
+              <DropdownMenuSeparator /><DropdownMenuItem onSelect={resetLayout}><RotateCcw className="mr-2 size-4" />Restaurar layout inicial</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>}
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-        {group.tabs.length ? group.tabs.map(tab => <div key={tab.id} className={group.active === tab.id ? 'flex h-full min-h-0 min-w-0 flex-col' : 'hidden'}>{tab.kind === 'file' && group.active !== tab.id ? null : renderTab(tab)}</div>)
+        {group.tabs.length ? group.tabs.map(tab => <div key={tab.id} className={group.active === tab.id ? 'flex h-full min-h-0 min-w-0 flex-col' : 'hidden'}>{tab.kind === 'chat' && soloChat && chatHeader}{tab.kind === 'file' && group.active !== tab.id ? null : renderTab(tab)}</div>)
           : <div className="flex h-full flex-col items-center justify-center gap-3 p-5 text-center"><Code2 className="size-8 text-muted-foreground/50" /><p className="text-xs text-muted-foreground">Escolha o conteúdo deste painel.</p><DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} label="Escolher conteúdo da nova aba" /></div>}
       </div>
     </section>

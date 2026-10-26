@@ -182,6 +182,47 @@ describe('auditoria de isolamento e falha dos runtimes', () => {
     expect(result).toMatch(/\d+\.\d+\.\d+/)
     expect(result).not.toMatch(/LASTEXITCODE|VariableIsUndefined/)
   }, 15000)
+  it('comando curto do agente aparece como sessão PTY e devolve código de falha com evidência', async () => {
+    const { service, broker, conversation } = setup()
+    const agent = service.saveAgent({ instructions: 'Somente a fixture.', name: 'Pty', alias: 'pty', canWrite: true })
+    const chat = conversation(agent)
+    vi.spyOn(service as unknown as { requestApproval(): Promise<boolean> }, 'requestApproval').mockResolvedValue(true)
+    const events: string[] = []
+    service.on('workspace-event', event => { if (event.type === 'agentTerminal') events.push(event.event) })
+    const result = String(await broker.callTool({ agent, conversation: chat, run: { id: 'pty-run', workspaceId: chat.workspaceId, workspacePath: service.store.workspace(chat.workspaceId).path } }, 'workspace_run_command', { command: `& ${JSON.stringify(process.execPath)} -e "console.log('SAIDA-PTY'); process.exit(4)"` }))
+    expect(result).toContain('SAIDA-PTY')
+    expect(result).toContain('Código de saída: 4.')
+    expect(result).toMatch(/Evidência: /)
+    expect(events[0]).toBe('started')
+    expect(events.at(-1)).toBe('finished')
+    expect(service.agentTerminalSessions(chat.id, chat.workspaceId)[0]).toMatchObject({ mode: 'command', status: 'failed', exitCode: 4, agentName: 'Pty' })
+  }, 20000)
+  it('processo longo segue ativo, consulta status, só para no escopo dono e o dispose limpa', async () => {
+    const { service, broker, conversation, directory } = setup()
+    const agent = service.saveAgent({ instructions: 'Somente a fixture.', name: 'Servidor', alias: 'servidor', canWrite: true })
+    const chat = conversation(agent), other = conversation(service.saveAgent({ instructions: 'Outra.', name: 'Outra', alias: 'outra', canWrite: true }))
+    const script = join(directory, 'server.cjs')
+    writeFileSync(script, "console.log('SERVIDOR-PRONTO'); setInterval(() => {}, 1000)")
+    vi.spyOn(service as unknown as { requestApproval(): Promise<boolean> }, 'requestApproval').mockResolvedValue(true)
+    const context = { agent, conversation: chat, run: { id: 'dev-run', workspaceId: chat.workspaceId, workspacePath: service.store.workspace(chat.workspaceId).path } }
+    const started = String(await broker.callTool(context, 'workspace_start_process', { command: `& ${JSON.stringify(process.execPath)} ${JSON.stringify(script)}` }))
+    const sessionId = /Sessão: ([\w-]+)/.exec(started)![1]
+    await vi.waitFor(() => expect(service.agentTerminalSessions(chat.id, chat.workspaceId)[0].output).toContain('SERVIDOR-PRONTO'), { timeout: 10000 })
+    expect(String(await broker.callTool(context, 'workspace_process_status', { session_id: sessionId }))).toContain(': running')
+    await expect(broker.callTool({ ...context, conversation: other, run: { ...context.run, workspaceId: other.workspaceId } }, 'workspace_stop_process', { session_id: sessionId })).rejects.toThrow(/escopo/)
+    expect(() => service.agentTerminalStop(sessionId, other.id, other.workspaceId)).toThrow(/escopo/)
+    expect(() => service.agentTerminalSessions(chat.id, other.workspaceId)).toThrow(/não pertence/)
+    await broker.callTool(context, 'workspace_stop_process', { session_id: sessionId })
+    await vi.waitFor(() => expect(service.agentTerminalSessions(chat.id, chat.workspaceId)[0].status).toBe('interrupted'), { timeout: 10000 })
+    const evidence = service.store.db.prepare('SELECT data FROM v9_command_evidence WHERE run_id = ?').all('dev-run') as { data: string }[]
+    expect(evidence.map(item => JSON.parse(item.data).status)).toEqual(['interrupted'])
+    const second = String(await broker.callTool(context, 'workspace_start_process', { command: `& ${JSON.stringify(process.execPath)} ${JSON.stringify(script)}` }))
+    const secondId = /Sessão: ([\w-]+)/.exec(second)![1]
+    service.agentTerminals.terminateAll()
+    await vi.waitFor(() => expect(service.agentTerminals.get(secondId, { workspaceId: chat.workspaceId, conversationId: chat.id }).status).toBe('interrupted'), { timeout: 10000 })
+    // O Windows libera a pasta de trabalho do console do PTY logo após a saída; evita EPERM na limpeza da fixture.
+    await new Promise(resolve => setTimeout(resolve, 1500))
+  }, 30000)
   it('um turno com o mesmo id em outra thread não encerra esta execução', async () => {
     const { service, codex, conversation, sends } = setup()
     const a = service.saveAgent({ instructions: 'Execute apenas a tarefa sintética da auditoria.', name: 'A', alias: 'a' }), b = service.saveAgent({ instructions: 'Execute apenas a tarefa sintética da auditoria.', name: 'B', alias: 'b' })

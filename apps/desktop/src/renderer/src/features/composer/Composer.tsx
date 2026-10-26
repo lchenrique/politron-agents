@@ -166,11 +166,11 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     } finally { if (submissionGeneration.current === submittedGeneration) { pendingCount.current--; setPendingSends(pendingCount.current) } }
   }
 
-  return <div className="shrink-0 px-3 pb-2 pt-1 sm:px-6">
+  return <div className="shrink-0 px-3 pb-3 pt-1 sm:px-6">
     <div className="mx-auto max-w-3xl">
       {reviewChanges.length > 0 && <CompletedFileReview key={reviewKey} changes={reviewChanges} />}
       <PromptInput
-        className="rounded-2xl border border-border/90 bg-card shadow-sm transition-[border-color,box-shadow] duration-150 dark:border-foreground/25 dark:shadow-[0_8px_28px_rgba(0,0,0,0.24)] focus-within:border-ring/70 focus-within:ring-2 focus-within:ring-ring/15 dark:focus-within:border-foreground/45"
+        className="rounded-xl border border-input bg-card shadow-composer transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/15"
         value={value}
         onValueChange={setValue}
         textareaRef={textareaRef}
@@ -209,7 +209,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
             aria-label="Modo planejamento" aria-pressed={planMode}
             title={planMode ? 'Planejamento ativo: não altera arquivos' : 'Ativar planejamento sem alterações'}
             disabled={busy} onClick={() => setPlanMode(current => !current)}
-            className="h-8 shrink-0 gap-1.5 rounded-full px-2.5 text-xs">
+            className="h-8 shrink-0 gap-1.5 rounded-full px-2.5 text-xs aria-pressed:bg-primary-soft aria-pressed:text-primary-soft-foreground">
             <ClipboardList className="size-4" /><span>Plano</span>
           </Button>
           {busy && canSteer && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" onClick={onStop}><Square /></Button>}

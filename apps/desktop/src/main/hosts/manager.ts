@@ -42,6 +42,7 @@ export class HostManager implements HostRouting {
   invoke(method: string, args: unknown[], local: () => unknown, sender?: Electron.WebContents): unknown {
     if (!this.remote) return local()
     if (method === 'v9:pickFolder' && sender) return this.pickFolder(sender)
+    if (method === 'v9:createProjectFolder' || method === 'v9:cloneRepository' || method === 'v9:cancelClone') throw new Error('Criar pasta nova ou clonar do GitHub só funciona com este computador selecionado. No host remoto, abra uma pasta que já exista nele.')
     if (!this.rpc.supports(method)) throw new Error('Esta função deve ser configurada no Boobot do host. Voz e terminal interativo ainda são locais; use as ferramentas do agente no chat remoto.')
     if (this.status !== 'connected' || !this.client) throw new Error('Host desconectado. Reconecte antes de continuar; nenhuma operação foi executada neste computador.')
     return this.client.call(method, args)

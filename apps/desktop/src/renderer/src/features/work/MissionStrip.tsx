@@ -9,7 +9,7 @@ export function MissionStrip({ mission, runs, approvals, onNotice }: { mission: 
   const [open, setOpen] = useState(false)
   const phase = missionPhase(mission, runs, approvals)
   const { done, total, current } = missionProgress(mission)
-  return <section aria-label={`Missão: ${mission.title}`} className={cn('border-b border-border/60 bg-muted/20', phase === 'waiting' && 'bg-amber-500/[0.05]')}>
+  return <section aria-label={`Missão: ${mission.title}`} className={cn('border-b border-border bg-muted/40', phase === 'waiting' && 'bg-warning-soft/60')}>
     <div className="flex items-center gap-3 px-4 py-2">
       <Target aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">

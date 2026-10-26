@@ -1,4 +1,4 @@
-export type DockTool = 'chat' | 'files' | 'terminal' | 'browser' | 'mascot' | 'diff'
+export type DockTool = 'chat' | 'files' | 'terminal' | 'browser' | 'web' | 'mascot' | 'diff'
 export type DockZone = 'main' | 'side'
 export type DockEdge = 'left' | 'right' | 'top' | 'bottom'
 export type DockTab = { id: string; kind: DockTool | 'file'; label: string; workspaceId?: string; path?: string }
@@ -7,8 +7,8 @@ export type DockSplit = { type: 'split'; id: string; axis: 'horizontal' | 'verti
 export type DockNode = DockGroup | DockSplit
 export interface DockLayoutState { root: DockNode; activeGroup: string }
 
-const tools: DockTool[] = ['chat', 'files', 'terminal', 'browser', 'mascot', 'diff']
-const names: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', browser: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
+const tools: DockTool[] = ['chat', 'files', 'terminal', 'browser', 'web', 'mascot', 'diff']
+const names: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', browser: 'Navegador do agente', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
 let counter = 0
 const uid = () => 'dock-' + Date.now().toString(36) + '-' + (++counter).toString(36)
 export const newGroup = (tabs: DockTab[] = []): DockGroup => ({ type: 'group', id: uid(), tabs, active: tabs.at(-1)?.id || '' })

@@ -74,7 +74,7 @@ export function FilePreview({ workspaceId, path, draft, onDraftChange, readOnly 
     <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border/50 px-3">
       <FileCode2 className="size-3.5 text-primary" />
       <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={path}>{path}</span>
-      {dirty && <span aria-label="Alterações não salvas" className="size-2 shrink-0 rounded-full bg-amber-500" />}
+      {dirty && <span aria-label="Alterações não salvas" className="size-2 shrink-0 rounded-full bg-warning" />}
       <Button variant="ghost" size="icon" className="size-7" aria-label="Atualizar arquivo" title="Recarregar do disco" onClick={reload}><RefreshCw className="size-3.5" /></Button>
       <Button variant="ghost" size="icon" className="size-7" disabled={!draft} aria-label="Copiar conteúdo" onClick={() => { if (draft) void navigator.clipboard?.writeText(draft.content).catch(() => undefined) }}><Copy className="size-3.5" /></Button>
       {!readOnly && <Button size="sm" className="h-7 gap-1.5 text-xs" disabled={!dirty || saving} aria-label="Salvar arquivo" onClick={() => void save()}><Save className="size-3.5" />{saving ? 'Salvando…' : 'Salvar'}</Button>}

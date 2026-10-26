@@ -126,8 +126,16 @@ export interface BrowserFrame {
   image: string; width: number; height: number; x: number | null; y: number | null
   human: boolean; action: string; capturedAt: string
 }
+/** Sessão PTY de um comando do agente, no host que executa o workspace. Separada do terminal manual. */
+export interface AgentTerminalSession {
+  id: string; workspaceId: string; conversationId: string; runId: string; agentId: string; agentName: string
+  command: string; cwd: string; mode: 'command' | 'process'; status: 'running' | CommandStatus
+  exitCode: number | null; truncated: boolean; createdAt: string; finishedAt: string | null
+}
+export type AgentTerminalSessionWithOutput = AgentTerminalSession & { output: string }
 export type WorkspaceEvent =
   | { type: 'changed'; reason?: 'connection-restored' }
+  | { type: 'agentTerminal'; event: 'started' | 'output' | 'finished'; session: AgentTerminalSession; data?: string }
   | { type: 'message'; message: Message }
   | { type: 'fileChange'; fileChange: FileChange }
   | { type: 'approval'; approval: Approval }
@@ -143,6 +151,9 @@ export interface AppAPI {
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }): Promise<Conversation>
   saveWorkspace(input: Partial<Workspace> & { path?: string | null }): Promise<Workspace>
   createWorktree(input: { sourceWorkspaceId: string; branch: string; baseBranch?: string }): Promise<Workspace>
+  createProjectFolder(input: { parent: string; name: string }): Promise<string>
+  cloneRepository(input: { repository: string; parent: string; name?: string }): Promise<string>
+  cancelClone(): Promise<void>
   archiveWorkspace(workspaceId: string, preserveDirtyWorktree?: boolean): Promise<void>
   deleteWorkspace(workspaceId: string): Promise<void>
   deleteConversation(conversationId: string): Promise<void>
@@ -193,6 +204,10 @@ export interface AppAPI {
   browserFrames(conversationId: string): Promise<BrowserFrame[]>
   browserControl(key: string, human: boolean): Promise<void>
   browserAction(key: string, action: { type: 'click' | 'type' | 'scroll' | 'key' | 'refresh'; x?: number; y?: number; text?: string }): Promise<void>
+  agentTerminalSessions(conversationId: string, workspaceId: string): Promise<AgentTerminalSessionWithOutput[]>
+  agentTerminalStop(sessionId: string, conversationId: string, workspaceId: string): Promise<AgentTerminalSession>
+  /** Abre o terminal do sistema na pasta, somente por clique do usuário e somente neste computador. */
+  openExternalTerminal(workspaceId: string): Promise<void>
   startMission(input: StartMissionInput): Promise<Mission>
   missionAction(missionId: string, action: MissionAction, text?: string): Promise<Mission>
   saveRoutine(input: Partial<Routine>): Promise<Routine>
