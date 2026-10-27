@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { Check, Copy, Volume2, LoaderCircle, Square } from 'lucide-react'
+import { Check, Copy, Volume2, LoaderCircle, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { Agent, Conversation, Message } from '../../../../shared/v9'
+import type { Agent, Conversation, Message, MessageAttachment } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
 import { RunProgress } from './RunProgress'
 import { speakVoice, stopVoice } from '../voice/voice-player'
@@ -19,6 +19,13 @@ function messageTime(createdAt: string) {
   const date = new Date(createdAt)
   if (!createdAt || Number.isNaN(date.getTime())) return null
   return { short: date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }), full: date.toLocaleString('pt-BR') }
+}
+
+function sameAttachments(previous?: MessageAttachment[], next?: MessageAttachment[]) {
+  return previous === next || (!!previous && !!next && previous.length === next.length && previous.every((item, index) => {
+    const other = next[index]
+    return item.id === other.id && item.name === other.name && item.mimeType === other.mimeType && item.size === other.size
+  }))
 }
 
 /** Copia o texto bruto da mensagem. O conteúdo nunca vai para log nem para o aviso; só o resultado é comunicado. */
@@ -45,15 +52,44 @@ function CopyMessageButton({ text, onNotice, className }: { text: string; onNoti
   </Button>
 }
 
-export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice, canSpeak = true }: {
+function AttachmentPreview({ conversationId, attachment, onNotice }: { conversationId: string; attachment: MessageAttachment; onNotice: (value: string) => void }) {
+  const [source, setSource] = useState('')
+  useEffect(() => {
+    let disposed = false
+    let objectUrl = ''
+    setSource('')
+    void window.appAPI.readAttachment(conversationId, attachment.id).then(({ mimeType, bytes }) => {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimeType) || bytes.byteLength !== attachment.size || bytes.byteLength > 20 * 1024 * 1024) throw new Error('O anexo de imagem é inválido ou expirou.')
+      const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+      objectUrl = URL.createObjectURL(new Blob([buffer], { type: mimeType }))
+      if (disposed) URL.revokeObjectURL(objectUrl)
+      else setSource(objectUrl)
+    }).catch(error => { if (!disposed) onNotice(errorText(error)) })
+    return () => { disposed = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [conversationId, attachment.id, attachment.size, onNotice])
+  return <figure className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-muted/30">
+    {source ? <img src={source} alt={attachment.name} loading="lazy" className="max-h-96 max-w-full object-contain" /> : <div role="status" className="px-3 py-2 text-xs text-muted-foreground">Carregando {attachment.name}…</div>}
+    <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{attachment.name}</figcaption>
+  </figure>
+}
+
+export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice, canSpeak = true, canCancelQueued = false }: {
   message: Message
   agent?: Agent
   relatedConversation: Conversation | undefined
   onOpenRelatedConversation: (id: string) => void
   onNotice: (value: string) => void
   canSpeak?: boolean
+  canCancelQueued?: boolean
 }) {
   const [audioState, setAudioState] = useState<'idle' | 'loading' | 'speaking'>('idle')
+  const [cancelingQueued, setCancelingQueued] = useState(false)
+  const cancelQueued = async () => {
+    setCancelingQueued(true)
+    try { await window.appAPI.cancelQueuedMessage(message.id) }
+    catch (error) { onNotice(errorText(error)) }
+    finally { setCancelingQueued(false) }
+  }
   const speak = async () => {
     if (audioState !== 'idle') { stopVoice(); setAudioState('idle'); return }
     setAudioState('loading')
@@ -86,10 +122,13 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
       </MessageHeader>}
       {!human && message.role === 'assistant' && <RunProgress status={message.status} agentName={agent?.name || message.author} />}
       {human ? <><PastaMessageBubble from="user" status={message.status === 'failed' ? 'failed' : message.status === 'queued' || message.status === 'running' ? 'sending' : 'sent'} className="whitespace-pre-wrap">{message.text}</PastaMessageBubble>{message.status === 'failed' && <span className="text-xs text-destructive">Falha no envio da instrução.</span>}
+        {message.attachments?.length ? <div className="mt-2 flex max-w-full flex-wrap gap-2">{message.attachments.map(attachment => <AttachmentPreview key={attachment.id} conversationId={message.conversationId} attachment={attachment} onNotice={onNotice} />)}</div> : null}
         {/* Ações do usuário aparecem ao passar o mouse ou focar; em telas sem hover ficam sempre visíveis. */}
-        {(canCopy || time) && <MessageFooter role="group" aria-label="Ações da mensagem" className="gap-1 px-0 opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+        {(canCopy || time || (canCancelQueued && message.status === 'queued')) && <MessageFooter role="group" aria-label="Ações da mensagem" className="gap-1 px-0 opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
           {time && <time dateTime={message.createdAt} title={time.full} className="font-normal tabular-nums">{time.short}</time>}
+          {message.status === 'queued' && <span className="text-muted-foreground">Na fila</span>}
           {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} />}
+          {canCancelQueued && message.status === 'queued' && <Button type="button" size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" aria-label="Cancelar mensagem na fila" title="Cancelar mensagem na fila" disabled={cancelingQueued} onClick={() => void cancelQueued()}>{cancelingQueued ? <LoaderCircle className="size-3.5 animate-spin" /> : <X className="size-3.5" />}</Button>}
         </MessageFooter>}</>
         : message.status === 'running' || message.status === 'waiting'
           ? <StreamingText text={message.text || ' '} />
@@ -104,6 +143,8 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   && previous.message.agentId === next.message.agentId
   && previous.message.runId === next.message.runId
   && previous.message.delegationId === next.message.delegationId
+  && sameAttachments(previous.message.attachments, next.message.attachments)
+  && previous.canCancelQueued === next.canCancelQueued
   && previous.agent?.id === next.agent?.id
   && previous.agent?.name === next.agent?.name
   && previous.agent?.alias === next.agent?.alias

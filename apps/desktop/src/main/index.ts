@@ -281,6 +281,8 @@ app.whenReady().then(async () => {
       return { id: data.selectedId, name: data.hosts.find(item => item.id === data.selectedId)?.name || 'Boobot' }
     },
     dispatch: (method, args, grants) => hosts!.dispatchFromPwa(method, args, grants),
+    attachments: appService.attachments,
+    attachmentsEnabled: () => !hosts?.remote,
   })
   // Isolated Electron E2E profiles may choose an ephemeral port; production is fixed at loopback 6780.
   const pwaPort = process.env.BOOBOT_E2E_USER_DATA_DIR && process.env.BOOBOT_E2E_PWA_PORT === '0' ? 0 : 6780
@@ -314,8 +316,9 @@ app.whenReady().then(async () => {
   })
 
   registerTerminalHandlers(workspaceId => appService!.workspacePath(workspaceId), () => !!hosts?.remote)
-  platformBrowser = new PlatformBrowser(() => mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
-  registerPlatformBrowserIpc(platformBrowser, event => !!mainWindow && BrowserWindow.fromWebContents(event.sender) === mainWindow)
+  platformBrowser = new PlatformBrowser(() => mainWindow && !mainWindow.isDestroyed() ? mainWindow : null, undefined, undefined, owner => !hosts?.remote && !!appService?.canShareBrowser(owner))
+  appService.setPlatformBrowser(platformBrowser)
+  registerPlatformBrowserIpc(platformBrowser, event => !!mainWindow && event.sender === mainWindow.webContents && event.senderFrame === mainWindow.webContents.mainFrame)
   registerWindowControlHandlers({ showMain: showMainWindow, showMascot: showMascotWindow, closeMascot: () => mascotWindow?.close() })
   initAutoUpdater()
   console.log('[Main] IPC handlers registered')

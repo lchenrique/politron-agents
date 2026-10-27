@@ -2,7 +2,7 @@
 
 ## Implementado
 - `features/panels/DockWorkspace.tsx` substitui o painel direito fixo e envolve chat/visão de workspace. Cada área (principal e auxiliar) possui suas próprias abas e menu `+`.
-- Abas: Chat, Arquivos, Terminal, Navegador do agente, Mascote e Alterações vs HEAD. Abrir um arquivo na árvore cria uma aba própria de largura total na área principal; é possível fechar e mover abas entre as áreas.
+- Abas: Chat, Arquivos, Terminal, Navegador, Mascote e Alterações vs HEAD. O Navegador é o navegador compartilhado do Politron; não existe navegador individual por agente. Abrir um arquivo na árvore cria uma aba própria de largura total na área principal; é possível fechar e mover abas entre as áreas.
 - Arrastar abas usando drag-and-drop HTML5; alternativa acessível no menu `…` de cada área. Painel auxiliar pode ser posicionado à esquerda, direita, acima ou abaixo e redimensionado pelo divisor (também por teclado).
 - Layout e abas persistidos em `localStorage` na chave `politron.dock.layout.v1` (atualmente layout **global**, ainda não específico de workspace).
 - `TitleBar` tem menu `Abrir painéis e abas` para escolher abrir ferramentas no painel auxiliar ou na área principal. `ChatHeader` oferece acesso direto a Arquivos, Navegador e Mascote.

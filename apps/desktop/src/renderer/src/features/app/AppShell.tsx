@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { FolderPlus, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import TitleBar from '@/components/ide/TitleBar'
-import { ASSISTANT_ID, type Agent, type BrowserFrame, type Conversation, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
+import { ASSISTANT_ID, type Agent, type Conversation, type MessageAttachment, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import { Sidebar } from '../sidebar/Sidebar'
 import { WorkspaceSearch } from '../sidebar/WorkspaceSearch'
@@ -85,10 +85,9 @@ export default function AppShell() {
     return () => window.removeEventListener('keydown', shortcut)
   }, [])
   const openTool = (kind: DockTool, zone: DockZone = 'side') => {
-    if (browserMode && (kind === 'files' && !canReadFiles || kind === 'terminal' || kind === 'browser' || kind === 'web' || kind === 'mascot')) return
+    if (browserMode && (kind === 'files' && !canReadFiles || kind === 'terminal' || kind === 'web' || kind === 'mascot')) return
     dockRef.current?.openTool(kind, zone)
   }
-  const [browserFrames, setBrowserFrames] = useState<BrowserFrame[]>([])
   const [workspaceDiff, setWorkspaceDiff] = useState('')
   const [loading, setLoading] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -105,6 +104,10 @@ export default function AppShell() {
   const selectWorkspace = useCallback((id: string) => { activeWorkspaceIdRef.current = id; setActiveWorkspaceId(id); setView(null); setSelectedId(''); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
   useEffect(() => { activeWorkspaceIdRef.current = activeWorkspaceId }, [activeWorkspaceId])
   const selectedAgents = useMemo(() => !selected ? [] : selected.agentIds.length ? selected.agentIds.map(id => snapshot.agents.find(agent => agent.id === id)).filter((agent): agent is Agent => !!agent) : [snapshot.assistant], [selected, snapshot.agents, snapshot.assistant])
+  const selectedModelRuntime = selectedModelName.split(':', 1)[0] as Agent['runtime']
+  const canAttachImages = selectedModelName.includes(':')
+    ? snapshot.imageRuntimes?.includes(selectedModelRuntime) === true
+    : selectedAgents.length > 0 && selectedAgents.every(agent => snapshot.imageRuntimes?.includes(agent.runtime))
   const { messages, hasOlderMessages: historyHasMore, hasNewerMessages, focusedMessageId: focusedHistoryMessageId, queueMessage, loadOlder: loadOlderMessages, search: searchHistory, openSearchHit: openHistorySearchHit, returnToLatest: returnToLatestHistory, reconcileAfterReconnect } = useConversationHistory(selected?.id, setNotice)
   const visibleRunEvidence = useMemo(() => selectVisibleRunEvidence(messages, snapshot.fileChanges, snapshot.approvals), [messages, snapshot.fileChanges, snapshot.approvals])
   const visibleFileChanges = visibleRunEvidence.fileChanges
@@ -118,8 +121,10 @@ export default function AppShell() {
   const agentOf = useCallback((id: string | null) => id === ASSISTANT_ID ? snapshot.assistant : id ? snapshot.agents.find(agent => agent.id === id) : undefined, [snapshot.assistant, snapshot.agents])
   const selectedWorkspace = selected ? snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined
   const linkWorkspaceId = linkFileWorkspaceId(selectedWorkspace)
+  const linkWorkspaceRoot = linkWorkspaceId ? selectedWorkspace?.path : undefined
   // Links das respostas no Desktop: arquivos no editor do dock, web no navegador da plataforma. A PWA não recebe provider.
   const messageLinks = useMemo<MessageLinkHandlers | null>(() => browserMode ? null : {
+    workspaceRoot: linkWorkspaceRoot,
     openFile: path => {
       if (!linkWorkspaceId) { setNotice('Esta conversa não tem pasta de projeto; o arquivo não pode ser aberto.'); return }
       dockRef.current?.openFile(linkWorkspaceId, path)
@@ -132,7 +137,7 @@ export default function AppShell() {
       void api.navigate(url).catch(error => setNotice(errorText(error)))
     },
     blocked: () => setNotice('Link não aberto: somente HTTP/HTTPS ou arquivos dentro da pasta do projeto são permitidos.'),
-  }, [browserMode, linkWorkspaceId])
+  }, [browserMode, linkWorkspaceId, linkWorkspaceRoot])
   // O IPC recria os objetos: conservar os dados iguais evita invalidar os memos do chat e dos Boos.
   const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => {
@@ -183,20 +188,10 @@ export default function AppShell() {
         if (event.reason === 'connection-restored') void reconcileAfterReconnect().catch(error => setNotice(errorText(error)))
         scheduleRefresh()
       }
-      else if (event.type === 'browser') setBrowserFrames(current => {
-        const at = current.findIndex(frame => frame.key === event.frame.key)
-        if (at < 0) return [...current, event.frame]
-        const next = [...current]; next[at] = event.frame; return next
-      })
-      else if (event.type === 'browserClosed') setBrowserFrames(current => current.filter(frame => frame.key !== event.key))
-      // Comando de agente desta conversa: mostra o painel Terminal sem mover a aba se ela já existe.
-      else if (event.type === 'agentTerminal' && event.event === 'started' && !browserMode && event.session.conversationId === selectedIdRef.current) dockRef.current?.revealTool('terminal')
     })
     return () => { off(); offProviders(); if (refreshTimer !== null) clearTimeout(refreshTimer) }
   }, [refresh, queueMessage, reconcileAfterReconnect, browserMode])
   useEffect(() => { void window.appAPI.setVisibleConversation(selected?.id || null).catch(error => setNotice(errorText(error))) }, [selected?.id])
-  const refreshBrowser = useCallback(async () => { if (!selected) { setBrowserFrames([]); return } try { setBrowserFrames(await window.appAPI.browserFrames(selected.id)) } catch (error) { setNotice(errorText(error)) } }, [selected?.id])
-  useEffect(() => { void refreshBrowser() }, [refreshBrowser])
   useEffect(() => { if (!selected?.workspaceId) { setWorkspaceDiff(''); return } window.appAPI.workspaceDiff(selected.workspaceId).then(setWorkspaceDiff).catch(error => setNotice(errorText(error))) }, [selected?.workspaceId, snapshot.workspaces, snapshot.fileChanges])
   useEffect(() => { const timeout = window.setTimeout(() => setNotice(''), 6000); return () => window.clearTimeout(timeout) }, [notice])
   const saveAgent = async (data: EditorData) => {
@@ -284,16 +279,32 @@ export default function AppShell() {
     try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
-  const submitMessage = async (value: string, modelName: string, options: { files: File[]; effort?: Agent['effort']; planMode?: boolean }) => {
+  const submitMessage = async (value: string, modelName: string, options: { files: File[]; effort?: Agent['effort']; planMode?: boolean; delivery: 'queue' | 'now'; requestId: string }) => {
     if (!selected) throw new Error('Escolha uma conversa antes de enviar.')
     let input = value
-    if (options.files.length) {
-      const contents = await Promise.all(options.files.map(async file => { if (file.size > 100_000 || !file.type.startsWith('text/') && !/\.(md|txt|json|csv|ts|tsx|js|jsx|css|html|xml|ya?ml)$/i.test(file.name)) throw new Error(`${file.name}: anexe arquivos de texto de até 100 KB.`); return `\n\n--- ${file.name} ---\n${await file.text()}` }))
-      input += contents.join('')
+    const attachments: MessageAttachment[] = []
+    const extensionMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
+    for (const file of options.files) {
+      const extension = file.name.split('.').pop()?.toLowerCase() || ''
+      const allowedMime = ['image/png', 'image/jpeg', 'image/webp']
+      const imageMime = allowedMime.includes(file.type) ? file.type : ['','application/octet-stream'].includes(file.type) ? extensionMime[extension] : undefined
+      const isImage = file.type.startsWith('image/') || !!extensionMime[extension]
+      if (isImage) {
+        if (!canAttachImages) throw new Error('O envio de imagens só está disponível em conversas com runtime compatível e testado.')
+        if (!imageMime) throw new Error('Envie imagens PNG, JPEG ou WebP.')
+        if (file.size > 20 * 1024 * 1024) throw new Error(`${file.name}: imagens de até 20 MB.`)
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        attachments.push(await window.appAPI.uploadAttachment(selected.id, file.name, imageMime, bytes))
+      } else {
+        if (file.size > 100_000 || !file.type.startsWith('text/') && !/\.(md|txt|json|csv|ts|tsx|js|jsx|css|html|xml|ya?ml)$/i.test(file.name)) throw new Error(`${file.name}: anexe arquivos de texto de até 100 KB.`)
+        input += `\n\n--- ${file.name} ---\n${await file.text()}`
+      }
     }
     const selectedModel = models.find(item => item.id === modelName || item.name === modelName)?.id
     if (options.effort) setSelectedEffort(options.effort)
-    await window.appAPI.send(selected.id, input, selectedModel, options.effort, options.planMode)
+    await window.appAPI.send(selected.id, input, selectedModel, options.effort, options.planMode, {
+      requestId: options.requestId, delivery: options.delivery, attachments, returnAfterAcceptance: true,
+    })
   }
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
@@ -319,7 +330,7 @@ export default function AppShell() {
     agents: snapshot.agents,
     selectedWorkspace,
     onParticipantsChange: updateParticipants,
-    onOpenComputerUse: () => openTool('browser'),
+    onOpenComputerUse: () => openTool('web'),
     onOpenProjectFiles: () => openTool('files'),
     onOpenMascot: () => openTool('mascot'),
     onEditConversation: () => setEditor({ kind: 'conversation', initial: selected }),
@@ -379,7 +390,7 @@ export default function AppShell() {
       </>}
       <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 pb-1.5 pr-1.5 ' + (sidebarCollapsed ? 'pl-1.5 ' : '') + (browserMode ? 'boobot-web-main-panel' : '')}>
       <div className="boobot-canvas ds-canvas flex h-full min-h-0 min-w-0">
-      <DockWorkspace ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} browserFrames={browserFrames.filter(frame => frame.conversationId === selected?.id)} onRefreshBrowser={() => void refreshBrowser()} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}
+      <DockWorkspace ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}
         chatHeader={conversationChrome && <ChatHeader {...conversationChrome} />}
         chatTab={conversationChrome && conversationTitle ? { label: conversationTitle.title, title: [conversationTitle.title, conversationTitle.subtitle].filter(Boolean).join(' · '), leading: <ConversationAvatar compact {...conversationChrome} />, trailing: <ConversationTools compact {...conversationChrome} /> } : mainTabLabel ? { label: mainTabLabel } : undefined}>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -407,6 +418,7 @@ export default function AppShell() {
               onNotice={setNotice}
               canSpeak={!browserMode || canChat}
               canApprove={canApprove}
+              canCancelQueued={canChat}
             />
             </MessageLinkContext.Provider>
             <fieldset disabled={!canChat} className="m-0 min-w-0 border-0 p-0">
@@ -414,6 +426,7 @@ export default function AppShell() {
               mentionAgents={selectedAgents}
               working={conversationRuns.length > 0}
               canSteer={canSteer}
+              canAttachImages={canAttachImages}
               conversationId={selected.id}
               reviewChanges={latestReview}
               reviewKey={finishedWithChanges?.runId || ''}

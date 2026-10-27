@@ -6,8 +6,8 @@ const METHODS = new Set([
   'snapshot', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace',
   'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff',
   'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'setVisibleConversation', 'getVisibleConversation',
-  'respondToAgent', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'cancelDelegation', 'models',
-  'openRouterDecisionStatus', 'saveOpenRouterDecisionModel', 'browserFrames', 'browserControl', 'browserAction',
+  'respondToAgent', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'cancelQueuedMessage', 'stop', 'cancelDelegation', 'models',
+  'openRouterDecisionStatus', 'saveOpenRouterDecisionModel',
   // Somente o desktop pareado lista/para PTYs de agentes; a PWA não tem capacidade para estes métodos.
   'agentTerminalSessions', 'agentTerminalStop',
 ].map(method => `v9:${method}`).concat(['providers:list', 'providers:refresh', 'providers:detect', 'skills:list', 'skills:readContent', 'hosts:browse']))

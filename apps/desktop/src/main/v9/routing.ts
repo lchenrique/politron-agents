@@ -37,6 +37,7 @@ export class WorkspaceQueue {
       this.pending.push(entry); signal.addEventListener('abort', entry.onAbort, { once: true }); this.pump()
     })
   }
+  isPending(signal: AbortSignal): boolean { return this.pending.some(entry => entry.signal === signal) }
   enqueueDelegation(key: string, signal: AbortSignal, task: (lease: WorkspaceLease) => Promise<void>, parent?: WorkspaceLease): Promise<void> {
     const scope = parent && this.scopes.get(parent)
     if (!scope || scope.closed || scope.root.closed || scope.root.key !== key) return this.enqueue(key, signal, task)

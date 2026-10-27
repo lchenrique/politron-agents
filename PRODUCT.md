@@ -45,6 +45,14 @@ O usuário começa uma conversa com o Assistente padrão ou escolhe um bot. Proj
 
 ## Capabilities and Constraints
 
+### Recursos do agente: paridade com Paseo
+
+O objetivo é oferecer ao agente do Politron as capacidades equivalentes às ferramentas que Paseo disponibiliza aos agentes: orquestração e ciclo de vida de agentes; criação, listagem e arquivamento de workspaces/worktrees; terminais e scripts/serviços supervisionados por workspace; automação de navegador; perfis, provedores e modelos; pedidos de permissão e aprovações; agendamentos e heartbeats; saída de voz. Ferramentas nativas do motor e serviços MCP/skills configurados pelo usuário também devem continuar acessíveis quando o adaptador os suportar.
+
+O diferencial intencional do Politron é permitir vários Boos especialistas, com identidade, instruções, motor/modelo e permissões próprios, colaborando ou trabalhando em paralelo sem exigir hierarquia ou coordenador obrigatório. Nenhuma capacidade é presumida: o agente só recebe ferramentas efetivamente suportadas e autorizadas pelo usuário.
+
+No navegador, o objetivo é que os agentes usem o Browser visível do Politron, compartilhado como no Paseo, sem navegadores Playwright individuais. Separadamente, quando houver integração suportada e autorização do usuário, o agente poderá usar a extensão oficial do provider no Brave ou Chrome para verificar uma aba já aberta. Não criar extensão própria do Politron nem recorrer a CDP amplo, leitura de cookies ou cópia de perfis. A conexão dos agentes ao Browser visível e à extensão oficial ainda não está implementada ou comprovada. O consentimento do navegador externo por conversa e agente já existe (padrão desativado, revogável no painel Navegador), mas a ferramenta do agente apenas relata autorização e peças ausentes: a ponte `node_repl` do plugin oficial não é executada pelo Politron e, nesta máquina, está quebrada. Como no Paseo, o uso do Browser não bloqueia conversas ou histórico na PWA; as permissões de conversa existentes continuam valendo. A PWA mantém seus limites próprios: sem terminal/PTY remoto, fila como padrão e relay remoto binário desabilitado.
+
 ### Agentes
 
 - Cadastro e edição de nome, descrição, instruções, motor/modelo, avatar e permissões.

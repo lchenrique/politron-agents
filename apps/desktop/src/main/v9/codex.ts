@@ -5,13 +5,15 @@ import { homedir } from 'node:os'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Agent, Model } from '../../shared/v9'
-import { SessionUnavailableError, type AgentRuntime, type RuntimeThread } from './agent-runtime'
+import { SessionUnavailableError, type AgentRuntime, type ExternalBrowserRegistration, type RuntimeThread } from './agent-runtime'
+import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { spawnCli } from './cli-launch'
 
 type RpcMessage = { id?: number | string; method?: string; params?: Record<string, any>; result?: any; error?: { code?: number | string; message: string } }
 export interface DynamicTool { type: 'function'; name: string; description: string; inputSchema: Record<string, unknown> }
 export class CodexRuntime extends EventEmitter implements AgentRuntime {
+  readonly supportsImages = true
   private executable: string | undefined
   private process: ChildProcessWithoutNullStreams | null = null
   private ready: Promise<void> | null = null
@@ -35,7 +37,7 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     const args = [
       'app-server', '--listen', 'stdio://',
       '--disable', 'shell_tool', '--disable', 'unified_exec', '--disable', 'apps',
-      '--disable', 'computer_use', '--disable', 'browser_use', '--disable', 'browser_use_external', '--disable', 'browser_use_full_cdp_access',
+      '--disable', 'computer_use', '--disable', 'browser_use_full_cdp_access',
       '-c', 'mcp_servers={}'
     ]
     for (const name of inheritedServers) args.push('-c', `mcp_servers.${name}.enabled=false`)
@@ -108,20 +110,26 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     }
     return [...models.values()]
   }
-  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string): Promise<RuntimeThread> {
+  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string, externalBrowser?: ExternalBrowserRegistration): Promise<RuntimeThread> {
     await this.start()
     // File access is mediated by the workspace tools. Built-in command execution is disabled.
+    // Native browser integration remains disabled until it has its own consent and routing.
     const config: Record<string, unknown> = {
+      'features.browser_use': false,
+      'features.browser_use_external': false,
       'features.shell_tool': false,
       'features.unified_exec': false,
       'features.apps': false,
       'features.computer_use': false,
-      'features.browser_use': false,
-      'features.browser_use_external': false,
       'features.browser_use_full_cdp_access': false,
       'features.apply_patch_freeform': false
     }
     for (const name of await this.configuredMcpNames(join(directory, '.codex', 'config.toml'))) config[`mcp_servers.${name}.enabled`] = false
+    if (externalBrowser) {
+      // Único MCP habilitado: o proxy do Politron, que pede aprovação a cada chamada. O node_repl oficial nunca é registrado aqui.
+      for (const key of Object.keys(config)) if (key.startsWith(`mcp_servers.${EXTERNAL_BROWSER_MCP}.`)) delete config[key]
+      config[`mcp_servers.${EXTERNAL_BROWSER_MCP}`] = { url: externalBrowser.url, http_headers: { Authorization: `Bearer ${externalBrowser.token}` }, enabled_tools: externalBrowser.tools, default_tools_approval_mode: 'approve', tool_timeout_sec: 600 }
+    }
     const params = { cwd: directory, model: agent.model || null, ...(agent.effort ? { reasoningEffort: agent.effort } : {}), sandbox: 'read-only', approvalPolicy: 'on-request', config, developerInstructions: buildAgentSystemPrompt(agent, projectInstructions, tools) }
     const result = threadId
       ? await this.request('thread/resume', { ...params, threadId })
@@ -129,8 +137,10 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     if (typeof result?.thread?.id !== 'string' || !result.thread.id) throw new Error('O Codex não confirmou a sessão solicitada.')
     return { id: result.thread.id, history: threadId ? 'retained' : 'empty' }
   }
-  async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<any> {
-    return this.request('turn/start', { threadId, input: [{ type: 'text', text: input }], ...(model ? { model } : {}) }, timeout)
+  async send(threadId: string, input: string | { text: string; images: Array<{ path: string; mimeType: string }> }, model?: string, timeout = 600000): Promise<any> {
+    const text = typeof input === 'string' ? input : input.text
+    const images = typeof input === 'string' ? [] : input.images
+    return this.request('turn/start', { threadId, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'localImage', path: image.path }))], ...(model ? { model } : {}) }, timeout)
   }
   async interrupt(threadId: string, turnId: string): Promise<void> { await this.request('turn/interrupt', { threadId, turnId }) }
   async steer(threadId: string, turnId: string, input: string): Promise<void> {

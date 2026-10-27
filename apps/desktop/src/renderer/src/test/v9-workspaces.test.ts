@@ -330,27 +330,31 @@ describe('Assistente padrão e conversas por workspace V9', () => {
 
   it('exclui conversa, agente e workspace em cascata de verdade', async () => {
     const { service } = open(tempDirectory())
-    const disposeConversation = vi.spyOn(service.browser, 'disposeConversation')
-    const disposeAgent = vi.spyOn(service.browser, 'disposeAgent')
+    let sharing: { workspaceId: string; conversationId: string; agentId: string } | null = null
+    const revoke = vi.fn(() => { sharing = null })
+    service.setPlatformBrowser({ sharingState: () => sharing, revokeSharing: revoke } as never)
     const agent = service.saveAgent({ name: 'Descartável', alias: 'descartavel', instructions: 'x' })
     const workspace = await service.saveWorkspace({ name: 'Temporário', defaultAgentIds: [agent.id] })
     const conversation = service.saveConversation({ workspaceId: workspace.id, agentIds: [agent.id] })
     await service.send(conversation.id, 'oi')
 
+    sharing = { workspaceId: workspace.id, conversationId: conversation.id, agentId: agent.id }
     await service.deleteConversation(conversation.id)
-    expect(disposeConversation).toHaveBeenCalledWith(conversation.id)
+    expect(revoke).toHaveBeenCalledTimes(1)
     expect(() => service.store.conversation(conversation.id)).toThrow('não encontrada')
     expect(service.store.fileChangesForWorkspace(workspace.id)).toEqual([])
 
     const other = service.saveConversation({ workspaceId: workspace.id, agentIds: [agent.id] })
+    sharing = { workspaceId: workspace.id, conversationId: other.id, agentId: agent.id }
     await service.deleteAgent(agent.id)
-    expect(disposeAgent).toHaveBeenCalledWith(agent.id)
+    expect(revoke).toHaveBeenCalledTimes(2)
     expect(() => service.store.agent(agent.id)).toThrow('não encontrado')
     expect(service.store.conversation(other.id).agentIds).toEqual([])
     expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
 
+    sharing = { workspaceId: workspace.id, conversationId: other.id, agentId: agent.id }
     await service.deleteWorkspace(workspace.id)
-    expect(disposeConversation).toHaveBeenCalledWith(other.id)
+    expect(revoke).toHaveBeenCalledTimes(3)
     expect(() => service.store.workspace(workspace.id)).toThrow('não encontrado')
     expect(() => service.store.conversation(other.id)).toThrow('não encontrada')
   })

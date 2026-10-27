@@ -19,6 +19,30 @@ it('o botão Ouvir usa o ID persistido do Boo mesmo sem o perfil carregado', asy
   await waitFor(() => expect(voice.speakVoice).toHaveBeenCalledWith(message.text, expect.any(Function), { agentId: 'boo-brigid' }))
 })
 
+it('carrega imagem anexada pelo API autenticada e usa a URL temporária no preview', async () => {
+  const attachment = { id: 'a'.repeat(32), name: 'captura.png', mimeType: 'image/png' as const, size: 3 }
+  const create = vi.fn(() => 'blob:captura'), revoke = vi.fn()
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create })
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoke })
+  const readAttachment = vi.fn().mockResolvedValue({ mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3]) })
+  vi.stubGlobal('appAPI', { readAttachment })
+  const message = { id: 'image-message', conversationId: 'c1', agentId: null, author: 'Você', role: 'user', status: 'completed', text: 'O que aparece aqui?', runId: null, attachments: [attachment], createdAt: '' } as Message
+  const { unmount } = render(<MessageItem message={message} relatedConversation={undefined} onOpenRelatedConversation={vi.fn()} onNotice={vi.fn()} />)
+  expect(await screen.findByRole('img', { name: 'captura.png' })).toHaveAttribute('src', 'blob:captura')
+  expect(readAttachment).toHaveBeenCalledWith('c1', attachment.id)
+  unmount()
+  expect(revoke).toHaveBeenCalledWith('blob:captura')
+})
+
+it('permite cancelar uma mensagem que ainda está na fila', async () => {
+  const cancelQueuedMessage = vi.fn().mockResolvedValue(undefined)
+  vi.stubGlobal('appAPI', { cancelQueuedMessage })
+  const message = { id: 'queued-id', conversationId: 'c1', agentId: null, author: 'Você', role: 'user', status: 'queued', text: 'Depois desta', runId: null, createdAt: '' } as Message
+  render(<MessageItem message={message} relatedConversation={undefined} onOpenRelatedConversation={vi.fn()} onNotice={vi.fn()} canCancelQueued />)
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar mensagem na fila' }))
+  await waitFor(() => expect(cancelQueuedMessage).toHaveBeenCalledWith('queued-id'))
+})
+
 describe('copiar mensagem', () => {
   const reply: Message = { id: 'reply-2', conversationId: 'c1', agentId: 'boo', author: 'Atlas', role: 'assistant', status: 'completed', text: '## Pronto\n\nSegredo de teste 123', runId: 'run-1', createdAt: '2026-10-25T13:05:00.000Z' }
 

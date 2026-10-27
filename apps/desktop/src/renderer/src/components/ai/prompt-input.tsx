@@ -41,6 +41,7 @@ interface PromptInputProps extends Omit<React.ComponentProps<'form'>, 'onSubmit'
   textareaLabel?: string
   accept?: string
   pending?: boolean
+  submitDisabled?: boolean
   placeholder?: string
   submitLabel?: string
   value?: string
@@ -79,6 +80,7 @@ function PromptInput({
   onFilesChange,
   files: filesProp,
   pending = false,
+  submitDisabled = false,
   placeholder = 'Ask anything…',
   submitLabel = 'Enviar mensagem',
   ...props
@@ -261,7 +263,7 @@ function PromptInput({
           aria-label={pending ? 'Parar geração' : submitLabel}
           className="rounded-full border-0 bg-primary bg-linear-to-b from-[color-mix(in_oklch,var(--primary),var(--primary-foreground)_30%)] to-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.18)] shadow-none hover:brightness-110 dark:bg-none"
           variant="default"
-          disabled={!pending && !value.trim() && !files.length}
+          disabled={submitDisabled || !pending && !value.trim() && !files.length}
           size="icon-lg"
           type={pending ? 'button' : 'submit'}
           onClick={pending ? onStop : undefined}

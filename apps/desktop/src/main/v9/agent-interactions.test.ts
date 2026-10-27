@@ -57,6 +57,16 @@ describe('Ferramentas de pergunta, plano e autonomia', () => {
     await expect(broker.callTool(context, 'propose_plan', { title: 'Plano', steps: ['Revisar', 'Testar'] })).resolves.toContain('Plano apresentado')
     expect(service.store.approvals().find(item => item.kind === 'plan')?.details.planSteps).toEqual(['Revisar','Testar'])
   })
+  it('usa apenas a view compartilhada e respeita a permissão atual do agente', async () => {
+    const { service, broker, context } = await setup()
+    const observe = vi.fn(async () => ({ text: 'página visível' }))
+    service.setPlatformBrowser({ observeForAgent: observe, captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
+    await expect(broker.callTool(context, 'browser_observe', {})).resolves.toEqual({ text: 'página visível' })
+    expect(observe).toHaveBeenCalledWith({ workspaceId: context.conversation.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }, 1)
+    service.saveAgent({ ...context.agent, computerUse: false })
+    await expect(broker.callTool(context, 'browser_observe', {})).rejects.toThrow(/bloqueado/i)
+    expect(observe).toHaveBeenCalledTimes(1)
+  })
   it('bypass oferece ferramentas habilitadas no agente e no workspace', async () => {
     const { broker, context } = await setup()
     expect(broker.tools(context).map(tool => tool.name)).toContain('workspace_write')

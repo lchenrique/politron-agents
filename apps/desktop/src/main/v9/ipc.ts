@@ -12,9 +12,26 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     ipcMain.handle(`v9:${channel}`, (event, ...args) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
     if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
-    return routing ? routing.invoke(`v9:${channel}`, args, () => handler(...args), event.sender) : handler(...args)
+    const result = routing ? routing.invoke(`v9:${channel}`, args, () => handler(...args), event.sender) : handler(...args)
+    if (channel === 'snapshot' && routing?.remote) return Promise.resolve(result).then(value =>
+      value && typeof value === 'object' ? { ...(value as Record<string, unknown>), imageRuntimes: [] } : value)
+    return result
   })
   }
+  const invokeLocal = (channel: string, handler: (...args: any[]) => unknown) => ipcMain.handle(`v9:${channel}`, (event, ...args) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
+    if (routing?.remote) throw new Error('Anexos de imagem ainda não são transferidos para hosts remotos.')
+    return handler(...args)
+  })
+  const invokeDesktopOnly = (channel: string, handler: (...args: any[]) => unknown) => ipcMain.handle(`v9:${channel}`, (event, ...args) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
+    if (routing?.remote) throw new Error('Compartilhamento de aba Brave disponível somente no host local.')
+    return handler(...args)
+  })
+  invokeDesktopOnly('externalBrowserStatus', (owner) => service.externalBrowserStatus(owner))
+  invokeDesktopOnly('setExternalBrowserGrant', (owner, enabled) => service.setExternalBrowserGrant(owner, enabled === true))
   invoke('snapshot', () => service.snapshot())
   invoke('settingsPreferences', () => service.settingsPreferences())
   invoke('saveAgent', (input) => service.saveAgent(input))
@@ -51,7 +68,10 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('historyPage', (id, beforeCursor, limit) => service.historyPage(id, beforeCursor, limit))
   invoke('searchHistory', (id, query, limit) => service.searchHistory(id, query, limit))
   invoke('historyAround', (id, cursor, limit) => service.historyAround(id, cursor, limit))
-  invoke('send', (id, text, model, effort, planMode) => service.send(id, text, model, effort, undefined, false, true, planMode))
+  invoke('send', (id, text, model, effort, planMode, options) => service.send(id, text, model, effort, undefined, false, true, planMode, options))
+  invoke('cancelQueuedMessage', (messageId) => service.cancelQueuedMessage(messageId))
+  invokeLocal('uploadAttachment', (conversationId, name, mimeType, bytes) => service.uploadAttachment(conversationId, name, mimeType, bytes))
+  invokeLocal('readAttachment', (conversationId, id) => service.readAttachment(conversationId, id))
   invoke('stop', (id) => service.stop(id))
   invoke('voiceStatus', () => voice.status())
   invoke('pitVoices', () => voice.pitVoices())
@@ -86,9 +106,6 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('models', (runtime) => service.models(runtime))
   invoke('pickFolder', () => service.pickFolder())
   invoke('openFolder', (id) => service.openFolder(id))
-  invoke('browserFrames', (id) => service.browserFrames(id))
-  invoke('browserControl', (key, human) => service.browserControl(key, human))
-  invoke('browserAction', (key, action) => service.browserAction(key, action))
   invoke('agentTerminalSessions', (conversationId, workspaceId) => service.agentTerminalSessions(conversationId, workspaceId))
   invoke('agentTerminalStop', (sessionId, conversationId, workspaceId) => service.agentTerminalStop(sessionId, conversationId, workspaceId))
   // Fora da RPC: com host remoto selecionado o roteamento recusa, então nunca abre janela no host remoto.
@@ -102,6 +119,6 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     service.off('workspace-event', send)
     voice.close()
     ipcMain.removeHandler('v9:clearClaudeCredential')
-    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'createProjectFolder', 'cloneRepository', 'cancelClone', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'startMission', 'missionAction', 'saveRoutine', 'deleteRoutine', 'runRoutine', 'models', 'pickFolder', 'openFolder', 'browserFrames', 'browserControl', 'browserAction', 'agentTerminalSessions', 'agentTerminalStop', 'openExternalTerminal']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of ['snapshot', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace', 'createWorktree', 'createProjectFolder', 'cloneRepository', 'cancelClone', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'startMission', 'missionAction', 'saveRoutine', 'deleteRoutine', 'runRoutine', 'models', 'pickFolder', 'openFolder', 'agentTerminalSessions', 'agentTerminalStop', 'openExternalTerminal', 'externalBrowserStatus', 'setExternalBrowserGrant']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

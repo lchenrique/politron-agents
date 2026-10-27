@@ -1,10 +1,10 @@
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
-import { Bot, Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, X } from 'lucide-react'
+import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { Agent, BrowserFrame } from '../../../../shared/v9'
+import type { Agent } from '../../../../shared/v9'
 import { ProjectExplorer } from './ProjectExplorer'
 import { FilePreview, type FileDraft, type FileDraftChange } from './FilePreview'
 import { PoliAvatar } from '../app/PoliAvatar'
@@ -15,7 +15,6 @@ import type { AgentAvatarState } from '../app/Avatar'
 import { changeActive, changeRatio, developmentDockLayout, deserializeDockLayout, fileTab, getGroup, groupWithTab, groups, initialDockLayout, placeTab, pruneEmpty, removeGroup, splitGroup, toolTab, type DockEdge, type DockGroup, type DockLayoutState, type DockNode, type DockTab, type DockTool, type DockZone } from './dock-layout'
 
 const TerminalPanel = lazy(() => import('@/components/ide/TerminalPanel'))
-const BrowserPanel = lazy(() => import('./BrowserPanel').then(module => ({ default: module.BrowserPanel })))
 const PlatformBrowserPanel = lazy(() => import('./PlatformBrowserPanel').then(module => ({ default: module.PlatformBrowserPanel })))
 const RealtimeCall = lazy(() => import('../realtime/RealtimeCall').then(module => ({ default: module.RealtimeCall })))
 export type { DockTool, DockZone } from './dock-layout'
@@ -27,11 +26,11 @@ export interface DockWorkspaceHandle {
   revealTool: (kind: DockTool) => void
   useDevelopmentLayout: () => void
 }
-const labels: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', browser: 'Navegador do agente', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
-const icons = { chat: MessageSquare, files: Files, terminal: Terminal, browser: Bot, web: Globe, mascot: UserRound, diff: FileDiff, file: Code2 }
-const toolKinds: DockTool[] = ['chat', 'files', 'terminal', 'browser', 'web', 'mascot', 'diff']
+const labels: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
+const icons = { chat: MessageSquare, files: Files, terminal: Terminal, web: Globe, mascot: UserRound, diff: FileDiff, file: Code2 }
+const toolKinds: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff']
 /** Ferramentas que dependem do Electron local; a PWA nunca as monta. */
-const desktopOnly = (kind: DockTab['kind']) => kind === 'terminal' || kind === 'browser' || kind === 'web' || kind === 'mascot'
+const desktopOnly = (kind: DockTab['kind']) => kind === 'terminal' || kind === 'web' || kind === 'mascot'
 const positions = [
   { value: 'left', label: 'Dividir à esquerda', icon: PanelLeft },
   { value: 'right', label: 'Dividir à direita', icon: PanelRight },
@@ -102,14 +101,12 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   agents: Agent[]
   selectedAgents: Agent[]
   agentStates?: Record<string, AgentAvatarState>
-  browserFrames: BrowserFrame[]
-  onRefreshBrowser: () => void
   onChanged: (value: string) => void
   workspaceDiff: string
   browserMode?: boolean
   canReadFiles?: boolean
   canWriteFiles?: boolean
-}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, browserFrames, onRefreshBrowser, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
+}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
   const [layout, setLayout] = useState<DockLayoutState>(loadLayout)
   const [drafts, setDrafts] = useState<Record<string, FileDraft>>({})
   const changeDraft = useCallback((id: string, updater: Parameters<FileDraftChange>[0]) => setDrafts(current => {
@@ -238,8 +235,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
       case 'files': return <ProjectExplorer workspaceId={workspaceId} onOpenFile={(id, path) => openFile(id, path)} />
       case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} readOnly={browserMode && !canWriteFiles} /> : null
       case 'terminal': return <Suspense fallback={null}><TerminalPanel workspaceId={workspaceId} conversationId={conversationId} showLogs={false} /></Suspense>
-      case 'browser': return <Suspense fallback={null}><BrowserPanel frames={browserFrames} agents={agents} onRefresh={onRefreshBrowser} onChanged={onChanged} /></Suspense>
-      case 'web': return <Suspense fallback={null}><PlatformBrowserPanel onNotice={onChanged} /></Suspense>
+      case 'web': return <Suspense fallback={null}><PlatformBrowserPanel onNotice={onChanged} workspaceId={workspaceId} conversationId={conversationId} agents={selectedAgents} /></Suspense>
       case 'mascot': return <MascotView assistant={assistant} agents={agents} selectedAgents={selectedAgents} agentStates={agentStates} conversationId={conversationId} voiceAgentId={voiceAgentId} />
       case 'diff': return <div className="h-full overflow-auto p-4"><h2 className="mb-3 text-xs font-semibold text-muted-foreground">Alterações versus HEAD</h2><pre className="min-w-max whitespace-pre font-mono text-[11px] leading-5">{workspaceDiff || 'Nenhuma alteração rastreada.'}</pre></div>
     }

@@ -1,6 +1,13 @@
 import type { BooAccessoryColors } from './boo-accessory-colors'
 
-export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'interrupted' | 'failed'
+export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'interrupted' | 'failed' | 'cancelled'
+export interface MessageAttachment { id: string; name: string; mimeType: 'image/png' | 'image/jpeg' | 'image/webp'; size: number }
+export interface SendOptions {
+  requestId: string
+  delivery: 'queue' | 'now'
+  attachments?: MessageAttachment[]
+  returnAfterAcceptance?: boolean
+}
 /** Mesma paleta do Poli Studio (PoliCustomizer); usada também para sortear a cor de um Pit novo, criado pelo usuário ou pelo Chief. */
 export const PIT_COLOR_PALETTE = ['#786bea', '#4098eb', '#32b6a0', '#f0a05b', '#ef79ac', '#393f56', '#e05e70']
 export const randomPitColor = (): string => PIT_COLOR_PALETTE[Math.floor(Math.random() * PIT_COLOR_PALETTE.length)]
@@ -45,7 +52,7 @@ export interface Conversation {
 export interface Message {
   id: string; conversationId: string; agentId: string | null; author: string
   role: 'user' | 'assistant' | 'activity'; text: string; status: RunStatus
-  runId: string | null; delegationId?: string; relatedConversationId?: string; createdAt: string
+  runId: string | null; delegationId?: string; relatedConversationId?: string; attachments?: MessageAttachment[]; createdAt: string
 }
 export interface MessagePage { messages: Message[]; hasMore: boolean; beforeCursor: number | null }
 export interface MessageSearchHit { message: Message; cursor: number; snippet: string }
@@ -110,7 +117,7 @@ export interface Model {
   supportedEfforts?: ModelEffort[]
   defaultEffort?: ModelEffort
 }
-export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][]; missions?: Mission[]; routines?: Routine[] }
+export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][]; imageRuntimes?: Agent['runtime'][]; missions?: Mission[]; routines?: Routine[] }
 export interface VoiceStatus { transcription: boolean; speech: boolean; provider?: 'realtime' | 'openrouter' | 'local' | 'pits' | 'pocket'; engine: 'piper' | 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }
 export type PitVoiceId = 'f1' | 'f2' | 'f3' | 'f4' | 'm1' | 'm1-young' | 'dora' | 'alex' | 'santa'
 export interface PitVoiceSelection { defaultVoiceId: PitVoiceId; agentVoiceIds: Record<string, PitVoiceId> }
@@ -121,11 +128,6 @@ export interface DecisionModelCatalog { source: 'openrouter'; models: DecisionMo
 export interface OpenRouterDecisionStatus { configured: boolean; modelId: string }
 export interface ProjectFileEntry { name: string; path: string; directory: boolean }
 export interface ProjectFileContent { path: string; name: string; content: string; hash: string }
-export interface BrowserFrame {
-  key: string; conversationId: string; agentId: string; url: string; title: string
-  image: string; width: number; height: number; x: number | null; y: number | null
-  human: boolean; action: string; capturedAt: string
-}
 /** Sessão PTY de um comando do agente, no host que executa o workspace. Separada do terminal manual. */
 export interface AgentTerminalSession {
   id: string; workspaceId: string; conversationId: string; runId: string; agentId: string; agentName: string
@@ -140,8 +142,6 @@ export type WorkspaceEvent =
   | { type: 'fileChange'; fileChange: FileChange }
   | { type: 'approval'; approval: Approval }
   | { type: 'mission'; mission: Mission }
-  | { type: 'browser'; frame: BrowserFrame }
-  | { type: 'browserClosed'; key: string; conversationId: string; agentId: string }
 export interface AppAPI {
   snapshot(): Promise<Snapshot>
   settingsPreferences(): Promise<{ canWrite: boolean; computerUse: boolean; approvalMode: Agent['approvalMode']; terminalEnabled: boolean }>
@@ -171,7 +171,10 @@ export interface AppAPI {
   historyPage(conversationId: string, beforeCursor?: number | string | null, limit?: number): Promise<MessagePage>
   searchHistory(conversationId: string, query: string, limit?: number): Promise<MessageSearchHit[]>
   historyAround(conversationId: string, cursor: number, limit?: number): Promise<MessagePage>
-  send(conversationId: string, text: string, model?: string, effort?: Agent['effort'], planMode?: boolean): Promise<void>
+  send(conversationId: string, text: string, model?: string, effort?: Agent['effort'], planMode?: boolean, options?: SendOptions): Promise<void>
+  cancelQueuedMessage(messageId: string): Promise<void>
+  uploadAttachment(conversationId: string, name: string, mimeType: string, bytes: Uint8Array): Promise<MessageAttachment>
+  readAttachment(conversationId: string, id: string): Promise<{ mimeType: string; bytes: Uint8Array }>
   stop(conversationId: string): Promise<void>
   voiceStatus(): Promise<VoiceStatus>
   pitVoices(): Promise<PitVoicesInfo>
@@ -201,9 +204,6 @@ export interface AppAPI {
   clearOpenRouterDecision(): Promise<void>
   pickFolder(): Promise<string | null>
   openFolder(conversationId: string): Promise<void>
-  browserFrames(conversationId: string): Promise<BrowserFrame[]>
-  browserControl(key: string, human: boolean): Promise<void>
-  browserAction(key: string, action: { type: 'click' | 'type' | 'scroll' | 'key' | 'refresh'; x?: number; y?: number; text?: string }): Promise<void>
   agentTerminalSessions(conversationId: string, workspaceId: string): Promise<AgentTerminalSessionWithOutput[]>
   agentTerminalStop(sessionId: string, conversationId: string, workspaceId: string): Promise<AgentTerminalSession>
   /** Abre o terminal do sistema na pasta, somente por clique do usuário e somente neste computador. */

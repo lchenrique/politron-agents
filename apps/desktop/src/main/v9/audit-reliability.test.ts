@@ -106,7 +106,6 @@ describe('auditoria de permissões por agente', () => {
     const context = { agent, conversation: chat, run: { workspaceId: chat.workspaceId, workspacePath: service.store.workspace(chat.workspaceId).path } }
     expect(broker.tools(context).map(tool => tool.name)).not.toContain('browser_open')
     await expect(broker.callTool(context, 'browser_open', { url: 'https://example.com' })).rejects.toThrow(/bloqueado/i)
-    expect(service.browserFrames(chat.id)).toEqual([])
   })
 })
 

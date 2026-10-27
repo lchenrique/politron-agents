@@ -14,8 +14,16 @@ describe('capacidades explícitas do gateway PWA', () => {
   })
   it('mantém métodos perigosos fora do browser mesmo quando todas as capacidades foram concedidas', () => {
     const grants: PwaCapability[] = ['read', 'chat', 'approvals', 'files:read', 'files:write']
-    for (const method of ['v9:agentTerminalSessions', 'v9:agentTerminalStop', 'v9:openExternalTerminal', 'v9:saveTerminalAccess', 'v9:saveAssistantPreferences', 'v9:browserControl', 'v9:browserAction', 'v9:deleteWorkspace', 'providers:refresh', 'hosts:browse', '__proto__', 'constructor']) {
+    for (const method of ['v9:agentTerminalSessions', 'v9:agentTerminalStop', 'v9:openExternalTerminal', 'v9:saveTerminalAccess', 'v9:saveAssistantPreferences', 'v9:deleteWorkspace', 'providers:refresh', 'hosts:browse', '__proto__', 'constructor']) {
       expect(() => assertPwaRpcAuthorized(method, [], grants)).toThrow(/não está disponível/)
+    }
+  })
+  it('não expõe mais o navegador individual do agente no host remoto', () => {
+    const rpc = new HostRpc()
+    expect(rpc.supports('v9:snapshot')).toBe(true)
+    for (const method of ['v9:browserFrames', 'v9:browserControl', 'v9:browserAction', 'v9:externalBrowserStatus', 'v9:setExternalBrowserGrant']) {
+      expect(rpc.supports(method)).toBe(false)
+      expect(() => rpc.dispatch(method, [])).toThrow(/não está disponível/)
     }
   })
   it('recusa formato inválido de argumento', () => {

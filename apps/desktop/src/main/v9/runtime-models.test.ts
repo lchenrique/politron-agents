@@ -80,6 +80,88 @@ describe('catálogo informado pelos CLIs', () => {
     try {
       await runtime.start()
       expect(crossSpawnMock).toHaveBeenCalledWith('codex', expect.any(Array), expect.objectContaining({ stdio: 'pipe' }))
+      const args = crossSpawnMock.mock.calls[0][1] as string[]
+      expect(args).not.toContain('browser_use')
+      expect(args).not.toContain('browser_use_external')
+      expect(args).toContain('browser_use_full_cdp_access')
+    } finally { runtime.close() }
+  })
+
+  it('bloqueia browser nativo quando o agente não recebeu permissão', async () => {
+    const runtime = new CodexRuntime()
+    vi.spyOn(runtime, 'start').mockResolvedValue(undefined)
+    const request = vi.spyOn(runtime, 'request').mockResolvedValue({ thread: { id: 'thread-native-browser' } })
+    const agent: Agent = {
+      id: 'codex-browser', name: 'Codex', alias: 'codex', description: '', instructions: 'Ajude o usuário.',
+      runtime: 'codex', model: 'gpt-5.4', color: '#786bea', avatar: '', canWrite: false,
+      computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-27T00:00:00Z',
+    }
+    try {
+      await expect(runtime.thread(agent, tmpdir(), [])).resolves.toMatchObject({ id: 'thread-native-browser' })
+      const params = request.mock.calls[0][1] as { config: Record<string, unknown> }
+      expect(params.config).toMatchObject({
+        'features.browser_use': false,
+        'features.browser_use_external': false,
+        'features.browser_use_full_cdp_access': false,
+      })
+    } finally { runtime.close() }
+  })
+
+  it('bloqueia browser nativo quando o broker não fornece ferramentas, mesmo com permissão no agente', async () => {
+    const runtime = new CodexRuntime()
+    vi.spyOn(runtime, 'start').mockResolvedValue(undefined)
+    const request = vi.spyOn(runtime, 'request').mockResolvedValue({ thread: { id: 'thread-no-browser-tools' } })
+    const agent: Agent = {
+      id: 'codex-no-tools', name: 'Codex', alias: 'codex', description: '', instructions: '',
+      runtime: 'codex', model: '', color: '#786bea', avatar: '', canWrite: false,
+      computerUse: true, approvalMode: 'ask', revision: 1, createdAt: '2026-10-27T00:00:00Z',
+    }
+    try {
+      await runtime.thread(agent, tmpdir(), [])
+      const params = request.mock.calls[0][1] as { config: Record<string, unknown> }
+      expect(params.config).toMatchObject({ 'features.browser_use': false, 'features.browser_use_external': false })
+    } finally { runtime.close() }
+  })
+
+  it('registra só o proxy mediado do Politron na thread autorizada, nunca o node_repl oficial nem o browser nativo', async () => {
+    const runtime = new CodexRuntime()
+    vi.spyOn(runtime, 'start').mockResolvedValue(undefined)
+    const request = vi.spyOn(runtime, 'request').mockResolvedValue({ thread: { id: 'thread-external' } })
+    const agent: Agent = {
+      id: 'codex-external', name: 'Codex', alias: 'codex', description: '', instructions: '',
+      runtime: 'codex', model: '', color: '#786bea', avatar: '', canWrite: false,
+      computerUse: true, approvalMode: 'bypass', revision: 1, createdAt: '2026-10-27T00:00:00Z',
+    }
+    try {
+      await runtime.thread(agent, tmpdir(), [], undefined, undefined, { url: 'http://127.0.0.1:4321/mcp', token: 'segredo', tools: ['js'] })
+      await runtime.thread(agent, tmpdir(), [])
+      const authorized = (request.mock.calls[0][1] as { config: Record<string, unknown> }).config
+      const plain = (request.mock.calls[1][1] as { config: Record<string, unknown> }).config
+      expect(authorized['mcp_servers.politron_external_browser']).toEqual({
+        url: 'http://127.0.0.1:4321/mcp', http_headers: { Authorization: 'Bearer segredo' },
+        enabled_tools: ['js'], default_tools_approval_mode: 'approve', tool_timeout_sec: 600,
+      })
+      for (const config of [authorized, plain]) {
+        expect(config).toMatchObject({ 'features.browser_use': false, 'features.browser_use_external': false, 'features.computer_use': false, 'features.browser_use_full_cdp_access': false })
+        expect(Object.keys(config).some(key => key.startsWith('mcp_servers.node_repl') && config[key] !== false)).toBe(false)
+      }
+      expect(Object.keys(plain).some(key => key.startsWith('mcp_servers.politron_external_browser'))).toBe(false)
+    } finally { runtime.close() }
+  })
+
+  it('não contorna o compartilhamento do Politron com navegador nativo mesmo se o agente puder usar browser', async () => {
+    const runtime = new CodexRuntime()
+    vi.spyOn(runtime, 'start').mockResolvedValue(undefined)
+    const request = vi.spyOn(runtime, 'request').mockResolvedValue({ thread: { id: 'thread-allowed-browser' } })
+    const agent: Agent = {
+      id: 'codex-browser-allowed', name: 'Codex', alias: 'codex', description: '', instructions: '',
+      runtime: 'codex', model: '', color: '#786bea', avatar: '', canWrite: false,
+      computerUse: true, approvalMode: 'ask', revision: 1, createdAt: '2026-10-27T00:00:00Z',
+    }
+    try {
+      await runtime.thread(agent, tmpdir(), [{ type: 'function', name: 'browser_open', description: '', inputSchema: {} }])
+      const params = request.mock.calls[0][1] as { config: Record<string, unknown> }
+      expect(params.config).toMatchObject({ 'features.browser_use': false, 'features.browser_use_external': false })
     } finally { runtime.close() }
   })
 

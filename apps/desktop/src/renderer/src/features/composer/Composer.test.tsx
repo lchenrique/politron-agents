@@ -213,32 +213,34 @@ describe('modelo do agente não é sobrescrito por padrão', () => {
 })
 
 describe('instruções durante uma tarefa', () => {
-  it('envia instruções enquanto o primeiro pedido está pendente sem apagar o próximo rascunho', async () => {
-    let finish!: () => void
-    const onSubmit = vi.fn().mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve })).mockResolvedValue(undefined)
+  it('envia instruções durante a execução sem apagar o próximo rascunho', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
     const props = { conversationId: 'steering-test', models: [{ name: 'Codex' }], defaultModelName: 'Codex', onModelChange: vi.fn(), onSubmit, onStop: vi.fn() }
     const { rerender } = render(<Composer {...props} />)
     const textarea = screen.getByRole('textbox', { name: 'Message' })
     fireEvent.change(textarea, { target: { value: 'Implemente a tela' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
     expect(textarea).toHaveValue('')
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0][2]).toMatchObject({ delivery: 'queue' })
     rerender(<Composer {...props} working canSteer />)
     fireEvent.change(textarea, { target: { value: 'Use a cor do projeto' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar instrução durante a execução' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar agora' }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2))
     expect(onSubmit.mock.calls[1][0]).toBe('Use a cor do projeto')
+    expect(onSubmit.mock.calls[1][2]).toMatchObject({ delivery: 'now' })
     fireEvent.change(textarea, { target: { value: 'Mais um detalhe' } })
-    finish()
     await waitFor(() => expect(textarea).toHaveValue('Mais um detalhe'))
   })
 
-  it('permite preparar o texto mas bloqueia envio para um provedor sem suporte', () => {
+  it('enfileira a instrução e omite o envio imediato para um provedor sem suporte', async () => {
     const { textarea, onSubmit } = setup({ conversationId: 'unsupported-test', working: true, canSteer: false })
     fireEvent.change(textarea, { target: { value: 'Nova instrução' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
-    expect(onSubmit).not.toHaveBeenCalled()
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0][2]).toMatchObject({ delivery: 'queue' })
+    expect(screen.queryByRole('button', { name: 'Enviar agora' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Parar geração' })).toBeEnabled()
-    expect(textarea).toHaveValue('Nova instrução')
   })
 
   it('recolhe ajustes sem apagar o rascunho ao atualizar o modelo', () => {

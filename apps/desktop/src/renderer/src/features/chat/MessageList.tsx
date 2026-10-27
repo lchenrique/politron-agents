@@ -13,7 +13,7 @@ const STICK_TO_BOTTOM_PX = 96
 const ESTIMATED_MESSAGE_HEIGHT = 180
 const OVERSCAN_PX = 900
 
-export function MessageList({ messages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true }: {
+export function MessageList({ messages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true, canCancelQueued = false }: {
   messages: Message[]
   fileChanges: FileChange[]
   /** Run cuja revisão já aparece acima do composer; não é repetido no histórico. */
@@ -31,6 +31,7 @@ export function MessageList({ messages, fileChanges, reviewRunId = null, approva
   onReturnToLatest?: () => void
   canSpeak?: boolean
   canApprove?: boolean
+  canCancelQueued?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -234,7 +235,7 @@ export function MessageList({ messages, fileChanges, reviewRunId = null, approva
         const appliedChanges = appliedByMessage.get(message.id)
         // A revisão fica dentro do wrapper medido pelo ResizeObserver: expandir o diff atualiza a virtualização.
         return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className={`mb-6 space-y-2${enteringMessageId === message.id ? ' chat-message-enter' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && enteringMessageId === message.id) setEnteringMessageId(null) }}>
-          <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} />
+          <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} canCancelQueued={canCancelQueued} />
           {appliedChanges && <CompletedFileReview changes={appliedChanges} label={INLINE_REVIEW_LABEL} />}
           {runApprovals.map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} canApprove={canApprove} />)}
 

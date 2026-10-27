@@ -12,8 +12,11 @@ import { delegationEligibility } from './delegation-eligibility'
 import { createCommandEvidence, formatCommandEvidence } from './command-evidence'
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
-import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type MissionAction, type Model, type Routine, type Run, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
-import { BrowserService } from './browser'
+import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
+import type { PlatformBrowser } from '../ipc/platform-browser'
+import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
+import { probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
+import { EXTERNAL_BROWSER_JS_BLOCKED, EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPreview, type NodeReplServer } from './external-browser-proxy'
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, mentionedRecipients, recipients, type WorkspaceLease } from './routing'
 import { OpenRouterDecisionService } from './decision-routing'
@@ -24,8 +27,9 @@ import { HeadlessCliRuntime } from './headless-cli'
 import { OpenCodeServerRuntime } from './opencode-server'
 import { chooseBooIdentity } from './boo-identity'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
-import { SessionUnavailableError, type AgentRuntime, type RuntimeThread } from './agent-runtime'
+import { SessionUnavailableError, type AgentInput, type AgentRuntime, type RuntimeThread } from './agent-runtime'
 import { ClaudeCredentialStore } from './credentials'
+import { AttachmentStore } from '../pwa/attachment-store'
 import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
 import { SkillsService } from './skills/service'
 import { MissionEngine } from './missions'
@@ -35,6 +39,8 @@ const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claud
 
 type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string> }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
+const approvalUrl = (value: string) => { const safe = safeWebUrl(value); if (!safe) return '[endereço inválido]'; const url = new URL(safe); url.search = ''; url.hash = ''; return url.href }
+const redactApprovalUrls = (value: string) => value.replace(/https?:\/\/[^\s"'\\<>]+/gi, approvalUrl)
 const terminalOwner = (context: RunContext) => ({ workspaceId: context.run.workspaceId, conversationId: context.conversation.id, runId: context.run.id, agentId: context.agent.id, agentName: context.agent.name })
 async function runWorkspaceCommand(command: string, cwd: string, context: RunContext, toolCallId: string, store: WorkspaceStore, terminals: AgentTerminalService): Promise<string> {
   const createdAt = new Date().toISOString()
@@ -55,8 +61,77 @@ export class AppService extends EventEmitter {
   readonly openCodeRuntime: AgentRuntime
   readonly antigravityRuntime: AgentRuntime
   readonly credentials: ClaudeCredentialStore
+  readonly attachments: AttachmentStore
   readonly decisionRouting: OpenRouterDecisionService
-  readonly browser = new BrowserService()
+  private platformBrowser: PlatformBrowser | null = null
+  setPlatformBrowser(browser: PlatformBrowser) { this.platformBrowser = browser }
+  canShareBrowser(owner: PlatformBrowserOwner): boolean {
+    try {
+      const conversation = this.store.conversation(owner.conversationId)
+      const workspace = this.store.workspace(owner.workspaceId)
+      const agent = this.store.agent(owner.agentId)
+      return !conversation.archived && !workspace.archived && conversation.workspaceId === workspace.id && (conversation.agentIds.length ? conversation.agentIds.includes(agent.id) : agent.id === ASSISTANT_ID) && agent.computerUse && workspace.permissions?.computerUse !== 'deny'
+    } catch { return false }
+  }
+  /** Navegador externo (extensão oficial do provider): exige o mesmo direito do compartilhamento interno mais consentimento próprio. */
+  externalBrowserStatus(owner: PlatformBrowserOwner): ExternalBrowserStatus {
+    const valid = [owner?.workspaceId, owner?.conversationId, owner?.agentId].every(value => typeof value === 'string' && !!value && value.length <= 200)
+    if (!valid) throw new Error('Dados inválidos para o navegador externo.')
+    return { granted: this.canShareBrowser(owner) && this.store.externalBrowserGrant(owner.conversationId, owner.agentId), problems: [EXTERNAL_BROWSER_JS_BLOCKED, ...this.externalBrowserBridge.probe()] }
+  }
+  setExternalBrowserGrant(owner: PlatformBrowserOwner, enabled: boolean): ExternalBrowserStatus {
+    this.externalBrowserStatus(owner)
+    if (enabled === true && !this.canShareBrowser(owner)) throw new Error('Este agente não pode usar navegador nesta conversa.')
+    this.store.saveExternalBrowserGrant(owner.conversationId, owner.agentId, enabled === true)
+    if (enabled !== true) this.closeExternalBrowserProxy(`${owner.conversationId}:${owner.agentId}`)
+    return this.externalBrowserStatus(owner)
+  }
+  /** Ponte oficial: sonda e node_repl declarados pelo Codex. Os testes injetam um node_repl falso. */
+  externalBrowserBridge: { probe: () => string[]; upstream: () => NodeReplServer | null } = { probe: () => probeExternalBrowserBridge(), upstream: () => readNodeReplServer() }
+  private readonly externalBrowserProxies = new Map<string, ExternalBrowserProxy>()
+  /** Execução a que cada proxy (conversa:agente) está vinculado; a thread do Codex só o conhece por essa execução. */
+  private readonly externalBrowserRuns = new Map<string, string>()
+  private closeExternalBrowserProxy(key: string) {
+    const proxy = this.externalBrowserProxies.get(key)
+    this.externalBrowserProxies.delete(key); this.externalBrowserRuns.delete(key)
+    void proxy?.close()
+  }
+  /** Inicia (ou reaproveita) o proxy mediado quando há autorização; qualquer falha deixa o agente sem as ferramentas. */
+  private async externalBrowserMcp(context: RunContext) {
+    const owner = { workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }
+    const key = `${owner.conversationId}:${owner.agentId}`
+    try {
+      const status = this.externalBrowserStatus(owner)
+      // Hoje `problems` sempre traz EXTERNAL_BROWSER_JS_BLOCKED: nada abaixo roda e o node_repl nunca é iniciado.
+      if (context.agent.runtime !== 'codex' || context.run.planMode || !status.granted || status.problems.length) { if (!status.granted) this.closeExternalBrowserProxy(key); return null }
+      let proxy = this.externalBrowserProxies.get(key)
+      if (!proxy) {
+        const upstream = this.externalBrowserBridge.upstream()
+        if (!upstream) return null
+        proxy = new ExternalBrowserProxy(upstream, (tool, args, signal) => this.authorizeExternalBrowserCall(owner, this.externalBrowserRuns.get(key), tool, args, signal))
+        this.externalBrowserProxies.set(key, proxy)
+      }
+      this.externalBrowserRuns.set(key, context.run.id)
+      await proxy.start()
+      return { url: proxy.url, token: proxy.token, tools: proxy.toolNames }
+    } catch {
+      if (this.externalBrowserProxies.get(key)?.ready === false) this.closeExternalBrowserProxy(key)
+      return null
+    }
+  }
+  private async authorizeExternalBrowserCall(owner: PlatformBrowserOwner, runId: string | undefined, tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string | null> {
+    const context = runId ? this.contexts.get(runId) : undefined
+    if (!context || context.conversation.id !== owner.conversationId || context.agent.id !== owner.agentId || context.agent.runtime !== 'codex' || context.run.planMode || context.signal?.aborted || signal.aborted) return 'Nenhuma execução ativa deste agente vinculada ao navegador externo nesta conversa; nada foi executado.'
+    const granted = () => this.externalBrowserStatus(owner).granted
+    if (!granted()) return 'O usuário não autorizou o navegador externo para este agente nesta conversa; nada foi executado.'
+    const preview = externalBrowserApprovalPreview(args, approvalUrl)
+    const targets = preview.targets.slice(0, 3)
+    const action = `Executar ${tool} no navegador externo (Brave/Chrome, extensão oficial)${targets.length ? ` · alvo ${targets.join(', ')}${preview.targets.length > 3 ? ` e mais ${preview.targets.length - 3}` : ''}` : ' · aba controlada pela extensão'}`
+    // Sempre pergunta, inclusive nos modos automático e bypass: autorização explícita por chamada; desconexão/revogação cancela a espera.
+    if (!await this.requestApproval(context, 'browser', { action, task: preview.code, truncated: preview.truncated }, true, true, signal)) return signal.aborted ? 'A chamada ao navegador externo foi cancelada ou revogada antes da decisão; nada foi executado.' : 'O usuário negou a ação no navegador externo; nada foi executado.'
+    if (signal.aborted || context.signal?.aborted || !granted()) return 'O navegador externo foi revogado ou a chamada expirou antes da execução; nada foi executado.'
+    return null
+  }
   readonly agentTerminals = new AgentTerminalService()
   readonly gitWorkspaces: GitWorkspaceService
   // Mesma pasta de dados do app; tools de skill (list_skills/read_skill/save_skill) usam esta instância direto, sem passar por IPC.
@@ -80,6 +155,7 @@ export class AppService extends EventEmitter {
     super()
     this.runtime = runtime
     this.store = new WorkspaceStore(dataDirectory)
+    this.attachments = new AttachmentStore(join(dataDirectory, 'pwa-attachments'))
     // Após reinício, delegações antigas foram interrompidas: não deixar Boos temporários presos em "working".
     for (const boo of this.store.agents().filter(item => item.temporary && item.temporaryStatus === 'working'))
       this.store.saveAgent({ ...boo, temporaryStatus: 'retired' })
@@ -108,9 +184,7 @@ export class AppService extends EventEmitter {
     this.piRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.piRuntime))
     this.openCodeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.openCodeRuntime))
     this.antigravityRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.antigravityRuntime))
-    this.browser.on('frame', frame => this.emitEvent({ type: 'browser', frame }))
     this.agentTerminals.on('event', (event: WorkspaceEvent) => this.emitEvent(event))
-    this.browser.on('frameClosed', frame => this.emitEvent({ type: 'browserClosed', ...frame }))
     for (const [name, runtime] of [['Codex', this.runtime], ['Claude', this.claudeRuntime], ['Pi', this.piRuntime], ['OpenCode', this.openCodeRuntime], ['Antigravity', this.antigravityRuntime]] as const) {
       runtime.on('disconnected', (error: Error) => {
         for (const context of this.contexts.values()) {
@@ -122,7 +196,16 @@ export class AppService extends EventEmitter {
       })
     }
   }
-  snapshot() { return { ...this.store.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function') } }
+  snapshot() { return { ...this.store.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function'), imageRuntimes: (['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const).filter(name => this.runtimeFor(name).supportsImages === true) } }
+  async uploadAttachment(conversationId: string, name: string, mimeType: string, bytes: Uint8Array) {
+    this.store.conversation(conversationId)
+    if (!(bytes instanceof Uint8Array)) throw new Error('Conteúdo de imagem inválido.')
+    return this.attachments.put(conversationId, bytes, mimeType, name)
+  }
+  async readAttachment(conversationId: string, id: string) {
+    const file = await this.attachments.resolve(conversationId, id)
+    return { mimeType: file.mimeType, bytes: new Uint8Array(await fs.readFile(file.path)) }
+  }
   // Small read for Settings; avoid materializing conversations, runs and file changes.
   settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, terminalEnabled: this.store.terminalEnabled() } }
   private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : name === 'antigravity' ? this.antigravityRuntime : this.runtime }
@@ -148,10 +231,14 @@ export class AppService extends EventEmitter {
       } catch { /* pasta removida ou inacessível: preserva o último estado salvo */ }
     }
   }
-  saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.emitEvent({ type: 'changed' }); return agent }
-  saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.emitEvent({ type: 'changed' }); return assistant }
+  private revalidateBrowserSharing() {
+    const owner = this.platformBrowser?.sharingState?.()
+    if (owner && !this.canShareBrowser(owner)) this.platformBrowser?.revokeSharing()
+  }
+  saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return agent }
+  saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return assistant }
   saveTerminalAccess(enabled: boolean) { this.store.saveTerminalAccess(enabled); this.emitEvent({ type: 'changed' }) }
-  saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }) { const conversation = this.store.saveConversation(input); this.emitEvent({ type: 'changed' }); return conversation }
+  saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }) { const conversation = this.store.saveConversation(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return conversation }
   async saveWorkspace(input: Partial<Workspace> & { path?: string | null }) {
     let info: { branch?: string | null; changes?: number } = {}
     if (input.path !== undefined) {
@@ -159,7 +246,7 @@ export class AppService extends EventEmitter {
       if (path) info = await this.gitWorkspaces.inspect(path).catch(() => ({ branch: null, changes: 0 }))
     }
     const workspace = this.store.saveWorkspace({ ...input, ...info })
-    this.emitEvent({ type: 'changed' }); return workspace
+    this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return workspace
   }
   createProjectFolder(input: { parent: string; name: string }) { return createProjectFolder(input.parent, input.name) }
   private cloneAbort: AbortController | null = null
@@ -196,14 +283,14 @@ export class AppService extends EventEmitter {
     const ids = this.descendantWorkspaceIds(workspaceId)
     const conversations = this.store.conversations().filter(item => ids.includes(item.workspaceId))
     for (const conversation of conversations) await this.stop(conversation.id)
-    await Promise.all(conversations.map(conversation => this.browser.disposeConversation(conversation.id)))
+    if (conversations.some(conversation => conversation.id === this.platformBrowser?.sharingState()?.conversationId)) this.platformBrowser?.revokeSharing()
     if (workspace.kind === 'worktree') await this.gitWorkspaces.removeWorktree(workspace.path).catch(() => undefined)
     this.store.deleteWorkspace(workspaceId, { cascade: true })
     this.emitEvent({ type: 'changed' })
   }
   async deleteConversation(conversationId: string) {
     await this.stop(conversationId)
-    await this.browser.disposeConversation(conversationId)
+    if (this.platformBrowser?.sharingState()?.conversationId === conversationId) this.platformBrowser.revokeSharing()
     this.store.deleteConversation(conversationId)
     this.emitEvent({ type: 'changed' })
   }
@@ -222,7 +309,7 @@ export class AppService extends EventEmitter {
       }
       this.active.delete(run.id)
     }
-    await this.browser.disposeAgent(agentId)
+    if (this.platformBrowser?.sharingState()?.agentId === agentId) this.platformBrowser.revokeSharing()
     this.store.deleteAgent(agentId)
     this.emitEvent({ type: 'changed' })
   }
@@ -303,17 +390,24 @@ export class AppService extends EventEmitter {
       this.notifyWhenAway(context.conversation.id, 'Pergunta do Boo', question.slice(0, 140))
     })
   }
-  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false): Promise<boolean> {
-    if (context.signal?.aborted) return false
-    if (shouldAutoApprove(context.agent.approvalMode, kind, sensitive)) return true
+  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false, alwaysAsk = false, request?: AbortSignal): Promise<boolean> {
+    // `request`: cancelamento próprio da chamada (ex.: cliente MCP desconectou ou proxy revogado), além do da execução.
+    const signals = [context.signal, request].filter((signal): signal is AbortSignal => !!signal)
+    if (signals.some(signal => signal.aborted)) return false
+    if (!alwaysAsk && shouldAutoApprove(context.agent.approvalMode, kind, sensitive)) return true
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
     this.store.putApproval(approval)
     context.run.status = 'waiting'; this.store.putRun(context.run)
     this.updateMessage(context.message, 'waiting', context.message.text)
     const action = kind === 'write' ? 'alterar um arquivo' : kind === 'browser' ? 'usar o navegador' : kind === 'command' ? 'executar um comando no terminal' : kind === 'delegation' ? 'delegar uma tarefa' : 'alterar um agente ou uma equipe'
-    if (context.signal?.aborted) {
+    if (signals.some(signal => signal.aborted)) {
       const interrupted = { ...approval, status: 'interrupted' as const, resolvedAt: new Date().toISOString() }
-      this.store.putApproval(interrupted); this.emitEvent({ type: 'approval', approval: interrupted }); return false
+      this.store.putApproval(interrupted); this.emitEvent({ type: 'approval', approval: interrupted })
+      if (!context.signal?.aborted && context.run.status === 'waiting') {
+        context.run.status = 'running'; this.store.putRun(context.run)
+        this.updateMessage(context.message, 'running', context.message.text)
+      }
+      return false
     }
     return new Promise(resolveApproval => {
       const abort = () => {
@@ -322,13 +416,19 @@ export class AppService extends EventEmitter {
           const interrupted = { ...pending, status: 'interrupted' as const, resolvedAt: new Date().toISOString() }
           this.store.putApproval(interrupted); this.emitEvent({ type: 'approval', approval: interrupted })
         }
+        for (const signal of signals) signal.removeEventListener('abort', abort)
+        // Só a chamada foi cancelada: a execução continua e sai do estado de espera.
+        if (!context.signal?.aborted && context.run.status === 'waiting') {
+          context.run.status = 'running'; this.store.putRun(context.run)
+          this.updateMessage(context.message, 'running', context.message.text)
+        }
         this.approvalWaiters.delete(approval.id); resolveApproval(false)
       }
       this.approvalWaiters.set(approval.id, approved => {
-        context.signal?.removeEventListener('abort', abort)
+        for (const signal of signals) signal.removeEventListener('abort', abort)
         resolveApproval(approved)
       })
-      context.signal?.addEventListener('abort', abort, { once: true })
+      for (const signal of signals) signal.addEventListener('abort', abort, { once: true })
       // O consumidor pode decidir no próprio callback do evento. A espera precisa
       // existir antes da publicação, inclusive para clientes locais muito rápidos.
       this.emitEvent({ type: 'approval', approval })
@@ -340,17 +440,35 @@ export class AppService extends EventEmitter {
   searchHistory(id: string, query: string, limit?: number) { this.store.conversation(id); return this.store.searchHistory(id, text(query, 200), limit) }
   historyAround(id: string, cursor: number, limit?: number) { this.store.conversation(id); return this.store.historyAround(id, cursor, limit) }
   private emitEvent(event: WorkspaceEvent) { this.emit('workspace-event', event) }
-  private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null) {
-    const message: Message = { id: randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, createdAt: new Date().toISOString() }
+  private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null, details: { id?: string; attachments?: MessageAttachment[] } = {}) {
+    const message: Message = { id: details.id || randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, ...(details.attachments?.length ? { attachments: details.attachments } : {}), createdAt: new Date().toISOString() }
     this.store.putMessage(message); this.emitEvent({ type: 'message', message }); return message
   }
-  async send(conversationId: string, value: string, model?: string, effort?: Agent['effort'], preferredAgentId?: string, voiceReply = false, recordInput = true, planMode = false): Promise<void> {
+  async send(conversationId: string, value: string, model?: string, effort?: Agent['effort'], preferredAgentId?: string, voiceReply = false, recordInput = true, planMode = false, options?: SendOptions): Promise<void> {
     const input = text(value, 100000).trim()
-    if (!input) return
+    let attachments = options?.attachments || []
+    if (attachments.length > 10) throw new Error('Uma mensagem pode conter até 10 imagens.')
+    if (!input && !attachments.length) return
+    if (options && (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(options.requestId) || !['queue', 'now'].includes(options.delivery))) throw new Error('Identificador ou modo de envio inválido.')
     const conversation = this.store.conversation(conversationId)
     if (conversation.archived) throw new Error('Esta conversa está arquivada.')
     const workspace = this.store.workspace(conversation.workspaceId)
     if (workspace.archived) throw new Error('O workspace desta conversa está arquivado.')
+    if (options?.requestId) {
+      const existing = this.store.message(options.requestId)
+      if (existing) {
+        if (existing.conversationId === conversationId && existing.role === 'user') return
+        throw new Error('O identificador da mensagem já pertence a outro registro.')
+      }
+    }
+    if (attachments.length) {
+      const verified = await Promise.all(attachments.map(async attachment => {
+        const stored = await this.attachments.resolve(conversationId, attachment.id)
+        if (stored.name !== attachment.name || stored.mimeType !== attachment.mimeType || stored.size !== attachment.size) throw new Error('Os dados do anexo não correspondem ao arquivo recebido pelo host.')
+        return { id: stored.id, name: stored.name, mimeType: stored.mimeType, size: stored.size }
+      }))
+      attachments = verified
+    }
     const conversationAgentIds = conversation.agentIds.length ? conversation.agentIds : [ASSISTANT_ID]
     if (preferredAgentId && preferredAgentId !== ASSISTANT_ID && !conversationAgentIds.includes(preferredAgentId)) throw new Error('O agente escolhido não participa desta conversa.')
     const agents = (preferredAgentId ? [preferredAgentId] : conversationAgentIds).map(id => this.store.agent(id))
@@ -380,21 +498,32 @@ export class AppService extends EventEmitter {
         if (decision) selected = agents.filter(agent => agent.id === decision.agentId)
       }
     }
-    const steeringTargets = recordInput && !voiceReply ? selected.flatMap(agent => {
+    if (attachments.length && !recordInput) throw new Error('Imagens só podem ser enviadas em mensagens da conversa.')
+    if (attachments.length && options?.delivery === 'now') throw new Error('Mensagens com imagens devem entrar na fila; steering não suporta anexos.')
+    if (attachments.length && selected.some(agent => !this.runtimeFor(selectedRuntime || agent.runtime).supportsImages)) {
+      const unsupported = selected.filter(agent => !this.runtimeFor(selectedRuntime || agent.runtime).supportsImages).map(agent => agent.name)
+      throw new Error(`O runtime atual não tem envio de imagens testado: ${unsupported.join(', ')}.`)
+    }
+    if (attachments.length) attachments = await Promise.all(attachments.map(attachment => this.attachments.accept(conversationId, attachment.id)))
+    const steeringTargets = recordInput && !voiceReply && options?.delivery === 'now' ? selected.flatMap(agent => {
       const context = [...this.contexts.values()].find(context => context.run.conversationId === conversationId && context.agent.id === agent.id && !context.run.parentId && ['running', 'waiting'].includes(context.run.status))
       return context ? [context] : []
     }) : []
+    if (options?.delivery === 'now' && steeringTargets.length !== selected.length) {
+      throw new Error('Enviar agora exige uma execução ativa com steering compatível para todos os agentes selecionados.')
+    }
     for (const target of steeringTargets) {
       if (!target.runtime?.steer) throw new Error(`${target.agent.name}: este provedor não aceita novas instruções durante a execução. Aguarde a resposta ou interrompa a tarefa.`)
       if (!target.run.threadId || !target.run.turnId) throw new Error('A tarefa ainda está iniciando. Tente enviar a instrução novamente em instantes.')
       if (selectedRuntime && selectedRuntime !== target.agent.runtime || selectedModel && selectedModel !== target.agent.model) throw new Error('Mantenha o modelo da tarefa atual para enviar instruções durante a execução.')
     }
     const createdAt = new Date().toISOString()
+    const inputForAgents = [input, ...attachments.map(attachment => `[Imagem anexada: ${attachment.name}]`)].filter(Boolean).join('\n\n')
     const userMessage: Message = recordInput
-      ? this.addMessage(conversationId, null, 'user', input, turnAlreadyActive ? 'queued' : 'completed', null)
-      : { id: randomUUID(), conversationId, agentId: null, author: 'Você', role: 'user', text: input, status: turnAlreadyActive ? 'queued' : 'completed', runId: null, createdAt }
-    if (recordInput && conversation.titleAuto) { this.store.autoTitle(conversationId, input); this.emitEvent({ type: 'changed' }) }
-    if (recordInput) this.missions.onUserMessage(conversationId, input)
+      ? this.addMessage(conversationId, null, 'user', input, turnAlreadyActive ? 'queued' : 'completed', null, { id: options?.requestId, attachments })
+      : { id: options?.requestId || randomUUID(), conversationId, agentId: null, author: 'Você', role: 'user', text: input, status: turnAlreadyActive ? 'queued' : 'completed', runId: null, ...(attachments.length ? { attachments } : {}), createdAt }
+    if (recordInput && conversation.titleAuto) { this.store.autoTitle(conversationId, input || attachments[0]?.name || 'Imagem'); this.emitEvent({ type: 'changed' }) }
+    if (recordInput) this.missions.onUserMessage(conversationId, inputForAgents)
     if (steeringTargets.length) {
       try {
         for (const target of steeringTargets) {
@@ -443,8 +572,8 @@ export class AppService extends EventEmitter {
         ? this.store.history(conversationId).filter(message => message.role === 'user' && message.id !== userMessage.id && message.createdAt >= roundStartedAt).slice(-5).map(message => message.text).join('\n\n').slice(-3000)
         : ''
       const runInput = mode === 'discussion' && (roundTranscript.length || corrections)
-        ? `${input}${corrections ? `\n\nNovas mensagens humanas durante a rodada:\n${corrections}` : ''}${roundTranscript.length ? `\n\nRespostas anteriores desta rodada, em ordem${previousRoundRaw.length > 9000 ? ' (trecho final; início omitido)' : ''}:\n${previousRoundText}` : ''}`
-        : input
+        ? `${inputForAgents}${corrections ? `\n\nNovas mensagens humanas durante a rodada:\n${corrections}` : ''}${roundTranscript.length ? `\n\nRespostas anteriores desta rodada, em ordem${previousRoundRaw.length > 9000 ? ' (trecho final; início omitido)' : ''}:\n${previousRoundText}` : ''}`
+        : inputForAgents
       const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: planMode ? '[MODO PLANO ATIVO] Analise a tarefa, consulte apenas ferramentas de leitura e use propose_plan para apresentar um plano em etapas. NÃO modifique arquivos, execute comandos ou realize alterações até o usuário enviar outra tarefa fora do modo plano.\n\n' + runInput : runInput, planMode, inputMessageId: recordInput ? userMessage.id : undefined, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
       const message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
@@ -473,9 +602,29 @@ export class AppService extends EventEmitter {
       }
     } else {
       await scheduleSelectedAgents()
-      await Promise.all(tasks)
+      if (!options?.returnAfterAcceptance) await Promise.all(tasks)
     }
     void userMessage
+  }
+  async cancelQueuedMessage(messageId: string): Promise<void> {
+    const message = this.store.message(messageId)
+    if (!message || message.role !== 'user' || message.status !== 'queued') throw new Error('A mensagem não está aguardando na fila.')
+    const runs = this.store.runs().filter(run => run.inputMessageId === messageId && !run.parentId)
+    const controllers = runs.map(run => this.active.get(run.id))
+    if (!runs.length || runs.some((run, index) => run.status !== 'queued' || !controllers[index] || !this.queue.isPending(controllers[index]!.signal))) {
+      throw new Error('A mensagem já começou a ser executada e não pode ser removida da fila.')
+    }
+    for (let index = 0; index < runs.length; index++) {
+      const run = runs[index]!
+      this.store.putRun({ ...run, status: 'cancelled' })
+      const response = this.store.message(run.messageId)
+      if (response) { const cancelled = { ...response, status: 'cancelled' as const }; this.store.putMessage(cancelled); this.emitEvent({ type: 'message', message: cancelled }) }
+      controllers[index]!.abort()
+      this.active.delete(run.id)
+    }
+    const cancelled = { ...message, status: 'cancelled' as const }
+    this.store.putMessage(cancelled); this.emitEvent({ type: 'message', message: cancelled })
+    this.emitEvent({ type: 'changed' })
   }
   async respondVoice(conversationId: string, input: string, agentId: string): Promise<string> {
     const previous = new Set(this.store.history(conversationId).filter(message => message.role === 'assistant' && message.agentId === agentId).map(message => message.id))
@@ -576,14 +725,24 @@ export class AppService extends EventEmitter {
     }
     return models
   }
-  browserFrames(conversationId: string) { this.store.conversation(conversationId); return this.browser.frames(conversationId) }
-  browserControl(key: string, human: boolean) { return this.browser.control(key, human) }
-  browserAction(key: string, action: { type: 'click' | 'type' | 'scroll' | 'key' | 'refresh'; x?: number; y?: number; text?: string }) { return this.browser.userAction(key, action) }
+  browserFrames(conversationId: string) { this.store.conversation(conversationId); return [] }
+  browserControl(_key: string, _human: boolean) { throw new Error('Use o navegador compartilhado da plataforma.') }
+  browserAction(_key: string, _action: { type: 'click' | 'type' | 'scroll' | 'key' | 'refresh'; x?: number; y?: number; text?: string }) { throw new Error('Use o navegador compartilhado da plataforma.') }
   async pickFolder(): Promise<string | null> {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled || !result.filePaths[0] ? null : canonicalDirectory(result.filePaths[0])
   }
   async openFolder(conversationId: string) { const conversation = this.store.conversation(conversationId); const workspace = this.store.workspace(conversation.workspaceId); const error = await shell.openPath(workspace.path); if (error) throw new Error(error) }
+  private async runtimeInput(run: Run, text: string): Promise<string | AgentInput> {
+    const message = run.inputMessageId ? this.store.message(run.inputMessageId) : undefined
+    if (!message?.attachments?.length) return text
+    const images = await Promise.all(message.attachments.map(async attachment => {
+      const file = await this.attachments.resolve(message.conversationId, attachment.id)
+      if (file.mimeType !== attachment.mimeType || file.size !== attachment.size) throw new Error('O anexo expirou ou foi alterado antes da execução.')
+      return { path: file.path, mimeType: file.mimeType }
+    }))
+    return { text, images }
+  }
   private async execute(context: RunContext, signal: AbortSignal): Promise<void> {
     const { run, message, conversation, agent } = context
     if (signal.aborted) return
@@ -609,16 +768,19 @@ export class AppService extends EventEmitter {
         approvalMode: agent.approvalMode, terminalEnabled: this.store.terminalEnabled(), planMode: run.planMode === true,
       })).digest('hex').slice(0, 12)
       const toolsKey = fingerprintTools(tools, TOOL_BROKER_VERSION).slice(0, 16)
-      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}`
+      // Sem consentimento salvo não há proxy a iniciar; evita espera extra no caminho comum.
+      const externalBrowser = agent.runtime === 'codex' && this.store.externalBrowserGrant(conversation.id, agent.id) ? await this.externalBrowserMcp(context) || undefined : undefined
+      // Uma thread retomada não troca seus servidores MCP: autorizar, revogar ou reiniciar o proxy exige sessão nova.
+      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}${externalBrowser ? `:x${externalBrowser.url}` : ''}`
       let binding = this.store.sessionBinding(bindingKey)
       if (binding?.runtime && binding.runtime !== agent.runtime) { this.store.deleteSessionBinding(bindingKey); binding = undefined }
       let thread: RuntimeThread
       let didRetryUnavailable = false
-      try { thread = await runtime.thread(agent, directory, tools, binding?.threadId, workspaceInstructions) }
+      try { thread = await runtime.thread(agent, directory, tools, binding?.threadId, workspaceInstructions, externalBrowser) }
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || !binding?.threadId) throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
-        thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions)
+        thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions, externalBrowser)
       }
       const makeTurnContext = () => buildTurnContext({
         history: this.store.history(conversation.id), checkpoint: this.store.latestCheckpoint(conversation.id, agent.id),
@@ -632,20 +794,22 @@ export class AppService extends EventEmitter {
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
       let result
-      try { result = await runtime.send(threadId, turnContext.text, agent.model || undefined, 600000) }
+      try { result = await runtime.send(threadId, await this.runtimeInput(run, turnContext.text), agent.model || undefined, 600000) }
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || didRetryUnavailable || !binding?.threadId || thread.history !== 'resume-pending') throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
-        thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions)
+        thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions, externalBrowser)
         threadId = thread.id; run.threadId = threadId; this.store.putRun(run)
         turnContext = makeTurnContext()
-        result = await runtime.send(threadId, turnContext.text, agent.model || undefined, 600000)
+        result = await runtime.send(threadId, await this.runtimeInput(run, turnContext.text), agent.model || undefined, 600000)
       }
       if (result.thread?.id) { run.threadId = result.thread.id; this.store.putRun(run) }
-      const turnId = result.turn.id as string
+      const turn = result.turn
+      if (!turn?.id) throw new Error(`${agent.name}: o runtime não retornou um identificador de turno.`)
+      const turnId = turn.id
       run.turnId = turnId; this.store.putRun(run)
       this.emitEvent({ type: 'changed' })
-      if (result.turn.status === 'failed' || result.turn.status === 'interrupted') throw new Error(result.turn.error?.message || `O runtime encerrou o turno como ${result.turn.status}.`)
+      if (turn.status === 'failed' || turn.status === 'interrupted') throw new Error(turn.error?.message || `O runtime encerrou o turno como ${turn.status}.`)
       this.store.putSessionBinding({ key: bindingKey, threadId: run.threadId || threadId, runtime: agent.runtime, contextVersion: 1, deliveredDigests: turnContext.deliveredDigests })
       context.sessionBindingKey = bindingKey; context.deliveredDigests = turnContext.deliveredDigests
       if (signal.aborted) { await runtime.interrupt(run.threadId || threadId, turnId).catch(() => undefined); throw new Error('Execução interrompida.') }
@@ -659,8 +823,8 @@ export class AppService extends EventEmitter {
           else resolve()
           return
         }
-        if (result.turn.status === 'failed') { reject(new Error(result.turn.error?.message || 'Codex não conseguiu iniciar a resposta.')); return }
-        if (result.turn.status === 'interrupted') { reject(new Error('Execução interrompida pelo Codex.')); return }
+        if (turn.status === 'failed') { reject(new Error(turn.error?.message || 'O runtime não conseguiu iniciar a resposta.')); return }
+        if (turn.status === 'interrupted') { reject(new Error('Execução interrompida pelo runtime.')); return }
         const done = (event: any) => {
           if (event.method !== 'turn/completed') return
           if (event.params?.threadId !== run.threadId) return
@@ -733,12 +897,13 @@ export class AppService extends EventEmitter {
         tool('workspace_process_status', 'Consulta status, código de saída e o final da saída de um processo iniciado nesta conversa.', { session_id: { type: 'string' } }, ['session_id']),
         tool('workspace_stop_process', 'Encerra um processo iniciado nesta conversa e seus processos filhos.', { session_id: { type: 'string' } }, ['session_id'])] : []),
       ...(canUseComputer && !planning ? [
-        tool('browser_open', 'Abre um endereço HTTP ou HTTPS na sessão privada deste agente.', { url: { type: 'string' } }, ['url']),
+        tool('browser_open', 'Abre um endereço HTTP ou HTTPS no navegador compartilhado da plataforma, quando autorizado pelo usuário.', { url: { type: 'string' } }, ['url']),
         tool('browser_observe', 'Lê o conteúdo visível e os controles da página aberta pelo agente.', {}, []),
         tool('browser_click', 'Clica em um seletor CSS ou em uma posição dentro da página.', { selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, []),
         tool('browser_fill', 'Preenche um campo da página com texto.', { selector: { type: 'string' }, text: { type: 'string' } }, ['selector', 'text']),
-        tool('browser_key', 'Pressiona uma tecla comum na página, como Enter, Tab ou Escape.', { key: { type: 'string' } }, ['key']),
-        tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY'])
+        tool('browser_key', 'Indisponível: não é possível comprovar o efeito seguro da tecla neste navegador.', { key: { type: 'string' } }, ['key']),
+        tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY']),
+        tool('external_browser_status', 'Verifica se o usuário autorizou, nesta conversa, o navegador externo dele (Brave/Chrome pela extensão oficial do provider) e se a ponte está disponível. Não lê nem lista abas.', {}, [])
       ] : []),
       ...(context.agent.id !== ASSISTANT_ID ? [tool('propose_self_profile', 'Edite SEU PRÓPRIO perfil cadastrado no Boobot, inclusive se você é o Chief. Use quando perguntarem se você consegue se editar, personalizar aparência, nome, especialidade, instruções, personalidade ou comportamento. O corpo do modelo/pesos não podem ser alterados. Sugira mudanças específicas, preservando campos omitidos. A confirmação segue o modo de aprovação do agente. NÃO permite alterar runtime, modelo, permissões, papel, menção, chaves, ferramentas ou acesso ao computador.', {
         name: { type: 'string', description: 'Novo nome visível (opcional).' },
@@ -1174,19 +1339,37 @@ export class AppService extends EventEmitter {
       this.emitEvent({ type: 'changed' })
       return `Sessão ${conversation.name} aprovada e criada em ${workspace.name}.`
     }
-    if (name === 'browser_open') {
-      if (!context.agent.computerUse || workspace.permissions?.computerUse === 'deny') throw new Error('O uso do navegador está bloqueado neste agente ou workspace.')
-      if (!await this.requestApproval(context, 'browser', { action: `Abrir ${text(args.url, 2000)}` })) return 'Ação de navegador negada pelo usuário.'
-      return this.browser.open(context.conversation.id, context.agent.id, args.url)
+    if (['browser_open', 'browser_observe', 'browser_click', 'browser_fill', 'browser_key', 'browser_scroll'].includes(name)) {
+      const owner = { workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }
+      const check = () => {
+        if (context.signal?.aborted || !this.canShareBrowser(owner)) throw new Error('O uso do navegador está bloqueado neste agente ou workspace.')
+        if (!this.platformBrowser) throw new Error('O navegador compartilhado da plataforma não está disponível.')
+        return this.platformBrowser
+      }
+      const activeBrowser = check()
+      if (name === 'browser_key') throw new Error('Tecla não suportada com segurança; o foco não foi alterado.')
+      const operation = name === 'browser_open' || name === 'browser_observe' ? '' : name.replace('browser_', '')
+      const token = await activeBrowser.captureDocument(owner, operation, args)
+      check().assertSharing(owner, token)
+      if (name !== 'browser_observe') {
+        const action = name === 'browser_open' ? `Abrir ${approvalUrl(text(args.url, 2000))}` : `${operation}: ${redactApprovalUrls(JSON.stringify(args)).slice(0, 1000)}`
+        if (!await this.requestApproval(context, 'browser', { action })) return 'Ação de navegador negada pelo usuário.'
+      }
+      const browser = check()
+      browser.assertSharing(owner, token)
+      const result = name === 'browser_open' ? await browser.openForAgent(owner, args.url, token)
+        : name === 'browser_observe' ? await browser.observeForAgent(owner, token)
+        : await browser.actForAgent(owner, name.replace('browser_', ''), args, token)
+      check().assertSharing(owner, token, name !== 'browser_open')
+      return result
     }
-    if (name === 'browser_observe') {
-      if (!context.agent.computerUse || workspace.permissions?.computerUse === 'deny') throw new Error('O uso do navegador está bloqueado neste agente ou workspace.')
-      return this.browser.observe(context.conversation.id, context.agent.id)
-    }
-    if (name === 'browser_click' || name === 'browser_fill' || name === 'browser_key' || name === 'browser_scroll') {
-      if (!context.agent.computerUse || workspace.permissions?.computerUse === 'deny') throw new Error('O uso do navegador está bloqueado neste agente ou workspace.')
-      if (!await this.requestApproval(context, 'browser', { action: `${name.replace('browser_', '')}: ${JSON.stringify(args).slice(0, 1000)}` })) return 'Ação de navegador negada pelo usuário.'
-      return this.browser.act(context.conversation.id, context.agent.id, name.replace('browser_', ''), args)
+    if (name === 'external_browser_status') {
+      const status = this.externalBrowserStatus({ workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id })
+      if (!status.granted) throw new Error('O usuário não autorizou o navegador externo para este agente nesta conversa.')
+      // Sempre lança hoje: `problems` inclui o bloqueio fail-closed do js além das peças ausentes da ponte.
+      if (status.problems.length) throw new Error(`Navegador externo indisponível: ${status.problems.join('; ')}.`)
+      if (!this.externalBrowserProxies.get(`${context.conversation.id}:${context.agent.id}`)?.ready) throw new Error('A extensão oficial foi detectada, mas o Politron não conseguiu iniciar a ponte node_repl mediada; nenhuma aba foi acessada. Use o navegador da plataforma.')
+      return `Navegador externo autorizado. Use o servidor MCP ${EXTERNAL_BROWSER_MCP}, ferramenta js (skill oficial control-chrome). Cada chamada pede aprovação do usuário no Politron; cookies, senhas, armazenamento, histórico, perfis, arquivos e CDP direto são bloqueados.`
     }
     if (name === 'delegation_result') {
       const id = text(args.delegation_id, 100)
@@ -1403,6 +1586,7 @@ export class AppService extends EventEmitter {
     this.missions.dispose()
     this.statusSignal.abort()
     for (const context of this.contexts.values()) if (context.flushTimer) clearTimeout(context.flushTimer)
-    void this.browser.close(); this.runtime.close(); this.claudeRuntime.close(); this.piRuntime.close(); this.openCodeRuntime.close(); this.antigravityRuntime.close(); this.store.close()
+    for (const key of [...this.externalBrowserProxies.keys()]) this.closeExternalBrowserProxy(key)
+    this.platformBrowser?.revokeSharing(); this.runtime.close(); this.claudeRuntime.close(); this.piRuntime.close(); this.openCodeRuntime.close(); this.antigravityRuntime.close(); this.store.close()
   }
 }

@@ -15,16 +15,17 @@ function fakeView() {
     setWindowOpenHandler: (handler: typeof openHandler) => { openHandler = handler },
     isDestroyed: () => destroyed, close: vi.fn(() => { destroyed = true }),
     getURL: () => webContents.loaded.at(-1) || '', getTitle: () => 'Título', isLoading: () => false, reload: vi.fn(),
+    executeJavaScriptInIsolatedWorld: vi.fn(async () => 'fake-document' as unknown),
     navigationHistory: { canGoBack: () => true, canGoForward: () => false, goBack: vi.fn(), goForward: vi.fn() },
   }
   const view = { webContents, setBounds: vi.fn(), setVisible: vi.fn() }
   return { view, listeners, open: (url: string) => openHandler!({ url }) }
 }
-function setup() {
+function setup(authorize: (owner: { workspaceId: string; conversationId: string; agentId: string }) => boolean = () => true) {
   const fake = fakeView()
   const host = { isDestroyed: () => false, contentView: { addChildView: vi.fn(), removeChildView: vi.fn() }, webContents: { send: vi.fn(), getZoomFactor: () => 1.25 } }
   const external = vi.fn(async () => undefined)
-  const browser = new PlatformBrowser(() => host as never, () => fake.view as never, external)
+  const browser = new PlatformBrowser(() => host as never, () => fake.view as never, external, authorize)
   return { fake, host, external, browser }
 }
 
@@ -75,6 +76,81 @@ describe('navegador da plataforma', () => {
     await expect(browser.openExternal('file:///C:/x.exe')).rejects.toThrow(/HTTP/)
     await browser.openExternal('https://example.com/docs')
     expect(external).toHaveBeenCalledWith('https://example.com/docs')
+  })
+  it('exige autorização explícita e revoga o acesso ao ocultar a view', async () => {
+    const { browser } = setup()
+    const owner = { workspaceId: 'workspace', conversationId: 'chat', agentId: 'agent' }
+    browser.navigate('https://example.com')
+    browser.setBounds({ x: 0, y: 0, width: 300, height: 200 }, true)
+    browser.setSharingContext(owner)
+    await expect(browser.observeForAgent(owner)).rejects.toThrow(/compartilh/i)
+    browser.grantSharing(owner)
+    expect(browser.sharingState()).toEqual(owner)
+    browser.setBounds({ x: 0, y: 0, width: 0, height: 0 }, false)
+    expect(browser.sharingState()).toBeNull()
+    await expect(browser.observeForAgent(owner)).rejects.toThrow(/compartilh/i)
+  })
+  it('bloqueia outro agente e reavalia permissões antes de cada leitura', async () => {
+    let allowed = true
+    const { browser } = setup(() => allowed)
+    const owner = { workspaceId: 'workspace', conversationId: 'chat', agentId: 'agent' }
+    browser.navigate('https://example.com'); browser.setBounds({ x: 0, y: 0, width: 300, height: 200 }, true)
+    browser.setSharingContext(owner); browser.grantSharing(owner)
+    await expect(browser.observeForAgent({ ...owner, agentId: 'other' })).rejects.toThrow(/compartilh/i)
+    allowed = false
+    await expect(browser.observeForAgent(owner)).rejects.toThrow(/compartilh/i)
+  })
+  it('não aceita autorização antiga após revogar e compartilhar novamente', () => {
+    const { browser } = setup()
+    const owner = { workspaceId: 'workspace', conversationId: 'chat', agentId: 'agent' }
+    browser.navigate('https://example.com')
+    browser.setBounds({ x: 0, y: 0, width: 300, height: 200 }, true)
+    browser.setSharingContext(owner); browser.grantSharing(owner)
+    const token = browser.captureSharing(owner)
+    browser.revokeSharing(); browser.grantSharing(owner)
+    expect(() => browser.assertSharing(owner, token)).toThrow(/compartilh/i)
+  })
+  it('invalida autorização após reload, navegação na mesma URL, histórico ou popup', () => {
+    const { browser, fake } = setup()
+    const owner = { workspaceId: 'workspace', conversationId: 'chat', agentId: 'agent' }
+    browser.navigate('https://example.com'); browser.setBounds({ x: 0, y: 0, width: 300, height: 200 }, true)
+    browser.setSharingContext(owner); browser.grantSharing(owner)
+    const verify = (navigate: () => void) => { const token = browser.captureSharing(owner); navigate(); expect(() => browser.assertSharing(owner, token)).toThrow(/página|documento/i) }
+    verify(() => browser.reload())
+    verify(() => browser.navigate('https://example.com'))
+    verify(() => browser.back())
+    verify(() => fake.open('https://example.com'))
+    verify(() => (fake.listeners.get('did-start-navigation') as (...args: unknown[]) => void)({}, 'https://example.com/', false, true))
+    verify(() => (fake.listeners.get('did-navigate-in-page') as (...args: unknown[]) => void)({}, 'https://example.com/#section', true))
+  })
+  it('não retorna leitura pendente após revogação ou troca de agente', async () => {
+    const { browser, fake } = setup()
+    const owner = { workspaceId: 'workspace', conversationId: 'chat', agentId: 'agent' }
+    browser.navigate('https://example.com')
+    browser.setBounds({ x: 0, y: 0, width: 300, height: 200 }, true)
+    browser.setSharingContext(owner)
+    browser.grantSharing(owner)
+    let complete!: (value: unknown) => void
+    fake.view.webContents.executeJavaScriptInIsolatedWorld.mockImplementationOnce(async () => 'fake-document').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+    const pending = browser.observeForAgent(owner)
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'))
+    browser.setSharingContext({ ...owner, agentId: 'other' })
+    complete({ url: 'https://example.com/', title: '', text: 'segredo', targets: [] })
+    await expect(pending).rejects.toThrow(/compartilh/i)
+    expect(browser.sharingState()).toBeNull()
+  })
+  it('descarta leitura pendente após reload da mesma URL', async () => {
+    const { browser, fake } = setup()
+    const owner = { workspaceId: 'workspace', conversationId: 'chat', agentId: 'agent' }
+    browser.navigate('https://example.com'); browser.setBounds({ x: 0, y: 0, width: 300, height: 200 }, true)
+    browser.setSharingContext(owner); browser.grantSharing(owner)
+    let complete!: (value: unknown) => void
+    fake.view.webContents.executeJavaScriptInIsolatedWorld.mockImplementationOnce(async () => 'fake-document').mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+    const pending = browser.observeForAgent(owner)
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'))
+    browser.reload()
+    complete({ url: 'https://example.com/', title: '', text: 'antigo', targets: [] })
+    await expect(pending).rejects.toThrow(/página|documento/i)
   })
   it('fechar remove e destrói a view', () => {
     const { fake, host, browser } = setup()

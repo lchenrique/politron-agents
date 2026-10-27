@@ -14,11 +14,12 @@ import { getMentionQuery, replaceMention, type MentionQuery } from './mentions'
 export type ComposerModel = ModelChoice
 const INHERIT_OPTION: ComposerModel = { name: INHERIT_MODEL_NAME, description: 'Cada participante usa o modelo configurado no seu perfil' }
 
-export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, canSteer = false }: {
+export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, canSteer = false, canAttachImages = false }: {
   reviewChanges?: FileChange[]
   reviewKey?: string
   working?: boolean
   canSteer?: boolean
+  canAttachImages?: boolean
   conversationId?: string
   mentionAgents?: Agent[]
   models: ComposerModel[]
@@ -26,7 +27,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   defaultModelName?: string
   defaultEffort?: Agent['effort']
   onModelChange: (model: string) => void
-  onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort']; planMode?: boolean }) => Promise<void>
+  onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort']; planMode?: boolean; delivery: 'queue' | 'now'; requestId: string }) => Promise<void>
   onStop: () => void
   onVoiceNotice?: (error: string) => void
 }) {
@@ -45,7 +46,9 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   const [planMode, setPlanMode] = useState(false)
   const [pendingSends, setPendingSends] = useState(0)
   const pendingCount = useRef(0)
+  const retryRequest = useRef<{ signature: string; id: string } | null>(null)
   const submissionGeneration = useRef(0)
+  const isImageFile = (file: File) => file.type.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name)
   const activeConversation = useRef(conversationId)
   activeConversation.current = conversationId
   const busy = working || pendingSends > 0
@@ -102,6 +105,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     try { setValue(draftKey ? localStorage.getItem(draftKey) || '' : '') } catch { setValue('') }
     setFiles([])
     setMention(null)
+    retryRequest.current = null
     submissionGeneration.current++
     pendingCount.current = 0
     setPendingSends(0)
@@ -147,12 +151,16 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     }
   }
 
-  const submit = async (rawValue = value, chosenFiles = files) => {
+  const submit = async (rawValue = value, chosenFiles = files, delivery: 'queue' | 'now' = 'queue') => {
     const message = rawValue.trim()
-    if ((!message && chosenFiles.length === 0) || ((working || pendingCount.current > 0) && !canSteer)) return
+    if ((!message && chosenFiles.length === 0) || pendingCount.current > 0) return
+    if (delivery === 'now' && (!working || !canSteer || chosenFiles.some(isImageFile))) return
     const submittedConversation = conversationId
     const submittedGeneration = submissionGeneration.current
     const submittedFiles = chosenFiles
+    const signature = JSON.stringify([submittedConversation, message, submittedFiles.map(file => [file.name, file.size, file.type, file.lastModified])])
+    const requestId = retryRequest.current?.signature === signature ? retryRequest.current.id : crypto.randomUUID()
+    retryRequest.current = { signature, id: requestId }
     pendingCount.current++
     setPendingSends(pendingCount.current)
     setError('')
@@ -160,7 +168,9 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     setFiles([])
     setPlanMode(false)
     try {
-      await onSubmit(message, model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, { files: submittedFiles, effort: selectedEffort, planMode })
+      await onSubmit(message, model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name,
+        { files: submittedFiles, effort: selectedEffort, planMode, delivery, requestId })
+      if (retryRequest.current?.id === requestId) retryRequest.current = null
     } catch (cause) {
       if (activeConversation.current === submittedConversation) { setValue(current => current || message); setFiles(current => current.length ? current : submittedFiles); setPlanMode(planMode); notify(cause) }
     } finally { if (submissionGeneration.current === submittedGeneration) { pendingCount.current--; setPendingSends(pendingCount.current) } }
@@ -199,11 +209,13 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
         files={files}
         onFilesChange={setFiles}
         showModelPicker={false}
-        pending={busy && !canSteer}
+        pending={false}
+        submitDisabled={pendingSends > 0}
+        accept={`${canAttachImages ? 'image/png,image/jpeg,image/webp,' : ''}text/*,.md,.txt,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml`}
         onStop={onStop}
-        submitLabel={busy && canSteer ? 'Enviar instrução durante a execução' : 'Enviar mensagem'}
-        placeholder={busy && canSteer ? 'Acrescente uma instrução à tarefa em andamento…' : 'Escreva uma mensagem…'}
-        onSubmit={(message, selection) => { void submit(message, selection.files) }}
+        submitLabel={working ? 'Adicionar à fila' : 'Enviar mensagem'}
+        placeholder={working ? 'Escreva uma mensagem para adicionar à fila…' : 'Escreva uma mensagem…'}
+        onSubmit={(message, selection) => { void submit(message, selection.files, 'queue') }}
         extraControls={<>
           <Button type="button" size="sm" variant={planMode ? 'secondary' : 'ghost'}
             aria-label="Modo planejamento" aria-pressed={planMode}
@@ -212,7 +224,8 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
             className="h-8 shrink-0 gap-1.5 rounded-full px-2.5 text-xs aria-pressed:bg-primary-soft aria-pressed:text-primary-soft-foreground">
             <ClipboardList className="size-4" /><span>Plano</span>
           </Button>
-          {busy && canSteer && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" onClick={onStop}><Square /></Button>}
+          {working && canSteer && <Button type="button" size="sm" variant="outline" className="h-8 shrink-0 rounded-full px-2.5 text-xs" disabled={pendingSends > 0 || !value.trim() && !files.length || files.some(isImageFile)} title={files.some(isImageFile) ? 'Imagens devem ser adicionadas à fila.' : 'Enviar texto para a execução atual.'} onClick={() => void submit(value, files, 'now')}>Enviar agora</Button>}
+          {working && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" onClick={onStop}><Square /></Button>}
           <AIModelSelector key={conversationId} models={models} providers={modelProviders}
             value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort }}
             onChange={changeModel} disabled={busy} />

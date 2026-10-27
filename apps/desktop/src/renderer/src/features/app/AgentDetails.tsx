@@ -5,7 +5,7 @@ import { Phone, Pencil } from 'lucide-react'
 import { ASSISTANT_ID, type Agent, type Run } from '../../../../shared/v9'
 import { Avatar } from './Avatar'
 
-const statusLabels: Record<Run['status'], string> = { queued: 'Na fila', running: 'Trabalhando', waiting: 'Aguardando aprovação', completed: 'Concluído', failed: 'Falhou', interrupted: 'Interrompido' }
+const statusLabels: Record<Run['status'], string> = { queued: 'Na fila', running: 'Trabalhando', waiting: 'Aguardando aprovação', completed: 'Concluído', failed: 'Falhou', interrupted: 'Interrompido', cancelled: 'Cancelada' }
 export function AgentDetails({ agent, runs, onClose, onEdit, onOpenMascot, browserMode = false }: {
   agent?: Agent; runs: Run[]; onClose: () => void; onEdit: (agent: Agent) => void; onOpenMascot: (agent: Agent) => void
   browserMode?: boolean

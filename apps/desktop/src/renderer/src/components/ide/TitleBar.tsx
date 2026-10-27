@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { Minus, Square, X, PanelsTopLeft, PanelLeftClose, PanelLeftOpen, PanelRight, Files, Terminal, Globe, Bot, UserRound, FileDiff, MessageSquare, PictureInPicture2 } from 'lucide-react'
+import { Minus, Square, X, PanelsTopLeft, PanelLeftClose, PanelLeftOpen, PanelRight, Files, Terminal, Globe, UserRound, FileDiff, MessageSquare, PictureInPicture2 } from 'lucide-react'
 import { ThemeSelector } from './ThemeSelector'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { DockTool, DockZone } from '../../features/panels/DockWorkspace'
@@ -22,7 +22,6 @@ const tools = [
   { kind: 'files', label: 'Arquivos', icon: Files },
   { kind: 'terminal', label: 'Terminal', icon: Terminal },
   { kind: 'web', label: 'Navegador', icon: Globe },
-  { kind: 'browser', label: 'Navegador do agente', icon: Bot },
   { kind: 'mascot', label: 'Mascote', icon: UserRound },
   { kind: 'diff', label: 'Alterações', icon: FileDiff },
   { kind: 'chat', label: 'Chat', icon: MessageSquare },

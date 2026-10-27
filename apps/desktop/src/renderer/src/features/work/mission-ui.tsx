@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, CircleDashed, CircleSlash, Loader2, Pause, Play, Send, Square, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import type { Approval, Mission, MissionAction, MissionStep, Run } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
@@ -85,13 +86,28 @@ export function useMissionAction(onNotice: (text: string) => void) {
 
 export function MissionControls({ mission, onNotice, compact = false }: { mission: Mission; onNotice: (text: string) => void; compact?: boolean }) {
   const { busy, run } = useMissionAction(onNotice)
+  const [cancelOpen, setCancelOpen] = useState(false)
   const open = ['active', 'waiting', 'paused'].includes(mission.status)
   const size = compact ? 'xs' : 'sm'
-  return <div className="flex flex-wrap items-center gap-1">
-    {mission.status === 'active' && <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'pause')}><Pause className="size-3.5" />Pausar</Button>}
-    {(mission.status === 'paused' || mission.status === 'failed') && <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'resume')}><Play className="size-3.5" />Retomar</Button>}
-    {open && <Button size={size} variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={!!busy} onClick={() => { if (window.confirm(`Cancelar a missão “${mission.title}”? O trabalho já feito é preservado.`)) void run(mission, 'cancel') }}><Square className="size-3.5" />Cancelar</Button>}
-  </div>
+  return <>
+    <div className="flex flex-wrap items-center gap-1">
+      {mission.status === 'active' && <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'pause')}><Pause className="size-3.5" />Pausar</Button>}
+      {(mission.status === 'paused' || mission.status === 'failed') && <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'resume')}><Play className="size-3.5" />Retomar</Button>}
+      {open && <Button size={size} variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={!!busy} onClick={() => setCancelOpen(true)}><Square className="size-3.5" />Cancelar</Button>}
+    </div>
+    <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cancelar missão?</DialogTitle>
+          <DialogDescription>Cancelar a missão “{mission.title}”? O trabalho já feito é preservado.</DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setCancelOpen(false)}>Voltar</Button>
+          <Button variant="destructive" disabled={!!busy} onClick={() => { setCancelOpen(false); void run(mission, 'cancel') }}>Cancelar missão</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>
 }
 
 /** Resposta à decisão pendente: opções sugeridas ou texto livre, sem modal. */

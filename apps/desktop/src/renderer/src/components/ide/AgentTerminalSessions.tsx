@@ -12,7 +12,7 @@ const STATUS_LABEL: Record<AgentTerminalSession['status'], string> = { running: 
  * Saída das PTYs que os agentes desta conversa iniciaram no host do workspace (local ou remoto).
  * Somente leitura: o texto do agente nunca passa pelo terminal manual do usuário.
  */
-export function AgentTerminalSessions({ workspaceId, conversationId, onStarted }: { workspaceId: string; conversationId: string; onStarted?: () => void }) {
+export function AgentTerminalSessions({ workspaceId, conversationId }: { workspaceId: string; conversationId: string }) {
   const [sessions, setSessions] = useState<AgentTerminalSession[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -22,8 +22,6 @@ export function AgentTerminalSessions({ workspaceId, conversationId, onStarted }
   const term = useRef<Terminal | null>(null)
   const selectedRef = useRef<string | null>(null)
   selectedRef.current = selectedId
-  const onStartedRef = useRef(onStarted)
-  onStartedRef.current = onStarted
   const requestVersion = useRef(0)
 
   const load = useCallback(() => {
@@ -64,7 +62,7 @@ export function AgentTerminalSessions({ workspaceId, conversationId, onStarted }
         return
       }
       setSessions(current => current.some(item => item.id === session.id) ? current.map(item => item.id === session.id ? session : item) : [...current, session])
-      if (event.event === 'started') { setSelectedId(session.id); onStartedRef.current?.() }
+      if (event.event === 'started') setSelectedId(session.id)
     })
     return () => { requestVersion.current++; unsubscribe() }
   }, [conversationId, workspaceId, load])

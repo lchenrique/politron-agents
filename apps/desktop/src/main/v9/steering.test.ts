@@ -33,15 +33,17 @@ function setup(supported: boolean) {
   services.push(service)
   const conversation = service.store.saveConversation({})
   const complete = () => runtime.emit('event', { method: 'turn/completed', params: { threadId: 'thread-test', turn: { id: 'turn-test', status: 'completed' } } })
-  return { service, runtime, steer, conversation, complete }
+  const sendNow = (input: string) => service.send(conversation.id, input, undefined, undefined, undefined, false, true, false,
+    { requestId: '10000000-0000-4000-8000-000000000099', delivery: 'now', returnAfterAcceptance: true })
+  return { service, runtime, steer, conversation, complete, sendNow }
 }
 
 it('acrescenta a instrução à execução existente, sem iniciar outra tarefa ou resposta', async () => {
-  const { service, runtime, steer, conversation, complete } = setup(true)
+  const { service, runtime, steer, conversation, complete, sendNow } = setup(true)
   const first = service.send(conversation.id, 'Implemente a tela')
   await vi.waitFor(() => expect(service.store.runs()[0]?.turnId).toBe('turn-test'))
   expect(service.snapshot().steeringRuntimes).toContain('codex')
-  await service.send(conversation.id, 'Use o tema do projeto')
+  await sendNow('Use o tema do projeto')
   expect(steer).toHaveBeenCalledWith('thread-test', 'turn-test', 'Use o tema do projeto')
   expect(runtime.send).toHaveBeenCalledTimes(1)
   expect(service.store.runs()).toHaveLength(1)
@@ -54,11 +56,11 @@ it('acrescenta a instrução à execução existente, sem iniciar outra tarefa o
 })
 
 it('recusa envio durante execução quando o provedor não implementa o recurso', async () => {
-  const { service, runtime, conversation, complete } = setup(false)
+  const { service, runtime, conversation, complete, sendNow } = setup(false)
   const first = service.send(conversation.id, 'Implemente a tela')
   await vi.waitFor(() => expect(service.store.runs()[0]?.turnId).toBe('turn-test'))
   expect(service.snapshot().steeringRuntimes).not.toContain('codex')
-  await expect(service.send(conversation.id, 'Outra instrução')).rejects.toThrow(/não aceita novas instruções/)
+  await expect(sendNow('Outra instrução')).rejects.toThrow(/não aceita novas instruções/)
   expect(runtime.send).toHaveBeenCalledTimes(1)
   expect(service.store.history(conversation.id).some(message => message.text === 'Outra instrução')).toBe(false)
   complete(); await first
@@ -69,4 +71,14 @@ it('usa o ID do turno esperado no protocolo Codex', async () => {
   const request = vi.spyOn(runtime, 'request').mockResolvedValue({ turnId: 'turn-current' })
   await runtime.steer('thread-current', 'turn-current', 'Inclua acessibilidade')
   expect(request).toHaveBeenCalledWith('turn/steer', { threadId: 'thread-current', expectedTurnId: 'turn-current', input: [{ type: 'text', text: 'Inclua acessibilidade' }] })
+})
+
+it('envia anexos somente como localImage do protocolo Codex, sem inserir paths no texto', async () => {
+  const runtime = new CodexRuntime()
+  const request = vi.spyOn(runtime, 'request').mockResolvedValue({ turn: { id: 'turn-image', status: 'inProgress' } })
+  await runtime.send('thread-current', { text: 'Descreva esta imagem.', images: [{ path: 'C:/private/host/capture.png', mimeType: 'image/png' }] })
+  expect(request).toHaveBeenCalledWith('turn/start', {
+    threadId: 'thread-current',
+    input: [{ type: 'text', text: 'Descreva esta imagem.' }, { type: 'localImage', path: 'C:/private/host/capture.png' }],
+  }, 600000)
 })

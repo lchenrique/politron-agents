@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowUpRight, ChevronDown, CalendarClock, Loader2, MessageSquare, PauseCircle, SendHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { ASSISTANT_ID, type Agent, type Mission, type Snapshot } from '../../../../shared/v9'
 import { describeTrigger } from '../../../../shared/missions'
@@ -15,6 +16,8 @@ const SUGGESTIONS = [
   'Abra este projeto, descubra por que não está funcionando, corrija e teste.',
 ]
 const SUGGESTION_LABELS = ['Lançar um produto', 'Acompanhar projetos todo dia', 'Descobrir e corrigir um bug']
+// Radix Select não aceita item com valor vazio; o estado e o localStorage continuam usando ''.
+const NO_PROJECT = '__no-project__'
 
 export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAgent, onOpenRoutines, onNotice, canChat = true }: {
   snapshot: Snapshot
@@ -109,14 +112,19 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
             placeholder="Ex.: Preciso lançar um novo produto. Monte uma equipe, pesquise o mercado e comece a executar."
             className="field-sizing-content block max-h-72 min-h-24 w-full resize-none bg-transparent px-4 pb-2 pt-4 text-[15px] leading-6 outline-none placeholder:text-muted-foreground/80" />
           <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
-            <select aria-label="Projeto" value={selectedWorkspace?.id || ''} onChange={event => { setWorkspaceId(event.target.value); try { localStorage.setItem('politron.home.workspace', event.target.value) } catch { /* opcional */ } }}
-              className="h-8 max-w-48 truncate rounded-md border border-input bg-background px-2 text-xs text-foreground transition-colors hover:border-border-strong focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20">
-              <option value="">Sem projeto (Livre)</option>
-              {projects.filter(item => !(item.kind === 'free' && item.name === 'Livre')).map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
-            <select aria-label="Responsável" value={owner?.id || ''} onChange={event => setOwnerId(event.target.value)} className="h-8 max-w-44 truncate rounded-md border border-input bg-background px-2 text-xs text-foreground transition-colors hover:border-border-strong focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20">
-              {owners.map(agent => <option key={agent.id} value={agent.id}>{agent.role === 'chief' ? `${agent.name} (Chief)` : agent.name}</option>)}
-            </select>
+            <Select value={selectedWorkspace?.id || NO_PROJECT} onValueChange={value => { const id = value === NO_PROJECT ? '' : value; setWorkspaceId(id); try { localStorage.setItem('politron.home.workspace', id) } catch { /* opcional */ } }}>
+              <SelectTrigger aria-label="Projeto" className="h-8 w-auto max-w-48 gap-1.5 bg-background px-2 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_PROJECT}>Sem projeto (Livre)</SelectItem>
+                {projects.filter(item => !(item.kind === 'free' && item.name === 'Livre')).map(project => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={owner?.id || ''} onValueChange={setOwnerId}>
+              <SelectTrigger aria-label="Responsável" className="h-8 w-auto max-w-44 gap-1.5 bg-background px-2 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {owners.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.role === 'chief' ? `${agent.name} (Chief)` : agent.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">Ctrl + Enter</span>
             <Button type="submit" size="sm" disabled={!goal.trim() || sending || !canChat}>{sending ? <Loader2 className="size-4 animate-spin" /> : <SendHorizontal className="size-4" />}Atribuir</Button>
           </div>

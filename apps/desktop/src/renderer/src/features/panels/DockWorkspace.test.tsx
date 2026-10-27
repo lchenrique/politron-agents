@@ -29,7 +29,7 @@ beforeEach(() => {
 
 function setup(chrome: Pick<ComponentProps<typeof DockWorkspace>, 'chatTab' | 'chatHeader'> = {}) {
   const ref = createRef<DockWorkspaceHandle>()
-  const result = render(<DockWorkspace ref={ref} {...chrome} workspaceId="workspace-1" agents={[]} selectedAgents={[]} browserFrames={[]} onRefreshBrowser={vi.fn()} onChanged={vi.fn()} workspaceDiff=""><div>Chat existente</div></DockWorkspace>)
+  const result = render(<DockWorkspace ref={ref} {...chrome} workspaceId="workspace-1" agents={[]} selectedAgents={[]} onChanged={vi.fn()} workspaceDiff=""><div>Chat existente</div></DockWorkspace>)
   return { ref, ...result }
 }
 
@@ -194,5 +194,27 @@ describe('abas e painéis móveis do Politron', () => {
     first.unmount()
     setup()
     expect(screen.getByRole('button', { name: 'Aba Alterações' })).toBeInTheDocument()
+  })
+
+  it('reabre o layout salvo com o navegador do agente usando o navegador compartilhado', async () => {
+    window.platformBrowserAPI = {
+      navigate: vi.fn(async () => ({ url: 'https://example.com/', title: '', loading: false, canGoBack: false, canGoForward: false, error: null })),
+      state: vi.fn(async () => null), setBounds: vi.fn(async () => undefined), back: vi.fn(async () => undefined), forward: vi.fn(async () => undefined),
+      reload: vi.fn(async () => undefined), openExternal: vi.fn(async () => undefined), close: vi.fn(async () => undefined),
+      setSharingContext: vi.fn(async () => undefined), grantSharing: vi.fn(async () => undefined), revokeSharing: vi.fn(async () => undefined),
+      onState: vi.fn(() => () => undefined),
+    } as never
+    localStorage.setItem('politron.dock.layout.v2', JSON.stringify({
+      root: { type: 'group', id: 'g1', tabs: [{ id: 'browser', kind: 'browser', label: 'Navegador do agente' }], active: 'browser' },
+      activeGroup: 'g1',
+    }))
+    try {
+      setup()
+      expect(screen.getByRole('button', { name: 'Aba Navegador' })).toBeInTheDocument()
+      expect(await screen.findByRole('textbox', { name: 'Endereço' })).toBeInTheDocument()
+      expect(screen.queryByText('Navegador dos agentes')).not.toBeInTheDocument()
+    } finally {
+      delete window.platformBrowserAPI
+    }
   })
 })

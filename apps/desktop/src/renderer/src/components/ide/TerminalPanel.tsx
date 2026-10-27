@@ -142,10 +142,10 @@ const TerminalPlaceholder = () => (
   </div>
 );
 
-const TAB_LABELS: Record<string, string> = { terminal: "Terminal", agents: "Agentes", logs: "Logs" };
+const TAB_LABELS: Record<string, string> = { terminal: "Terminal", agents: "Saída dos agentes", logs: "Logs" };
 
 const TerminalPanel = memo(({ workspaceId, conversationId, showLogs = true }: { workspaceId?: string | null; conversationId?: string; showLogs?: boolean }) => {
-  const [activeTab, setActiveTab] = useState(conversationId ? "agents" : "terminal");
+  const [activeTab, setActiveTab] = useState("terminal");
   const [externalError, setExternalError] = useState("");
   const hasProject = !!workspaceId;
   const tabs = ["terminal", ...(conversationId ? ["agents"] : []), ...(showLogs ? ["logs"] : [])];
@@ -182,7 +182,7 @@ const TerminalPanel = memo(({ workspaceId, conversationId, showLogs = true }: { 
         </div>
 
         {conversationId && <div className={`h-full ${activeTab === "agents" ? "block" : "hidden"}`}>
-          {hasProject ? <AgentTerminalSessions key={`${workspaceId}:${conversationId}`} workspaceId={workspaceId!} conversationId={conversationId} onStarted={() => setActiveTab("agents")} /> : <TerminalPlaceholder />}
+          {hasProject ? <AgentTerminalSessions key={`${workspaceId}:${conversationId}`} workspaceId={workspaceId!} conversationId={conversationId} /> : <TerminalPlaceholder />}
         </div>}
 
         <div className={`flex-1 overflow-y-auto p-2.5 flex flex-col gap-0.5 scrollbar-thin h-full ${activeTab === "logs" ? "block" : "hidden"}`}>

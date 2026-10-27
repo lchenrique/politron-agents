@@ -79,6 +79,32 @@ describe('árvore de docking com múltiplos painéis', () => {
     expect(groups(restored.root)).toHaveLength(4)
   })
 
+  it('migra a aba legada do navegador do agente para o navegador da plataforma', () => {
+    const saved = {
+      root: {
+        type: 'group', id: 'g1',
+        tabs: [{ id: 'browser', kind: 'browser', label: 'Navegador do agente' }, { id: 'chat', kind: 'chat', label: 'Chat' }],
+        active: 'browser',
+      },
+      activeGroup: 'g1',
+    }
+    const state = deserializeDockLayout(saved)
+    const group = groups(state.root)[0]
+    expect(group.tabs.map(tab => tab.id)).toEqual(['web', 'chat'])
+    expect(group.tabs[0]).toMatchObject({ kind: 'web', label: 'Navegador' })
+    expect(group.active).toBe('web')
+  })
+
+  it('migra também o layout antigo que tinha a aba do navegador do agente', () => {
+    const state = deserializeDockLayout({
+      main: { tabs: [toolTab('chat'), { id: 'browser', kind: 'browser', label: 'Navegador do agente' }], active: 'browser' },
+      side: { tabs: [], active: '' },
+    })
+    const group = groups(state.root)[0]
+    expect(group.tabs.map(tab => tab.id)).toEqual(['chat', 'web'])
+    expect(group.active).toBe('web')
+  })
+
   it('não aceita duplicações ou layouts corrompidos', () => {
     const invalid = {
       type: 'split', id: 'x', axis: 'vertical', ratio: -10,

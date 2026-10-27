@@ -1,7 +1,7 @@
 import type { ProvidersAPI, ProviderId, ProviderInfo, ProviderSnapshot } from '../../../shared/providers'
-import { ASSISTANT_ID, type Agent, type AppAPI, type Message, type Model, type Snapshot, type VoiceStatus, type WorkspaceEvent } from '../../../shared/v9'
+import { ASSISTANT_ID, type Agent, type AppAPI, type Message, type Model, type SendOptions, type Snapshot, type VoiceStatus, type WorkspaceEvent } from '../../../shared/v9'
 import { assistantPlaceholder } from '../features/app/appShellShared'
-import { request, rpc, type RemoteStatus } from './api'
+import { readImageAttachment, request, rpc, uploadImageAttachment, type RemoteStatus } from './api'
 
 const capabilitiesChanged = new Set<(capabilities: string[]) => void>()
 const eventListeners = new Set<(event: WorkspaceEvent) => void>()
@@ -22,7 +22,7 @@ const oneOf = <T extends string>(value: unknown, values: readonly T[], fallback:
   typeof value === 'string' && values.includes(value as T) ? value as T : fallback
 const runtimes = ['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const
 const efforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const
-const runStatuses = ['queued', 'running', 'waiting', 'completed', 'interrupted', 'failed'] as const
+const runStatuses = ['queued', 'running', 'waiting', 'completed', 'interrupted', 'failed', 'cancelled'] as const
 
 function safeAgent(input: unknown): Agent {
   const value = input && typeof input === 'object' ? input as Record<string, unknown> : {}
@@ -95,7 +95,8 @@ function normalizeSnapshot(input: unknown): Snapshot {
     }
   }) : []
   return { assistant, agents, workspaces, conversations, messages: [], runs, fileChanges: [], approvals, terminalEnabled: false,
-    steeringRuntimes: Array.isArray(value.steeringRuntimes) ? value.steeringRuntimes.filter((item): item is Agent['runtime'] => runtimes.includes(item as typeof runtimes[number])) : [] }
+    steeringRuntimes: Array.isArray(value.steeringRuntimes) ? value.steeringRuntimes.filter((item): item is Agent['runtime'] => runtimes.includes(item as typeof runtimes[number])) : [],
+    imageRuntimes: Array.isArray(value.imageRuntimes) ? value.imageRuntimes.filter((item): item is Agent['runtime'] => runtimes.includes(item as typeof runtimes[number])) : [] }
 }
 
 export function setPwaCapabilities(next: string[]) {
@@ -124,9 +125,9 @@ async function poll() {
       const nextMessages = new Map<string, string>()
       for (const message of rawHistory.messages) {
         if (!message || typeof message !== 'object') continue
-        const item = message as { id?: unknown; status?: unknown; text?: unknown }
+        const item = message as { id?: unknown; status?: unknown; text?: unknown; attachments?: unknown }
         if (typeof item.id !== 'string') continue
-        const signature = JSON.stringify([item.status, item.text])
+        const signature = JSON.stringify([item.status, item.text, item.attachments])
         nextMessages.set(item.id, signature)
         if (previousMessages.size && previousMessages.get(item.id) !== signature) emit({ type: 'message', message: message as Message })
       }
@@ -159,7 +160,10 @@ const app = {
   historyPage: (id: string, cursor?: number | string | null, limit?: number) => rpc<Awaited<ReturnType<AppAPI['historyPage']>>>('v9:historyPage', id, cursor, limit),
   historyAround: (id: string, cursor: number, limit?: number) => rpc<Awaited<ReturnType<AppAPI['historyAround']>>>('v9:historyAround', id, cursor, limit),
   searchHistory: (id: string, query: string, limit?: number) => rpc<Awaited<ReturnType<AppAPI['searchHistory']>>>('v9:searchHistory', id, query, limit),
-  send: (id: string, value: string, model?: string, effort?: Agent['effort'], planMode?: boolean) => rpc<void>('v9:send', id, value, model, effort, planMode),
+  send: (id: string, value: string, model?: string, effort?: Agent['effort'], planMode?: boolean, options?: SendOptions) => rpc<void>('v9:send', id, value, model, effort, planMode, options),
+  cancelQueuedMessage: (messageId: string) => rpc<void>('v9:cancelQueuedMessage', messageId),
+  uploadAttachment: (conversationId: string, name: string, mimeType: string, bytes: Uint8Array) => uploadImageAttachment(conversationId, name, mimeType, bytes),
+  readAttachment: (conversationId: string, id: string) => readImageAttachment(conversationId, id),
   stop: (id: string) => rpc<void>('v9:stop', id),
   cancelDelegation: (id: string) => rpc<void>('v9:cancelDelegation', id),
   startMission: (input: Parameters<AppAPI['startMission']>[0]) => rpc<Awaited<ReturnType<AppAPI['startMission']>>>('v9:startMission', input),
@@ -174,7 +178,6 @@ const app = {
   },
   voiceTranscribe: (wav: Uint8Array) => rpc<string>('v9:voiceTranscribe', Array.from(wav)),
   models: (runtime?: Agent['runtime']) => rpc<Model[]>('v9:models', runtime),
-  browserFrames: async () => [],
   setVisibleConversation: async (id: string | null) => { activeConversationId = id; previousMessages = new Map(); void poll() },
   getVisibleConversation: async () => activeConversationId,
   onEvent: (listener: (event: WorkspaceEvent) => void) => {

@@ -1,4 +1,4 @@
-export type DockTool = 'chat' | 'files' | 'terminal' | 'browser' | 'web' | 'mascot' | 'diff'
+export type DockTool = 'chat' | 'files' | 'terminal' | 'web' | 'mascot' | 'diff'
 export type DockZone = 'main' | 'side'
 export type DockEdge = 'left' | 'right' | 'top' | 'bottom'
 export type DockTab = { id: string; kind: DockTool | 'file'; label: string; workspaceId?: string; path?: string }
@@ -7,8 +7,10 @@ export type DockSplit = { type: 'split'; id: string; axis: 'horizontal' | 'verti
 export type DockNode = DockGroup | DockSplit
 export interface DockLayoutState { root: DockNode; activeGroup: string }
 
-const tools: DockTool[] = ['chat', 'files', 'terminal', 'browser', 'web', 'mascot', 'diff']
-const names: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', browser: 'Navegador do agente', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
+const tools: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff']
+const names: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
+/** Layouts salvos antes do navegador único guardam a aba 'browser' do agente; ela vira a aba do navegador da plataforma. */
+const legacyTool: Record<string, DockTool> = { browser: 'web' }
 let counter = 0
 const uid = () => 'dock-' + Date.now().toString(36) + '-' + (++counter).toString(36)
 export const newGroup = (tabs: DockTab[] = []): DockGroup => ({ type: 'group', id: uid(), tabs, active: tabs.at(-1)?.id || '' })
@@ -92,9 +94,19 @@ function validTab(tab: unknown): tab is DockTab {
   return typeof v.id === 'string' && v.id.length < 2000 && typeof v.label === 'string' && v.label.length < 600
     && (tools.includes(v.kind as DockTool) || (v.kind === 'file' && !!v.workspaceId && !!v.path))
 }
+function migrateTab(tab: unknown): unknown {
+  if (!tab || typeof tab !== 'object') return tab
+  const value = tab as Record<string, unknown>
+  const kind = typeof value.kind === 'string' ? legacyTool[value.kind] : undefined
+  if (!kind) return tab
+  return { ...value, id: kind, kind, label: names[kind] }
+}
+function migrateTabId(id: unknown): unknown {
+  return typeof id === 'string' ? legacyTool[id] || id : id
+}
 function cleanTabs(items: unknown, seen: Set<string>): DockTab[] {
   if (!Array.isArray(items)) return []
-  return items.filter(item => {
+  return items.map(migrateTab).filter((item): item is DockTab => {
     if (!validTab(item) || seen.has(item.id) || seen.size >= 50) return false
     seen.add(item.id)
     return true
@@ -113,7 +125,8 @@ export function deserializeDockLayout(input: unknown): DockLayoutState {
         count++
         const tabs = cleanTabs(value.tabs, seen)
         const id = uid()
-        return { type: 'group', id, tabs, active: tabs.some(tab => tab.id === value.active) ? value.active as string : tabs[0]?.id || '' }
+        const active = migrateTabId(value.active)
+        return { type: 'group', id, tabs, active: tabs.some(tab => tab.id === active) ? active as string : tabs[0]?.id || '' }
       }
       if (value.type !== 'split') return null
       const first = parse(value.first, depth + 1), second = parse(value.second, depth + 1)
@@ -144,8 +157,8 @@ export function deserializeDockLayout(input: unknown): DockLayoutState {
   if (!main || !side) return initialDockLayout()
   const a = newGroup(cleanTabs(main.tabs, seen)), b = newGroup(cleanTabs(side.tabs, seen))
   if (!seen.has('chat')) a.tabs.unshift(toolTab('chat'))
-  a.active = a.tabs.some(t => t.id === main.active) ? main.active as string : a.tabs[0]?.id || ''
-  b.active = b.tabs.some(t => t.id === side.active) ? side.active as string : b.tabs[0]?.id || ''
+  a.active = a.tabs.some(t => t.id === migrateTabId(main.active)) ? migrateTabId(main.active) as string : a.tabs[0]?.id || ''
+  b.active = b.tabs.some(t => t.id === migrateTabId(side.active)) ? migrateTabId(side.active) as string : b.tabs[0]?.id || ''
   if (!b.tabs.length) return { root: a, activeGroup: a.id }
   const position = raw.position
   const first = position === 'left' || position === 'top'

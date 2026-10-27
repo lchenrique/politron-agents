@@ -18,6 +18,7 @@ export const PWA_METHOD_CAPABILITIES = {
   'v9:voiceStatus': 'read',
 
   'v9:send': 'chat',
+  'v9:cancelQueuedMessage': 'chat',
   'v9:stop': 'chat',
   'v9:respondToAgent': 'chat',
   'v9:saveConversation': 'chat',

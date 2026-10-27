@@ -23,8 +23,7 @@ afterEach(() => { window.appAPI = original })
 
 describe('AgentTerminalSessions', () => {
   it('reidrata sessões, transmite saída, filtra outra conversa e para no escopo exibido', async () => {
-    const started = vi.fn()
-    render(<AgentTerminalSessions workspaceId="w1" conversationId="c1" onStarted={started} />)
+    render(<AgentTerminalSessions workspaceId="w1" conversationId="c1" />)
     expect(await screen.findByText('npm run dev')).toBeInTheDocument()
     await waitFor(() => expect(written.join('')).toContain('pronto'))
     expect(window.appAPI.agentTerminalSessions).toHaveBeenCalledWith('c1', 'w1')
@@ -34,14 +33,12 @@ describe('AgentTerminalSessions', () => {
     act(() => emit({ type: 'agentTerminal', event: 'output', session: session('x', { conversationId: 'c2' }), data: 'segredo' }))
     expect(screen.queryByText('rm -rf')).toBeNull()
     expect(written.join('')).not.toContain('segredo')
-    expect(started).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Parar npm run dev' }))
     expect(window.appAPI.agentTerminalStop).toHaveBeenCalledWith('s1', 'c1', 'w1')
     act(() => emit({ type: 'agentTerminal', event: 'finished', session: session('s1', { status: 'interrupted' }) }))
     expect(screen.getByText('interrompido')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Parar npm run dev' })).toBeNull()
     act(() => emit({ type: 'agentTerminal', event: 'started', session: session('s2', { command: 'npm test', mode: 'command' }) }))
-    expect(started).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: /npm test/, pressed: true })).toBeInTheDocument()
   })
   it('não mostra saída de outra conversa quando uma resposta antiga chega atrasada', async () => {

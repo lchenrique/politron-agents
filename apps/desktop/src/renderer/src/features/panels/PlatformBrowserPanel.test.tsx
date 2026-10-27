@@ -9,6 +9,8 @@ function install() {
     navigate: vi.fn(async url => ({ url, title: '', loading: true, canGoBack: false, canGoForward: false, error: null })),
     state: vi.fn(async () => null), setBounds: vi.fn(async () => undefined), back: vi.fn(async () => undefined), forward: vi.fn(async () => undefined),
     reload: vi.fn(async () => undefined), openExternal: vi.fn(async () => undefined), close: vi.fn(async () => undefined),
+    setSharingContext: vi.fn(async () => undefined), grantSharing: vi.fn(async () => undefined), revokeSharing: vi.fn(async () => undefined),
+    externalStatus: vi.fn(async () => ({ granted: false, problems: [] })), setExternalGrant: vi.fn(async () => ({ granted: false, problems: [] })),
     onState: vi.fn(callback => { listener = callback; return () => { listener = null } }),
   }
   window.platformBrowserAPI = api
@@ -42,6 +44,38 @@ describe('PlatformBrowserPanel', () => {
     expect(api.reload).toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Abrir no navegador do sistema' }))
     expect(api.openExternal).toHaveBeenCalledWith('https://example.com/')
+  })
+  it('exige escolha explícita do agente e permite revogar o compartilhamento', async () => {
+    const { api, emit } = install()
+    const agent = { id: 'agent-a', name: 'Boo', computerUse: true } as never
+    render(<PlatformBrowserPanel onNotice={vi.fn()} workspaceId="work" conversationId="chat" agents={[agent]} />)
+    await act(async () => emit({ url: 'https://example.com/', title: 'Ex', loading: false, canGoBack: false, canGoForward: false, error: null }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Agente para compartilhar' }), { target: { value: 'agent-a' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Compartilhar com agente' }))
+    expect(api.grantSharing).toHaveBeenCalledWith({ workspaceId: 'work', conversationId: 'chat', agentId: 'agent-a' })
+    await act(async () => emit({ url: 'https://example.com/', title: 'Ex', loading: false, canGoBack: false, canGoForward: false, error: null, sharing: { workspaceId: 'work', conversationId: 'chat', agentId: 'agent-a' } }))
+    expect(screen.getByText(/ações já enviadas podem concluir após revogar/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Revogar compartilhamento' }))
+    expect(api.revokeSharing).toHaveBeenCalled()
+  })
+  it('navegador externo exige agente e autorização explícita, mostra estado ativo e permite revogar', async () => {
+    const { api } = install()
+    const owner = { workspaceId: 'work', conversationId: 'chat', agentId: 'agent-a' }
+    vi.mocked(api.setExternalGrant).mockResolvedValueOnce({ granted: true, problems: ['host nativo da extensão oficial ausente'] }).mockResolvedValueOnce({ granted: false, problems: [] })
+    render(<PlatformBrowserPanel onNotice={vi.fn()} workspaceId="work" conversationId="chat" agents={[{ id: 'agent-a', name: 'Boo', computerUse: true } as never]} />)
+    expect(screen.getByRole('button', { name: 'Autorizar navegador externo' })).toBeDisabled()
+    expect(api.externalStatus).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Agente para compartilhar' }), { target: { value: 'agent-a' } })
+    await act(async () => undefined)
+    expect(api.externalStatus).toHaveBeenCalledWith(owner)
+    expect(screen.getByText(/navegador externo desativado/i)).toBeInTheDocument()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Autorizar navegador externo' })) })
+    expect(api.setExternalGrant).toHaveBeenCalledWith(owner, true)
+    expect(screen.getByText(/navegador externo autorizado/i)).toBeInTheDocument()
+    expect(screen.getByText(/host nativo da extensão oficial ausente/)).toBeInTheDocument()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Revogar navegador externo' })) })
+    expect(api.setExternalGrant).toHaveBeenLastCalledWith(owner, false)
+    expect(screen.getByText(/navegador externo desativado/i)).toBeInTheDocument()
   })
   it('esconde a view nativa ao desmontar', () => {
     const { api } = install()

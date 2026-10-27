@@ -52,6 +52,24 @@ describe('Markdown compartilhado do chat', () => {
     expect(screen.getByText('src/codigo.ts').closest('a')).toBeNull()
   })
 
+  it('converte links file:// e caminhos absolutos do workspace em caminhos relativos para o editor', () => {
+    const handlers = { openUrl: vi.fn(), openFile: vi.fn(), blocked: vi.fn(), workspaceRoot: 'D:\\workspace' }
+    render(<MessageLinkContext.Provider value={handlers}><MessageMarkdown>{'[URI](file:///D:/workspace/src/My%20File.ts) [Caminho](D:/workspace/src/other.ts)'}</MessageMarkdown></MessageLinkContext.Provider>)
+    fireEvent.click(screen.getByText('URI').closest('a')!)
+    fireEvent.click(screen.getByText('Caminho').closest('a')!)
+    expect(handlers.openFile).toHaveBeenNthCalledWith(1, 'src/My File.ts')
+    expect(handlers.openFile).toHaveBeenNthCalledWith(2, 'src/other.ts')
+    expect(handlers.blocked).not.toHaveBeenCalled()
+  })
+
+  it('continua bloqueando file:// fora da pasta do workspace', () => {
+    const handlers = { openUrl: vi.fn(), openFile: vi.fn(), blocked: vi.fn(), workspaceRoot: 'D:\\workspace' }
+    render(<MessageLinkContext.Provider value={handlers}><MessageMarkdown>{'[Fora](file:///D:/secrets/key.txt)'}</MessageMarkdown></MessageLinkContext.Provider>)
+    fireEvent.click(screen.getByText('Fora').closest('a')!)
+    expect(handlers.openFile).not.toHaveBeenCalled()
+    expect(handlers.blocked).toHaveBeenCalledOnce()
+  })
+
   it('sem roteamento do Desktop (PWA) mantém o link web em nova aba', () => {
     render(<MessageMarkdown>{'[Site](https://example.com)'}</MessageMarkdown>)
     expect(screen.getByRole('link', { name: 'Site' })).toHaveAttribute('target', '_blank')
