@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { CalendarClock, MessageSquare, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { ASSISTANT_ID, type Routine, type RoutineTrigger, type Snapshot } from '../../../../shared/v9'
 import { DEFAULT_ROUTINE_TURNS, describeTrigger } from '../../../../shared/missions'
@@ -51,30 +54,30 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
   const remove = (routine: Routine) => { if (window.confirm(`Excluir a rotina “${routine.name}”? As missões já executadas continuam no histórico.`)) void window.appAPI.deleteRoutine(routine.id).catch(error => onNotice(errorText(error))) }
 
   const editor = draft && <form className="ds-panel space-y-5 p-5" onSubmit={event => { event.preventDefault(); void save() }}>
-    {!draft.id && <div className="flex flex-wrap gap-1.5">{TEMPLATES.map(template => <button key={template.name} type="button" onClick={() => patch(template)} className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground shadow-xs transition-colors hover:border-border-strong hover:text-foreground">{template.name}</button>)}</div>}
+    {!draft.id && <div className="flex flex-wrap gap-1.5">{TEMPLATES.map(template => <Button key={template.name} type="button" variant="outline" onClick={() => patch(template)} className="h-auto rounded-full border-border bg-card px-3 py-1 text-xs font-normal text-muted-foreground shadow-xs transition-colors hover:border-border-strong hover:bg-card hover:text-foreground">{template.name}</Button>)}</div>}
     <div className="grid gap-4 sm:grid-cols-2">
-      <label className="space-y-1.5 text-xs font-medium sm:col-span-2">Nome<input required maxLength={80} value={draft.name} onChange={event => patch({ name: event.target.value })} placeholder="Ex.: Revisão diária do projeto" className={field} /></label>
+      <label className="space-y-1.5 text-xs font-medium sm:col-span-2">Nome<Input required maxLength={80} value={draft.name} onChange={event => patch({ name: event.target.value })} placeholder="Ex.: Revisão diária do projeto" className={field} /></label>
       <label className="space-y-1.5 text-xs font-medium sm:col-span-2">O que fazer a cada execução
-        <textarea required maxLength={8000} rows={4} value={draft.instructions} onChange={event => patch({ instructions: event.target.value })} placeholder="O que verificar, o que pode corrigir sozinho e o que entregar no resumo." className={cn(field, 'field-sizing-content h-auto min-h-24 py-2 leading-6')} />
+        <Textarea required maxLength={8000} rows={4} value={draft.instructions} onChange={event => patch({ instructions: event.target.value })} placeholder="O que verificar, o que pode corrigir sozinho e o que entregar no resumo." className={cn(field, 'field-sizing-content h-auto min-h-24 py-2 leading-6 md:text-sm dark:bg-card')} />
       </label>
-      <label className="space-y-1.5 text-xs font-medium">Responsável<select value={draft.agentId} onChange={event => patch({ agentId: event.target.value })} className={field}>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.role === 'chief' ? `${agent.name} (Chief)` : agent.name}</option>)}</select></label>
-      <label className="space-y-1.5 text-xs font-medium">Projeto<select value={draft.workspaceId} onChange={event => patch({ workspaceId: event.target.value })} className={field}>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+      <label className="space-y-1.5 text-xs font-medium">Responsável<Select value={draft.agentId} onValueChange={agentId => patch({ agentId })}><SelectTrigger aria-label="Responsável" className={field}><SelectValue /></SelectTrigger><SelectContent>{agents.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.role === 'chief' ? `${agent.name} (Chief)` : agent.name}</SelectItem>)}</SelectContent></Select></label>
+      <label className="space-y-1.5 text-xs font-medium">Projeto<Select value={draft.workspaceId} onValueChange={workspaceId => patch({ workspaceId })}><SelectTrigger aria-label="Projeto" className={field}><SelectValue /></SelectTrigger><SelectContent>{projects.map(project => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></label>
     </div>
     <fieldset className="space-y-3">
       <legend className="mb-2 text-xs font-medium">Quando</legend>
       <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Gatilho">
         {([['daily', 'Em horário fixo'], ['interval', 'A cada intervalo'], ['app-start', 'Ao abrir o Boobot'], ['project-changed', 'Quando o projeto mudar']] as const).map(([kind, label]) =>
-          <button key={kind} type="button" role="radio" aria-checked={draft.kind === kind} onClick={() => patch({ kind })} className={cn('rounded-lg border px-3 py-1.5 text-xs transition-colors', draft.kind === kind ? 'border-primary/50 bg-primary-soft text-primary-soft-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground')}>{label}</button>)}
+          <Button key={kind} type="button" variant="ghost" role="radio" aria-checked={draft.kind === kind} onClick={() => patch({ kind })} className={cn('h-auto rounded-lg border px-3 py-1.5 text-xs font-normal transition-colors', draft.kind === kind ? 'border-primary/50 bg-primary-soft text-primary-soft-foreground hover:bg-primary-soft hover:text-primary-soft-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground')}>{label}</Button>)}
       </div>
       {draft.kind === 'daily' && <div className="flex flex-wrap items-center gap-3">
-        <input type="time" aria-label="Horário" required value={draft.time} onChange={event => patch({ time: event.target.value })} className={cn(field, 'w-28')} />
-        <div className="flex gap-1" aria-label="Dias da semana">{DAYS.map((day, index) => { const on = draft.weekdays.includes(index); return <button key={index} type="button" aria-pressed={on} aria-label={DAY_NAMES[index]} onClick={() => patch({ weekdays: on ? draft.weekdays.filter(item => item !== index) : [...draft.weekdays, index].sort() })} className={cn('size-8 rounded-full border text-xs font-medium transition-colors', on ? 'border-primary/60 bg-primary/15 text-foreground' : 'border-border/70 text-muted-foreground hover:bg-accent')}>{day}</button> })}</div>
+        <Input type="time" aria-label="Horário" required value={draft.time} onChange={event => patch({ time: event.target.value })} className={cn(field, 'w-28')} />
+        <div className="flex gap-1" aria-label="Dias da semana">{DAYS.map((day, index) => { const on = draft.weekdays.includes(index); return <Button key={index} type="button" variant="ghost" size="icon-sm" aria-pressed={on} aria-label={DAY_NAMES[index]} onClick={() => patch({ weekdays: on ? draft.weekdays.filter(item => item !== index) : [...draft.weekdays, index].sort() })} className={cn('size-8 rounded-full border text-xs font-medium transition-colors', on ? 'border-primary/60 bg-primary/15 text-foreground hover:bg-primary/15 hover:text-foreground' : 'border-border/70 text-muted-foreground hover:bg-accent hover:text-muted-foreground')}>{day}</Button> })}</div>
         <span className="text-[11px] text-muted-foreground">{draft.weekdays.length ? '' : 'Nenhum dia marcado = todos os dias'}</span>
       </div>}
-      {draft.kind === 'interval' && <label className="flex items-center gap-2 text-sm">A cada<input type="number" min={0.25} max={168} step={0.25} value={draft.hours} onChange={event => patch({ hours: Number(event.target.value) })} className={cn(field, 'w-24')} />horas</label>}
+      {draft.kind === 'interval' && <label className="flex items-center gap-2 text-sm">A cada<Input type="number" min={0.25} max={168} step={0.25} value={draft.hours} onChange={event => patch({ hours: Number(event.target.value) })} className={cn(field, 'w-24')} />horas</label>}
       {draft.kind === 'project-changed' && <p className="text-[11px] leading-5 text-muted-foreground">Dispara quando o número de arquivos alterados no Git muda, no máximo uma vez a cada 30 minutos.</p>}
     </fieldset>
-    <label className="flex items-center gap-2 text-xs text-muted-foreground">Limite por execução<input type="number" min={1} max={50} value={draft.maxTurns} onChange={event => patch({ maxTurns: Number(event.target.value) })} className={cn(field, 'w-20')} />turnos do agente (controle de custo)</label>
+    <label className="flex items-center gap-2 text-xs text-muted-foreground">Limite por execução<Input type="number" min={1} max={50} value={draft.maxTurns} onChange={event => patch({ maxTurns: Number(event.target.value) })} className={cn(field, 'w-20')} />turnos do agente (controle de custo)</label>
     <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setDraft(null)}>Cancelar</Button><Button type="submit" disabled={saving || !draft.name.trim() || !draft.instructions.trim() || !draft.workspaceId}>{draft.id ? 'Salvar rotina' : 'Criar rotina'}</Button></div>
   </form>
 
@@ -102,7 +105,7 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
               {mission && <p className="flex items-center gap-2 text-[11px] text-muted-foreground">Última {relativeTime(routine.lastRunAt)} · <PhaseLabel phase={missionPhase(mission, snapshot.runs, snapshot.approvals)} /></p>}
             </div>
             <div className="flex items-center gap-0.5">
-              <button type="button" role="switch" aria-checked={routine.enabled} aria-label={routine.enabled ? `Desativar ${routine.name}` : `Ativar ${routine.name}`} onClick={() => toggle(routine)} className={cn('relative mr-2 h-5 w-9 rounded-full border transition-colors', routine.enabled ? 'border-primary/60 bg-primary' : 'border-border bg-muted')}><span className={cn('absolute top-0.5 size-3.5 rounded-full bg-background shadow-sm transition-[left] duration-200', routine.enabled ? 'left-[1.15rem]' : 'left-0.5')} /></button>
+              <Button type="button" variant="ghost" role="switch" aria-checked={routine.enabled} aria-label={routine.enabled ? `Desativar ${routine.name}` : `Ativar ${routine.name}`} onClick={() => toggle(routine)} className={cn('relative mr-2 block h-5 w-9 rounded-full border p-0 transition-colors', routine.enabled ? 'border-primary/60 bg-primary hover:bg-primary' : 'border-border bg-muted hover:bg-muted')}><span className={cn('absolute top-0.5 size-3.5 rounded-full bg-background shadow-sm transition-[left] duration-200', routine.enabled ? 'left-[1.15rem]' : 'left-0.5')} /></Button>
               <Button size="icon-sm" variant="ghost" title="Executar agora" aria-label={`Executar ${routine.name} agora`} onClick={() => runNow(routine)}><Play className="size-4" /></Button>
               {routine.conversationId && <Button size="icon-sm" variant="ghost" title="Histórico na conversa" aria-label={`Abrir conversa de ${routine.name}`} onClick={() => onOpenConversation(routine.conversationId!)}><MessageSquare className="size-4" /></Button>}
               <Button size="icon-sm" variant="ghost" title="Editar" aria-label={`Editar ${routine.name}`} onClick={() => setDraft(fromRoutine(routine))}><Pencil className="size-4" /></Button>

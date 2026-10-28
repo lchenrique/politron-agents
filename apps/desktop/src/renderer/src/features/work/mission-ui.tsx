@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, CircleDashed, CircleSlash, Loader2, Pause, Play, Send, Square, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import type { Approval, Mission, MissionAction, MissionStep, Run } from '../../../../shared/v9'
@@ -122,9 +123,9 @@ export function MissionReply({ mission, onNotice, autoFocus = false }: { mission
       {mission.options.map(option => <Button key={option} size="sm" variant="outline" disabled={!!busy} onClick={() => option === 'Continuar' ? void run(mission, budget ? 'extend' : 'resume') : void submit(option)}>{option}</Button>)}
     </div>}
     <form className="flex items-end gap-2" onSubmit={event => { event.preventDefault(); if (value.trim()) void submit(value.trim()) }}>
-      <textarea aria-label={`Responder ao responsável por ${mission.title}`} autoFocus={autoFocus} rows={1} value={value} onChange={event => setValue(event.target.value)}
+      <Textarea aria-label={`Responder ao responsável por ${mission.title}`} autoFocus={autoFocus} rows={1} value={value} onChange={event => setValue(event.target.value)}
         onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (value.trim()) void submit(value.trim()) } }}
-        placeholder="Responder com uma decisão ou orientação…" className="field-sizing-content max-h-40 min-h-9 flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40" />
+        placeholder="Responder com uma decisão ou orientação…" className="field-sizing-content max-h-40 min-h-9 w-auto flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-none outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 md:text-sm dark:bg-background" />
       <Button type="submit" size="icon" aria-label="Enviar resposta" disabled={!value.trim() || !!busy}><Send className="size-4" /></Button>
     </form>
   </div>
