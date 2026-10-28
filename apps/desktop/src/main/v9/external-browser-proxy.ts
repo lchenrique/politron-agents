@@ -69,7 +69,7 @@ export class ExternalBrowserProxy {
   private readonly connections = new Set<Server>()
   private readonly server = createServer((request, response) => { void this.handle(request, response).catch(() => this.json(response, 500, { error: 'Falha no proxy do navegador externo.' })) })
 
-  constructor(private readonly spec: NodeReplServer, private readonly authorize: ExternalBrowserAuthorizer) {}
+  constructor(private readonly spec: NodeReplServer, private readonly authorize: ExternalBrowserAuthorizer, private readonly startTimeoutMs = 10_000) {}
   get url(): string { if (!this.address) throw new Error('Proxy do navegador externo não iniciado.'); return `${this.address}/mcp` }
   get toolNames(): string[] { return this.tools.map(tool => tool.name) }
   get ready(): boolean { return !!this.address && !this.closed }
@@ -78,9 +78,11 @@ export class ExternalBrowserProxy {
 
   private async open(): Promise<void> {
     const client = new Client({ name: 'politron', version: '1.0.0' })
+    // Prazo único para iniciar: um node_repl que trava não pode segurar a execução do agente.
+    const signal = AbortSignal.timeout(this.startTimeoutMs)
     try {
-      await client.connect(new StdioClientTransport({ command: this.spec.command, args: this.spec.args, env: this.spec.env, stderr: 'ignore' }))
-      this.tools = (await client.listTools()).tools.filter(tool => ALLOWED_TOOLS.has(tool.name))
+      await client.connect(new StdioClientTransport({ command: this.spec.command, args: this.spec.args, env: this.spec.env, stderr: 'ignore' }), { signal, timeout: this.startTimeoutMs })
+      this.tools = (await client.listTools(undefined, { signal, timeout: this.startTimeoutMs })).tools.filter(tool => ALLOWED_TOOLS.has(tool.name))
     } catch {
       await client.close().catch(() => undefined)
       throw new Error('O node_repl oficial não pôde ser iniciado; nenhuma aba foi acessada.')

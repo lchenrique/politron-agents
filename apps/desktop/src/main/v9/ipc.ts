@@ -52,6 +52,8 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('readProjectFile', (id, filePath) => service.readProjectFile(id, filePath))
   invoke('writeProjectFile', (id, filePath, content, expectedHash) => service.writeProjectFile(id, filePath, content, expectedHash))
   invoke('respondApproval', (id, approved) => service.respondApproval(id, approved))
+  // Host remoto e PWA chegam por HostRpc.dispatch; aprovações desktopOnly (navegador real) são recusadas ali.
+  routing?.register('v9:respondApproval', (id: string, approved: boolean) => service.respondApproval(id, approved, true))
   invoke('answerQuestion', (id, answer) => service.answerQuestion(id, answer))
   invoke('setVisibleConversation', (id) => service.setVisibleConversation(id))
   invoke('getVisibleConversation', () => service.getVisibleConversation())

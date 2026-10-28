@@ -132,7 +132,7 @@ describe('navegador externo por conversa e agente', () => {
 
 const fixture = fileURLToPath(new URL('./test-fixtures/fake-node-repl.mjs', import.meta.url))
 type Registration = { url: string; token: string; tools: string[] }
-type Mediated = { externalBrowserMcp(context: unknown): Promise<Registration | null>; contexts: Map<string, unknown>; approvalWaiters: Map<string, unknown>
+type Mediated = { externalBrowserMcp(context: unknown): Promise<Registration | null>; contexts: Map<string, unknown>; approvalWaiters: Map<string, unknown>; externalBrowserProxies: Map<string, unknown>
   authorizeExternalBrowserCall(owner: unknown, runId: string | undefined, tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string | null> }
 
 /** Ponte injetada: node_repl falso no lugar do oficial, que está quebrado na máquina real. */
@@ -177,6 +177,9 @@ describe('navegador real liberado por autorização da conversa', () => {
       const request = broker.callTool(context, 'external_browser_request', {})
       const approval = await pending(approvals)
       expect(approval).toMatchObject({ kind: 'browser', details: { action: 'Permitir Boo Externo usar seu navegador real (Brave/Chrome) nesta conversa', task: 'O agente poderá ler e agir em qualquer site em que você está logado, incluindo cookies e dados salvos, até você revogar.' } })
+      expect(approval.details.desktopOnly).toBe(true)
+      await expect(service.respondApproval(approval.id, true, true)).rejects.toThrow('A autorização do navegador real só pode ser respondida na janela do Boobot neste computador.')
+      expect(service.externalBrowserStatus(owner).granted).toBe(false)
       await service.respondApproval(approval.id, true)
       await expect(request).resolves.toMatch(/autorizado[\s\S]*pronta/i)
       expect(service.externalBrowserStatus(owner).granted).toBe(true)
@@ -265,5 +268,59 @@ describe('navegador real liberado por autorização da conversa', () => {
     expect(threads).toHaveLength(1)
     expect(threads[0]).toMatchObject({ url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/), tools: ['js'] })
     expect(JSON.stringify(threads[0])).not.toContain('fake-node-repl')
+  })
+
+  it('apagar a conversa ou o agente encerra o proxy daquele conversa:agente', async () => {
+    const first = await running()
+    const key = `${first.owner.conversationId}:${first.owner.agentId}`
+    expect(await first.mediated.externalBrowserMcp(first.context)).not.toBeNull()
+    expect(first.mediated.externalBrowserProxies.has(key)).toBe(true)
+    await first.service.deleteConversation(first.owner.conversationId)
+    expect(first.mediated.externalBrowserProxies.has(key)).toBe(false)
+
+    const second = await running()
+    const other = `${second.owner.conversationId}:${second.owner.agentId}`
+    expect(await second.mediated.externalBrowserMcp(second.context)).not.toBeNull()
+    await second.service.deleteAgent(second.owner.agentId)
+    expect(second.mediated.externalBrowserProxies.has(other)).toBe(false)
+  })
+
+  it('node_repl que trava no início: a execução segue sem proxy dentro do prazo e não tenta de novo até um pedido explícito', async () => {
+    const { service, broker, context, owner, mediated, approvals } = await running()
+    let starts = 0
+    service.externalBrowserBridge = { probe: () => [], startTimeoutMs: 300, upstream: () => { starts++; return { command: process.execPath, args: ['-e', 'setInterval(() => undefined, 1000)'], env: {} } } }
+    const began = Date.now()
+    expect(await mediated.externalBrowserMcp(context)).toBeNull()
+    expect(Date.now() - began).toBeLessThan(5000)
+    expect(await mediated.externalBrowserMcp(context)).toBeNull()
+    expect(starts).toBe(1)
+    // Pedido explícito libera nova tentativa na próxima execução.
+    const request = broker.callTool(context, 'external_browser_request', {})
+    await service.respondApproval((await pending(approvals)).id, true)
+    await request
+    expect(service.externalBrowserStatus(owner).granted).toBe(true)
+    expect(await mediated.externalBrowserMcp(context)).toBeNull()
+    expect(starts).toBe(2)
+  })
+
+  it('Claude retoma a sessão sem a URL do proxy na chave; Codex mantém a URL', async () => {
+    for (const kind of ['claude', 'codex'] as const) {
+      const keys: string[] = []
+      const runtime = Object.assign(new EventEmitter(), {
+        supportsImages: false, models: async () => [], respond: () => undefined, interrupt: async () => undefined, close: () => undefined,
+        thread: async () => ({ id: 'thread', history: 'empty' as const }),
+        send: async () => ({ turn: { id: 'turn', status: 'failed', error: { message: 'fim do teste' } } }),
+      }) as unknown as AgentRuntime
+      const { service, owner } = await setup(true, kind, runtime)
+      ;(service as unknown as { claudeRuntime: AgentRuntime }).claudeRuntime = runtime
+      fakeBridge(service)
+      const lookup = service.store.sessionBinding.bind(service.store)
+      service.store.sessionBinding = (key: string) => { keys.push(key); return lookup(key) }
+      await service.send(owner.conversationId, 'oi')
+      for (let i = 0; i < 300 && !keys.length; i++) await new Promise(resolve => setTimeout(resolve, 10))
+      expect(keys.length).toBeGreaterThan(0)
+      if (kind === 'claude') expect(keys[0]).not.toContain('127.0.0.1')
+      else expect(keys[0]).toMatch(/:xhttp:\/\/127\.0\.0\.1:\d+\/mcp$/)
+    }
   })
 })

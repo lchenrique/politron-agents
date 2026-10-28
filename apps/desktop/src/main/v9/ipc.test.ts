@@ -8,7 +8,7 @@ vi.mock('electron', () => ({
     handle: (channel: string, handler: unknown) => { handlers.set(channel, handler) },
     removeHandler: (channel: string) => { handlers.delete(channel) },
   },
-  BrowserWindow: { getAllWindows: () => [] },
+  BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null },
   dialog: { showOpenDialog: vi.fn() },
 }))
 
@@ -36,5 +36,20 @@ describe('superfície IPC da V9', () => {
     expect(handlers.has('v9:snapshot')).toBe(false)
     expect(handlers.has('v9:externalBrowserStatus')).toBe(false)
     expect(handlers.has('v9:setExternalBrowserGrant')).toBe(false)
+  })
+  it('respondApproval do host remoto/PWA é marcado como remoto; a janela local não', async () => {
+    const respondApproval = vi.fn(async () => undefined)
+    const service = { on: vi.fn(), off: vi.fn(), respondApproval } as unknown as AppService
+    const remote = new Map<string, (...args: unknown[]) => unknown>()
+    const routing = { remote: false, register: (method: string, handler: (...args: unknown[]) => unknown) => { remote.set(method, handler) }, invoke: (_m: string, _a: unknown[], local: () => unknown) => local(), publish: () => true }
+    const dispose = registerV9Ipc(service, routing as never)
+    await remote.get('v9:respondApproval')!('id', true)
+    expect(respondApproval).toHaveBeenLastCalledWith('id', true, true)
+    const sender = {}
+    const { BrowserWindow } = await import('electron')
+    vi.spyOn(BrowserWindow, 'fromWebContents' as never).mockReturnValue({ isDestroyed: () => false } as never)
+    await (handlers.get('v9:respondApproval') as (...args: unknown[]) => unknown)({ sender }, 'id', true)
+    expect(respondApproval).toHaveBeenLastCalledWith('id', true)
+    dispose()
   })
 })

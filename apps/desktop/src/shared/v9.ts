@@ -70,7 +70,7 @@ export interface CommandEvidence extends CommandResult {
 }
 export interface Approval {
   id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser' | 'command' | 'delegation' | 'agent-change' | 'question' | 'plan'
-  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; answer?: string; planTitle?: string; planSteps?: string[] }
+  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; answer?: string; planTitle?: string; planSteps?: string[]; desktopOnly?: boolean }
   status: 'pending' | 'approved' | 'denied' | 'interrupted'; createdAt: string; resolvedAt: string | null
 }
 export interface Run {

@@ -90,11 +90,17 @@ export class AppService extends EventEmitter {
     if (enabled === true && !this.canShareBrowser(owner)) throw new Error('Este agente não pode usar navegador nesta conversa.')
     // Revogar não fecha o proxy registrado na thread: o authorizer passa a recusar as chamadas seguintes.
     this.store.saveExternalBrowserGrant(owner.conversationId, owner.agentId, enabled === true)
+    if (enabled === true) this.externalBrowserFailures.delete(`${owner.conversationId}:${owner.agentId}`)
     return this.externalBrowserStatus(owner)
   }
   /** Ponte oficial: sonda e node_repl declarados pelo Codex. Os testes injetam um node_repl falso. */
-  externalBrowserBridge: { probe: () => string[]; upstream: () => NodeReplServer | null } = { probe: () => probeExternalBrowserBridge(), upstream: () => readNodeReplServer() }
+  externalBrowserBridge: { probe: () => string[]; upstream: () => NodeReplServer | null; startTimeoutMs?: number } = { probe: () => probeExternalBrowserBridge(), upstream: () => readNodeReplServer() }
   private readonly externalBrowserProxies = new Map<string, ExternalBrowserProxy>()
+  /** conversa:agente cujo node_repl falhou ao iniciar nesta sessão do app; só um pedido/autorização explícita (ou reiniciar o app) tenta de novo. */
+  private readonly externalBrowserFailures = new Set<string>()
+  private closeExternalBrowserProxiesWhere(match: (conversationId: string, agentId: string) => boolean) {
+    for (const key of [...this.externalBrowserProxies.keys()]) { const [conversationId, agentId] = key.split(':'); if (match(conversationId, agentId)) this.closeExternalBrowserProxy(key) }
+  }
   /** Execução a que cada proxy (conversa:agente) está vinculado; a thread do Codex só o conhece por essa execução. */
   private readonly externalBrowserRuns = new Map<string, string>()
   private closeExternalBrowserProxy(key: string) {
@@ -108,19 +114,19 @@ export class AppService extends EventEmitter {
     const key = `${owner.conversationId}:${owner.agentId}`
     try {
       const status = this.externalBrowserStatus(owner)
-      if (!['codex', 'claude'].includes(context.agent.runtime) || context.run.planMode || !this.canShareBrowser(owner) || status.problems.length) return null
+      if (!['codex', 'claude'].includes(context.agent.runtime) || context.run.planMode || !this.canShareBrowser(owner) || status.problems.length || this.externalBrowserFailures.has(key)) return null
       let proxy = this.externalBrowserProxies.get(key)
       if (!proxy) {
         const upstream = this.externalBrowserBridge.upstream()
         if (!upstream) return null
-        proxy = new ExternalBrowserProxy(upstream, (tool, args, signal) => this.authorizeExternalBrowserCall(owner, this.externalBrowserRuns.get(key), tool, args, signal))
+        proxy = new ExternalBrowserProxy(upstream, (tool, args, signal) => this.authorizeExternalBrowserCall(owner, this.externalBrowserRuns.get(key), tool, args, signal), this.externalBrowserBridge.startTimeoutMs)
         this.externalBrowserProxies.set(key, proxy)
       }
       this.externalBrowserRuns.set(key, context.run.id)
       await proxy.start()
       return { url: proxy.url, token: proxy.token, tools: proxy.toolNames }
     } catch {
-      if (this.externalBrowserProxies.get(key)?.ready === false) this.closeExternalBrowserProxy(key)
+      if (this.externalBrowserProxies.get(key)?.ready === false) { this.closeExternalBrowserProxy(key); this.externalBrowserFailures.add(key) }
       return null
     }
   }
@@ -286,6 +292,7 @@ export class AppService extends EventEmitter {
     const conversations = this.store.conversations().filter(item => ids.includes(item.workspaceId))
     for (const conversation of conversations) await this.stop(conversation.id)
     if (conversations.some(conversation => conversation.id === this.platformBrowser?.sharingState()?.conversationId)) this.platformBrowser?.revokeSharing()
+    this.closeExternalBrowserProxiesWhere(id => conversations.some(conversation => conversation.id === id))
     if (workspace.kind === 'worktree') await this.gitWorkspaces.removeWorktree(workspace.path).catch(() => undefined)
     this.store.deleteWorkspace(workspaceId, { cascade: true })
     this.emitEvent({ type: 'changed' })
@@ -293,6 +300,7 @@ export class AppService extends EventEmitter {
   async deleteConversation(conversationId: string) {
     await this.stop(conversationId)
     if (this.platformBrowser?.sharingState()?.conversationId === conversationId) this.platformBrowser.revokeSharing()
+    this.closeExternalBrowserProxiesWhere(id => id === conversationId)
     this.store.deleteConversation(conversationId)
     this.emitEvent({ type: 'changed' })
   }
@@ -312,6 +320,7 @@ export class AppService extends EventEmitter {
       this.active.delete(run.id)
     }
     if (this.platformBrowser?.sharingState()?.agentId === agentId) this.platformBrowser.revokeSharing()
+    this.closeExternalBrowserProxiesWhere((_, id) => id === agentId)
     this.store.deleteAgent(agentId)
     this.emitEvent({ type: 'changed' })
   }
@@ -333,9 +342,10 @@ export class AppService extends EventEmitter {
     const focusedConversation = this.visibleConversationId === conversationId && BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.isFocused())
     if (!focusedConversation && Notification.isSupported()) new Notification({ title, body }).show()
   }
-  async respondApproval(approvalId: string, approved: boolean) {
+  async respondApproval(approvalId: string, approved: boolean, remote = false) {
     const approval = this.store.approval(approvalId)
     if (!approval || approval.status !== 'pending') throw new Error('Esta aprovação não está mais pendente.')
+    if (remote && approval.details.desktopOnly) throw new Error('A autorização do navegador real só pode ser respondida na janela do Boobot neste computador.')
     if (typeof approved !== 'boolean') throw new Error('Decisão de aprovação inválida.')
     const resolveApproval = this.approvalWaiters.get(approvalId)
     if (!resolveApproval) throw new Error('A execução desta aprovação não está ativa. Ela não será repetida automaticamente.')
@@ -771,8 +781,8 @@ export class AppService extends EventEmitter {
       const toolsKey = fingerprintTools(tools, TOOL_BROKER_VERSION).slice(0, 16)
       // Codex/Claude recebem o proxy mesmo sem autorização, para que aprovar external_browser_request valha nesta execução.
       const externalBrowser = agent.runtime === 'codex' || agent.runtime === 'claude' ? await this.externalBrowserMcp(context) || undefined : undefined
-      // Uma thread retomada não troca seus servidores MCP: reiniciar o proxy (nova URL) exige sessão nova.
-      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}${externalBrowser ? `:x${externalBrowser.url}` : ''}`
+      // Uma thread Codex retomada não troca seus servidores MCP: reiniciar o proxy (nova URL) exige sessão nova. O Claude recebe mcpServers a cada query.
+      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}${externalBrowser && agent.runtime === 'codex' ? `:x${externalBrowser.url}` : ''}`
       let binding = this.store.sessionBinding(bindingKey)
       if (binding?.runtime && binding.runtime !== agent.runtime) { this.store.deleteSessionBinding(bindingKey); binding = undefined }
       let thread: RuntimeThread
@@ -1373,8 +1383,9 @@ export class AppService extends EventEmitter {
       const owner = { workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }
       let status = this.externalBrowserStatus(owner)
       if (name === 'external_browser_request') {
+        this.externalBrowserFailures.delete(`${owner.conversationId}:${owner.agentId}`)
         if (status.granted) return 'Navegador real já autorizado para este agente nesta conversa.'
-        if (!await this.requestApproval(context, 'browser', { action: `Permitir ${context.agent.name} usar seu navegador real (Brave/Chrome) nesta conversa`, task: 'O agente poderá ler e agir em qualquer site em que você está logado, incluindo cookies e dados salvos, até você revogar.' }, true, true)) return 'O usuário negou o navegador real nesta conversa.'
+        if (!await this.requestApproval(context, 'browser', { action: `Permitir ${context.agent.name} usar seu navegador real (Brave/Chrome) nesta conversa`, task: 'O agente poderá ler e agir em qualquer site em que você está logado, incluindo cookies e dados salvos, até você revogar.', desktopOnly: true }, true, true)) return 'O usuário negou o navegador real nesta conversa.'
         status = this.setExternalBrowserGrant(owner, true)
       }
       const ready = !!this.externalBrowserProxies.get(`${owner.conversationId}:${owner.agentId}`)?.ready
