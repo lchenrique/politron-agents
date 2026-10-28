@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Download, RefreshCcw, ShieldCheck } from 'lucide-react'
 import type { ReleaseChannel, UpdateSnapshot } from '../../../../shared/updates'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { errorText } from './appShellShared'
 
 const descriptions: Record<UpdateSnapshot['phase'], string> = {
@@ -71,13 +72,15 @@ export function AppUpdatesPanel() {
     </div>
     <label className="block space-y-1.5 text-xs font-medium">
       Canal de atualizações
-      <select aria-label="Canal de atualizações" value={status?.channel || 'stable'}
+      <Select value={status?.channel || 'stable'}
         disabled={!status || busy || status.phase === 'checking' || status.phase === 'downloading'}
-        onChange={event => switchChannel(event.target.value as ReleaseChannel)}
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-        <option value="stable">Estável — recomendado</option>
-        <option value="beta">Beta — novidades antecipadas</option>
-      </select>
+        onValueChange={value => switchChannel(value as ReleaseChannel)}>
+        <SelectTrigger aria-label="Canal de atualizações" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="stable">Estável — recomendado</SelectItem>
+          <SelectItem value="beta">Beta — novidades antecipadas</SelectItem>
+        </SelectContent>
+      </Select>
     </label>
     <p role="status" className="text-xs leading-5 text-muted-foreground">
       {status ? descriptions[status.phase] : 'Carregando estado das atualizações…'}

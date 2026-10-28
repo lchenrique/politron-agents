@@ -1,4 +1,5 @@
 import { memo, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Slider } from '@/components/ui/slider'
 import { PIT_COLOR_PALETTE, type Agent } from '../../../../shared/v9'
@@ -34,13 +35,13 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
     <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
       <div><h3 className="text-sm font-semibold">Boo Studio</h3><p className="text-[11px] text-muted-foreground">Personalize o seu agente em tempo real</p></div>
       <div className="flex shrink-0 items-center gap-2">
-        <button type="button" onClick={() => { onChange({ ...DEFAULT_BOO_APPEARANCE }); onReset?.() }} title="Volta ao formato Boo (ondinha) e valores visuais originais. Clique em Salvar para confirmar." className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-accent">Restaurar aparência</button>
+        <Button type="button" variant="ghost" onClick={() => { onChange({ ...DEFAULT_BOO_APPEARANCE }); onReset?.() }} title="Volta ao formato Boo (ondinha) e valores visuais originais. Clique em Salvar para confirmar." className="h-auto rounded-md border border-border px-2 py-1 text-[11px] font-normal text-inherit hover:bg-accent hover:text-inherit">Restaurar aparência</Button>
         <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] text-primary">SVG animado</span>
       </div>
     </div>
     <div className="grid min-h-[300px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
       <div className={`flex min-h-56 flex-col items-center justify-between gap-2 p-3 ${background === 'dark' ? 'bg-slate-900 text-white' : background === 'grid' ? 'bg-[linear-gradient(45deg,#a1a1aa20_25%,transparent_25%),linear-gradient(-45deg,#a1a1aa20_25%,transparent_25%)] bg-[length:18px_18px] bg-muted/50' : 'bg-primary/[.04]'}`}>
-        <div className="flex self-end gap-1">{(['light','dark','grid'] as const).map(option => <button key={option} type="button" aria-label={`Fundo ${option}`} aria-pressed={background === option} title={`Fundo ${option}`} onClick={() => setBackground(option)} className={`rounded-md border px-2 py-1 text-[10px] ${background === option ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}>{option === 'light' ? '☀' : option === 'dark' ? '☾' : '▦'}</button>)}</div>
+        <div className="flex self-end gap-1">{(['light','dark','grid'] as const).map(option => <Button key={option} type="button" variant="ghost" aria-label={`Fundo ${option}`} aria-pressed={background === option} title={`Fundo ${option}`} onClick={() => setBackground(option)} className={`h-auto rounded-md border px-2 py-1 text-[10px] font-normal hover:bg-transparent ${background === option ? 'border-primary text-primary hover:text-primary' : 'border-border text-muted-foreground hover:text-muted-foreground'}`}>{option === 'light' ? '☀' : option === 'dark' ? '☾' : '▦'}</Button>)}</div>
         <div className="flex flex-1 flex-col items-center justify-center gap-1">
           <PoliAvatar agent={agent} size={168} expression={expression} />
           <strong className="text-xs">{agent.name || 'Boo'}</strong><span className="text-[11px] opacity-70">{states.find(item => item.value === expression)?.label}</span>
@@ -49,12 +50,12 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
       </div>
       <div className="border-t border-border/60 md:border-l md:border-t-0">
         <div role="tablist" aria-label="Personalização do Boo" className="flex border-b border-border/60">
-          {([['appearance','Aparência'],['animation','Animação'],['states','Estados']] as const).map(([value,label]) => <button key={value} type="button" role="tab" aria-selected={tab===value} onClick={() => setTab(value)} className={`flex-1 px-1.5 py-2 text-[11px] font-medium ${tab === value ? 'border-b-2 border-primary text-foreground' : 'text-muted-foreground hover:bg-accent/40'}`}>{label}</button>)}
+          {([['appearance','Aparência'],['animation','Animação'],['states','Estados']] as const).map(([value,label]) => <Button key={value} type="button" variant="ghost" role="tab" aria-selected={tab===value} onClick={() => setTab(value)} className={`h-auto flex-1 rounded-none px-1.5 py-2 text-[11px] font-medium ${tab === value ? 'border-b-2 border-primary text-foreground hover:bg-transparent hover:text-foreground' : 'text-muted-foreground hover:bg-accent/40 hover:text-muted-foreground'}`}>{label}</Button>)}
         </div>
         <div role="tabpanel" className="max-h-[330px] space-y-3 overflow-y-auto p-3">
           {tab === 'appearance' && <>
             <p className="text-xs font-medium">Cor do corpo</p>
-            <div className="flex flex-wrap gap-2">{swatches.map(value => <button key={value} type="button" aria-label={`Escolher cor ${value}`} aria-pressed={agent.color === value} onClick={() => onChange({color: value})} className={`size-7 rounded-full border-2 ${agent.color === value ? 'border-foreground ring-2 ring-primary/30' : 'border-transparent'}`} style={{backgroundColor:value}} />)}</div>
+            <div className="flex flex-wrap gap-2">{swatches.map(value => <Button key={value} type="button" variant="ghost" size="icon" aria-label={`Escolher cor ${value}`} aria-pressed={agent.color === value} onClick={() => onChange({color: value})} className={`size-7 rounded-full border-2 ${agent.color === value ? 'border-foreground ring-2 ring-primary/30' : 'border-transparent'}`} style={{backgroundColor:value}} />)}</div>
             <ReactColorField label="Cor do Boo" value={agent.color} onChange={color => onChange({ color })} />
             <div className="border-t border-border/60 pt-3"><p className="mb-2 text-xs font-medium">Olhos e formato</p><div className="space-y-3">
               <ReactColorField label="Cor dos olhos" value={agent.pitsEyeColor || '#ffffff'} onChange={color => onChange({ pitsEyeColor: color })} />
@@ -64,9 +65,9 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
               <Range label="Altura do corpo" value={Math.round((agent.pitsBodyHeight ?? 1)*100)} min={75} max={125} step={5} unit="%" onChange={value => onChange({pitsBodyHeight:value/100})} />
               <div className="grid grid-cols-3 gap-2" role="group" aria-label="Formatos pré-definidos">
                 {BOO_SHAPE_PRESETS.map(({ value, label }) => (
-                  <button key={value} type="button" aria-pressed={(agent.pitsShape || 'ghost-wave') === value}
+                  <Button key={value} type="button" variant="ghost" aria-pressed={(agent.pitsShape || 'ghost-wave') === value}
                     onClick={() => onChange({ pitsShape: value })}
-                    className={['flex flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-[11px] transition-colors', (agent.pitsShape || 'ghost-wave') === value ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-accent'].join(' ')}>
+                    className={['flex h-auto flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-[11px] font-normal transition-colors', (agent.pitsShape || 'ghost-wave') === value ? 'border-primary bg-primary/10 text-foreground hover:bg-primary/10 hover:text-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-muted-foreground'].join(' ')}>
                     <svg viewBox="28 0 185 200" className="size-11" aria-hidden="true">
                       <path d={BOO_BODY_PATHS[value]} fill={agent.color || '#786bea'} />
                       <ellipse cx="94" cy="94" rx="8" ry="12" fill={agent.pitsEyeColor || '#fff'} />
@@ -74,7 +75,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
                       <path d="M108 124 Q120 135 132 124" stroke="#fff" strokeWidth="5" strokeLinecap="round" fill="none" />
                     </svg>
                     {label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <Range label="Tamanho da boca" value={Math.round((agent.pitsMouthSize ?? 1)*100)} min={65} max={160} step={5} unit="%" onChange={value => onChange({ pitsMouthSize: value / 100 })} />
@@ -85,18 +86,18 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
               <p className="text-xs font-medium">Cabeça</p>
               <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Acessórios de cabeça">
                 {([['none','Nenhum'],['antenna','Antena'],['horns','Chifrinhos'],['cap','Boné'],['cap-flat','Aba reta'],['cap-back','Para trás'],['beanie','Gorro'],['bucket','Bucket'],['top-hat','Cartola'],['witch-hat','Bruxa'],['headphones','Fone'],['crown','Coroa'],['party-hat','Festa'],['chef-hat','Chef'],['bow','Laço'],['flower','Flor'],['halo','Auréola']] as const).map(([value,label]) => (
-                  <button key={value} type="button" aria-pressed={(agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')) === value}
+                  <Button key={value} type="button" variant="ghost" aria-pressed={(agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')) === value}
                     onClick={() => onChange({ pitsHeadAccessory: value, pitsAccessory: 'none' })}
-                    className={['rounded-md border px-1 py-2 text-[11px]', (agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')) === value ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'].join(' ')}>{label}</button>
+                    className={['h-auto whitespace-normal rounded-md border px-1 py-2 text-[11px] font-normal text-inherit hover:text-inherit', (agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')) === value ? 'border-primary bg-primary/10 hover:bg-primary/10' : 'border-border hover:bg-accent'].join(' ')}>{label}</Button>
                 ))}
               </div>
               <BooAccessoryColorEditor layer="head" accessory={selectedHead} colors={agent.pitsAccessoryColors} onChange={onChange} />
               <p className="text-xs font-medium">Rosto</p>
               <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Acessórios de rosto">
                 {([['none','Nenhum'],['glasses','Óculos'],['round-glasses','Redondos'],['sunglasses','Escuros'],['heart-glasses','Coração'],['star-glasses','Estrela'],['monocle','Monóculo'],['mustache','Bigode'],['star-mask','Máscara']] as const).map(([value,label]) => (
-                  <button key={value} type="button" aria-pressed={(agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')) === value}
+                  <Button key={value} type="button" variant="ghost" aria-pressed={(agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')) === value}
                     onClick={() => onChange({ pitsFaceAccessory: value, pitsAccessory: 'none' })}
-                    className={['rounded-md border px-1 py-2 text-[11px]', (agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')) === value ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent'].join(' ')}>{label}</button>
+                    className={['h-auto whitespace-normal rounded-md border px-1 py-2 text-[11px] font-normal text-inherit hover:text-inherit', (agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')) === value ? 'border-primary bg-primary/10 hover:bg-primary/10' : 'border-border hover:bg-accent'].join(' ')}>{label}</Button>
                 ))}
               </div>
               <BooAccessoryColorEditor layer="face" accessory={selectedFace} colors={agent.pitsAccessoryColors} onChange={onChange} />
@@ -104,7 +105,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
             <div className="space-y-3 border-t border-border/60 pt-3"><Toggle label="Bochechas rosadas" checked={agent.pitsBlush!==false} onChange={value => onChange({pitsBlush:value})}/>{agent.pitsBlush!==false && <ReactColorField label="Cor das bochechas" value={agent.pitsCheekColor || '#f5a5d1'} onChange={color => onChange({ pitsCheekColor: color })} />}{agent.pitsBlush !== false && <Range label="Intensidade do rosado" value={Math.round((agent.pitsBlushStrength ?? .45) * 100)} min={0} max={100} step={5} unit="%" onChange={value => onChange({ pitsBlushStrength: value / 100 })} />}<Toggle label="Aura colorida" checked={agent.pitsAura!==false} onChange={value => onChange({pitsAura:value})}/></div>
           </>}
           {tab === 'animation' && <><Toggle label="Ativar animações" checked={agent.pitsAnimate!==false} onChange={value => onChange({pitsAnimate:value})}/><Range label="Velocidade da flutuação" min={1} max={6} step={.5} unit="s" value={agent.pitsSpeed ?? 3} onChange={value => onChange({pitsSpeed:value})}/><Range label="Amplitude do movimento" min={0} max={24} unit="px" value={agent.pitsAmplitude ?? 9} onChange={value => onChange({pitsAmplitude:value})}/><p className="text-[11px] text-muted-foreground">A animação reduz automaticamente quando o sistema prefere menos movimento.</p></>}
-          {tab === 'states' && <><p className="text-xs font-medium">Testar expressões</p><div className="grid grid-cols-2 gap-2">{states.map(item => <button key={item.value} type="button" aria-pressed={expression===item.value} onClick={() => setExpression(item.value)} className={`rounded-md border px-2 py-2 text-xs ${expression===item.value ? 'border-primary bg-primary/10' : 'border-border hover:bg-accent/40'}`}>{item.label}</button>)}</div><p className="text-[11px] text-muted-foreground">Durante o uso, o Boobot troca a expressão automaticamente conforme o estado do Boo.</p></>}
+          {tab === 'states' && <><p className="text-xs font-medium">Testar expressões</p><div className="grid grid-cols-2 gap-2">{states.map(item => <Button key={item.value} type="button" variant="ghost" aria-pressed={expression===item.value} onClick={() => setExpression(item.value)} className={`h-auto whitespace-normal rounded-md border px-2 py-2 text-xs font-normal text-inherit hover:text-inherit ${expression===item.value ? 'border-primary bg-primary/10 hover:bg-primary/10' : 'border-border hover:bg-accent/40'}`}>{item.label}</Button>)}</div><p className="text-[11px] text-muted-foreground">Durante o uso, o Boobot troca a expressão automaticamente conforme o estado do Boo.</p></>}
         </div>
       </div>
     </div>

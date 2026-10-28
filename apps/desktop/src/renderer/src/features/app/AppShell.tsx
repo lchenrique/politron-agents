@@ -350,7 +350,7 @@ export default function AppShell() {
       search={!browserMode && <WorkspaceSearch snapshot={snapshot} canChat={canChat} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} onSectionChange={setSidebarSection} />} />
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-      {browserMode && isMobile && !sidebarCollapsed && <button type="button" className="boobot-web-sidebar-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarCollapsed(true)} />}
+      {browserMode && isMobile && !sidebarCollapsed && <Button type="button" variant="ghost" className="boobot-web-sidebar-backdrop h-auto rounded-none p-0" aria-label="Fechar navegação" onClick={() => setSidebarCollapsed(true)} />}
       <ResizablePanelGroup key={browserMode && isMobile ? 'web-mobile-layout' : sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
         defaultLayout={sidebarCollapsed ? { main: 100 } : { sidebar: sidebarSize, main: 100 - sidebarSize }}
         onLayoutChanged={(layout, meta) => { if (!meta.isUserInteraction || typeof layout.sidebar !== 'number') return; const next = Math.min(34, Math.max(17, layout.sidebar)); setSidebarSize(next); try { localStorage.setItem('politron.sidebar.size', String(next)) } catch { /* preferência opcional */ } }}

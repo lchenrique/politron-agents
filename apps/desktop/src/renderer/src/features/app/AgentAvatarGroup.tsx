@@ -1,4 +1,5 @@
 import { AvatarGroup, AvatarGroupCount } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { Avatar } from './Avatar'
 import type { Agent } from '../../../../shared/v9'
 
@@ -10,9 +11,9 @@ export function AgentAvatarGroup({ agents, maxVisible = 6, onRemove, onSelect, c
   const hidden = agents.length - visible.length
   return <AvatarGroup aria-label={`Equipe com ${agents.length} ${agents.length === 1 ? 'agente' : 'agentes'}`} className={className}>
     {visible.map(agent => onSelect || onRemove
-      ? <button key={agent.id} type="button" data-slot="avatar" aria-label={onSelect ? `Ver detalhes de ${agent.name}` : `Remover ${agent.name}`} title={onSelect ? agent.name : `${agent.name} · @${agent.alias} · clique para remover`} onClick={() => (onSelect || onRemove)?.(agent)} className="rounded-full outline-none ring-2 ring-background transition-opacity hover:opacity-70 focus-visible:ring-primary">
+      ? <Button key={agent.id} type="button" variant="ghost" data-slot="avatar" aria-label={onSelect ? `Ver detalhes de ${agent.name}` : `Remover ${agent.name}`} title={onSelect ? agent.name : `${agent.name} · @${agent.alias} · clique para remover`} onClick={() => (onSelect || onRemove)?.(agent)} className="h-auto rounded-full p-0 outline-none ring-2 ring-background transition-opacity hover:bg-transparent hover:opacity-70 focus-visible:ring-2 focus-visible:ring-primary">
           <Avatar agent={agent} size="xs" />
-        </button>
+        </Button>
       : <span key={agent.id} data-slot="avatar" title={`${agent.name} · @${agent.alias}`}><Avatar agent={agent} size="xs" /></span>)}
     {hidden > 0 && <AvatarGroupCount title={`${hidden} agentes não exibidos`}>+{hidden}</AvatarGroupCount>}
   </AvatarGroup>

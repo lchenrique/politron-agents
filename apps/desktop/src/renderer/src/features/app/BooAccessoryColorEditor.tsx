@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { Button } from '@/components/ui/button'
 import type { Agent } from '../../../../shared/v9'
 import { colorsOf } from './BooPetAccessories'
 import { ReactColorField } from '@/components/ui/ReactColorField'
@@ -34,9 +35,9 @@ export const BooAccessoryColorEditor = memo(function BooAccessoryColorEditor({
     aria-label={`Personalizar cores: ${layer === 'head' ? 'cabeça' : 'rosto'}`}>
     <div className="mb-2 flex items-center justify-between gap-2">
       <span className="text-[11px] font-medium">Cores do acessório</span>
-      {overrides?.length ? <button type="button" onClick={restore}
-        className="rounded px-1.5 py-1 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
-        aria-label={`Restaurar cores de ${accessory}`}>Restaurar cores</button> : null}
+      {overrides?.length ? <Button type="button" variant="ghost" onClick={restore}
+        className="h-auto rounded px-1.5 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
+        aria-label={`Restaurar cores de ${accessory}`}>Restaurar cores</Button> : null}
     </div>
     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
       {parts.map(([label, defaultColor], index) => <div key={index}
