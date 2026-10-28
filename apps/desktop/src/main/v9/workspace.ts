@@ -34,10 +34,11 @@ import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from '.
 import { SkillsService } from './skills/service'
 import { MissionEngine } from './missions'
 import { describeTrigger, validateTrigger } from '../../shared/missions'
+import { toolActivityText } from '../../shared/activity'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
 
-type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string> }
+type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string }
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
 const approvalUrl = (value: string) => { const safe = safeWebUrl(value); if (!safe) return '[endereço inválido]'; const url = new URL(safe); url.search = ''; url.hash = ''; return url.href }
 const redactApprovalUrls = (value: string) => value.replace(/https?:\/\/[^\s"'\\<>]+/gi, approvalUrl)
@@ -458,7 +459,32 @@ export class AppService extends EventEmitter {
   private emitEvent(event: WorkspaceEvent) { this.emit('workspace-event', event) }
   private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null, details: { id?: string; attachments?: MessageAttachment[] } = {}) {
     const message: Message = { id: details.id || randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, ...(details.attachments?.length ? { attachments: details.attachments } : {}), createdAt: new Date().toISOString() }
-    this.store.putMessage(message); this.emitEvent({ type: 'message', message }); return message
+    this.store.putMessage(message); this.emitEvent({ type: 'message', message })
+    // Texto que chegar depois de uma atividade vira mensagem nova, abaixo dela (ver replyFor).
+    if (role === 'activity' && runId) { const context = this.contexts.get(runId); if (context) context.activitySince = true }
+    return message
+  }
+  /**
+   * Mensagem que recebe o texto do agente. Depois de uma atividade (ou de um novo item de texto do Codex) a anterior
+   * é concluída e nasce outra no fim da conversa, para a resposta final ficar abaixo do trabalho.
+   * run.messageId acompanha sempre a mensagem atual (a última resposta do run).
+   */
+  private replyFor(context: RunContext, itemId?: string): Message {
+    const sameItem = !!itemId && itemId === context.itemId
+    const newItem = !!itemId && !!context.itemId && itemId !== context.itemId && !!context.message.text.trim()
+    if (!sameItem && (context.activitySince || newItem)) {
+      const previous = context.message
+      if (context.flushTimer) { clearTimeout(context.flushTimer); context.flushTimer = undefined }
+      // Vazia e concluída: o renderer oculta; nenhum texto se perde.
+      this.updateMessage(previous, 'completed', previous.text)
+      context.priorText = (context.priorText || '') + previous.text
+      const next: Message = { ...previous, id: randomUUID(), text: '', status: 'running', createdAt: new Date().toISOString() }
+      this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
+      context.message = next; context.activitySince = false
+      context.run.messageId = next.id; this.store.putRun(context.run)
+    }
+    if (itemId) context.itemId = itemId
+    return context.message
   }
   async send(conversationId: string, value: string, model?: string, effort?: Agent['effort'], preferredAgentId?: string, voiceReply = false, recordInput = true, planMode = false, options?: SendOptions): Promise<void> {
     const input = text(value, 100000).trim()
@@ -602,7 +628,7 @@ export class AppService extends EventEmitter {
       const task = this.queue.enqueue(workspace.path, controller.signal, lease => this.execute({ run, message, conversation, agent: runAgent, lease }, controller.signal))
         if (mode === 'discussion') {
           try { await task } finally { roundSignal?.signal.removeEventListener('abort', abortRound) }
-          roundTranscript.push(`${agent.name}: ${this.store.message(message.id)?.text || '(sem resposta)'}`)
+          roundTranscript.push(`${agent.name}: ${this.store.history(conversationId).filter(item => item.runId === run.id && item.role === 'assistant' && item.text.trim()).map(item => item.text).join('\n\n') || '(sem resposta)'}`)
         } else { tasks.push(task); roundSignal?.signal.removeEventListener('abort', abortRound) }
       }
     }
@@ -854,15 +880,15 @@ export class AppService extends EventEmitter {
         const abort = () => { runtime.off('event', done); reject(new Error('Execução interrompida.')) }
         runtime.on('event', done); signal.addEventListener('abort', abort, { once: true })
       })
-      await this.finish(context, 'completed', message.text)
-      const deliveredReply = this.store.message(message.id)
+      await this.finish(context, 'completed', context.message.text)
+      const deliveredReply = this.store.message(context.message.id)
       if (deliveredReply && context.sessionBindingKey && context.deliveredDigests) {
         const nextDigests = { ...context.deliveredDigests, [deliveredReply.id]: messageDigest(deliveredReply) }
         context.deliveredDigests = Object.fromEntries(Object.entries(nextDigests).slice(-40))
         this.store.putSessionBinding({ key: context.sessionBindingKey, threadId: run.threadId || threadId, runtime: agent.runtime, contextVersion: 1, deliveredDigests: context.deliveredDigests })
       }
     } catch (error) {
-      await this.finish(context, signal.aborted ? 'interrupted' : 'failed', message.text || (error instanceof Error ? error.message : 'Erro ao executar o agente.'))
+      await this.finish(context, signal.aborted ? 'interrupted' : 'failed', context.message.text || (error instanceof Error ? error.message : 'Erro ao executar o agente.'))
     } finally { this.contexts.delete(run.id); this.active.delete(run.id) }
   }
   private updateMessage(message: Message, status: Message['status'], value: string) {
@@ -977,6 +1003,8 @@ export class AppService extends EventEmitter {
     if (event.method === 'item/tool/call') {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (!context) { runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: 'Execução não encontrada.' }] }); return }
+      const activity = typeof params.tool === 'string' ? toolActivityText(params.tool, params.arguments || {}) : null
+      if (activity) this.addMessage(context.conversation.id, context.agent, 'activity', redactApprovalUrls(activity), 'completed', context.run.id)
       try {
         const result = await this.callTool(context, params.tool, params.arguments || {}, String(event.id ?? params.toolCallId ?? ''))
         runtime.respond(event.id, { success: true, contentItems: [{ type: 'inputText', text: typeof result === 'string' ? result : JSON.stringify(result) }] })
@@ -986,6 +1014,7 @@ export class AppService extends EventEmitter {
     if (event.method === 'item/agentMessage/delta') {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (context && typeof params.delta === 'string' && params.delta.length) {
+        this.replyFor(context, typeof params.itemId === 'string' ? params.itemId : undefined)
         const firstToken = !context.message.text
         context.message.text += params.delta
         if (firstToken) {
@@ -1001,8 +1030,14 @@ export class AppService extends EventEmitter {
     if (event.method === 'item/completed' && params.item?.type === 'agentMessage') {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (context && typeof params.item.text === 'string') {
+        const itemId = typeof params.item.id === 'string' ? params.item.id : undefined
+        let value: string = params.item.text
+        // Sem id, Pi/OpenCode/CLI entregam o texto acumulado do turno: tira o que já foi para mensagens anteriores.
+        if (!itemId && context.priorText) value = value.startsWith(context.priorText) ? value.slice(context.priorText.length).trimStart() : context.message.text || value
+        if (!value.trim()) return
+        if (itemId) this.replyFor(context, itemId)
         if (context.flushTimer) { clearTimeout(context.flushTimer); context.flushTimer = undefined }
-        context.message.text = params.item.text
+        context.message.text = value
         this.updateMessage(context.message, 'running', context.message.text)
       }
     }
@@ -1561,7 +1596,7 @@ export class AppService extends EventEmitter {
       this.updateMessage(resultMessage, 'interrupted', 'Pedido cancelado antes do início.')
     }
     const completed = this.store.runs().find(run => run.id === child.id)!
-    const result = this.store.message(resultMessage.id)?.text || ''
+    const result = this.store.message(completed.messageId)?.text || ''
     if (!this.store.delegation(delegation.id) || !this.store.conversations().some(item => item.id === parent.conversation.id)) throw new Error('A conversa de origem foi excluída; o resultado não foi republicado nela.')
     delegation.status = completed.status; delegation.result = completed.status === 'completed' ? result : ''; delegation.error = completed.status === 'completed' ? '' : result || `O pedido terminou como ${completed.status}.`; delegation.updatedAt = new Date().toISOString(); this.store.putDelegation(delegation)
     const finalOrigin = { ...runningOrigin, status: completed.status, text: completed.status === 'completed' ? `Pedido concluído por ${recipient.name}. Resultado disponível na conversa relacionada.\n\n${result}` : `Pedido para ${recipient.name}: ${task}\n${completed.status === 'interrupted' ? 'Cancelado.' : `Falhou: ${delegation.error}`}` }

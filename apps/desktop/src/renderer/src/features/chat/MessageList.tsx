@@ -2,6 +2,8 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
 import { MessageItem } from './MessageItem'
+import { ActivitySummary } from './ActivitySummary'
+import { chatRows } from './chat-rows'
 import { PolitronToolApproval } from './PolitronToolApproval'
 import { CompletedFileReview } from '../diff/CompletedFileReview'
 
@@ -13,7 +15,7 @@ const STICK_TO_BOTTOM_PX = 96
 const ESTIMATED_MESSAGE_HEIGHT = 180
 const OVERSCAN_PX = 900
 
-export function MessageList({ messages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true, canCancelQueued = false }: {
+export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true, canCancelQueued = false }: {
   messages: Message[]
   fileChanges: FileChange[]
   /** Run cuja revisão já aparece acima do composer; não é repetido no histórico. */
@@ -33,6 +35,22 @@ export function MessageList({ messages, fileChanges, reviewRunId = null, approva
   canApprove?: boolean
   canCancelQueued?: boolean
 }) {
+  const messages = useMemo(() => chatRows(sourceMessages), [sourceMessages])
+  // Por run: se ainda trabalha, duração aproximada (primeira a última mensagem), última linha (recebe as aprovações) e se tem atividade.
+  const runInfo = useMemo(() => {
+    const result = new Map<string, { active: boolean; start: number; end: number; lastRowId: string; hasActivity: boolean }>()
+    for (const message of messages) {
+      if (!message.runId) continue
+      const time = Date.parse(message.createdAt)
+      const info = result.get(message.runId) || { active: false, start: time, end: time, lastRowId: message.id, hasActivity: false }
+      const last = message.activities?.at(-1) || message
+      info.active ||= message.role === 'assistant' && ['queued', 'running', 'waiting'].includes(message.status)
+      info.start = Math.min(info.start, time); info.end = Math.max(info.end, Date.parse(last.createdAt))
+      info.lastRowId = message.id; info.hasActivity ||= !!message.activities
+      result.set(message.runId, info)
+    }
+    return result
+  }, [messages])
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(800)
@@ -231,11 +249,15 @@ export function MessageList({ messages, fileChanges, reviewRunId = null, approva
       {visibleMessages.map(message => {
         const agent = agentOf(message.agentId)
         const relatedConversation = message.relatedConversationId ? conversationsById.get(message.relatedConversationId) : undefined
-        const runApprovals = message.runId ? approvalsByRun.get(message.runId) || [] : []
+        const run = message.runId ? runInfo.get(message.runId) : undefined
+        // Aprovações do run aparecem uma vez, sob a última linha dele.
+        const runApprovals = message.runId && run?.lastRowId === message.id ? approvalsByRun.get(message.runId) || [] : []
         const appliedChanges = appliedByMessage.get(message.id)
         // A revisão fica dentro do wrapper medido pelo ResizeObserver: expandir o diff atualiza a virtualização.
         return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className={`mb-6 space-y-2${enteringMessageId === message.id ? ' chat-message-enter' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && enteringMessageId === message.id) setEnteringMessageId(null) }}>
-          <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} canCancelQueued={canCancelQueued} />
+          {message.activities
+            ? <ActivitySummary activities={message.activities} running={!!run?.active} durationMs={run && Number.isFinite(run.end - run.start) ? run.end - run.start : undefined} />
+            : <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} canCancelQueued={canCancelQueued} quietProgress={!!run?.hasActivity} />}
           {appliedChanges && <CompletedFileReview changes={appliedChanges} label={INLINE_REVIEW_LABEL} />}
           {runApprovals.map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} canApprove={canApprove} />)}
 

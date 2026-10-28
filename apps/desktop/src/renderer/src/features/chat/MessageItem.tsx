@@ -73,7 +73,7 @@ function AttachmentPreview({ conversationId, attachment, onNotice }: { conversat
   </figure>
 }
 
-export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice, canSpeak = true, canCancelQueued = false }: {
+export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice, canSpeak = true, canCancelQueued = false, quietProgress = false }: {
   message: Message
   agent?: Agent
   relatedConversation: Conversation | undefined
@@ -81,6 +81,8 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   onNotice: (value: string) => void
   canSpeak?: boolean
   canCancelQueued?: boolean
+  /** O run já mostra a linha de atividade: não repete "está trabalhando". */
+  quietProgress?: boolean
 }) {
   const [audioState, setAudioState] = useState<'idle' | 'loading' | 'speaking'>('idle')
   const [cancelingQueued, setCancelingQueued] = useState(false)
@@ -120,7 +122,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
           {canSpeak && message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 text-muted-foreground" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz configurada no host." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
         </span>
       </MessageHeader>}
-      {!human && message.role === 'assistant' && <RunProgress status={message.status} agentName={agent?.name || message.author} />}
+      {!human && message.role === 'assistant' && !(quietProgress && message.status === 'running') && <RunProgress status={message.status} agentName={agent?.name || message.author} />}
       {human ? <><PastaMessageBubble from="user" status={message.status === 'failed' ? 'failed' : message.status === 'queued' || message.status === 'running' ? 'sending' : 'sent'} className="whitespace-pre-wrap">{message.text}</PastaMessageBubble>{message.status === 'failed' && <span className="text-xs text-destructive">Falha no envio da instrução.</span>}
         {message.attachments?.length ? <div className="mt-2 flex max-w-full flex-wrap gap-2">{message.attachments.map(attachment => <AttachmentPreview key={attachment.id} conversationId={message.conversationId} attachment={attachment} onNotice={onNotice} />)}</div> : null}
         {/* Ações do usuário aparecem ao passar o mouse ou focar; em telas sem hover ficam sempre visíveis. */}
@@ -145,6 +147,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   && previous.message.delegationId === next.message.delegationId
   && sameAttachments(previous.message.attachments, next.message.attachments)
   && previous.canCancelQueued === next.canCancelQueued
+  && previous.quietProgress === next.quietProgress
   && previous.agent?.id === next.agent?.id
   && previous.agent?.name === next.agent?.name
   && previous.agent?.alias === next.agent?.alias

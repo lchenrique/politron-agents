@@ -171,3 +171,38 @@ describe('identificação de agentes no chat', () => {
     expect(screen.queryByRole('img', { name: /Avatar de Lyra/ })).not.toBeInTheDocument()
   })
 })
+
+describe('linha de atividade do agente', () => {
+  const at = (seconds: number) => new Date(Date.UTC(2026, 9, 28, 12, 0, seconds)).toISOString()
+  const reply = (id: string, text: string, status: Message['status'], seconds: number): Message => ({ ...message, id, text, status, runId: 'run-9', createdAt: at(seconds) })
+  const act = (id: string, text: string, seconds: number): Message => ({ ...message, id, role: 'activity', text, status: 'completed', runId: 'run-9', createdAt: at(seconds) })
+  const browser = (n: number) => Array.from({ length: n }, (_, index) => act(`a${index}`, `Navegador real · js · alvo https://example.com/\nawait tab.goto(${index})`, 2 + index))
+  const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+
+  it('enquanto roda, mostra uma única linha no presente e não repete o "está trabalhando"', () => {
+    const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...browser(6)]))
+    expect(screen.getByRole('status')).toHaveTextContent('Usando seu navegador real (6 ações)')
+    expect(container).not.toHaveTextContent('await tab.goto')
+    expect(container).not.toHaveTextContent('está trabalhando')
+    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(2)
+  })
+
+  it('ao terminar, resume no passado recolhido, expande a lista e mantém a resposta final abaixo', () => {
+    const { container } = render(list([reply('pre', 'Vou abrir o site.', 'completed', 0), ...browser(6), act('t1', 'Terminal · npm test', 30), act('t2', 'Terminal · ls', 35), reply('final', 'Pronto.', 'completed', 38)]))
+    const summary = screen.getByRole('button', { name: /Usou o navegador real \(6 ações\) · executou 2 comandos · 38s/ })
+    expect(screen.queryByRole('list', { name: 'Ações do agente' })).not.toBeInTheDocument()
+    fireEvent.click(summary)
+    const items = within(screen.getByRole('list', { name: 'Ações do agente' })).getAllByRole('listitem')
+    expect(items).toHaveLength(8)
+    expect(items[6]).toHaveTextContent('Terminal · npm test')
+    expect([...container.querySelectorAll('[data-message-id]')].map(node => node.getAttribute('data-message-id'))).toEqual(['pre', 'a0', 'final'])
+  })
+
+  it('mostra aprovações do run uma única vez, sob a última linha, e oculta a resposta vazia concluída', () => {
+    const pending = { ...approval, runId: 'run-9' }
+    const { container } = render(list([reply('empty', '', 'completed', 0), ...browser(2), reply('final', 'Confirma?', 'waiting', 5)], [pending]))
+    expect(screen.getAllByRole('region', { name: 'Aprovação de ferramenta' })).toHaveLength(1)
+    expect(within(container.querySelector<HTMLElement>('[data-message-id="final"]')!).getByRole('region', { name: 'Aprovação de ferramenta' })).toBeInTheDocument()
+    expect(container.querySelector('[data-message-id="empty"]')).toBeNull()
+  })
+})

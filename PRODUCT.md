@@ -69,6 +69,7 @@ No navegador, o objetivo é que os agentes usem o Browser visível do Politron, 
 - Abrir perfil, instruções, modelo e recursos do bot por ações próprias, preservando a conversa como tela principal.
 - Grupos são uma opção explícita. Pastas, terminal e Computer Use aparecem conforme a necessidade do trabalho.
 - Conversas diretas servem também para perguntas, ideias e análise; o usuário não precisa formular uma tarefa de desenvolvimento para começar.
+- O trabalho do agente aparece como uma única linha de atividade: o passo atual no presente enquanto roda e, ao terminar, um resumo recolhido no passado (por exemplo, "Usou o navegador real (6 ações) · executou 2 comandos · 38s") que expande a lista. O preâmbulo fica acima, a resposta final nasce como mensagem nova abaixo do trabalho e `run.messageId` aponta para a última resposta do run. Validado por testes automatizados (28/10/2026); não verificado no app rodando com Codex/Claude reais.
 
 ### Projetos e alterações visíveis
 
