@@ -115,7 +115,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     className={'ds-nav-item group flex items-center gap-1 ' + (pinnedChief ? 'bg-warning-soft/60' : '')}
     onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}
   >
-    <button onClick={() => void onOpenAgent(agent)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Button variant="ghost" onClick={() => void onOpenAgent(agent)} className="flex h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal rounded-md px-2 py-1 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Avatar agent={agent} size="xs" state={agentStates[agent.id] || 'idle'} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-1 truncate text-xs font-semibold">{agent.name}{agent.temporary && <span className="rounded bg-muted px-1 text-[9px] font-normal text-muted-foreground" title={agent.temporaryStatus === 'working' ? 'Boo temporário em execução' : 'Boo temporário'}>Temp</span>}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 fill-warning/20 text-warning" />}</span>
@@ -123,7 +123,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </span>
       <AgentPresence state={agentStates[agent.id] || 'idle'} />
       {isFavorite('agent', agent.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
-    </button>
+    </Button>
     <DropdownMenu open={openAgentMenuId === agent.id} onOpenChange={open => setOpenAgentMenuId(open ? agent.id : null)}>
       <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-6 shrink-0 text-muted-foreground opacity-70 hover:opacity-100" aria-label={'Ações de ' + agent.name}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -143,13 +143,13 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
 
   const conversationButton = (conversation: Conversation) =>
     <div key={conversation.id} data-active={conversation.id === selected?.id} className="ds-nav-item group flex items-center gap-1" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
-      <button onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring">
+      <Button variant="ghost" onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-md px-1.5 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
         <span className="flex size-5 shrink-0 items-center justify-center text-faint-foreground">{conversation.agentIds.length > 1 ? <Users className="size-3.5" /> : <MessageSquarePlus className="size-3.5" />}</span>
         <span className="min-w-0 flex-1 truncate text-[12px]" title={conversation.name}>{conversation.name}</span>
         {isFavorite('conversation', conversation.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
         {needsAttention(conversation.id) && <span aria-label="Aguardando aprovação" className="size-2 shrink-0 rounded-full bg-warning" />}
         {!!unreadCounts[conversation.id] && <span aria-label={unreadCounts[conversation.id] + ' não lidas'} className="ds-count" data-tone="primary">{unreadCounts[conversation.id] > 9 ? '9+' : unreadCounts[conversation.id]}</span>}
-      </button>
+      </Button>
       <DropdownMenu open={openConversationMenuId === conversation.id} onOpenChange={open => setOpenConversationMenuId(open ? conversation.id : null)}>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-6 shrink-0 text-muted-foreground opacity-60 hover:opacity-100" aria-label={'Ações da conversa ' + conversation.name}><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -169,14 +169,14 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const children = childWorkspaces(workspace.id)
     return <div key={workspace.id} className={depth ? 'ml-4 border-l border-border/40 pl-2' : ''}>
       <div data-active={activeWorkspaceId === workspace.id} className="ds-nav-item group flex items-center gap-0.5 px-0.5" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
-        <button className="flex size-6 shrink-0 items-center justify-center rounded text-faint-foreground hover:text-foreground" aria-label={isCollapsed ? `Expandir ${workspace.name}` : `Recolher ${workspace.name}`} onClick={() => toggle(workspace.id)}>{isCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}</button>
-        <button onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded px-1 text-left text-[12.5px] font-medium text-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
+        <Button variant="ghost" size="icon" className="flex size-6 shrink-0 rounded text-faint-foreground hover:bg-transparent hover:text-foreground" aria-label={isCollapsed ? `Expandir ${workspace.name}` : `Recolher ${workspace.name}`} onClick={() => toggle(workspace.id)}>{isCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}</Button>
+        <Button variant="ghost" onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1 text-left text-[12.5px] font-medium text-foreground/90 hover:bg-transparent hover:text-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
           {workspace.kind === 'worktree' ? <GitBranch className="size-3.5 shrink-0 text-muted-foreground" /> : workspace.defaultAgentIds.length > 1 ? <Users className="size-3.5 shrink-0 text-muted-foreground" /> : <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />}
           <span className="min-w-0 flex-1 truncate">{workspace.kind === 'worktree' ? workspace.branch || workspace.name : workspace.name}</span>
           {workspaceNeedsAttention(workspace.id) && <span aria-label="Workspace precisa de atenção" className="size-1.5 shrink-0 rounded-full bg-warning" />}
           {workspace.defaultAgentIds.length > 1 && <span className="text-[10px] font-normal text-faint-foreground">{workspace.defaultAgentIds.length} bots</span>}
           {workspace.kind === 'worktree' && !!workspace.changes && <span className="text-[10px] font-normal text-warning">{workspace.changes} alter.</span>}
-        </button>
+        </Button>
         <Button variant="ghost" size="icon" disabled={!canChat} className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Nova conversa em ${workspace.name}`} title="Nova conversa neste projeto" onClick={() => void onStartConversation(workspace.id)}><Plus className="size-3.5" /></Button>
         <Button variant="ghost" size="icon" className={`size-6 shrink-0 ${isFavorite('workspace', workspace.id) ? 'text-warning' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`} aria-label={isFavorite('workspace', workspace.id) ? `Remover ${workspace.name} dos favoritos` : `Favoritar ${workspace.name}`} title={isFavorite('workspace', workspace.id) ? 'Remover dos favoritos' : 'Favoritar projeto'} onClick={() => toggleFavorite(favoriteKey('workspace', workspace.id))}><Star className="size-3.5" fill={isFavorite('workspace', workspace.id) ? 'currentColor' : 'none'} /></Button>
         <DropdownMenu open={openWorkspaceMenuId === workspace.id} onOpenChange={open => setOpenWorkspaceMenuId(open ? workspace.id : null)}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Ações de ${workspace.name}`}><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
@@ -200,7 +200,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       {!isCollapsed && <div className="ml-6 space-y-0.5">
         {children.map(child => workspaceNode(child, depth + 1))}
         {conversations.map(conversationButton)}
-        {!!hiddenSessions && <button type="button" onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="flex w-full items-center gap-1 rounded px-2 py-1 text-[10px] text-muted-foreground hover:bg-accent/40 hover:text-foreground">Ver mais {hiddenSessions} sessões</button>}
+        {!!hiddenSessions && <Button type="button" variant="ghost" onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="flex h-auto w-full justify-start gap-1 rounded px-2 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent/40 hover:text-foreground">Ver mais {hiddenSessions} sessões</Button>}
         {!conversations.length && !children.length && <p className="px-2 py-1 text-[10px] text-muted-foreground">Nenhuma conversa ainda.</p>}
       </div>}
     </div>
@@ -251,16 +251,16 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </div>}
     </header>
     {onOpenHome && <nav aria-label="Trabalho" className="space-y-px px-2.5 py-1.5">
-      <button type="button" aria-current={view === 'home' ? 'page' : undefined} onClick={() => onOpenHome('home')} className="ds-nav-item flex h-9 w-full items-center gap-2 px-2 text-left text-[12.5px] font-medium">
+      <Button type="button" variant={null} size={null} aria-current={view === 'home' ? 'page' : undefined} onClick={() => onOpenHome('home')} className="ds-nav-item flex h-9 w-full items-center justify-start gap-2 rounded-[calc(var(--radius)-1px)] px-2 text-left text-[12.5px] font-medium focus-visible:ring-0">
         {chiefAgent ? <Avatar agent={chiefAgent} size="xs" state={agentStates[chiefAgent.id] || 'idle'} /> : <span className="flex size-[30px] items-center justify-center"><LayoutDashboard className="size-4" /></span>}
         <span className="min-w-0 flex-1 truncate">Central {chiefAgent ? `do ${chiefAgent.name}` : 'do Chief'}</span>
         {attentionCount > 0 && <span aria-label={`${attentionCount} pendências`} className="ds-count" data-tone="attention">{attentionCount > 9 ? '9+' : attentionCount}</span>}
-      </button>
-      {!browserMode && <button type="button" aria-current={view === 'routines' ? 'page' : undefined} onClick={() => onOpenHome('routines')} className="ds-nav-item flex h-9 w-full items-center gap-2 px-2 text-left text-[12.5px] font-medium">
+      </Button>
+      {!browserMode && <Button type="button" variant={null} size={null} aria-current={view === 'routines' ? 'page' : undefined} onClick={() => onOpenHome('routines')} className="ds-nav-item flex h-9 w-full items-center justify-start gap-2 rounded-[calc(var(--radius)-1px)] px-2 text-left text-[12.5px] font-medium focus-visible:ring-0">
         <span className="flex size-[30px] items-center justify-center"><CalendarClock className="size-4" /></span>
         <span className="min-w-0 flex-1 truncate">Rotinas</span>
         {!!snapshot.routines?.filter(item => item.enabled).length && <span className="ds-count">{snapshot.routines.filter(item => item.enabled).length}</span>}
-      </button>}
+      </Button>}
       {!browserMode && <div className="mt-0.5"><HostSelector /></div>}
     </nav>}
     {!browserMode && !onOpenHome && <div className="px-2.5 py-1.5"><HostSelector /></div>}

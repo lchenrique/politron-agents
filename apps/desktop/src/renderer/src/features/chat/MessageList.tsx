@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
 import { MessageItem } from './MessageItem'
@@ -241,9 +242,9 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
     setHasNewMessages(false)
   }
   return <div ref={scrollRef} onScroll={onScroll} style={{ overflowAnchor: 'none' }} className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
-    {hasNewerMessages && <div className="sticky top-0 z-10 mx-auto mb-3 flex justify-center"><button type="button" onClick={onReturnToLatest} className="rounded-full border border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-sm">Voltar às mensagens recentes</button></div>}
-    {hasOlderMessages && <div className="mx-auto mb-5 max-w-3xl text-center"><button type="button" disabled={loadingOlder} onClick={() => void loadOlder()} className="rounded-md border border-border/70 bg-card/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50">{loadingOlder ? 'Carregando…' : 'Carregar mensagens anteriores'}</button></div>}
-    {hasNewMessages && <div className="sticky bottom-2 z-10 mx-auto -mb-9 flex justify-center"><button type="button" onClick={goToLatest} className="rounded-full border border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-md">Novas mensagens · Ir para o fim</button></div>}
+    {hasNewerMessages && <div className="sticky top-0 z-10 mx-auto mb-3 flex justify-center"><Button type="button" variant="outline" onClick={onReturnToLatest} className="h-auto rounded-full border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-sm hover:border-primary/30 hover:bg-background/95">Voltar às mensagens recentes</Button></div>}
+    {hasOlderMessages && <div className="mx-auto mb-5 max-w-3xl text-center"><Button type="button" variant="outline" disabled={loadingOlder} onClick={() => void loadOlder()} className="h-auto rounded-md border-border/70 bg-card/60 px-3 py-1.5 text-xs font-normal text-muted-foreground shadow-none transition-colors hover:border-border/70 hover:bg-accent disabled:opacity-50">{loadingOlder ? 'Carregando…' : 'Carregar mensagens anteriores'}</Button></div>}
+    {hasNewMessages && <div className="sticky bottom-2 z-10 mx-auto -mb-9 flex justify-center"><Button type="button" variant="outline" onClick={goToLatest} className="h-auto rounded-full border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-md hover:border-primary/30 hover:bg-background/95">Novas mensagens · Ir para o fim</Button></div>}
     <div className="mx-auto flex max-w-3xl flex-col gap-0">
       {startIndex > 0 && <div aria-hidden="true" style={{ height: offsets[startIndex] }} />}
       {visibleMessages.map(message => {

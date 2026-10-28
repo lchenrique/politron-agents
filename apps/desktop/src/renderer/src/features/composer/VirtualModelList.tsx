@@ -1,6 +1,8 @@
 import { useDeferredValue, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { ModelChoice } from './model-options'
 
@@ -72,11 +74,11 @@ export function VirtualModelList({ models, providerName, value, search, onSearch
   return <div>
     <div className="flex items-center gap-2 border-b px-3">
       <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-      <input ref={searchRef} role="combobox" aria-label="Buscar modelos" aria-expanded="true"
+      <Input ref={searchRef} role="combobox" aria-label="Buscar modelos" aria-expanded="true"
         aria-controls={listId} aria-activedescendant={active}
         type="search" autoComplete="off" spellCheck={false} value={search}
         onChange={event => onSearchChange(event.target.value)} onKeyDown={onKeyDown}
-        placeholder="Buscar modelos…" className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+        placeholder="Buscar modelos…" className="h-10 w-auto min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-sm shadow-none outline-none placeholder:text-muted-foreground focus-visible:ring-0" />
       {deferredSearch && <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{filtered.length}</span>}
     </div>
     {filtered.length === 0
@@ -89,11 +91,11 @@ export function VirtualModelList({ models, providerName, value, search, onSearch
               const id = model.id || model.name
               const selected = id === value
               const disabled = model.enabled === false
-              return <button key={row.key} id={`${listId}-option-${row.index}`} type="button" role="option"
+              return <Button key={row.key} id={`${listId}-option-${row.index}`} type="button" variant="ghost" role="option"
                 aria-selected={selected} aria-disabled={disabled} disabled={disabled}
                 title={model.description || model.id} onClick={() => onChoose(id)}
                 onMouseEnter={() => setActiveIndex(row.index)}
-                className={cn('absolute left-0 flex w-full items-center gap-2 rounded-md px-2.5 text-left text-sm outline-none',
+                className={cn('absolute left-0 flex h-auto w-full justify-start gap-2 rounded-md px-2.5 py-0 text-left text-sm font-normal text-inherit outline-none',
                   'hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground',
                   'disabled:pointer-events-none disabled:opacity-50',
                   activeIndex === row.index && 'bg-accent text-accent-foreground')}
@@ -103,7 +105,7 @@ export function VirtualModelList({ models, providerName, value, search, onSearch
                   <span className="truncate">{model.name}</span>
                   {model.id && <span className="truncate text-xs text-muted-foreground">{model.id.replace(/^[^:]+:/, '')}</span>}
                 </span>
-              </button>
+              </Button>
             })}
           </div>
         </div>}
