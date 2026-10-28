@@ -144,7 +144,9 @@ export type WorkspaceEvent =
   | { type: 'mission'; mission: Mission }
 export interface AppAPI {
   snapshot(): Promise<Snapshot>
-  settingsPreferences(): Promise<{ canWrite: boolean; computerUse: boolean; approvalMode: Agent['approvalMode']; terminalEnabled: boolean }>
+  settingsPreferences(): Promise<{ canWrite: boolean; computerUse: boolean; approvalMode: Agent['approvalMode']; terminalEnabled: boolean; externalBrowserAlways?: boolean }>
+  /** Somente Desktop: autoriza o navegador real para todas as conversas. */
+  saveExternalBrowserAlways?(enabled: boolean): Promise<void>
   saveAgent(input: Partial<Agent>): Promise<Agent>
   saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>>): Promise<Agent>
   saveTerminalAccess(enabled: boolean): Promise<void>

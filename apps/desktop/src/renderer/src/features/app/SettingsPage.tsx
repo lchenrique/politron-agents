@@ -144,6 +144,8 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   const [saving, setSaving] = useState(false)
   const [assistantAccess, setAssistantAccess] = useState({ canWrite: true, computerUse: false, approvalMode: 'ask' as Agent['approvalMode'] })
   const [terminalEnabled, setTerminalEnabled] = useState(true)
+  const [externalBrowserAlways, setExternalBrowserAlways] = useState(false)
+  const [externalBrowserFeedback, setExternalBrowserFeedback] = useState('')
   const [terminalFeedback, setTerminalFeedback] = useState('')
   const [openRouterKey, setOpenRouterKey] = useState('')
   const [decisionStatus, setDecisionStatus] = useState<OpenRouterDecisionStatus>({ configured: false, modelId: 'typesafe/jev-1.13' })
@@ -154,7 +156,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   useEffect(() => { if (!open) { setApiKey(''); setOpenRouterKey('') } }, [open])
   useEffect(() => { if (!open || (section !== 'assistente' && section !== 'ferramentas')) return
     let active = true
-    void window.appAPI.settingsPreferences().then(value => { if (!active) return; setAssistantAccess({ canWrite: value.canWrite ?? true, computerUse: value.computerUse, approvalMode: value.approvalMode }); setTerminalEnabled(value.terminalEnabled) }).catch(error => { if (active) setFeedback(String(error)) })
+    void window.appAPI.settingsPreferences().then(value => { if (!active) return; setAssistantAccess({ canWrite: value.canWrite ?? true, computerUse: value.computerUse, approvalMode: value.approvalMode }); setTerminalEnabled(value.terminalEnabled); setExternalBrowserAlways(value.externalBrowserAlways === true) }).catch(error => { if (active) setFeedback(String(error)) })
     return () => { active = false }
   }, [open, section])
   useEffect(() => { if (!open || section !== 'provedores') return; let active = true
@@ -176,6 +178,11 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
     setAssistantAccess(next); setAssistantFeedback('')
     try { await window.appAPI.saveAssistantPreferences(next); setAssistantFeedback('Permissões do Assistente salvas.') }
     catch (error) { setAssistantFeedback(error instanceof Error ? error.message : 'Não foi possível salvar as permissões.') }
+  }
+  const updateExternalBrowserAlways = async (enabled: boolean) => {
+    setExternalBrowserAlways(enabled); setExternalBrowserFeedback('')
+    try { await window.appAPI.saveExternalBrowserAlways?.(enabled); setExternalBrowserFeedback(enabled ? 'Navegador real liberado para todos os agentes.' : 'Navegador real só com autorização por conversa.') }
+    catch (error) { setExternalBrowserAlways(!enabled); setExternalBrowserFeedback(error instanceof Error ? error.message : 'Não foi possível salvar.') }
   }
   const updateTerminalAccess = async (enabled: boolean) => {
     setTerminalEnabled(enabled); setTerminalFeedback('')
@@ -264,6 +271,10 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
             <label className="flex items-start gap-3 text-sm"><Checkbox checked={terminalEnabled} onCheckedChange={checked => void updateTerminalAccess(checked === true)} className="mt-0.5" /><span><span className="font-medium">Habilitar terminal para todos os agentes</span><span className="mt-0.5 block text-xs text-muted-foreground">A alteração vale para o Assistente padrão e todos os agentes cadastrados.</span></span></label>
             <p role="status" className="text-xs text-muted-foreground">{terminalFeedback || (terminalEnabled ? 'Terminal habilitado para todos os agentes.' : 'Terminal desabilitado.')}</p>
           </Field>
+          {window.appAPI.saveExternalBrowserAlways && <Field title="Navegador real · todos os agentes" description="Seu Brave/Chrome pela extensão oficial. Com isto marcado, agentes com uso do computador usam o navegador real sem pedir autorização em cada conversa, com acesso aos sites em que você está logado. Cada ação fica registrada na conversa.">
+            <label className="flex items-start gap-3 text-sm"><Checkbox checked={externalBrowserAlways} onCheckedChange={checked => void updateExternalBrowserAlways(checked === true)} className="mt-0.5" /><span className="font-medium">Permitir que agentes usem meu navegador real</span></label>
+            <p role="status" className="text-xs text-muted-foreground empty:hidden">{externalBrowserFeedback}</p>
+          </Field>}
         </>}
         {section === 'provedores' && <>
           <ProvidersSection />

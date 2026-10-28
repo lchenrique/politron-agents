@@ -184,8 +184,10 @@ describe('navegador da plataforma', () => {
       browser.navigate('https://example.com/')
       const first = browser.acquireForAgent(owner); browser.setBounds(bounds, true); await first
       browser.revokeSharing(true)
+      expect(browser.state()).toMatchObject({ sharing: null, paused: owner })
       await expect(browser.acquireForAgent(owner)).rejects.toThrow(/bloqueado pelo usuário/)
       browser.setSharingContext(owner); browser.grantSharing(owner)
+      expect(browser.state()).toMatchObject({ sharing: owner, paused: null })
       browser.revokeSharing()
       await browser.acquireForAgent(owner)
       expect(browser.sharingState()).toEqual(owner)

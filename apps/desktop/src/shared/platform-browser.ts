@@ -1,6 +1,6 @@
 /** Navegador da plataforma para o usuário. Separado do navegador automatizado dos agentes. */
 export interface PlatformBrowserOwner { workspaceId: string; conversationId: string; agentId: string }
-export interface PlatformBrowserState { url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error: string | null; sharing?: PlatformBrowserOwner | null }
+export interface PlatformBrowserState { url: string; title: string; loading: boolean; canGoBack: boolean; canGoForward: boolean; error: string | null; sharing?: PlatformBrowserOwner | null; paused?: PlatformBrowserOwner | null }
 /** Navegador externo do usuário pela extensão oficial do provider: consentimento por conversa e agente e peças ausentes da ponte. */
 export interface ExternalBrowserStatus { granted: boolean; problems: string[] }
 export interface PlatformBrowserBounds { x: number; y: number; width: number; height: number }

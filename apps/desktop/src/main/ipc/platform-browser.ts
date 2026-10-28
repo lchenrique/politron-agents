@@ -135,7 +135,7 @@ export class PlatformBrowser {
   state(): PlatformBrowserState | null {
     const contents = this.view?.webContents
     if (!contents || contents.isDestroyed()) return null
-    return { url: contents.getURL(), title: contents.getTitle(), loading: contents.isLoading(), canGoBack: contents.navigationHistory.canGoBack(), canGoForward: contents.navigationHistory.canGoForward(), error: this.error, sharing: this.sharingState() }
+    return { url: contents.getURL(), title: contents.getTitle(), loading: contents.isLoading(), canGoBack: contents.navigationHistory.canGoBack(), canGoForward: contents.navigationHistory.canGoForward(), error: this.error, sharing: this.sharingState(), paused: !this.sharing && this.context && this.blocked.has(ownerKey(this.context)) ? { ...this.context } : null }
   }
   setBounds(bounds: unknown, visible: unknown): void {
     if (!this.view) return
@@ -195,7 +195,7 @@ export class PlatformBrowser {
     const current = this.sharing ?? this.context
     if (byUser && current) this.blocked.add(ownerKey(current))
     this.generation++
-    if (this.sharing) { this.sharing = null; this.publish() }
+    if (this.sharing || byUser) { this.sharing = null; this.publish() }
   }
   private checkSharing(owner: PlatformBrowserOwner, generation?: number): Electron.WebContents {
     const contents = this.view?.webContents, host = this.host()

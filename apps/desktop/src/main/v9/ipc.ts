@@ -32,6 +32,7 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   })
   invokeDesktopOnly('externalBrowserStatus', (owner) => service.externalBrowserStatus(owner))
   invokeDesktopOnly('setExternalBrowserGrant', (owner, enabled) => service.setExternalBrowserGrant(owner, enabled === true))
+  invokeDesktopOnly('saveExternalBrowserAlways', enabled => service.saveExternalBrowserAlways(enabled))
   invoke('snapshot', () => service.snapshot())
   invoke('settingsPreferences', () => service.settingsPreferences())
   invoke('saveAgent', (input) => service.saveAgent(input))

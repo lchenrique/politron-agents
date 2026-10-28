@@ -260,6 +260,15 @@ export class WorkspaceStore {
     if (typeof enabled !== 'boolean') throw new Error('A permissão global de terminal precisa ser booleana.')
     this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('terminal_enabled', String(enabled))
   }
+  /** Autorização global do navegador real: vale para todas as conversas e agentes com uso do computador. */
+  externalBrowserAlways(): boolean {
+    const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get('external_browser_always') as { value: string } | undefined
+    return row?.value === 'true'
+  }
+  saveExternalBrowserAlways(enabled: boolean): void {
+    if (typeof enabled !== 'boolean') throw new Error('A permissão global do navegador real precisa ser booleana.')
+    this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('external_browser_always', String(enabled))
+  }
   /** Consentimento do navegador externo (extensão oficial), por conversa e agente; ausência significa não autorizado. */
   externalBrowserGrant(conversationId: string, agentId: string): boolean {
     return !!this.db.prepare('SELECT 1 FROM v9_meta WHERE key=?').get(`external_browser:${conversationId}:${agentId}`)

@@ -49,6 +49,7 @@ const appAPI: AppAPI = {
   saveAgent: (input) => ipcRenderer.invoke('v9:saveAgent', input),
   saveAssistantPreferences: (input) => ipcRenderer.invoke('v9:saveAssistantPreferences', input),
   saveTerminalAccess: (enabled) => ipcRenderer.invoke('v9:saveTerminalAccess', enabled),
+  saveExternalBrowserAlways: (enabled) => ipcRenderer.invoke('v9:saveExternalBrowserAlways', enabled),
   saveConversation: (input) => ipcRenderer.invoke('v9:saveConversation', input),
   saveWorkspace: (input) => ipcRenderer.invoke('v9:saveWorkspace', input),
   createWorktree: (input) => ipcRenderer.invoke('v9:createWorktree', input),

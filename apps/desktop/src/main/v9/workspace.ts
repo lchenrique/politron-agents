@@ -83,7 +83,7 @@ export class AppService extends EventEmitter {
   externalBrowserStatus(owner: PlatformBrowserOwner): ExternalBrowserStatus {
     const valid = [owner?.workspaceId, owner?.conversationId, owner?.agentId].every(value => typeof value === 'string' && !!value && value.length <= 200)
     if (!valid) throw new Error('Dados inválidos para o navegador externo.')
-    return { granted: this.canShareBrowser(owner) && this.store.externalBrowserGrant(owner.conversationId, owner.agentId), problems: this.externalBrowserBridge.probe() }
+    return { granted: this.canShareBrowser(owner) && (this.store.externalBrowserAlways() || this.store.externalBrowserGrant(owner.conversationId, owner.agentId)), problems: this.externalBrowserBridge.probe() }
   }
   setExternalBrowserGrant(owner: PlatformBrowserOwner, enabled: boolean): ExternalBrowserStatus {
     this.externalBrowserStatus(owner)
@@ -215,7 +215,8 @@ export class AppService extends EventEmitter {
     return { mimeType: file.mimeType, bytes: new Uint8Array(await fs.readFile(file.path)) }
   }
   // Small read for Settings; avoid materializing conversations, runs and file changes.
-  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, terminalEnabled: this.store.terminalEnabled() } }
+  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, terminalEnabled: this.store.terminalEnabled(), externalBrowserAlways: this.store.externalBrowserAlways() } }
+  saveExternalBrowserAlways(enabled: boolean) { this.store.saveExternalBrowserAlways(enabled); this.emitEvent({ type: 'changed' }) }
   private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : name === 'antigravity' ? this.antigravityRuntime : this.runtime }
   /** Usa o inventário validado na inicialização ou atualizado manualmente; envio não varre CLI. */
   setCachedModelResolver(resolver: (runtime: Agent['runtime']) => Promise<Model[]>): void { this.cachedModels = resolver }
