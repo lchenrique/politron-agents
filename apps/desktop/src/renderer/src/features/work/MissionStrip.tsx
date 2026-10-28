@@ -13,7 +13,7 @@ export function MissionStrip({ mission, runs, approvals, onNotice }: { mission: 
   return <section aria-label={`Missão: ${mission.title}`} className={cn('border-b border-border bg-muted/40', phase === 'waiting' && 'bg-warning-soft/60')}>
     <div className="flex items-center gap-3 px-4 py-2">
       <Target aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      <Button type="button" variant="ghost" aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex h-auto min-w-0 flex-1 justify-start gap-3 whitespace-normal rounded p-0 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Button type="button" variant="ghost" size={null} aria-expanded={open} onClick={() => setOpen(value => !value)} className="flex h-auto min-w-0 flex-1 justify-start gap-3 whitespace-normal rounded p-0 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2"><span className="truncate text-xs font-medium">{mission.title}</span><PhaseLabel phase={phase} className="shrink-0" /></span>
           <span className="block truncate text-[11px] text-muted-foreground">{current ? current.title : mission.updates.at(-1)?.text}</span>

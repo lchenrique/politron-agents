@@ -105,8 +105,8 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   // Durante o streaming o texto ainda está incompleto; copiar só depois que a resposta assenta.
   const canCopy = !!message.text.trim() && (human || (message.status !== 'running' && message.status !== 'waiting'))
   if (message.role === 'activity') return <Trace role="status" className="my-1.5 max-w-3xl"><TraceLine status={message.status === 'running' ? 'running' : message.status === 'failed' ? 'error' : message.status === 'queued' ? 'pending' : 'complete'}><TraceTitle>{message.text}</TraceTitle></TraceLine>
-    {relatedConversation && <Button variant="link" onClick={() => onOpenRelatedConversation(relatedConversation.id)} className="ml-6 mt-1 h-auto p-0 text-xs font-medium text-primary underline-offset-4 hover:underline">Abrir conversa relacionada: {relatedConversation.name}</Button>}
-    {message.delegationId && ['queued', 'running', 'waiting'].includes(message.status) && <Button variant="link" onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(error => onNotice(errorText(error)))} className="ml-6 mt-1 h-auto p-0 text-xs font-medium text-destructive underline-offset-4 hover:underline">Cancelar pedido</Button>}
+    {relatedConversation && <Button variant="link" size={null} onClick={() => onOpenRelatedConversation(relatedConversation.id)} className="ml-6 mt-1 h-auto p-0 text-xs font-medium text-primary underline-offset-4 hover:underline">Abrir conversa relacionada: {relatedConversation.name}</Button>}
+    {message.delegationId && ['queued', 'running', 'waiting'].includes(message.status) && <Button variant="link" size={null} onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(error => onNotice(errorText(error)))} className="ml-6 mt-1 h-auto p-0 text-xs font-medium text-destructive underline-offset-4 hover:underline">Cancelar pedido</Button>}
   </Trace>
   return <ChatMessage align={human ? 'end' : 'start'} className="mb-6">
     <MessageContent className={human ? 'w-fit max-w-[85%] gap-1' : 'max-w-[90%] gap-1'}>

@@ -35,7 +35,7 @@ export const BooAccessoryColorEditor = memo(function BooAccessoryColorEditor({
     aria-label={`Personalizar cores: ${layer === 'head' ? 'cabeça' : 'rosto'}`}>
     <div className="mb-2 flex items-center justify-between gap-2">
       <span className="text-[11px] font-medium">Cores do acessório</span>
-      {overrides?.length ? <Button type="button" variant="ghost" onClick={restore}
+      {overrides?.length ? <Button type="button" variant="ghost" size={null} onClick={restore}
         className="h-auto rounded px-1.5 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
         aria-label={`Restaurar cores de ${accessory}`}>Restaurar cores</Button> : null}
     </div>

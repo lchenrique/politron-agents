@@ -91,7 +91,7 @@ export function VirtualModelList({ models, providerName, value, search, onSearch
               const id = model.id || model.name
               const selected = id === value
               const disabled = model.enabled === false
-              return <Button key={row.key} id={`${listId}-option-${row.index}`} type="button" variant="ghost" role="option"
+              return <Button key={row.key} id={`${listId}-option-${row.index}`} type="button" variant="ghost" size={null} role="option"
                 aria-selected={selected} aria-disabled={disabled} disabled={disabled}
                 title={model.description || model.id} onClick={() => onChoose(id)}
                 onMouseEnter={() => setActiveIndex(row.index)}

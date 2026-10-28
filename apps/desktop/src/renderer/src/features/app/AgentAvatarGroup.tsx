@@ -11,7 +11,7 @@ export function AgentAvatarGroup({ agents, maxVisible = 6, onRemove, onSelect, c
   const hidden = agents.length - visible.length
   return <AvatarGroup aria-label={`Equipe com ${agents.length} ${agents.length === 1 ? 'agente' : 'agentes'}`} className={className}>
     {visible.map(agent => onSelect || onRemove
-      ? <Button key={agent.id} type="button" variant="ghost" data-slot="avatar" aria-label={onSelect ? `Ver detalhes de ${agent.name}` : `Remover ${agent.name}`} title={onSelect ? agent.name : `${agent.name} · @${agent.alias} · clique para remover`} onClick={() => (onSelect || onRemove)?.(agent)} className="h-auto rounded-full p-0 outline-none ring-2 ring-background transition-opacity hover:bg-transparent hover:opacity-70 focus-visible:ring-2 focus-visible:ring-primary">
+      ? <Button key={agent.id} type="button" variant="ghost" size={null} data-slot="avatar" aria-label={onSelect ? `Ver detalhes de ${agent.name}` : `Remover ${agent.name}`} title={onSelect ? agent.name : `${agent.name} · @${agent.alias} · clique para remover`} onClick={() => (onSelect || onRemove)?.(agent)} className="h-auto rounded-full p-0 outline-none ring-2 ring-background transition-opacity hover:bg-transparent hover:opacity-70 focus-visible:ring-2 focus-visible:ring-primary">
           <Avatar agent={agent} size="xs" />
         </Button>
       : <span key={agent.id} data-slot="avatar" title={`${agent.name} · @${agent.alias}`}><Avatar agent={agent} size="xs" /></span>)}

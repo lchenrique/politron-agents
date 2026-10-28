@@ -48,7 +48,7 @@ function MiniAvatar({ agent }: { agent: Agent }) {
 /** Avatar do Boo ou da equipe: abre os detalhes do Boo ou a edição da equipe. */
 export function ConversationAvatar({ selected, agents, assistant, onOpenAgent, onEditConversation, browserMode = false, canChat = true, compact = false }: ConversationChromeProps & { compact?: boolean }) {
   const { identities, isGroup } = conversationIdentity(selected, agents, assistant)
-  if (isGroup) return <Button type="button" variant="ghost" aria-label="Ver participantes do grupo" title={identities.map(agent => agent.name).join(', ')} onClick={onEditConversation} disabled={browserMode || !canChat}
+  if (isGroup) return <Button type="button" variant="ghost" size={null} aria-label="Ver participantes do grupo" title={identities.map(agent => agent.name).join(', ')} onClick={onEditConversation} disabled={browserMode || !canChat}
     className={compact ? 'relative flex h-5 w-8 shrink-0 items-center justify-start gap-0 rounded-full p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-primary' : 'relative flex h-10 w-12 shrink-0 items-center justify-start gap-0 rounded-lg p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-primary'}>
     {identities.slice(0, compact ? 2 : 3).map((agent, index) =>
       <span key={agent.id} className={'absolute overflow-hidden rounded-full ring-2 ring-background ' + (compact ? 'top-0' : 'top-1')} style={{ left: index * (compact ? 10 : 9), zIndex: 3 - index }}>
@@ -56,7 +56,7 @@ export function ConversationAvatar({ selected, agents, assistant, onOpenAgent, o
       </span>)}
     {!compact && identities.length > 3 && <span className="absolute -bottom-0.5 right-0 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-0.5 text-[9px] font-medium ring-1 ring-background">+{identities.length - 3}</span>}
   </Button>
-  return <Button type="button" variant="ghost" aria-label={`Ver detalhes de ${identities[0].name}`} title={identities[0].name} onClick={() => onOpenAgent?.(identities[0])}
+  return <Button type="button" variant="ghost" size={null} aria-label={`Ver detalhes de ${identities[0].name}`} title={identities[0].name} onClick={() => onOpenAgent?.(identities[0])}
     className={compact ? 'flex size-6 shrink-0 items-center justify-center rounded-full p-0 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary' : 'flex size-10 shrink-0 items-center justify-center rounded-lg p-0 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary'}>
     {compact ? <MiniAvatar agent={identities[0]} /> : <Avatar agent={identities[0]} size="xs" />}
   </Button>
@@ -89,10 +89,10 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
           <Input aria-label="Buscar no histórico desta conversa" value={query} onChange={event => { setQuery(event.target.value); setSearched(false); setSearchError('') }} placeholder="Buscar mensagens…" className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-none outline-none focus-visible:border-input focus-visible:ring-2 focus-visible:ring-primary/40" />
           <Button type="submit" size="sm" disabled={searching || !query.trim()}>{searching ? 'Buscando…' : 'Buscar'}</Button>
         </form>
-        {searched && hits.length > 0 && <div className="mt-2 max-h-72 space-y-1 overflow-y-auto">{hits.map(hit => <Button type="button" variant="ghost" key={hit.message.id} onClick={() => { onOpenSearchHit?.(hit); setSearchOpen(false) }} className="block h-auto w-full whitespace-normal rounded-md px-2.5 py-2 text-left font-normal text-inherit hover:bg-accent hover:text-inherit"><span className="block text-xs font-semibold">{hit.message.author} · {new Date(hit.message.createdAt).toLocaleString('pt-BR')}</span><span className="mt-1 block text-xs text-muted-foreground">{hit.snippet}</span></Button>)}</div>}
+        {searched && hits.length > 0 && <div className="mt-2 max-h-72 space-y-1 overflow-y-auto">{hits.map(hit => <Button type="button" variant="ghost" size={null} key={hit.message.id} onClick={() => { onOpenSearchHit?.(hit); setSearchOpen(false) }} className="block h-auto w-full whitespace-normal rounded-md px-2.5 py-2 text-left font-normal text-inherit hover:bg-accent hover:text-inherit"><span className="block text-xs font-semibold">{hit.message.author} · {new Date(hit.message.createdAt).toLocaleString('pt-BR')}</span><span className="mt-1 block text-xs text-muted-foreground">{hit.snippet}</span></Button>)}</div>}
         {searchError && <p role="alert" className="px-2 py-3 text-xs text-destructive">{searchError}</p>}
         {!searching && searched && hits.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">Nenhuma mensagem encontrada.</p>}
-        {focusedMessageId && <Button type="button" variant="link" onClick={() => { onReturnToLatest?.(); setSearchOpen(false) }} className="mt-2 h-auto w-full justify-start rounded-none border-t border-border p-0 pt-2 text-left text-xs font-normal text-primary hover:underline">Voltar às mensagens recentes</Button>}
+        {focusedMessageId && <Button type="button" variant="link" size={null} onClick={() => { onReturnToLatest?.(); setSearchOpen(false) }} className="mt-2 h-auto w-full justify-start rounded-none border-t border-border p-0 pt-2 text-left text-xs font-normal text-primary hover:underline">Voltar às mensagens recentes</Button>}
       </PopoverContent>
     </Popover>
     {showFiles && <DropdownMenu>

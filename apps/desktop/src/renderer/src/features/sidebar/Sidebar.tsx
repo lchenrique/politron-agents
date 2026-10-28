@@ -115,7 +115,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     className={'ds-nav-item group flex items-center gap-1 ' + (pinnedChief ? 'bg-warning-soft/60' : '')}
     onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}
   >
-    <Button variant="ghost" onClick={() => void onOpenAgent(agent)} className="flex h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal rounded-md px-2 py-1 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Button variant="ghost" size={null} onClick={() => void onOpenAgent(agent)} className="flex h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal rounded-md px-2 py-1 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Avatar agent={agent} size="xs" state={agentStates[agent.id] || 'idle'} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="flex min-w-0 items-center gap-1 truncate text-xs font-semibold">{agent.name}{agent.temporary && <span className="rounded bg-muted px-1 text-[9px] font-normal text-muted-foreground" title={agent.temporaryStatus === 'working' ? 'Boo temporário em execução' : 'Boo temporário'}>Temp</span>}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 fill-warning/20 text-warning" />}</span>
@@ -143,7 +143,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
 
   const conversationButton = (conversation: Conversation) =>
     <div key={conversation.id} data-active={conversation.id === selected?.id} className="ds-nav-item group flex items-center gap-1" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
-      <Button variant="ghost" onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-md px-1.5 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
+      <Button variant="ghost" size={null} onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-md px-1.5 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
         <span className="flex size-5 shrink-0 items-center justify-center text-faint-foreground">{conversation.agentIds.length > 1 ? <Users className="size-3.5" /> : <MessageSquarePlus className="size-3.5" />}</span>
         <span className="min-w-0 flex-1 truncate text-[12px]" title={conversation.name}>{conversation.name}</span>
         {isFavorite('conversation', conversation.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
@@ -170,7 +170,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     return <div key={workspace.id} className={depth ? 'ml-4 border-l border-border/40 pl-2' : ''}>
       <div data-active={activeWorkspaceId === workspace.id} className="ds-nav-item group flex items-center gap-0.5 px-0.5" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
         <Button variant="ghost" size="icon" className="flex size-6 shrink-0 rounded text-faint-foreground hover:bg-transparent hover:text-foreground" aria-label={isCollapsed ? `Expandir ${workspace.name}` : `Recolher ${workspace.name}`} onClick={() => toggle(workspace.id)}>{isCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}</Button>
-        <Button variant="ghost" onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1 text-left text-[12.5px] font-medium text-foreground/90 hover:bg-transparent hover:text-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
+        <Button variant="ghost" size={null} onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1 text-left text-[12.5px] font-medium text-foreground/90 hover:bg-transparent hover:text-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
           {workspace.kind === 'worktree' ? <GitBranch className="size-3.5 shrink-0 text-muted-foreground" /> : workspace.defaultAgentIds.length > 1 ? <Users className="size-3.5 shrink-0 text-muted-foreground" /> : <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />}
           <span className="min-w-0 flex-1 truncate">{workspace.kind === 'worktree' ? workspace.branch || workspace.name : workspace.name}</span>
           {workspaceNeedsAttention(workspace.id) && <span aria-label="Workspace precisa de atenção" className="size-1.5 shrink-0 rounded-full bg-warning" />}
@@ -200,7 +200,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       {!isCollapsed && <div className="ml-6 space-y-0.5">
         {children.map(child => workspaceNode(child, depth + 1))}
         {conversations.map(conversationButton)}
-        {!!hiddenSessions && <Button type="button" variant="ghost" onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="flex h-auto w-full justify-start gap-1 rounded px-2 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent/40 hover:text-foreground">Ver mais {hiddenSessions} sessões</Button>}
+        {!!hiddenSessions && <Button type="button" variant="ghost" size={null} onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="flex h-auto w-full justify-start gap-1 rounded px-2 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent/40 hover:text-foreground">Ver mais {hiddenSessions} sessões</Button>}
         {!conversations.length && !children.length && <p className="px-2 py-1 text-[10px] text-muted-foreground">Nenhuma conversa ainda.</p>}
       </div>}
     </div>

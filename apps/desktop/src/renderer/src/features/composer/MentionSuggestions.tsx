@@ -14,6 +14,7 @@ export function MentionSuggestions({ id, agents, activeIndex, onSelect }: {
       id={`${id}-${agent.id}`}
       type="button"
       variant="ghost"
+      size={null}
       role="option"
       aria-selected={index === activeIndex}
       className="flex h-auto w-full justify-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-normal text-inherit hover:bg-accent hover:text-inherit aria-selected:bg-accent"

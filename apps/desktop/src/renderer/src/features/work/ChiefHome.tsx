@@ -70,7 +70,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
     const isOpen = expanded === mission.id
     const last = mission.updates.at(-1)
     return <li key={mission.id} className="group">
-      <Button type="button" variant="ghost" aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? null : mission.id)} className="flex h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-none px-4 py-3 text-left font-normal text-inherit transition-colors hover:bg-accent/40 hover:text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Button type="button" variant="ghost" size={null} aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? null : mission.id)} className="flex h-auto w-full items-start justify-start gap-3 whitespace-normal rounded-none px-4 py-3 text-left font-normal text-inherit transition-colors hover:bg-accent/40 hover:text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Avatar agent={agentOf(mission.ownerAgentId)} size="xs" state={phase === 'running' ? 'working' : phase === 'approval' || phase === 'waiting' ? 'waiting' : 'idle'} />
         <span className="min-w-0 flex-1 space-y-1">
           <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate text-sm font-medium">{mission.title}</span><PhaseLabel phase={phase} className="shrink-0" /></span>
@@ -131,7 +131,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
           </div>
         </form>
         {!goal && <div className="mt-3 flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((suggestion, index) => <Button key={suggestion} type="button" variant="outline" disabled={!canChat} onClick={() => setGoal(suggestion)} className="h-auto rounded-full border-border bg-card px-3 py-1 text-xs font-normal text-muted-foreground shadow-xs transition-colors hover:border-border-strong hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0 disabled:opacity-50">{SUGGESTION_LABELS[index]}</Button>)}
+          {SUGGESTIONS.map((suggestion, index) => <Button key={suggestion} type="button" variant="outline" size={null} disabled={!canChat} onClick={() => setGoal(suggestion)} className="h-auto rounded-full border-border bg-card px-3 py-1 text-xs font-normal text-muted-foreground shadow-xs transition-colors hover:border-border-strong hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0 disabled:opacity-50">{SUGGESTION_LABELS[index]}</Button>)}
         </div>}
       </section>
 
@@ -141,11 +141,11 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
             <h2 id="attention-title" className="ds-section-title mb-3 flex items-center gap-2">Precisa de você <span className="ds-count" data-tone="attention">{attention}</span></h2>
             <div className="space-y-3">
               {waiting.map(mission => <article key={mission.id} className="rounded-xl border border-warning/30 bg-warning-soft/50 px-4 py-3">
-                <header className="mb-2 flex items-center gap-2 text-xs text-muted-foreground"><Avatar agent={agentOf(mission.ownerAgentId)} size="xs" /><span className="min-w-0 flex-1 truncate"><span className="font-medium text-foreground">{agentName(mission.ownerAgentId)}</span> · {mission.title}</span><Button type="button" variant="ghost" className="h-auto gap-1 p-0 text-xs font-normal text-inherit hover:bg-transparent hover:text-foreground" onClick={() => onOpenConversation(mission.conversationId)}>Conversa<ArrowUpRight className="size-3" /></Button></header>
+                <header className="mb-2 flex items-center gap-2 text-xs text-muted-foreground"><Avatar agent={agentOf(mission.ownerAgentId)} size="xs" /><span className="min-w-0 flex-1 truncate"><span className="font-medium text-foreground">{agentName(mission.ownerAgentId)}</span> · {mission.title}</span><Button type="button" variant="ghost" size={null} className="h-auto gap-1 p-0 text-xs font-normal text-inherit hover:bg-transparent hover:text-foreground" onClick={() => onOpenConversation(mission.conversationId)}>Conversa<ArrowUpRight className="size-3" /></Button></header>
                 <MissionReply mission={mission} onNotice={onNotice} />
               </article>)}
               {approvals.map(approval => <div key={approval.id} className="space-y-1.5">
-                <p className="flex items-center gap-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">{agentName(approval.agentId)}</span> em <Button type="button" variant="ghost" className="h-auto min-w-0 shrink gap-1 truncate p-0 text-xs font-normal text-inherit hover:bg-transparent hover:text-foreground" onClick={() => onOpenConversation(approval.conversationId)}>{conversationName(approval.conversationId)}<ArrowUpRight className="size-3 shrink-0" /></Button></p>
+                <p className="flex items-center gap-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">{agentName(approval.agentId)}</span> em <Button type="button" variant="ghost" size={null} className="h-auto min-w-0 shrink gap-1 truncate p-0 text-xs font-normal text-inherit hover:bg-transparent hover:text-foreground" onClick={() => onOpenConversation(approval.conversationId)}>{conversationName(approval.conversationId)}<ArrowUpRight className="size-3 shrink-0" /></Button></p>
                 <PolitronToolApproval approval={approval} onNotice={onNotice} />
               </div>)}
             </div>
@@ -172,7 +172,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
             <h2 id="team-title" className="ds-section-title mb-2">Equipe</h2>
             <ul className="space-y-0.5">
               {[...(chief ? [chief] : []), ...snapshot.agents.filter(agent => agent.role !== 'chief' && agent.temporaryStatus !== 'retired')].slice(0, 10).map(agent => <li key={agent.id}>
-                <Button type="button" variant="ghost" onClick={() => onOpenAgent(agent)} className="flex h-auto w-full justify-start gap-2.5 whitespace-normal rounded-lg px-2 py-1.5 text-left font-normal text-inherit transition-colors hover:bg-accent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
+                <Button type="button" variant="ghost" size={null} onClick={() => onOpenAgent(agent)} className="flex h-auto w-full justify-start gap-2.5 whitespace-normal rounded-lg px-2 py-1.5 text-left font-normal text-inherit transition-colors hover:bg-accent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
                   <Avatar agent={agent} size="xs" state={agentStates[agent.id] || 'idle'} />
                   <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{agent.name}</span><span className="block truncate text-[11px] text-muted-foreground">{agent.role === 'chief' ? 'Chief · coordenação' : agent.description || `@${agent.alias}`}</span></span>
                   <AgentPresence state={agentStates[agent.id] || 'idle'} />
@@ -184,7 +184,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
           <section aria-labelledby="routines-title">
             <div className="mb-2 flex items-center justify-between"><h2 id="routines-title" className="ds-section-title">Rotinas</h2><Button size="xs" variant="ghost" onClick={onOpenRoutines}>Gerenciar</Button></div>
             {routines.length ? <ul className="space-y-2">{routines.map(routine => <li key={routine.id} className="flex gap-2 px-2 text-xs"><CalendarClock className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0"><span className="block truncate font-medium">{routine.name}</span><span className="block truncate text-[11px] text-muted-foreground">{routine.nextRunAt ? `Próxima ${relativeTime(routine.nextRunAt)}` : describeTrigger(routine.trigger)}</span></span></li>)}</ul>
-              : <Button type="button" variant="ghost" onClick={onOpenRoutines} className="ds-empty block h-auto w-full whitespace-normal rounded-[calc(var(--radius)+4px)] px-3 py-3 text-left text-[11px] font-normal leading-5 text-muted-foreground transition-colors hover:border-ring/50 hover:bg-[color-mix(in_srgb,var(--muted)_55%,transparent)] hover:text-foreground">Dê responsabilidades contínuas: revisões diárias, monitoramento, reação a mudanças.</Button>}
+              : <Button type="button" variant="ghost" size={null} onClick={onOpenRoutines} className="ds-empty block h-auto w-full whitespace-normal rounded-[calc(var(--radius)+4px)] px-3 py-3 text-left text-[11px] font-normal leading-5 text-muted-foreground transition-colors hover:border-ring/50 hover:bg-[color-mix(in_srgb,var(--muted)_55%,transparent)] hover:text-foreground">Dê responsabilidades contínuas: revisões diárias, monitoramento, reação a mudanças.</Button>}
           </section>
         </aside>
       </div>
