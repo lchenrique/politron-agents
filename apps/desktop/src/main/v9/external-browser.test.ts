@@ -183,19 +183,27 @@ describe('navegador real liberado por autorização da conversa', () => {
       await expect(broker.callTool(context, 'external_browser_request', {})).resolves.toMatch(/já autorizado/i)
 
       const before = approvals.length
-      for (const code of ['tab.url()', 'document.cookie']) {
+      const activities = () => service.store.history(owner.conversationId).filter(message => message.role === 'activity')
+      expect(activities()).toHaveLength(0)
+      for (const code of ['tab.url()', 'await tab.goto("https://exemplo.com/conta?token=segredo")']) {
         const result = await client.callTool({ name: 'js', arguments: { code } })
         expect(result.isError).toBeFalsy()
         expect(output(result)).toBe(`executado: ${code}`)
       }
       expect(approvals.length).toBe(before)
       expect(calls(log)).toBe(2)
+      // Cada js encaminhado vira atividade da execução na conversa, com a prévia sem segredos.
+      expect(activities().map(message => ({ runId: message.runId, agentId: message.agentId, text: message.text }))).toEqual([
+        { runId: context.run.id, agentId: owner.agentId, text: 'Navegador real · js\ntab.url()' },
+        { runId: context.run.id, agentId: owner.agentId, text: 'Navegador real · js · alvo https://exemplo.com/conta\nawait tab.goto("https://exemplo.com/conta")' },
+      ])
 
       service.setExternalBrowserGrant(owner, false)
       const revoked = await client.callTool({ name: 'js', arguments: { code: '1' } })
       expect(revoked.isError).toBe(true)
       expect(output(revoked)).toMatch(/external_browser_request/)
       expect(calls(log)).toBe(2)
+      expect(activities()).toHaveLength(2)
     } finally { await client.close() }
   })
 

@@ -115,7 +115,8 @@ export class ExternalBrowserProxy {
     if (refusal) return failure(refusal)
     // Revalida depois da espera: encerramento ou desistência do cliente durante a autorização cancela o envio.
     if (this.closed || !this.upstream || signal.aborted) return failure(stopped)
-    return await this.upstream.callTool({ name, arguments: args }) as CallToolResult
+    // Mesmo limite do tool_timeout_sec 600 do Codex; a desistência do cliente cancela a chamada no node_repl.
+    return await this.upstream.callTool({ name, arguments: args }, undefined, { timeout: 600_000, signal }) as CallToolResult
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {

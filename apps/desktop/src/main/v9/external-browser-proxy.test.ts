@@ -34,10 +34,13 @@ describe('proxy MCP mediado do node_repl', () => {
     const { proxy, log, authorize } = setup()
     await proxy.start()
     const client = await connect(proxy)
+    const upstreamCall = vi.spyOn(Client.prototype, 'callTool'); cleanup.push(() => upstreamCall.mockRestore())
     const result = await client.callTool({ name: 'js', arguments: { code: 'await tab.goto("https://exemplo.com")' } })
     expect(result.isError).toBeFalsy()
     expect(text(result)).toBe('executado: await tab.goto("https://exemplo.com")')
     expect(authorize).toHaveBeenCalledWith('js', { code: 'await tab.goto("https://exemplo.com")' }, expect.any(AbortSignal))
+    // Chamada ao node_repl com o limite de 600 s do Codex e o sinal de desistência da requisição.
+    expect(upstreamCall).toHaveBeenCalledWith({ name: 'js', arguments: { code: 'await tab.goto("https://exemplo.com")' } }, undefined, { timeout: 600_000, signal: (authorize.mock.calls[0] as unknown[])[2] })
     expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1)
     // Só js é republicado: CDP completo não existe pelo proxy.
     expect(await client.callTool({ name: 'browser_use_full_cdp_access', arguments: {} })).toMatchObject({ isError: true })

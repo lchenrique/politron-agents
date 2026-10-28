@@ -16,7 +16,7 @@ import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delega
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
 import { probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
-import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, type NodeReplServer } from './external-browser-proxy'
+import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPreview, type NodeReplServer } from './external-browser-proxy'
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, mentionedRecipients, recipients, type WorkspaceLease } from './routing'
 import { OpenRouterDecisionService } from './decision-routing'
@@ -125,10 +125,13 @@ export class AppService extends EventEmitter {
     }
   }
   /** Sem aprovação por chamada nem filtro de conteúdo (decisão do usuário): basta a execução vinculada e a autorização da conversa+agente. */
-  private async authorizeExternalBrowserCall(owner: PlatformBrowserOwner, runId: string | undefined, _tool: string, _args: Record<string, unknown>, signal: AbortSignal): Promise<string | null> {
+  private async authorizeExternalBrowserCall(owner: PlatformBrowserOwner, runId: string | undefined, tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string | null> {
     const context = runId ? this.contexts.get(runId) : undefined
     if (!context || context.conversation.id !== owner.conversationId || context.agent.id !== owner.agentId || !['codex', 'claude'].includes(context.agent.runtime) || context.run.planMode || context.signal?.aborted || signal.aborted) return 'Nenhuma execução ativa deste agente vinculada ao navegador externo nesta conversa; nada foi executado.'
     if (!this.externalBrowserStatus(owner).granted) return 'O usuário não autorizou o navegador real para este agente nesta conversa. Use a ferramenta external_browser_request.'
+    // Uso visível na conversa: só chamadas que serão encaminhadas viram atividade (recusas voltam apenas ao modelo).
+    const preview = externalBrowserApprovalPreview(args, approvalUrl)
+    this.addMessage(context.conversation.id, context.agent, 'activity', `Navegador real · ${tool}${preview.targets.length ? ` · alvo ${preview.targets.join(', ')}` : ''}\n${preview.code}`, 'completed', context.run.id)
     return null
   }
   readonly agentTerminals = new AgentTerminalService()
@@ -389,9 +392,8 @@ export class AppService extends EventEmitter {
       this.notifyWhenAway(context.conversation.id, 'Pergunta do Boo', question.slice(0, 140))
     })
   }
-  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false, alwaysAsk = false, request?: AbortSignal): Promise<boolean> {
-    // `request`: cancelamento próprio da chamada (ex.: cliente MCP desconectou ou proxy revogado), além do da execução.
-    const signals = [context.signal, request].filter((signal): signal is AbortSignal => !!signal)
+  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false, alwaysAsk = false): Promise<boolean> {
+    const signals = [context.signal].filter((signal): signal is AbortSignal => !!signal)
     if (signals.some(signal => signal.aborted)) return false
     if (!alwaysAsk && shouldAutoApprove(context.agent.approvalMode, kind, sensitive)) return true
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
