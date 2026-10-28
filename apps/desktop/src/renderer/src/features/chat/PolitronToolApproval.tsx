@@ -11,7 +11,7 @@ const approvalKind = {
   browser: { title: 'Ação no navegador', icon: Globe },
   command: { title: 'Comando no terminal', icon: Terminal },
   delegation: { title: 'Delegação do Chief', icon: Send },
-  'agent-change': { title: 'Proposta do Chief', icon: Settings2 },
+  'agent-change': { title: 'Confirmação do Chief', icon: Settings2 },
 } as const
 
 /** Confirmação extra fica armada por esse tempo antes de voltar ao normal, pra não aprovar sem querer num clique tardio. */
@@ -61,7 +61,7 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true }: 
     : approval.kind === 'browser' ? details.action || 'Operação no navegador'
     : approval.kind === 'command' ? `${details.command || ''}${details.cwd ? ` · ${details.cwd}` : ''}`
     : approval.kind === 'delegation' ? `Para ${details.recipientName || 'agente'}: ${(details.task || '(sem resumo)').slice(0, 160)}`
-    : 'Alteração de configuração solicitada'
+    : details.action || 'Alteração de configuração solicitada'
   const options = pending ? [
     { label: armed ? 'Aprovar mesmo assim' : sensitive ? 'Confirmar e aprovar' : 'Aprovar', value: 'approve', description: armed ? 'Confirmação adicional obrigatória' : undefined },
     { label: 'Negar', value: 'deny' },
@@ -85,7 +85,7 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true }: 
       <p className="mt-1">O terminal não é isolado do sistema operacional. Comandos podem acessar arquivos fora do workspace.</p>
     </details>}
     {details.task && <details className="rounded-md border border-border/60 p-2.5 text-xs">
-      <summary className="cursor-pointer font-medium">Ver tarefa e instruções propostas</summary>
+      <summary className="cursor-pointer font-medium">{approval.kind === 'agent-change' ? 'Ver detalhes' : 'Ver tarefa e instruções propostas'}</summary>
       <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{details.task}</p>
     </details>}
     {details.proposal && <details className="rounded-md border border-border/60 p-2.5 text-xs">
