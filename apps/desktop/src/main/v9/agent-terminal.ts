@@ -34,14 +34,24 @@ export function stripTerminalControls(value: string): string {
   return value.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1b[@-_]/g, '').replace(/\r\n?/g, '\n')
 }
 
+// No Windows, um segundo kill() (ou kill() depois da saída) dispara um assert nativo do conpty
+// (`remove_pty_baton`) que derruba o app sem passar por try/catch: cada PTY recebe no máximo um kill().
+const killed = new WeakSet<PtyLike>()
+export function killOnce(target: PtyLike): void {
+  if (killed.has(target)) return
+  killed.add(target)
+  try { target.kill() } catch { /* já encerrado */ }
+}
+
 function defaultKillTree(target: PtyLike, platform: NodeJS.Platform): void {
   if (platform === 'win32' && target.pid) {
     const killer = nodeSpawn(join(process.env.SYSTEMROOT || 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(target.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
-    killer.once('error', () => { try { target.kill() } catch { /* já encerrado */ } })
-    killer.once('exit', code => { if (code !== 0) try { target.kill() } catch { /* já encerrado */ } })
+    // taskkill derrubou a árvore: o PTY já saiu e não pode receber kill().
+    killer.once('exit', code => { if (code === 0) killed.add(target); else killOnce(target) })
+    killer.once('error', () => killOnce(target))
     return
   }
-  try { process.kill(-target.pid, 'SIGKILL') } catch { try { target.kill() } catch { /* já encerrado */ } }
+  try { process.kill(-target.pid, 'SIGKILL') } catch { killOnce(target) }
 }
 
 type Entry = { session: AgentTerminalSession; output: string; process: PtyLike | null; reason?: 'interrupted' | 'timed_out'; timer?: ReturnType<typeof setTimeout>; finished: Promise<AgentTerminalSessionWithOutput>; finish: (status: CommandStatus, exitCode: number | null) => void }
@@ -126,7 +136,8 @@ export class AgentTerminalService extends EventEmitter {
       return { ...session, output: entry.output }
     }
     entry.process.onData(data => this.append(entry, data))
-    entry.process.onExit(({ exitCode }) => finish(exitCode === 0 ? 'completed' : 'failed', exitCode))
+    const spawned = entry.process
+    entry.process.onExit(({ exitCode }) => { killed.add(spawned); finish(exitCode === 0 ? 'completed' : 'failed', exitCode) })
     return { ...session, output: entry.output }
   }
 
@@ -147,7 +158,7 @@ export class AgentTerminalService extends EventEmitter {
     // Se o PTY não sinalizar a saída, o estado não pode ficar "running" para sempre.
     setTimeout(() => {
       if (entry.session.status !== 'running') return
-      try { target.kill() } catch { /* já encerrado */ }
+      killOnce(target)
       entry.finish(reason, null)
     }, 5000).unref?.()
   }

@@ -4,20 +4,25 @@ import os from 'os'
 
 let ptyProcess: pty.IPty | null = null
 let terminalWorkspaceId: string | null = null
+// No Windows, kill/resize/write num PTY que já saiu dispara um assert nativo do conpty (`remove_pty_baton`)
+// que derruba o app sem passar por try/catch; só o processo vivo recebe chamadas.
+const exited = new WeakSet<pty.IPty>()
+const alive = (target: pty.IPty | null): target is pty.IPty => !!target && !exited.has(target)
+const end = (target: pty.IPty | null) => { if (alive(target)) { exited.add(target); try { target.kill() } catch { /* já encerrado */ } } }
 
 export function registerTerminalHandlers(resolveWorkspacePath: (workspaceId: string) => string, isRemote = () => false): void {
   ipcMain.handle('vibe:terminal:create', (event, { rows, cols, workspaceId }) => {
     if (isRemote()) throw new Error('O terminal interativo remoto ainda não está disponível. Peça ao agente para executar os comandos no chat do host.')
     if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Selecione um workspace para abrir o terminal.')
     const cwd = resolveWorkspacePath(workspaceId)
-    if (ptyProcess && terminalWorkspaceId === workspaceId) {
+    if (alive(ptyProcess) && terminalWorkspaceId === workspaceId) {
       ptyProcess.resize(cols || 80, rows || 24)
       return true
     }
-    if (ptyProcess) ptyProcess.kill()
+    end(ptyProcess)
 
     const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash'
-    
+
     ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-color',
       cols: cols || 80,
@@ -35,6 +40,7 @@ export function registerTerminalHandlers(resolveWorkspacePath: (workspaceId: str
     })
 
     ptyProcess.onExit(({ exitCode, signal }) => {
+      exited.add(processForSession)
       window?.webContents.send('vibe:terminal:exit', { exitCode, signal })
       if (ptyProcess === processForSession) { ptyProcess = null; terminalWorkspaceId = null }
     })
@@ -47,19 +53,17 @@ export function registerTerminalHandlers(resolveWorkspacePath: (workspaceId: str
     const running = ptyProcess
     ptyProcess = null
     terminalWorkspaceId = null
-    running?.kill()
+    end(running)
     return true
   })
 
   ipcMain.on('vibe:terminal:write', (_, data) => {
     if (isRemote()) return
-    ptyProcess?.write(data)
+    if (alive(ptyProcess)) ptyProcess.write(data)
   })
 
   ipcMain.on('vibe:terminal:resize', (_, { cols, rows }) => {
     if (isRemote()) return
-    if (ptyProcess) {
-      ptyProcess.resize(cols, rows)
-    }
+    if (alive(ptyProcess)) ptyProcess.resize(cols, rows)
   })
 }

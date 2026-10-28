@@ -1,7 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
 import type { WorkspaceEvent } from '../../shared/v9'
-import { AgentTerminalService, commandEnvironment, stripTerminalControls, type PtyLike, type PtySpawn } from './agent-terminal'
+import { AgentTerminalService, commandEnvironment, killOnce, stripTerminalControls, type PtyLike, type PtySpawn } from './agent-terminal'
+
+describe('killOnce', () => {
+  it('nunca chama kill() duas vezes no mesmo PTY (assert nativo do conpty no Windows)', () => {
+    const target = { pid: 1, kill: vi.fn(), onData: vi.fn(), onExit: vi.fn() } as unknown as PtyLike
+    killOnce(target); killOnce(target)
+    expect(target.kill).toHaveBeenCalledTimes(1)
+  })
+})
 type AgentTerminalEvent = Extract<WorkspaceEvent, { type: 'agentTerminal' }>
 
 type Fake = PtyLike & { emitData: (data: string) => void; exit: (code: number) => void; killed: boolean; file: string; args: string[]; cwd: string; env: Record<string, string> }
