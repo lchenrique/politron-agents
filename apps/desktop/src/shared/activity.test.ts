@@ -36,5 +36,7 @@ describe('atividade dos agentes', () => {
     expect(activitySummary([...real(6), 'Terminal · a', 'Terminal · b'], 38_000)).toBe('Usou o navegador real (6 ações) · executou 2 comandos · 38s')
     expect(activitySummary(['Leitura · a'], 125_000)).toBe('Leu 1 arquivo · 2min 5s')
     expect(activitySummary(['Busca · x'], 200)).toBe('Fez 1 busca')
+    // Consultas de resultado acompanham delegações: não viram "delegou N tarefas".
+    expect(activitySummary(['Delegação · Examen', ...Array(5).fill('Delegação · Consultar resultado')])).toBe('Delegou 1 tarefa · acompanhou as delegações')
   })
 })

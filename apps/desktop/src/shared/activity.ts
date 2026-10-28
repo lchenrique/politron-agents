@@ -1,8 +1,10 @@
 /** Atividade de ferramentas no chat: rótulos gravados como `Categoria · detalhe` e resumos por modelo (sem LLM). */
 
-export type ActivityCategory = 'realBrowser' | 'browser' | 'terminal' | 'read' | 'edit' | 'search' | 'delegation' | 'other'
+export type ActivityCategory = 'realBrowser' | 'browser' | 'terminal' | 'read' | 'edit' | 'search' | 'delegation' | 'followUp' | 'other'
 
+// Consultar o resultado acompanha uma delegação existente: não conta como nova tarefa delegada.
 const PREFIXES: [string, ActivityCategory][] = [
+  ['Delegação · Consultar resultado', 'followUp'],
   ['Navegador real', 'realBrowser'], ['Navegador interno', 'browser'], ['Terminal', 'terminal'],
   ['Leitura', 'read'], ['Edição', 'edit'], ['Busca', 'search'], ['Delegação', 'delegation'],
 ]
@@ -17,11 +19,12 @@ const PAST: Record<ActivityCategory, (count: number) => string> = {
   edit: count => `editou ${plural(count, 'arquivo', 'arquivos')}`,
   search: count => `fez ${plural(count, 'busca', 'buscas')}`,
   delegation: count => `delegou ${plural(count, 'tarefa', 'tarefas')}`,
+  followUp: () => 'acompanhou as delegações',
   other: count => `usou ${plural(count, 'ferramenta', 'ferramentas')}`,
 }
 const PRESENT: Record<ActivityCategory, [string, string]> = {
   realBrowser: ['Usando seu navegador real', 'ações'], browser: ['Usando o navegador interno', 'ações'], terminal: ['Executando comando', 'comandos'],
-  read: ['Lendo arquivos', 'arquivos'], edit: ['Editando arquivos', 'arquivos'], search: ['Buscando', 'buscas'], delegation: ['Delegando tarefa', 'tarefas'], other: ['Usando ferramentas', 'ferramentas'],
+  read: ['Lendo arquivos', 'arquivos'], edit: ['Editando arquivos', 'arquivos'], search: ['Buscando', 'buscas'], delegation: ['Delegando tarefa', 'tarefas'], followUp: ['Acompanhando as delegações', 'consultas'], other: ['Usando ferramentas', 'ferramentas'],
 }
 
 const clip = (value: unknown, max = 120) => {

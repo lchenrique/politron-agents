@@ -7,8 +7,8 @@ const groupable = (message: Message) => message.role === 'activity' && !!message
 /** Mensagem de origem na conversa que delegou; o pedido espelhado na conversa privada não entra no cartão. Textos antigos não têm delegationTask. */
 export const isDelegationOrigin = (message: Message) => message.role === 'activity' && !!message.delegationId && !!message.relatedConversationId && !message.author.startsWith('Pedido de ')
   && (message.delegationTask !== undefined || /^Pedido (para|concluído por) /.test(message.text))
-/** Linha "Delegação · Boo" da chamada ask_agent: o cartão já mostra o pedido. */
-const askAgentActivity = (message: Message) => message.role === 'activity' && message.text.startsWith('Delegação · ') && message.text !== 'Delegação · Consultar resultado'
+/** Linhas "Delegação · Boo" (ask_agent) e "Delegação · Consultar resultado": o cartão já mostra pedido e status. */
+const askAgentActivity = (message: Message) => message.role === 'activity' && message.text.startsWith('Delegação · ')
 
 /** Agrupa atividades seguidas do mesmo run e delegações seguidas, e oculta respostas vazias já concluídas (sobram quando o texto final nasce depois do trabalho). */
 export function chatRows(messages: Message[]): ChatRow[] {
