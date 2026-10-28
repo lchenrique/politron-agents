@@ -34,7 +34,7 @@ function windowsExecutableLookup(stdout: string) {
   })
 }
 
-async function startClaudeWithoutDiscovery() {
+async function startClaudeWithoutDiscovery(externalBrowser?: { url: string; token: string; tools: string[] }) {
   vi.useFakeTimers()
   const sdk = vi.fn((_input: Parameters<typeof query>[0]) => ({
     close: vi.fn(),
@@ -50,7 +50,7 @@ async function startClaudeWithoutDiscovery() {
     computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-18T00:00:00Z',
   }
   try {
-    const threadId = (await runtime.thread(agent, tmpdir(), [])).id
+    const threadId = (await runtime.thread(agent, tmpdir(), [], undefined, '', externalBrowser)).id
     await expect(runtime.request('turn/start', { threadId, input: [{ type: 'text', text: 'Mensagem simulada.' }] }))
       .resolves.toMatchObject({ thread: { id: 'session-from-cache' } })
     expect(models).not.toHaveBeenCalled()
@@ -200,6 +200,21 @@ describe('catálogo informado pelos CLIs', () => {
     expect(typeof input.prompt).not.toBe('string')
     if (typeof input.prompt !== 'string') expect(await input.prompt[Symbol.asyncIterator]().next()).toMatchObject({ done: true })
     expect(close).toHaveBeenCalledOnce()
+  })
+})
+
+describe('navegador real no Claude', () => {
+  it('registra o proxy MCP HTTP e libera as ferramentas', async () => {
+    windowsExecutableLookup('C:\\tools\\claude.exe\r\n')
+    const input = await startClaudeWithoutDiscovery({ url: 'http://127.0.0.1:1234/mcp', token: 'tok', tools: ['js'] })
+    expect(input.options?.mcpServers?.politron_external_browser).toEqual({ type: 'http', url: 'http://127.0.0.1:1234/mcp', headers: { Authorization: 'Bearer tok' } })
+    expect(input.options?.allowedTools).toContain('mcp__politron_external_browser__js')
+  })
+
+  it('sem registro mantém só o servidor politron', async () => {
+    windowsExecutableLookup('C:\\tools\\claude.exe\r\n')
+    const input = await startClaudeWithoutDiscovery()
+    expect(Object.keys(input.options?.mcpServers || {})).toEqual(['politron'])
   })
 })
 

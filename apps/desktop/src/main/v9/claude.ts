@@ -5,12 +5,13 @@ import { promisify } from 'node:util'
 import { query, createSdkMcpServer, tool as sdkTool, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { z, type ZodType } from 'zod'
 import type { Agent, Model } from '../../shared/v9'
-import { SessionUnavailableError, type AgentRuntime, type RuntimeThread } from './agent-runtime'
+import { SessionUnavailableError, type AgentRuntime, type ExternalBrowserRegistration, type RuntimeThread } from './agent-runtime'
 import type { DynamicTool } from './codex'
+import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
 import { buildAgentSystemPrompt } from './agent-prompt'
 
 type ClaudeTurn = { id: string; controller: AbortController; terminal: boolean; initialized: Deferred; initializedResolved: boolean; eventGate?: Deferred; query?: Query }
-type ClaudeThread = { id: string; sessionId: string | null; agent: Agent; directory: string; tools: DynamicTool[]; projectInstructions: string; activeTurn?: ClaudeTurn }
+type ClaudeThread = { id: string; sessionId: string | null; agent: Agent; directory: string; tools: DynamicTool[]; projectInstructions: string; externalBrowser?: ExternalBrowserRegistration; activeTurn?: ClaudeTurn }
 type ToolWait = { turn: ClaudeTurn; resolve: (value: unknown) => void; reject: (error: Error) => void }
 type Deferred = { promise: Promise<void>; resolve: () => void; reject: (error: Error) => void }
 const execFileAsync = promisify(execFile)
@@ -90,9 +91,9 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
     } finally { clearTimeout(timer); finish(); session.close() }
   }
 
-  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions = ''): Promise<RuntimeThread> {
+  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions = '', externalBrowser?: ExternalBrowserRegistration): Promise<RuntimeThread> {
     const id = threadId || randomUUID()
-    this.threads.set(id, { id, sessionId: threadId || null, agent, directory, tools, projectInstructions })
+    this.threads.set(id, { id, sessionId: threadId || null, agent, directory, tools, projectInstructions, externalBrowser })
     return { id, history: threadId ? 'resume-pending' : 'empty' }
   }
 
@@ -128,6 +129,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
       return { content: [{ type: 'text' as const, text: resolved.contentItems?.map(item => item.text || '').join('\n') || '' }], isError: !resolved.success }
     }))
     const server = createSdkMcpServer({ name: 'politron', version: '1.0.0', instructions: 'Todas as operações de arquivo, navegador e delegação devem usar estas ferramentas do Boobot.', tools })
+    const browser = context.externalBrowser
     const session = this.querySdk({
       prompt,
       options: {
@@ -138,8 +140,8 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         permissionMode: 'default',
         tools: [],
         disallowedTools: ['Write', 'Edit', 'Bash', 'NotebookEdit', 'MultiEdit'],
-        allowedTools: context.tools.map(item => `mcp__politron__${item.name}`),
-        mcpServers: { politron: server },
+        allowedTools: [...context.tools.map(item => `mcp__politron__${item.name}`), ...(browser?.tools.map(name => `mcp__${EXTERNAL_BROWSER_MCP}__${name}`) || [])],
+        mcpServers: { politron: server, ...(browser ? { [EXTERNAL_BROWSER_MCP]: { type: 'http' as const, url: browser.url, headers: { Authorization: `Bearer ${browser.token}` } } } : {}) },
         systemPrompt: { type: 'preset', preset: 'claude_code', append: buildAgentSystemPrompt(context.agent, context.projectInstructions, context.tools) },
       model: typeof params.model === 'string' ? params.model : context.agent.model || undefined,
       effort: context.agent.effort,
