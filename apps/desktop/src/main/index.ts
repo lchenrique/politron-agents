@@ -1,7 +1,7 @@
 import 'dotenv/config'
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage, screen, ipcMain } from 'electron'
-import { join, resolve, sep } from 'node:path'
-import { existsSync, mkdirSync } from 'node:fs'
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage, screen, ipcMain, crashReporter, powerMonitor } from 'electron'
+import { dirname, join, resolve, sep } from 'node:path'
+import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerTerminalHandlers } from './ipc/terminal'
@@ -64,6 +64,30 @@ if (isolatedTestData) {
 } else {
   app.setPath('userData', existsSync(previousUserData) ? previousUserData : currentUserData)
 }
+
+// Diagnóstico de fechamentos inesperados: no app instalado não há console, então eventos de saída e falha
+// vão para userData/logs/main.log (JSON por linha, limitado) e falhas nativas viram dumps locais (sem envio).
+const diagnosticLog = join(app.getPath('userData'), 'logs', 'main.log')
+function diagnostic(event: string, data: Record<string, unknown> = {}): void {
+  try {
+    mkdirSync(dirname(diagnosticLog), { recursive: true })
+    if (existsSync(diagnosticLog) && statSync(diagnosticLog).size > 5 * 1024 * 1024) renameSync(diagnosticLog, diagnosticLog + '.1')
+    appendFileSync(diagnosticLog, JSON.stringify({ at: new Date().toISOString(), pid: process.pid, event, ...data }) + '\n')
+  } catch { /* diagnóstico nunca derruba o app */ }
+}
+crashReporter.start({ uploadToServer: false })
+diagnostic('start', { version: app.getVersion(), argv: process.argv.slice(1) })
+process.on('uncaughtException', error => diagnostic('uncaughtException', { error: String(error?.stack || error) }))
+process.on('unhandledRejection', reason => diagnostic('unhandledRejection', { reason: String((reason as Error)?.stack || reason) }))
+app.on('render-process-gone', (_event, contents, details) => diagnostic('render-process-gone', { url: contents.getURL().slice(0, 200), ...details }))
+app.on('child-process-gone', (_event, details) => diagnostic('child-process-gone', { ...details }))
+app.on('before-quit', () => diagnostic('before-quit'))
+app.on('quit', (_event, exitCode) => diagnostic('quit', { exitCode }))
+process.on('exit', code => diagnostic('process-exit', { code, memoryMb: Math.round(process.memoryUsage().rss / 1048576) }))
+// powerMonitor só pode ser usado depois do ready.
+void app.whenReady().then(() => powerMonitor.on('shutdown', () => diagnostic('os-shutdown')))
+// Uso de memória a cada 5 min: o Windows já registrou o Boobot como possível vazamento (RADAR_PRE_LEAK).
+setInterval(() => diagnostic('memory', { rssMb: Math.round(process.memoryUsage().rss / 1048576), heapMb: Math.round(process.memoryUsage().heapUsed / 1048576) }), 5 * 60_000).unref()
 
 // Disable GPU acceleration for Windows sandbox compatibility
 app.disableHardwareAcceleration()
