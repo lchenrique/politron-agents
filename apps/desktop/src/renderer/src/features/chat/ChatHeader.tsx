@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { Agent, Conversation, MessageSearchHit, Workspace } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
 import { assistantPlaceholder } from '../app/appShellShared'
+import { conversationDisplayName } from '../../../../shared/delegation-title'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 export interface ConversationChromeProps {
@@ -33,10 +34,12 @@ export function conversationIdentity(selected: Conversation, agents: Agent[], as
   const participants = selected.agentIds.map(id => agents.find(agent => agent.id === id)).filter((agent): agent is Agent => !!agent)
   const identities = participants.length ? participants : [assistant || assistantPlaceholder]
   const isGroup = selected.kind === 'group' || identities.length > 1
-  const title = isGroup ? selected.name : identities[0].name
+  // Sessões de delegação antigas têm nomes longos ("Pedido: X · Contexto: …"): mostra a forma curta.
+  const name = conversationDisplayName(selected.name)
+  const title = isGroup ? name : identities[0].name
   const subtitle = isGroup
     ? `${identities.length} ${identities.length === 1 ? 'participante' : 'participantes'}`
-    : selected.name !== title ? selected.name : undefined
+    : name !== title ? name : undefined
   return { identities, isGroup, title, subtitle }
 }
 

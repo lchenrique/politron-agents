@@ -46,8 +46,8 @@ export function killOnce(target: PtyLike): void {
 function defaultKillTree(target: PtyLike, platform: NodeJS.Platform): void {
   if (platform === 'win32' && target.pid) {
     const killer = nodeSpawn(join(process.env.SYSTEMROOT || 'C:\\Windows', 'System32', 'taskkill.exe'), ['/PID', String(target.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
-    // taskkill derrubou a árvore: o PTY já saiu e não pode receber kill().
-    killer.once('exit', code => { if (code === 0) killed.add(target); else killOnce(target) })
+    // Mesmo com a árvore derrubada, o console do PTY (conpty) só fecha no kill(); quem marca a saída é o onExit.
+    killer.once('exit', code => { if (code !== 0) killOnce(target) })
     killer.once('error', () => killOnce(target))
     return
   }

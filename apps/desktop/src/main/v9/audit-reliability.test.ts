@@ -45,7 +45,8 @@ afterEach(async () => {
     for (const conversation of fixture.conversations) await fixture.service.stop(conversation.id)
     await Promise.all(fixture.sends)
     fixture.service.dispose()
-    rmSync(fixture.directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
+    // No Windows o processo encerrado pelo dispose pode segurar a pasta por alguns instantes.
+    rmSync(fixture.directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 })
   }
 })
 
