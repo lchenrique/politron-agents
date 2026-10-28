@@ -285,7 +285,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
         aria-label="Selecionar modelo" aria-expanded={open} aria-controls={panelId}
         title={selected ? selected.name + (selected.provider ? ' · ' + selected.provider : '') : INHERIT_MODEL_NAME}
         onClick={() => { if (open) close(); else { setOpen(true); requestAnimationFrame(() => searchRef.current?.focus()) } }}
-        className={cn('flex h-8 max-w-64 items-center gap-1.5 rounded-lg border border-transparent px-2 text-xs text-foreground',
+        className={cn('flex h-8 max-w-[min(16rem,100%)] items-center gap-1.5 rounded-lg border border-transparent px-2 text-xs text-foreground',
           'outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
           open && 'bg-accent')}>
         <span className="min-w-0 truncate font-medium">{selected?.name || INHERIT_MODEL_NAME}</span>
