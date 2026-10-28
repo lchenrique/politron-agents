@@ -95,14 +95,22 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const navigationTarget = activeWorkspaceId || (selected && (workspacesById.get(selected.workspaceId)?.name ? selected.workspaceId : rootWorkspaces.find(item => item.name === 'Livre' && item.kind === 'free')?.id)) || null
   const navigationKey = activeWorkspaceId ? 'workspace:' + activeWorkspaceId : selected ? 'conversation:' + selected.id : ''
   const firstNavigation = useRef(true)
+  const handledNavigation = useRef('')
+  // App aberto sem conversa (ex.: na Central): não há restauração, então a próxima navegação é do usuário.
+  const snapshotReady = snapshot.workspaces.length > 0 || snapshot.conversations.length > 0
+  useEffect(() => { if (snapshotReady && !navigationKey) firstNavigation.current = false }, [snapshotReady, navigationKey])
   useEffect(() => {
-    if (!navigationKey) return
-    const first = firstNavigation.current
-    firstNavigation.current = false
-    if (first && !activeWorkspaceId) return
-    if (navigationTarget) enterProject(navigationTarget)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reage só à navegação, não a cada snapshot
-  }, [navigationKey])
+    if (!navigationKey || handledNavigation.current === navigationKey) return
+    if (firstNavigation.current) {
+      firstNavigation.current = false
+      if (!activeWorkspaceId) { handledNavigation.current = navigationKey; return }
+    }
+    // Sessão recém-criada: o projeto dela (ex.: Livre criado agora) pode chegar num snapshot seguinte; espera por ele.
+    if (!navigationTarget) return
+    handledNavigation.current = navigationKey
+    enterProject(navigationTarget)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reage à navegação e à chegada do destino, não a cada snapshot
+  }, [navigationKey, navigationTarget])
   const workspaceNeedsAttention = (workspaceId: string) => conversationsOf(workspaceId).some(conversation => (unreadCounts[conversation.id] || 0) > 0 || needsAttention(conversation.id))
   const archiveWorkspace = async (workspace: Workspace) => {
     const preserve = workspace.changes > 0

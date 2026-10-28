@@ -17,7 +17,7 @@ export function QueuedMessages({ messages, onEdit, onSendNow, onRemove }: {
     void action(message).finally(() => setBusyId(current => current === message.id ? null : current))
   }
   return <section aria-label="Mensagens na fila"
-    className="relative mx-3 -mb-3 max-h-40 overflow-y-auto rounded-t-xl border border-b-0 border-border bg-muted/70 px-2 pb-4 pt-1.5 transition-[translate,opacity] duration-200 ease-out starting:translate-y-3 starting:opacity-0 motion-reduce:transition-none">
+    className="@container relative mx-3 -mb-3 max-h-40 overflow-y-auto rounded-t-xl border border-b-0 border-border bg-muted/70 px-2 pb-4 pt-1.5 transition-[translate,opacity] duration-200 ease-out starting:translate-y-3 starting:opacity-0 motion-reduce:transition-none">
     <ul className="flex flex-col gap-1">
       {messages.map((message, index) => {
         const attachments = message.attachments?.length || 0
@@ -25,11 +25,12 @@ export function QueuedMessages({ messages, onEdit, onSendNow, onRemove }: {
         return <li key={message.id} className="flex items-center gap-2 rounded-lg bg-card/80 px-2 py-1 text-xs">
           <span className="shrink-0 tabular-nums text-muted-foreground">{index + 1}.</span>
           <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 break-words text-foreground">{message.text || 'Imagem'}</span>
+            <span className="line-clamp-2 break-words text-foreground" title={message.text.slice(0, 500)}>{message.text || 'Imagem'}</span>
             {attachments > 0 && <span className="text-muted-foreground">{attachments === 1 ? '1 anexo' : `${attachments} anexos`}</span>}
           </span>
           <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Editar" title="Editar: volta para o campo de texto" disabled={busy} onClick={() => act(message, onEdit)}><Pencil className="size-3.5" /></Button>
-          <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" disabled={busy} onClick={() => act(message, onSendNow)}><Send className="size-3.5" />Enviar agora</Button>
+          {/* Em painéis estreitos o texto da mensagem tem prioridade: a ação vira só ícone. */}
+          <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 gap-1 px-2 text-xs" aria-label="Enviar agora" title="Enviar agora" disabled={busy} onClick={() => act(message, onSendNow)}><Send className="size-3.5" /><span className="hidden @lg:inline">Enviar agora</span></Button>
           <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 hover:text-destructive" aria-label="Remover" title="Remover da fila" disabled={busy} onClick={() => act(message, onRemove)}><Trash2 className="size-3.5" /></Button>
         </li>
       })}

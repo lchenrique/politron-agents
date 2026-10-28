@@ -204,6 +204,30 @@ describe('colapso e exclusão da barra lateral', () => {
     expect(screen.getByText('Primeira')).toBeInTheDocument()
   })
 
+  it('aberto na Central sem conversa, a primeira conversa aberta já leva ao projeto dela', () => {
+    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Outro projeto' }
+    const second: Conversation = { id: 'c-2', kind: 'direct', name: 'Segunda', agentIds: [], workspaceId: other.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
+    const props = { snapshot: { ...snapshot, workspaces: [workspace, other], conversations: [second] }, unreadCounts: {}, agentStates: {}, onSelectConversation: vi.fn(), onStartConversation: vi.fn(), onOpenAgent: vi.fn(), onOpenEditor: vi.fn(), onOpenSettings: vi.fn(), onDeleteWorkspace: vi.fn(), onDeleteConversation: vi.fn(), onDeleteAgent: vi.fn(), onSetChief: vi.fn(), onNotice: vi.fn() }
+    const view = render(<Sidebar {...props} selected={undefined} />)
+    view.rerender(<Sidebar {...props} selected={second} />)
+    expect(screen.getByText('Segunda')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Voltar aos projetos' })).toBeInTheDocument()
+  })
+
+  it('sessão nova cujo projeto chega num snapshot seguinte também leva a barra até ele', () => {
+    const livre: Workspace = { ...workspace, id: 'livre', name: 'Livre', kind: 'free' }
+    const first: Conversation = { id: 'c-1', kind: 'direct', name: 'Primeira', agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
+    const fresh: Conversation = { ...first, id: 'c-novo', name: 'Sessão nova', workspaceId: livre.id }
+    const props = { unreadCounts: {}, agentStates: {}, onSelectConversation: vi.fn(), onStartConversation: vi.fn(), onOpenAgent: vi.fn(), onOpenEditor: vi.fn(), onOpenSettings: vi.fn(), onDeleteWorkspace: vi.fn(), onDeleteConversation: vi.fn(), onDeleteAgent: vi.fn(), onSetChief: vi.fn(), onNotice: vi.fn() }
+    const before = { ...snapshot, workspaces: [workspace], conversations: [first] }
+    const view = render(<Sidebar {...props} snapshot={before} selected={first} />)
+    // A conversa nova é selecionada antes de o snapshot trazer o projeto Livre recém-criado.
+    view.rerender(<Sidebar {...props} snapshot={before} selected={fresh} />)
+    view.rerender(<Sidebar {...props} snapshot={{ ...before, workspaces: [workspace, livre], conversations: [first, fresh] }} selected={fresh} />)
+    expect(screen.getByText('Sessão nova')).toBeInTheDocument()
+    expect(screen.queryByText('Primeira')).not.toBeInTheDocument()
+  })
+
   it('lembra o projeto aberto e volta à raiz quando ele some', () => {
     localStorage.setItem('politron.sidebar.project', workspace.id)
     const first = renderSidebar()
