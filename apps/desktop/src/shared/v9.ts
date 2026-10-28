@@ -121,6 +121,8 @@ export interface Model {
   supportedEfforts?: ModelEffort[]
   defaultEffort?: ModelEffort
 }
+/** Ordem manual do sidebar, salva no banco para valer no desktop e na PWA. Ids ausentes entram no topo. */
+export interface SidebarLayout { projectOrder: string[]; groups: { name: string; workspaceIds: string[] }[]; sessionOrder: Record<string, string[]>; agentOrder: string[] }
 export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][]; imageRuntimes?: Agent['runtime'][]; missions?: Mission[]; routines?: Routine[] }
 export interface VoiceStatus { transcription: boolean; speech: boolean; provider?: 'realtime' | 'openrouter' | 'local' | 'pits' | 'pocket'; engine: 'piper' | 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }
 export type PitVoiceId = 'f1' | 'f2' | 'f3' | 'f4' | 'm1' | 'm1-young' | 'dora' | 'alex' | 'santa'
@@ -155,6 +157,9 @@ export interface AppAPI {
   saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>>): Promise<Agent>
   saveTerminalAccess(enabled: boolean): Promise<void>
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }): Promise<Conversation>
+  /** null enquanto nada foi salvo: o renderer migra os grupos antigos do localStorage. */
+  sidebarLayout(): Promise<SidebarLayout | null>
+  saveSidebarLayout(input: Partial<SidebarLayout>): Promise<SidebarLayout>
   saveWorkspace(input: Partial<Workspace> & { path?: string | null }): Promise<Workspace>
   createWorktree(input: { sourceWorkspaceId: string; branch: string; baseBranch?: string }): Promise<Workspace>
   createProjectFolder(input: { parent: string; name: string }): Promise<string>

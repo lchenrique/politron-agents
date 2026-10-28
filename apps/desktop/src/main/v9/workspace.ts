@@ -253,6 +253,9 @@ export class AppService extends EventEmitter {
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return agent }
   saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return assistant }
   saveTerminalAccess(enabled: boolean) { this.store.saveTerminalAccess(enabled); this.emitEvent({ type: 'changed' }) }
+  sidebarLayout() { return this.store.sidebarLayout() }
+  // Sem evento 'changed': a ordem não muda o snapshot e cada tela lê o layout ao abrir.
+  saveSidebarLayout(input: unknown) { return this.store.saveSidebarLayout(input) }
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }) { const conversation = this.store.saveConversation(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return conversation }
   async saveWorkspace(input: Partial<Workspace> & { path?: string | null }) {
     let info: { branch?: string | null; changes?: number } = {}

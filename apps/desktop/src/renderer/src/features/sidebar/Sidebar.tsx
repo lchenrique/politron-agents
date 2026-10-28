@@ -13,7 +13,10 @@ import { AgentPresence, Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 import type { EditorKind } from '../editors/Editor'
 import { HostSelector } from '../hosts/HostSelector'
-import { useProjectGroups } from './projectGroups'
+import { useSidebarLayout } from './projectGroups'
+import type { DragEndEvent } from '@dnd-kit/core'
+import { SortableArea, SortableGroup, SortableRow, type SortableData } from './SortableRows'
+import { applyOrder, mergeSubset, moveTo, placeProject } from './sidebarOrder'
 import { conversationDisplayName } from '../../../../shared/delegation-title'
 
 /** Quantas sessoes o projeto aberto mostra antes de exigir "ver mais". Limita o DOM do sidebar sem esconder o trabalho recente. */
@@ -69,7 +72,9 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [deleteRequest, setDeleteRequest] = useState<{ kind: 'workspace' | 'conversation' | 'agent'; id: string; title: string; description: string } | null>(null)
   useEffect(() => { localStorage.setItem('politron.sidebar.collapsed-workspaces', JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { localStorage.setItem('politron.sidebar.favorites', JSON.stringify([...favorites])) }, [favorites])
-  const { groups, workspaceGroup, collapsedGroups, moveWorkspaceToGroup, addGroup, renameGroup, removeGroup, toggleGroup } = useProjectGroups()
+  const { layout, save, groups, workspaceGroup, collapsedGroups, moveWorkspaceToGroup, addGroup, renameGroup, removeGroup, toggleGroup } = useSidebarLayout(onNotice)
+  // Anúncio para leitores de tela depois de mover um item (Alt+↑/↓ ou arrastar).
+  const [announcement, setAnnouncement] = useState('')
   const [groupDialog, setGroupDialog] = useState<GroupDraft | null>(null)
   const openGroupDialog = (mode: 'create' | 'rename', options: { workspaceId?: string; name?: string } = {}) => setGroupDialog({ mode, value: options.name || '', original: options.name, workspaceId: options.workspaceId })
   const confirmGroupDialog = () => {
@@ -251,7 +256,15 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   /** Projeto aberto: cabeçalho com voltar e abas Projeto/Boos. Só a aba ativa é montada (Radix desmonta a inativa). */
   const projectView = (workspace: Workspace) => {
     const allConversations = conversationsOf(workspace.id)
-    const topLevel = allConversations.filter(isTopLevel)
+    const topLevel = applyOrder(allConversations.filter(isTopLevel), layout.sessionOrder[workspace.id], item => item.id)
+    const sessionIds = topLevel.map(item => item.id)
+    const moveSession = (id: string, index: number) => {
+      const next = moveTo(sessionIds, id, index)
+      const conversation = topLevel.find(item => item.id === id)
+      if (!next || !conversation) return
+      save({ sessionOrder: { [workspace.id]: next } })
+      setAnnouncement(`Sessão ${conversationDisplayName(conversation.name)} movida para a posição ${next.indexOf(id) + 1}`)
+    }
     const showAllSessions = expandedSessions.has(workspace.id)
     const conversations = showAllSessions ? topLevel : topLevel.slice(0, SESSION_LIMIT)
     const hiddenSessions = topLevel.length - conversations.length
@@ -259,7 +272,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     // Time: equipe padrão do projeto mais quem participa das conversas dele, como na elegibilidade de delegação.
     const team = new Set(workspace.defaultAgentIds)
     if (projectTab === 'team') for (const conversation of allConversations) for (const id of conversation.agentIds) team.add(id)
-    const teamAgents = [...team].map(id => agentsById.get(id)).filter((agent): agent is Agent => !!agent && agent.temporaryStatus !== 'retired')
+    const teamAgents = applyOrder([...team].map(id => agentsById.get(id)).filter((agent): agent is Agent => !!agent && agent.temporaryStatus !== 'retired'), layout.agentOrder, agent => agent.id)
     return <Tabs value={projectTab} onValueChange={value => setProjectTab(value as 'sessions' | 'team')} className="flex min-h-0 flex-1 flex-col">
       <div className="mx-2.5 mt-2 flex items-center gap-0.5">
         <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Voltar aos projetos" title="Voltar aos projetos" onClick={() => enterProject(null)}><ArrowLeft className="size-4" /></Button>
@@ -276,37 +289,90 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       <TabsContent value="sessions" className="mt-0 min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3 pt-1">
         <Button variant="ghost" size={null} disabled={!canChat} onClick={() => void onStartConversation(workspace.id)} className="flex h-7 w-full justify-start gap-1.5 rounded-md px-1.5 text-[12px] font-normal text-muted-foreground hover:text-foreground"><Plus className="size-3.5" />Nova sessão no projeto</Button>
         {children.map(projectRow)}
-        {conversations.map(conversationButton)}
+        <SortableArea onDragEnd={listDragEnd(sessionIds, moveSession)}><SortableGroup ids={sessionIds}>
+          {conversations.map(conversation => <SortableRow key={conversation.id} id={conversation.id} data={{ type: 'session' }} onMove={delta => moveSession(conversation.id, sessionIds.indexOf(conversation.id) + delta)}>{conversationButton(conversation)}</SortableRow>)}
+        </SortableGroup></SortableArea>
         {!!hiddenSessions && <Button type="button" variant="ghost" size={null} onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="flex h-auto w-full justify-start gap-1 rounded px-2 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent/40 hover:text-foreground">Ver mais {hiddenSessions} sessões</Button>}
         {!conversations.length && !children.length && <p className="px-2 py-1 text-[10px] text-muted-foreground">Nenhuma conversa ainda.</p>}
       </TabsContent>
       <TabsContent value="team" className="mt-0 min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3 pt-1">
-        {teamAgents.map(agent => agentRow(agent, agent.role === 'chief'))}
+        {sortableAgents(teamAgents, agent => agentRow(agent, agent.role === 'chief'))}
         {!teamAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Este projeto ainda não tem time.</p>}
       </TabsContent>
     </Tabs>
   }
 
+  const rootProject = (workspace: Workspace) => <SortableRow key={workspace.id} id={workspace.id} data={{ type: 'project', group: workspaceGroup[workspace.id] ?? null }} onMove={delta => {
+    const group = workspaceGroup[workspace.id] ?? null
+    const ids = containerIds(group)
+    const index = ids.indexOf(workspace.id) + delta
+    if (index >= 0 && index < ids.length) moveProject(workspace, group, index)
+  }}>{projectRow(workspace)}</SortableRow>
+
   const groupSection = (name: string | null, items: Workspace[], editable = true) => {
-    if (!name) return <div className="space-y-0.5">{items.map(projectRow)}</div>
-    return <ProjectGroupSection key={name} name={name} items={items} collapsed={collapsedGroups.has(name)} editable={editable} onToggle={() => toggleGroup(name)} onRename={() => openGroupDialog('rename', { name })} onRemove={() => removeGroup(name)} renderWorkspace={projectRow} />
+    if (!name) return <div className="space-y-0.5"><SortableGroup ids={items.map(item => item.id)}>{items.map(rootProject)}</SortableGroup></div>
+    return <ProjectGroupSection key={name} name={name} items={items} collapsed={collapsedGroups.has(name)} editable={editable} onToggle={() => toggleGroup(name)} onRename={() => openGroupDialog('rename', { name })} onRemove={() => removeGroup(name)} onMove={editable ? delta => moveGroup(name, groups.indexOf(name) + delta) : undefined} renderWorkspace={rootProject} />
   }
 
-  const visibleAgents = useMemo(() => regularAgents.sort((a, b) =>
-    Number(favorites.has(favoriteKey('agent', b.id))) - Number(favorites.has(favoriteKey('agent', a.id))) || a.name.localeCompare(b.name, 'pt-BR')), [regularAgents, favorites])
-  // Partition projects by folder in a single pass: filtering per folder cost O(folders * projects).
-  const workspacesByGroup = useMemo(() => {
-    const map = new Map<string, Workspace[]>()
+  // Ordem alfabética até o usuário arrastar; favoritos só ganham a estrela, sem forçar posição.
+  const visibleAgents = useMemo(() => applyOrder([...regularAgents].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), layout.agentOrder, agent => agent.id), [regularAgents, layout.agentOrder])
+  const orderedAgentIds = useMemo(() => applyOrder(snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired'), layout.agentOrder, agent => agent.id).map(agent => agent.id), [snapshot.agents, layout.agentOrder])
+  const listDragEnd = (ids: string[], move: (id: string, index: number) => void) => ({ active, over }: DragEndEvent) => {
+    if (over && active.id !== over.id) move(String(active.id), ids.indexOf(String(over.id)))
+  }
+  /** Boos na ordem manual; mover no time do projeto reordena só o time dentro da ordem global. */
+  const sortableAgents = (agents: Agent[], render: (agent: Agent) => React.ReactNode) => {
+    const ids = agents.map(agent => agent.id)
+    const move = (id: string, index: number) => {
+      const next = moveTo(ids, id, index)
+      const agent = agentsById.get(id)
+      if (!next || !agent) return
+      save({ agentOrder: mergeSubset(orderedAgentIds, next) })
+      setAnnouncement(`Boo ${agent.name} movido para a posição ${next.indexOf(id) + 1}`)
+    }
+    return <SortableArea onDragEnd={listDragEnd(ids, move)}><SortableGroup ids={ids}>
+      {agents.map(agent => <SortableRow key={agent.id} id={agent.id} data={{ type: 'agent' }} onMove={delta => move(agent.id, ids.indexOf(agent.id) + delta)}>{render(agent)}</SortableRow>)}
+    </SortableGroup></SortableArea>
+  }
+  // Separa os projetos por pasta numa passada só (filtrar por pasta custava O(pastas * projetos)) e aplica a ordem manual.
+  const projectContainers = useMemo(() => {
+    const byGroup = new Map<string, Workspace[]>(groups.map(name => [name, []]))
     const ungrouped: Workspace[] = []
     for (const workspace of rootWorkspaces) {
-      const group = workspaceGroup[workspace.id]
-      if (!group) { ungrouped.push(workspace); continue }
-      const list = map.get(group)
+      const list = byGroup.get(workspaceGroup[workspace.id])
       if (list) list.push(workspace)
-      else map.set(group, [workspace])
+      else ungrouped.push(workspace)
     }
-    return { map, ungrouped }
-  }, [rootWorkspaces, workspaceGroup])
+    return { groups: layout.groups.map(group => ({ name: group.name, items: applyOrder(byGroup.get(group.name) || [], group.workspaceIds, item => item.id) })), ungrouped: applyOrder(ungrouped, layout.projectOrder, item => item.id) }
+  }, [rootWorkspaces, workspaceGroup, groups, layout.groups, layout.projectOrder])
+  const containerIds = (group: string | null) => (group === null ? projectContainers.ungrouped : projectContainers.groups.find(item => item.name === group)?.items || []).map(item => item.id)
+  const moveProject = (workspace: Workspace, target: string | null, index: number) => {
+    const next = placeProject({ groups: projectContainers.groups.map(group => ({ name: group.name, workspaceIds: containerIds(group.name) })), ungrouped: containerIds(null) }, workspace.id, target, index)
+    save(next)
+    const list = target === null ? next.projectOrder : next.groups.find(group => group.name === target)?.workspaceIds || []
+    setAnnouncement(`Projeto ${workspaceLabel(workspace)} movido para a posição ${list.indexOf(workspace.id) + 1}${target ? ` da pasta ${target}` : ''}`)
+  }
+  const moveGroup = (name: string, index: number) => {
+    const next = moveTo(groups, name, index)
+    if (!next) return
+    save({ groups: next.map(item => layout.groups.find(group => group.name === item)!) })
+    setAnnouncement(`Pasta ${name} movida para a posição ${next.indexOf(name) + 1}`)
+  }
+  const rootDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return
+    const from = active.data.current as SortableData
+    const to = over.data.current as SortableData
+    if (from.type === 'group' && from.name) {
+      const target = to.type === 'group' ? to.name : to.group
+      moveGroup(from.name, target ? groups.indexOf(target) : groups.length - 1)
+      return
+    }
+    const workspace = workspacesById.get(String(active.id))
+    if (!workspace) return
+    // Solto sobre o cabeçalho de uma pasta (ou de "Outros"): entra no topo dela.
+    if (to.type === 'group') moveProject(workspace, to.name ?? null, 0)
+    else moveProject(workspace, to.group ?? null, containerIds(to.group ?? null).indexOf(String(over.id)))
+  }
 
   // A navegação faz parte do chrome da janela: mesma superfície da barra superior, sem bordas internas.
   return <aside className="boobot-sidebar flex h-full min-w-0 flex-col bg-chrome text-sidebar-foreground" aria-label="Barra lateral do Boobot">
@@ -372,8 +438,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             <h2 className="ds-eyebrow flex-1 px-1.5 py-1">Projetos</h2>
             <Button variant="ghost" size="icon" className="size-6" aria-label="Nova pasta de projetos" title="Criar pasta de projetos" onClick={() => openGroupDialog('create')}><FolderPlus className="size-3.5" /></Button>
           </div>
-          {groups.map(group => groupSection(group, workspacesByGroup.map.get(group) || []))}
-          {groupSection(groups.length ? 'Outros' : null, workspacesByGroup.ungrouped, false)}
+          <SortableArea onDragEnd={rootDragEnd}>
+            <SortableGroup ids={groups.map(group => 'group:' + group)}>{projectContainers.groups.map(group => groupSection(group.name, group.items))}</SortableGroup>
+            {groupSection(groups.length ? 'Outros' : null, projectContainers.ungrouped, false)}
+          </SortableArea>
           {!rootWorkspaces.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Crie um projeto pelo botão + para organizar suas sessões.</p>}
           {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="mt-2"><Button variant="ghost" className="h-8 w-full justify-start gap-1.5 px-2 text-xs" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}>{collapsed.has('legacy') ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}<FolderOpen className="size-3.5" />Sessões antigas<span className="ml-auto text-[10px]">{legacyConversations.length}</span></Button>{!collapsed.has('legacy') && <div className="ml-5 border-l border-border/50 pl-1">{legacyConversations.filter(isTopLevel).map(conversationButton)}</div>}</div>}
         </section>
@@ -381,7 +449,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       <TabsContent value="agents" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
         <section aria-label="Catálogo de agentes" className="space-y-0.5">
           {onOpenHome && chiefAgent && agentRow(chiefAgent, true)}
-          {visibleAgents.map(agent => agentRow(agent))}
+          {sortableAgents(visibleAgents, agent => agentRow(agent))}
           {!visibleAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">{chiefAgent ? 'Nenhum outro agente cadastrado. Use o botão + para criar.' : 'Crie um Boo pelo botão + para começar.'}</p>}
         </section>
       </TabsContent>
@@ -390,6 +458,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       <Button variant="ghost" disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} title={selected?.workspaceId ? 'Abrir a pasta do projeto desta conversa' : 'Abra uma conversa de projeto para acessar a pasta'} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><FolderOpen className="size-3.5" />Abrir pasta</Button>
       <Button variant="ghost" onClick={onOpenSettings} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><Settings2 className="size-3.5" />Configurações</Button>
     </footer>}
+    <div aria-live="polite" role="status" aria-label="Ordem do sidebar" className="sr-only">{announcement}</div>
     <GroupDialog draft={groupDialog} onChange={value => setGroupDialog(current => current ? { ...current, value } : current)} onCancel={() => setGroupDialog(null)} onConfirm={confirmGroupDialog} />
     <Dialog open={!!deleteRequest} onOpenChange={open => { if (!open) setDeleteRequest(null) }}>
       <DialogContent>

@@ -3,7 +3,7 @@ import { assertPwaRpcAuthorized, type PwaCapability } from '../../shared/pwa-hos
 
 // Lista explícita: pareamento não expõe IPC arbitrário nem ações da janela local.
 const METHODS = new Set([
-  'snapshot', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'saveWorkspace',
+  'snapshot', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'sidebarLayout', 'saveSidebarLayout', 'saveWorkspace',
   'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff',
   'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'setVisibleConversation', 'getVisibleConversation',
   'respondToAgent', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'cancelQueuedMessage', 'sendQueuedNow', 'stop', 'cancelDelegation', 'models',

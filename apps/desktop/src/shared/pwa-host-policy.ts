@@ -23,6 +23,8 @@ export const PWA_METHOD_CAPABILITIES = {
   'v9:stop': 'chat',
   'v9:respondToAgent': 'chat',
   'v9:saveConversation': 'chat',
+  'v9:sidebarLayout': 'read',
+  'v9:saveSidebarLayout': 'chat',
   'v9:voiceSpeak': 'chat',
   'v9:voiceTranscribe': 'chat',
 

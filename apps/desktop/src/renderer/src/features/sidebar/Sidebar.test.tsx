@@ -321,3 +321,57 @@ describe('delegações aninhadas na sessão que delegou', () => {
     expect(screen.getAllByLabelText('Aguardando aprovação')).toHaveLength(1)
   })
 })
+
+describe('reordenação do sidebar', () => {
+  const alfa: Workspace = { ...workspace, id: 'ws-alfa', name: 'Alfa', kind: 'local' }
+  const beta: Workspace = { ...workspace, id: 'ws-beta', name: 'Beta', kind: 'local' }
+  const session = (id: string, name: string, createdAt: string): Conversation => ({ id, workspaceId: alfa.id, name, kind: 'direct', agentIds: [], archived: false, titleAuto: false, revision: 1, createdAt } as Conversation)
+  const ordered = (snapshotValue: Snapshot) => ({ ...snapshotValue, agents: [agent, { ...agent, id: 'agent-2', name: 'Mira', alias: 'mira' }] })
+  function installAppAPI(saved: Awaited<ReturnType<NonNullable<typeof window.appAPI>['sidebarLayout']>>) {
+    const api = { sidebarLayout: vi.fn(async () => saved), saveSidebarLayout: vi.fn(async (input: object) => ({ projectOrder: [], groups: [], sessionOrder: {}, agentOrder: [], ...input })) }
+    window.appAPI = api as unknown as typeof window.appAPI
+    return api
+  }
+  afterEach(() => { delete (window as { appAPI?: unknown }).appAPI })
+  const rowNames = (pattern: RegExp) => screen.getAllByRole('button').map(item => item.textContent || '').filter(text => pattern.test(text))
+
+  it('migra uma vez as pastas antigas do localStorage para o banco', async () => {
+    localStorage.setItem('politron.sidebar.groups', JSON.stringify(['Clientes']))
+    localStorage.setItem('politron.sidebar.workspace-groups', JSON.stringify({ [alfa.id]: 'Clientes' }))
+    const api = installAppAPI(null)
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [alfa, beta] } })
+    await waitFor(() => expect(api.saveSidebarLayout).toHaveBeenCalledWith({ projectOrder: [], agentOrder: [], sessionOrder: {}, groups: [{ name: 'Clientes', workspaceIds: [alfa.id] }] }))
+    expect(screen.getByRole('button', { name: 'Recolher Clientes' })).toBeInTheDocument()
+  })
+
+  it('aplica a ordem salva, põe projetos novos no topo e move com Alt+seta anunciando a posição', async () => {
+    const novo: Workspace = { ...workspace, id: 'ws-novo', name: 'Novo', kind: 'local' }
+    const api = installAppAPI({ projectOrder: [beta.id, alfa.id], groups: [], sessionOrder: {}, agentOrder: [] })
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [alfa, beta, novo] } })
+    await waitFor(() => expect(rowNames(/^(Alfa|Beta|Novo)/)).toEqual(['Novo0', 'Beta0', 'Alfa0']))
+    fireEvent.keyDown(screen.getByRole('button', { name: /^Alfa/ }), { key: 'ArrowUp', altKey: true })
+    expect(rowNames(/^(Alfa|Beta|Novo)/)).toEqual(['Novo0', 'Alfa0', 'Beta0'])
+    expect(api.saveSidebarLayout).toHaveBeenLastCalledWith({ groups: [], projectOrder: [novo.id, alfa.id, beta.id] })
+    expect(screen.getByRole('status', { name: 'Ordem do sidebar' })).toHaveTextContent('Projeto Alfa movido para a posição 2')
+    // Sem Alt, a seta não reordena.
+    fireEvent.keyDown(screen.getByRole('button', { name: /^Alfa/ }), { key: 'ArrowUp' })
+    expect(api.saveSidebarLayout).toHaveBeenCalledTimes(1)
+  })
+
+  it('reordena sessões do projeto e Boos e salva no banco', async () => {
+    const api = installAppAPI({ projectOrder: [], groups: [], sessionOrder: {}, agentOrder: [] })
+    renderSidebar({ snapshot: ordered({ ...snapshot, workspaces: [alfa], conversations: [session('c1', 'Primeira', '2026-10-01T00:00:00.000Z'), session('c2', 'Segunda', '2026-10-02T00:00:00.000Z')] }) })
+    await waitFor(() => expect(api.sidebarLayout).toHaveBeenCalled())
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Boos/ }), { button: 0 })
+    fireEvent.keyDown(screen.getByRole('button', { name: /Lyra @lyra/ }), { key: 'ArrowDown', altKey: true })
+    expect(api.saveSidebarLayout).toHaveBeenLastCalledWith({ agentOrder: ['agent-2', 'agent-1'] })
+    expect(screen.getByRole('status', { name: 'Ordem do sidebar' })).toHaveTextContent('Boo Lyra movido para a posição 2')
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Projetos/ }), { button: 0 })
+    enter('Alfa')
+    expect(rowNames(/^(Primeira|Segunda)$/)).toEqual(['Segunda', 'Primeira'])
+    fireEvent.keyDown(screen.getByRole('button', { name: /^Segunda/ }), { key: 'ArrowDown', altKey: true })
+    expect(rowNames(/^(Primeira|Segunda)$/)).toEqual(['Primeira', 'Segunda'])
+    expect(api.saveSidebarLayout).toHaveBeenLastCalledWith({ sessionOrder: { [alfa.id]: ['c1', 'c2'] } })
+    expect(screen.getByRole('status', { name: 'Ordem do sidebar' })).toHaveTextContent('Sessão Segunda movida para a posição 2')
+  })
+})

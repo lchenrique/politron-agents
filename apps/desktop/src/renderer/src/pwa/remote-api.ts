@@ -149,6 +149,8 @@ function startPolling() {
 const app = {
   snapshot: async () => normalizeSnapshot(await rpc<unknown>('v9:snapshot')),
   saveConversation: (input: Parameters<AppAPI['saveConversation']>[0]) => rpc('v9:saveConversation', input),
+  sidebarLayout: () => rpc<Awaited<ReturnType<AppAPI['sidebarLayout']>>>('v9:sidebarLayout'),
+  saveSidebarLayout: (input: Parameters<AppAPI['saveSidebarLayout']>[0]) => rpc<Awaited<ReturnType<AppAPI['saveSidebarLayout']>>>('v9:saveSidebarLayout', input),
   workspaceDiff: (id: string) => rpc<string>('v9:workspaceDiff', id),
   listProjectFiles: (id: string, directory = '') => rpc<Awaited<ReturnType<AppAPI['listProjectFiles']>>>('v9:listProjectFiles', id, directory),
   readProjectFile: (id: string, path: string) => rpc<Awaited<ReturnType<AppAPI['readProjectFile']>>>('v9:readProjectFile', id, path),

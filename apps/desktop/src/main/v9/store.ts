@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
-import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type Snapshot, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type SidebarLayout, type Snapshot, type Workspace } from '../../shared/v9'
 import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 
 export const SCHEMA_VERSION = 9
@@ -25,6 +25,39 @@ export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'app
 export type SessionBinding = { key: string; threadId: string; runtime: Agent['runtime'] | null; contextVersion: number; deliveredDigests: Record<string, string> }
 const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: true, computerUse: false, approvalMode: 'ask' }
 function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'ghost-wave', approvalMode: value.approvalMode === 'automatic' || value.approvalMode === 'bypass' ? value.approvalMode : 'ask' } }
+
+const EMPTY_SIDEBAR_LAYOUT: SidebarLayout = { projectOrder: [], groups: [], sessionOrder: {}, agentOrder: [] }
+const LAYOUT_ERROR = 'Ordem do sidebar inválida.'
+function layoutIds(value: unknown, limit = 5000): string[] {
+  if (!Array.isArray(value) || value.length > limit || !value.every(id => typeof id === 'string' && id.length > 0 && id.length <= 200)) throw new Error(LAYOUT_ERROR)
+  return [...new Set(value as string[])]
+}
+/** Valida a entrada (fronteira IPC/PWA) e mescla sobre o layout anterior. */
+export function validateSidebarLayout(input: unknown, previous: SidebarLayout): SidebarLayout {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(LAYOUT_ERROR)
+  const value = input as Record<string, unknown>
+  const next: SidebarLayout = { ...previous, sessionOrder: { ...previous.sessionOrder } }
+  if (value.projectOrder !== undefined) next.projectOrder = layoutIds(value.projectOrder)
+  if (value.agentOrder !== undefined) next.agentOrder = layoutIds(value.agentOrder)
+  if (value.groups !== undefined) {
+    if (!Array.isArray(value.groups) || value.groups.length > 200) throw new Error(LAYOUT_ERROR)
+    next.groups = value.groups.map(group => {
+      const item = group as Record<string, unknown> | null
+      if (!item || typeof item !== 'object' || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 200) throw new Error(LAYOUT_ERROR)
+      return { name: item.name.trim(), workspaceIds: layoutIds(item.workspaceIds) }
+    })
+    if (new Set(next.groups.map(group => group.name)).size !== next.groups.length) throw new Error(LAYOUT_ERROR)
+  }
+  if (value.sessionOrder !== undefined) {
+    const entries = value.sessionOrder && typeof value.sessionOrder === 'object' && !Array.isArray(value.sessionOrder) ? Object.entries(value.sessionOrder) : null
+    if (!entries || entries.length > 2000) throw new Error(LAYOUT_ERROR)
+    for (const [id, ids] of entries) {
+      if (!id || id.length > 200 || id === '__proto__') throw new Error(LAYOUT_ERROR)
+      next.sessionOrder[id] = layoutIds(ids)
+    }
+  }
+  return next
+}
 
 export function requiredText(value: unknown, label: string, limit = 10000): string {
   if (typeof value !== 'string' || !value.trim() || value.length > limit) throw new Error(`${label}: informe um texto válido de até ${limit} caracteres.`)
@@ -262,6 +295,21 @@ export class WorkspaceStore {
   saveTerminalAccess(enabled: boolean): void {
     if (typeof enabled !== 'boolean') throw new Error('A permissão global de terminal precisa ser booleana.')
     this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('terminal_enabled', String(enabled))
+  }
+  /** Ordem manual do sidebar; null enquanto nunca foi salva (o renderer migra os grupos antigos). */
+  sidebarLayout(): SidebarLayout | null {
+    const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get('sidebar_layout') as { value: string } | undefined
+    if (!row) return null
+    try { return validateSidebarLayout(JSON.parse(row.value), EMPTY_SIDEBAR_LAYOUT) } catch { return { ...EMPTY_SIDEBAR_LAYOUT } }
+  }
+  /** Mescla campos enviados; sessionOrder mescla por projeto e lista vazia apaga a entrada. */
+  saveSidebarLayout(input: unknown): SidebarLayout {
+    const next = validateSidebarLayout(input, this.sidebarLayout() ?? EMPTY_SIDEBAR_LAYOUT)
+    // Projetos apagados não deixam ordem órfã crescendo no banco.
+    const workspaces = new Set(this.all<Workspace>('v9_workspaces').map(item => item.id))
+    next.sessionOrder = Object.fromEntries(Object.entries(next.sessionOrder).filter(([id, ids]) => ids.length && workspaces.has(id)))
+    this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('sidebar_layout', JSON.stringify(next))
+    return next
   }
   /** Autorização global do navegador real: vale para todas as conversas e agentes com uso do computador. */
   externalBrowserAlways(): boolean {
