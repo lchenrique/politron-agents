@@ -1,6 +1,6 @@
 ﻿import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Approval, FileChange, Message } from '../../../../shared/v9'
+import type { Agent, Approval, Conversation, FileChange, Message } from '../../../../shared/v9'
 import { MessageList } from './MessageList'
 
 /** jsdom não calcula layout real; simula um container com scrollHeight/clientHeight próprios para testar o auto-scroll. */
@@ -210,5 +210,53 @@ describe('linha de atividade do agente', () => {
     const user = (id: string, status: Message['status']): Message => ({ id, conversationId: 'conversation-1', agentId: null, author: 'Você', role: 'user', text: `Texto ${id}`, status, runId: null, createdAt: '' })
     const { container } = render(list([user('sent', 'completed'), message, user('waiting', 'queued'), user('removed', 'cancelled')]))
     expect([...container.querySelectorAll('[data-message-id]')].map(node => node.getAttribute('data-message-id'))).toEqual(['sent', 'message-1'])
+  })
+})
+
+describe('cartão de delegações', () => {
+  const boos = ['Examen', 'Mimir', 'Hermes', 'Atena'].map((name, index) => ({ id: `boo-${index}`, name, alias: name.toLowerCase(), color: '#786bea' }) as Agent)
+  const conversations = boos.map((boo, index) => ({ id: `child-${index}`, name: `${boo.name} · tarefa ${index}`, kind: 'direct', agentIds: [boo.id], workspaceId: 'w', titleAuto: false, revision: 1, archived: false, createdAt: '' }) as Conversation)
+  const ask = (index: number): Message => ({ id: `ask-${index}`, conversationId: 'chief', agentId: 'atlas', author: 'Atlas', role: 'activity', text: `Delegação · ${boos[index]!.name}`, status: 'completed', runId: 'run-chief', createdAt: '' })
+  const task = (index: number) => `Contexto: monorepo BubbleDesk, SaaS multi-tenant.\nTarefa: revisar a parte ${index}.\nDetalhes longos ${index}.`
+  const origin = (index: number, status: Message['status'] = 'running'): Message => ({
+    id: `origin-${index}`, conversationId: 'chief', agentId: boos[index]!.id, author: boos[index]!.name, role: 'activity', status, runId: null,
+    delegationId: `delegation-${index}`, relatedConversationId: `child-${index}`, delegationTask: task(index), createdAt: '',
+    text: status === 'completed' ? `Pedido concluído por ${boos[index]!.name}. Resultado disponível na conversa relacionada.\n\nResultado da parte ${index}.` : `Pedido para ${boos[index]!.name}: ${task(index)}\nExecutando na conversa privada do agente.`,
+  })
+  const renderCard = (messages: Message[], onOpen = vi.fn()) => render(<MessageList messages={messages} fileChanges={[]} approvals={[]} conversations={conversations} agentOf={id => boos.find(boo => boo.id === id)} selectedAgents={[]} onOpenRelatedConversation={onOpen} onNotice={() => undefined} />)
+
+  it('agrupa 4 delegações num cartão com uma linha por Boo, sem repetir "Delegando tarefa"', () => {
+    const { container } = renderCard([ask(0), origin(0), ask(1), origin(1), ask(2), origin(2, 'completed'), ask(3), origin(3, 'failed')])
+    const card = screen.getByRole('region', { name: 'Delegou para 4 Boos' })
+    expect(within(card).getAllByRole('listitem')).toHaveLength(4)
+    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
+    expect(container).not.toHaveTextContent(/Delega(ndo|ção ·)/)
+    expect(within(card).getAllByRole('img', { name: 'Trabalhando' })).toHaveLength(2)
+    expect(within(card).getByRole('img', { name: 'Concluído' })).toBeInTheDocument()
+    expect(within(card).getByRole('img', { name: 'Erro' })).toBeInTheDocument()
+    expect(within(card).getAllByText('revisar a parte 0')).toHaveLength(1)
+    expect(within(card).getAllByRole('button', { name: 'Cancelar pedido' })).toHaveLength(2)
+  })
+
+  it('abre a conversa, cancela pelo handler existente e expande pedido e resultado', () => {
+    const cancelDelegation = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('appAPI', { cancelDelegation })
+    const onOpen = vi.fn()
+    renderCard([origin(0), origin(1, 'completed')], onOpen)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Abrir conversa' })[1]!)
+    expect(onOpen).toHaveBeenCalledWith('child-1')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
+    expect(cancelDelegation).toHaveBeenCalledWith('delegation-0')
+    expect(screen.queryByText('Resultado da parte 1.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Ver pedido para Mimir' }))
+    expect(screen.getByRole('region', { name: 'Pedido completo' })).toHaveTextContent('Detalhes longos 1.')
+    expect(screen.getByRole('region', { name: 'Resultado' })).toHaveTextContent('Resultado da parte 1.')
+    vi.unstubAllGlobals()
+  })
+
+  it('cartão de uma delegação usa o singular e mensagens antigas sem delegationTask ainda entram', () => {
+    const legacy = { ...origin(0), delegationTask: undefined }
+    renderCard([legacy])
+    expect(screen.getByRole('region', { name: 'Delegou para 1 Boo' })).toHaveTextContent('revisar a parte 0')
   })
 })

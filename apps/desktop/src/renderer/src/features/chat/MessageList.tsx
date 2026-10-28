@@ -4,6 +4,7 @@ import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
 import { MessageItem } from './MessageItem'
 import { ActivitySummary } from './ActivitySummary'
+import { DelegationCard } from './DelegationCard'
 import { chatRows } from './chat-rows'
 import { PolitronToolApproval } from './PolitronToolApproval'
 import { CompletedFileReview } from '../diff/CompletedFileReview'
@@ -256,7 +257,9 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
         const appliedChanges = appliedByMessage.get(message.id)
         // A revisão fica dentro do wrapper medido pelo ResizeObserver: expandir o diff atualiza a virtualização.
         return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className={`mb-6 space-y-2${enteringMessageId === message.id ? ' chat-message-enter' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && enteringMessageId === message.id) setEnteringMessageId(null) }}>
-          {message.activities
+          {message.delegations
+            ? <DelegationCard delegations={message.delegations} agentOf={agentOf} conversationsById={conversationsById} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} />
+            : message.activities
             ? <ActivitySummary activities={message.activities} running={!!run?.active} durationMs={run && Number.isFinite(run.end - run.start) ? run.end - run.start : undefined} />
             : <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} canCancelQueued={canCancelQueued} quietProgress={!!run?.hasActivity} />}
           {appliedChanges && <CompletedFileReview changes={appliedChanges} label={INLINE_REVIEW_LABEL} />}

@@ -41,6 +41,22 @@ export function useSidebarIndex(snapshot: Snapshot) {
   const legacyConversations = useMemo(() => snapshot.conversations.filter(item => !item.archived && !workspacesById.get(item.workspaceId)?.name), [snapshot.conversations, workspacesById])
   const rootWorkspaces = useMemo(() => snapshot.workspaces.filter(item => !item.archived && !item.parentWorkspaceId && item.name).sort((a, b) => Number(b.name === 'Livre' && b.kind === 'free') - Number(a.name === 'Livre' && a.kind === 'free') || a.name.localeCompare(b.name, 'pt-BR')), [snapshot.workspaces])
 
+  // Conversas privadas de delegação ficam sob a conversa que delegou; sem pai visível, voltam ao topo.
+  const delegatedByParent = useMemo(() => {
+    const visible = new Set(snapshot.conversations.filter(item => !item.archived).map(item => item.id))
+    const map = new Map<string, Conversation[]>()
+    for (const item of snapshot.conversations) {
+      if (item.archived || !item.parentConversationId || !visible.has(item.parentConversationId)) continue
+      const list = map.get(item.parentConversationId)
+      if (list) list.push(item)
+      else map.set(item.parentConversationId, [item])
+    }
+    for (const list of map.values()) list.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    return map
+  }, [snapshot.conversations])
+  const nested = useMemo(() => new Set([...delegatedByParent.values()].flat().map(item => item.id)), [delegatedByParent])
+  const delegatedConversations = (id: string) => delegatedByParent.get(id) || []
+  const isTopLevel = (conversation: Conversation) => !nested.has(conversation.id)
   const childWorkspaces = (id: string) => childrenByWorkspace.get(id) || []
   const needsAttention = (conversationId: string) => pendingApprovalConversations.has(conversationId)
   const conversationsOf = (workspaceId: string) => {
@@ -52,7 +68,7 @@ export function useSidebarIndex(snapshot: Snapshot) {
     return direct.concat(legacyConversations.filter(item => !seen.has(item.id))).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   }
 
-  return { workspacesById, agentsById, legacyConversations, rootWorkspaces, childWorkspaces, conversationsOf, needsAttention }
+  return { workspacesById, agentsById, legacyConversations, rootWorkspaces, childWorkspaces, conversationsOf, needsAttention, delegatedConversations, isTopLevel }
 }
 
 /** Itens da busca rapida. A paleta fica fechada na maior parte do tempo, entao a lista e memorizada. */

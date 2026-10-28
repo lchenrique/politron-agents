@@ -35,6 +35,7 @@ import { SkillsService } from './skills/service'
 import { MissionEngine } from './missions'
 import { describeTrigger, validateTrigger } from '../../shared/missions'
 import { toolActivityText } from '../../shared/activity'
+import { delegatedConversationName } from '../../shared/delegation-title'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
 
@@ -1591,18 +1592,17 @@ export class AppService extends EventEmitter {
   }
   private async delegate(parent: RunContext, recipient: Agent, task: string, idempotencyKey: string, inheritLease = false, previousDelegation?: Delegation): Promise<string> {
     const now = new Date().toISOString()
-    const taskLabel = task.replace(/\s+/g, ' ').slice(0, 52)
     this.store.db.exec('BEGIN IMMEDIATE')
     let targetConversation: Conversation
     let request: Message, resultMessage: Message, originMessage: Message, child: Run, delegation: Delegation
     try {
     targetConversation = previousDelegation
       ? this.store.conversation(previousDelegation.targetConversationId)
-      : this.store.saveConversation({ kind: 'direct', name: `Pedido: ${recipient.name} · ${taskLabel}`, agentIds: [recipient.id], workspaceId: parent.run.workspaceId })
+      : this.store.saveConversation({ kind: 'direct', name: delegatedConversationName(recipient.name, task), agentIds: [recipient.id], workspaceId: parent.run.workspaceId })
     if (previousDelegation && (targetConversation.archived || targetConversation.workspaceId !== parent.run.workspaceId || targetConversation.agentIds.length !== 1 || targetConversation.agentIds[0] !== recipient.id)) throw new Error('A conversa privada da delegação mudou; a continuação foi cancelada.')
     request = { id: randomUUID(), conversationId: targetConversation.id, agentId: parent.agent.id, author: `Pedido de ${parent.agent.name}`, role: 'activity', text: task, status: 'queued', runId: null, createdAt: now }
     resultMessage = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, author: recipient.name, role: 'assistant', text: '', status: 'queued', runId: null, createdAt: now }
-    originMessage = { id: randomUUID(), conversationId: parent.conversation.id, agentId: recipient.id, author: recipient.name, role: 'activity', text: `Pedido para ${recipient.name}: ${task}\nAguardando execução na conversa privada do agente.`, status: 'queued', runId: null, relatedConversationId: targetConversation.id, createdAt: now }
+    originMessage = { id: randomUUID(), conversationId: parent.conversation.id, agentId: recipient.id, author: recipient.name, role: 'activity', text: `Pedido para ${recipient.name}: ${task}\nAguardando execução na conversa privada do agente.`, status: 'queued', runId: null, relatedConversationId: targetConversation.id, delegationTask: task, createdAt: now }
     const targetWorkspace = this.store.workspace(targetConversation.workspaceId)
     child = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: [...parent.run.ancestry, recipient.id], status: 'queued', threadId: null, turnId: null, messageId: resultMessage.id, input: task, inputMessageId: request.id, agent: recipient, workspaceId: targetWorkspace.id, workspacePath: targetWorkspace.path, createdAt: now }
     resultMessage.runId = child.id

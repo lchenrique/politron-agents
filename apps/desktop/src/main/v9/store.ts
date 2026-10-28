@@ -339,7 +339,11 @@ export class WorkspaceStore {
       this.db.exec("INSERT INTO v9_message_fts(message_id,conversation_id,author,text) SELECT m.id,m.conversation_id,json_extract(m.data,'$.author'),json_extract(m.data,'$.text') FROM v9_messages m WHERE (json_extract(m.data,'$.role') IN ('user','activity') OR json_extract(m.data,'$.status') IN ('completed','failed','interrupted')) AND NOT EXISTS (SELECT 1 FROM v9_message_fts f WHERE f.message_id=m.id)")
     } catch { /* SQLite sem FTS5 mantém a busca limitada por LIKE. */ }
   }
-  snapshot(): Snapshot { return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations: this.conversations(), messages: [], runs: this.recent<Run>('v9_runs', 100), fileChanges: this.recent<FileChange>('v9_file_changes', 500), approvals: this.approvals(), terminalEnabled: this.terminalEnabled(), missions: this.missions(100), routines: this.routines() } }
+  snapshot(): Snapshot {
+    const parents = new Map((this.db.prepare('SELECT source_conversation_id AS source, target_conversation_id AS target FROM v9_delegations ORDER BY rowid').all() as { source: string; target: string }[]).map(row => [row.target, row.source]))
+    const conversations = this.conversations().map(item => { const parent = parents.get(item.id); return parent && parent !== item.id ? { ...item, parentConversationId: parent } : item })
+    return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations, messages: [], runs: this.recent<Run>('v9_runs', 100), fileChanges: this.recent<FileChange>('v9_file_changes', 500), approvals: this.approvals(), terminalEnabled: this.terminalEnabled(), missions: this.missions(100), routines: this.routines() }
+  }
   saveAgent(input: Partial<Agent>): Agent {
     const previous = input.id ? this.agent(input.id) : undefined
     const name = requiredText(input.name, 'Nome', 80)

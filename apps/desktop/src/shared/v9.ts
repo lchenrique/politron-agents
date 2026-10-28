@@ -48,11 +48,15 @@ export interface Conversation {
   responseMode?: 'broadcast' | 'leader' | 'auto' | 'discussion'
   leaderAgentId?: string | null
   revision: number; archived: boolean; createdAt: string
+  /** Só no snapshot: conversa que delegou o pedido para esta conversa privada (derivado de v9_delegations). */
+  parentConversationId?: string
 }
 export interface Message {
   id: string; conversationId: string; agentId: string | null; author: string
   role: 'user' | 'assistant' | 'activity'; text: string; status: RunStatus
   runId: string | null; delegationId?: string; relatedConversationId?: string; attachments?: MessageAttachment[]; createdAt: string
+  /** Texto integral do pedido, na mensagem de origem de uma delegação. */
+  delegationTask?: string
 }
 export interface MessagePage { messages: Message[]; hasMore: boolean; beforeCursor: number | null }
 export interface MessageSearchHit { message: Message; cursor: number; snippet: string }

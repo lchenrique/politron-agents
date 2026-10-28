@@ -14,6 +14,7 @@ import { errorText } from '../app/appShellShared'
 import type { EditorKind } from '../editors/Editor'
 import { HostSelector } from '../hosts/HostSelector'
 import { useProjectGroups } from './projectGroups'
+import { conversationDisplayName } from '../../../../shared/delegation-title'
 
 /** Quantas sessoes o projeto aberto mostra antes de exigir "ver mais". Limita o DOM do sidebar sem esconder o trabalho recente. */
 const SESSION_LIMIT = 10
@@ -64,6 +65,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [openWorkspaceMenuId, setOpenWorkspaceMenuId] = useState<string | null>(null)
   // Projetos com muitas sessoes mostram so as mais recentes; o resto fica sob demanda.
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(() => new Set())
+  const [expandedDelegations, setExpandedDelegations] = useState<Set<string>>(() => new Set())
   const [deleteRequest, setDeleteRequest] = useState<{ kind: 'workspace' | 'conversation' | 'agent'; id: string; title: string; description: string } | null>(null)
   useEffect(() => { localStorage.setItem('politron.sidebar.collapsed-workspaces', JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { localStorage.setItem('politron.sidebar.favorites', JSON.stringify([...favorites])) }, [favorites])
@@ -85,7 +87,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const toggleFavorite = (key: string) => setFavorites(current => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next })
   const isFavorite = (type: 'workspace' | 'conversation' | 'agent', id: string) => favorites.has(favoriteKey(type, id))
   // Indices derivados do snapshot: a barra lateral nao pode varrer o snapshot inteiro por projeto.
-  const { workspacesById, agentsById, legacyConversations, rootWorkspaces, childWorkspaces, conversationsOf, needsAttention } = useSidebarIndex(snapshot)
+  const { workspacesById, agentsById, legacyConversations, rootWorkspaces, childWorkspaces, conversationsOf, needsAttention, delegatedConversations, isTopLevel } = useSidebarIndex(snapshot)
   const enteredProject = enteredId ? workspacesById.get(enteredId) : undefined
   // Projeto apagado ou arquivado volta para a lista. O id fica guardado: no início o snapshot ainda chega vazio.
   const project = enteredProject && !enteredProject.archived && enteredProject.name ? enteredProject : undefined
@@ -171,14 +173,31 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const showChief = !!chiefAgent
   const regularAgents = useMemo(() => snapshot.agents.filter(agent => agent.role !== 'chief' && agent.temporaryStatus !== 'retired'), [snapshot.agents])
 
-  const conversationButton = (conversation: Conversation) =>
+  const delegatedSubtree = (id: string): Conversation[] => delegatedConversations(id).flatMap(child => [child, ...delegatedSubtree(child.id)])
+  const toggleDelegations = (id: string) => setExpandedDelegations(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
+  /** Sessão com as delegações dela recolhidas abaixo; enquanto recolhidas, avisos e não lidas das filhas aparecem na linha da mãe. */
+  const conversationButton = (conversation: Conversation) => {
+    const delegated = delegatedConversations(conversation.id)
+    const open = expandedDelegations.has(conversation.id)
+    const hidden = open ? [] : delegatedSubtree(conversation.id)
+    const row = conversationRow(conversation, needsAttention(conversation.id) || hidden.some(item => needsAttention(item.id)), hidden.reduce((total, item) => total + (unreadCounts[item.id] || 0), unreadCounts[conversation.id] || 0))
+    if (!delegated.length) return row
+    return <div key={conversation.id}>
+      {row}
+      <Button variant="ghost" size={null} aria-expanded={open} onClick={() => toggleDelegations(conversation.id)} className="ml-6 flex h-6 justify-start gap-1 rounded px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground">
+        <ChevronRight className={'size-3 transition-transform' + (open ? ' rotate-90' : '')} />{delegated.length} {delegated.length === 1 ? 'delegação' : 'delegações'}
+      </Button>
+      {open && <div className="ml-5 border-l border-border/50 pl-1">{delegated.map(conversationButton)}</div>}
+    </div>
+  }
+  const conversationRow = (conversation: Conversation, attention: boolean, unread: number) =>
     <div key={conversation.id} data-active={conversation.id === selected?.id} className="ds-nav-item group flex items-center gap-1" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
       <Button variant="ghost" size={null} onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-md px-1.5 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
         <span className="flex size-5 shrink-0 items-center justify-center text-faint-foreground">{conversation.agentIds.length > 1 ? <Users className="size-3.5" /> : <MessageSquarePlus className="size-3.5" />}</span>
-        <span className="min-w-0 flex-1 truncate text-[12px]" title={conversation.name}>{conversation.name}</span>
+        <span className="min-w-0 flex-1 truncate text-[12px]" title={conversation.name}>{conversationDisplayName(conversation.name)}</span>
         {isFavorite('conversation', conversation.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
-        {needsAttention(conversation.id) && <span aria-label="Aguardando aprovação" className="size-2 shrink-0 rounded-full bg-warning" />}
-        {!!unreadCounts[conversation.id] && <span aria-label={unreadCounts[conversation.id] + ' não lidas'} className="ds-count" data-tone="primary">{unreadCounts[conversation.id] > 9 ? '9+' : unreadCounts[conversation.id]}</span>}
+        {attention && <span aria-label="Aguardando aprovação" className="size-2 shrink-0 rounded-full bg-warning" />}
+        {!!unread && <span aria-label={unread + ' não lidas'} className="ds-count" data-tone="primary">{unread > 9 ? '9+' : unread}</span>}
       </Button>
       <DropdownMenu open={openConversationMenuId === conversation.id} onOpenChange={open => setOpenConversationMenuId(open ? conversation.id : null)}>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-6 shrink-0 text-muted-foreground opacity-60 hover:opacity-100" aria-label={'Ações da conversa ' + conversation.name}><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger>
@@ -215,7 +234,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
 
   /** Uma linha por projeto: clicar entra no projeto, sem renderizar as sessões dele. */
   const projectRow = (workspace: Workspace) => {
-    const sessions = conversationsOf(workspace.id).length
+    const sessions = conversationsOf(workspace.id).filter(isTopLevel).length
     return <div key={workspace.id} className="ds-nav-item group flex items-center gap-0.5 px-0.5" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
       <Button variant="ghost" size={null} onClick={() => enterProject(workspace.id)} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1.5 text-left text-[12.5px] font-medium text-foreground/90 hover:bg-transparent hover:text-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
         {workspace.kind === 'worktree' ? <GitBranch className="size-3.5 shrink-0 text-muted-foreground" /> : <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />}
@@ -232,9 +251,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   /** Projeto aberto: cabeçalho com voltar e abas Projeto/Boos. Só a aba ativa é montada (Radix desmonta a inativa). */
   const projectView = (workspace: Workspace) => {
     const allConversations = conversationsOf(workspace.id)
+    const topLevel = allConversations.filter(isTopLevel)
     const showAllSessions = expandedSessions.has(workspace.id)
-    const conversations = showAllSessions ? allConversations : allConversations.slice(0, SESSION_LIMIT)
-    const hiddenSessions = allConversations.length - conversations.length
+    const conversations = showAllSessions ? topLevel : topLevel.slice(0, SESSION_LIMIT)
+    const hiddenSessions = topLevel.length - conversations.length
     const children = childWorkspaces(workspace.id)
     // Time: equipe padrão do projeto mais quem participa das conversas dele, como na elegibilidade de delegação.
     const team = new Set(workspace.defaultAgentIds)
@@ -355,7 +375,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
           {groups.map(group => groupSection(group, workspacesByGroup.map.get(group) || []))}
           {groupSection(groups.length ? 'Outros' : null, workspacesByGroup.ungrouped, false)}
           {!rootWorkspaces.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Crie um projeto pelo botão + para organizar suas sessões.</p>}
-          {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="mt-2"><Button variant="ghost" className="h-8 w-full justify-start gap-1.5 px-2 text-xs" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}>{collapsed.has('legacy') ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}<FolderOpen className="size-3.5" />Sessões antigas<span className="ml-auto text-[10px]">{legacyConversations.length}</span></Button>{!collapsed.has('legacy') && <div className="ml-5 border-l border-border/50 pl-1">{legacyConversations.map(conversationButton)}</div>}</div>}
+          {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="mt-2"><Button variant="ghost" className="h-8 w-full justify-start gap-1.5 px-2 text-xs" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}>{collapsed.has('legacy') ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}<FolderOpen className="size-3.5" />Sessões antigas<span className="ml-auto text-[10px]">{legacyConversations.length}</span></Button>{!collapsed.has('legacy') && <div className="ml-5 border-l border-border/50 pl-1">{legacyConversations.filter(isTopLevel).map(conversationButton)}</div>}</div>}
         </section>
       </TabsContent>
       <TabsContent value="agents" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">

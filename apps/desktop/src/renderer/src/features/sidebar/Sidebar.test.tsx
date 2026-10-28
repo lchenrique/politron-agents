@@ -296,3 +296,28 @@ describe('navegação orientada a workspaces', () => {
     expect(screen.getByRole('button', { name: /^Instruções de Paz/ })).toBeInTheDocument()
   })
 })
+
+describe('delegações aninhadas na sessão que delegou', () => {
+  const session = (id: string, name: string, parentConversationId?: string): Conversation => ({ id, kind: 'direct', name, agentIds: [agent.id], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '2026-10-16T12:00:00.000Z', ...(parentConversationId ? { parentConversationId } : {}) })
+  const nestedSnapshot: Snapshot = { ...snapshot, conversations: [session('chief', 'Plano do Atlas'), session('c1', 'Pedido: Examen · Contexto: monorepo BubbleDesk', 'chief'), session('c2', 'Mimir · revisar login', 'chief')] }
+
+  it('esconde as filhas no topo, conta só sessões de topo e mostra as filhas ao expandir', () => {
+    renderSidebar({ snapshot: nestedSnapshot, unreadCounts: { c2: 3 } })
+    expect(screen.getByRole('button', { name: /^Instruções de Paz/ })).toHaveTextContent(/1$/)
+    enter('Instruções de Paz')
+    expect(screen.queryByText('Mimir · revisar login')).not.toBeInTheDocument()
+    // Não lidas da filha sobem para a mãe enquanto recolhidas.
+    expect(screen.getByLabelText('3 não lidas')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '2 delegações' }))
+    expect(screen.getByText('Mimir · revisar login')).toBeInTheDocument()
+    expect(screen.getByText('Examen · monorepo BubbleDesk')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('3 não lidas')).toHaveLength(1)
+  })
+
+  it('aprovação pendente numa filha acende o aviso da mãe', () => {
+    const approval = { id: 'a1', runId: 'r1', conversationId: 'c1', agentId: agent.id, kind: 'command' as const, details: {}, status: 'pending' as const, createdAt: '', resolvedAt: null }
+    renderSidebar({ snapshot: { ...nestedSnapshot, approvals: [approval] } })
+    enter('Instruções de Paz')
+    expect(screen.getAllByLabelText('Aguardando aprovação')).toHaveLength(1)
+  })
+})
