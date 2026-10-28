@@ -73,6 +73,7 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invoke('historyAround', (id, cursor, limit) => service.historyAround(id, cursor, limit))
   invoke('send', (id, text, model, effort, planMode, options) => service.send(id, text, model, effort, undefined, false, true, planMode, options))
   invoke('cancelQueuedMessage', (messageId) => service.cancelQueuedMessage(messageId))
+  invoke('sendQueuedNow', (messageId) => service.sendQueuedNow(messageId))
   invokeLocal('uploadAttachment', (conversationId, name, mimeType, bytes) => service.uploadAttachment(conversationId, name, mimeType, bytes))
   invokeLocal('readAttachment', (conversationId, id) => service.readAttachment(conversationId, id))
   invoke('stop', (id) => service.stop(id))

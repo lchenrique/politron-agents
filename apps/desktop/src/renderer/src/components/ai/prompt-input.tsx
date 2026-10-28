@@ -29,6 +29,8 @@ interface PromptInputProps extends Omit<React.ComponentProps<'form'>, 'onSubmit'
   onStop?: () => void
   onExtraAction?: () => void
   extraControls?: ReactNode
+  /** Controles logo à esquerda do botão de enviar. */
+  trailingControls?: ReactNode
   suggestions?: ReactNode
   textareaRef?: React.Ref<HTMLTextAreaElement>
   onCaretChange?: (value: string, caret: number) => void
@@ -57,6 +59,7 @@ function PromptInput({
   onStop,
   onExtraAction,
   extraControls,
+  trailingControls,
   suggestions,
   textareaRef: forwardedTextareaRef,
   onCaretChange,
@@ -259,6 +262,8 @@ function PromptInput({
           />}
           {extraControls}
         </div>
+        <div className="flex shrink-0 items-center gap-1">
+        {trailingControls}
         <Button
           aria-label={pending ? 'Parar geração' : submitLabel}
           className="rounded-full border-0 bg-primary bg-linear-to-b from-[color-mix(in_oklch,var(--primary),var(--primary-foreground)_30%)] to-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.18)] shadow-none hover:brightness-110 dark:bg-none"
@@ -282,6 +287,7 @@ function PromptInput({
             />
           </span>
         </Button>
+        </div>
       </div>
     </form>
   )

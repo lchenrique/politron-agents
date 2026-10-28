@@ -213,34 +213,36 @@ describe('modelo do agente não é sobrescrito por padrão', () => {
 })
 
 describe('instruções durante uma tarefa', () => {
-  it('envia instruções durante a execução sem apagar o próximo rascunho', async () => {
-    const onSubmit = vi.fn().mockResolvedValue(undefined)
-    const props = { conversationId: 'steering-test', models: [{ name: 'Codex' }], defaultModelName: 'Codex', onModelChange: vi.fn(), onSubmit, onStop: vi.fn() }
-    const { rerender } = render(<Composer {...props} />)
-    const textarea = screen.getByRole('textbox', { name: 'Message' })
-    fireEvent.change(textarea, { target: { value: 'Implemente a tela' } })
-    fireEvent.keyDown(textarea, { key: 'Enter' })
-    expect(textarea).toHaveValue('')
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
-    expect(onSubmit.mock.calls[0][2]).toMatchObject({ delivery: 'queue' })
-    rerender(<Composer {...props} working canSteer />)
-    fireEvent.change(textarea, { target: { value: 'Use a cor do projeto' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar agora' }))
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2))
-    expect(onSubmit.mock.calls[1][0]).toBe('Use a cor do projeto')
-    expect(onSubmit.mock.calls[1][2]).toMatchObject({ delivery: 'now' })
-    fireEvent.change(textarea, { target: { value: 'Mais um detalhe' } })
-    await waitFor(() => expect(textarea).toHaveValue('Mais um detalhe'))
-  })
-
-  it('enfileira a instrução e omite o envio imediato para um provedor sem suporte', async () => {
-    const { textarea, onSubmit } = setup({ conversationId: 'unsupported-test', working: true, canSteer: false })
+  it('durante a execução envia para a fila e mostra Parar ao lado de Enviar', async () => {
+    const { textarea, onSubmit } = setup({ conversationId: 'queue-test', working: true })
     fireEvent.change(textarea, { target: { value: 'Nova instrução' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
     expect(onSubmit.mock.calls[0][2]).toMatchObject({ delivery: 'queue' })
     expect(screen.queryByRole('button', { name: 'Enviar agora' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Parar geração' })).toBeEnabled()
+    const stop = screen.getByRole('button', { name: 'Parar geração' })
+    expect(stop.nextElementSibling).toBe(screen.getByRole('button', { name: 'Adicionar à fila' }))
+  })
+
+  it('cartões da fila: Editar devolve o texto, Enviar agora e Remover agem na fila do host', async () => {
+    const api = { cancelQueuedMessage: vi.fn().mockResolvedValue(undefined), sendQueuedNow: vi.fn().mockResolvedValue(undefined) }
+    vi.stubGlobal('appAPI', api)
+    const queued = [
+      { id: 'q1', conversationId: 'c', agentId: null, author: 'Você', role: 'user', text: 'Primeira da fila', status: 'queued', runId: null, createdAt: '' },
+      { id: 'q2', conversationId: 'c', agentId: null, author: 'Você', role: 'user', text: 'Segunda da fila', status: 'queued', runId: null, createdAt: '', attachments: [{ id: 'a', name: 'a.png', mimeType: 'image/png', size: 1 }] },
+    ] as React.ComponentProps<typeof Composer>['queued']
+    const { textarea } = setup({ conversationId: 'queue-cards', working: true, queued })
+    const list = screen.getByRole('region', { name: 'Mensagens na fila' })
+    expect(list).toHaveTextContent('Primeira da fila')
+    expect(list).toHaveTextContent('1 anexo')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Editar' })[0])
+    await waitFor(() => expect(textarea).toHaveValue('Primeira da fila'))
+    expect(api.cancelQueuedMessage).toHaveBeenCalledWith('q1')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enviar agora' })[1])
+    await waitFor(() => expect(api.sendQueuedNow).toHaveBeenCalledWith('q2'))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remover' })[1])
+    await waitFor(() => expect(api.cancelQueuedMessage).toHaveBeenLastCalledWith('q2'))
+    vi.unstubAllGlobals()
   })
 
   it('recolhe ajustes sem apagar o rascunho ao atualizar o modelo', () => {

@@ -13,7 +13,11 @@ export function mergeChatMessages(current: Message[], updates: Message[], allowA
     if (index !== undefined) {
       if (next[index] === message) continue
       if (next === current) next = [...current]
-      next[index] = message
+      if (allowAppend && next[index].status === 'queued' && message.status !== 'queued') {
+        // Saiu da fila: o host a reinseriu no fim do histórico.
+        next.splice(index, 1); next.push(message)
+        next.forEach((item, position) => positions.set(item.id, position))
+      } else next[index] = message
     } else if (allowAppend) {
       if (next === current) next = [...current]
       positions.set(message.id, next.length); next.push(message)

@@ -75,6 +75,7 @@ const appAPI: AppAPI = {
   historyAround: (id, cursor, limit) => ipcRenderer.invoke('v9:historyAround', id, cursor, limit),
   send: (id, value, model, effort, planMode, options) => ipcRenderer.invoke('v9:send', id, value, model, effort, planMode, options),
   cancelQueuedMessage: (messageId) => ipcRenderer.invoke('v9:cancelQueuedMessage', messageId),
+  sendQueuedNow: (messageId) => ipcRenderer.invoke('v9:sendQueuedNow', messageId),
   uploadAttachment: (conversationId, name, mimeType, bytes) => ipcRenderer.invoke('v9:uploadAttachment', conversationId, name, mimeType, bytes),
   readAttachment: (conversationId, id) => ipcRenderer.invoke('v9:readAttachment', conversationId, id),
   stop: (id) => ipcRenderer.invoke('v9:stop', id),

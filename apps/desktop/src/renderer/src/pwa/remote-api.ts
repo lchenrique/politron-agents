@@ -162,6 +162,7 @@ const app = {
   searchHistory: (id: string, query: string, limit?: number) => rpc<Awaited<ReturnType<AppAPI['searchHistory']>>>('v9:searchHistory', id, query, limit),
   send: (id: string, value: string, model?: string, effort?: Agent['effort'], planMode?: boolean, options?: SendOptions) => rpc<void>('v9:send', id, value, model, effort, planMode, options),
   cancelQueuedMessage: (messageId: string) => rpc<void>('v9:cancelQueuedMessage', messageId),
+  sendQueuedNow: (messageId: string) => rpc<void>('v9:sendQueuedNow', messageId),
   uploadAttachment: (conversationId: string, name: string, mimeType: string, bytes: Uint8Array) => uploadImageAttachment(conversationId, name, mimeType, bytes),
   readAttachment: (conversationId: string, id: string) => readImageAttachment(conversationId, id),
   stop: (id: string) => rpc<void>('v9:stop', id),

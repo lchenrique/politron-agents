@@ -205,4 +205,10 @@ describe('linha de atividade do agente', () => {
     expect(within(container.querySelector<HTMLElement>('[data-message-id="final"]')!).getByRole('region', { name: 'Aprovação de ferramenta' })).toBeInTheDocument()
     expect(container.querySelector('[data-message-id="empty"]')).toBeNull()
   })
+
+  it('mensagens na fila ou removidas da fila não aparecem no chat', () => {
+    const user = (id: string, status: Message['status']): Message => ({ id, conversationId: 'conversation-1', agentId: null, author: 'Você', role: 'user', text: `Texto ${id}`, status, runId: null, createdAt: '' })
+    const { container } = render(list([user('sent', 'completed'), message, user('waiting', 'queued'), user('removed', 'cancelled')]))
+    expect([...container.querySelectorAll('[data-message-id]')].map(node => node.getAttribute('data-message-id'))).toEqual(['sent', 'message-1'])
+  })
 })

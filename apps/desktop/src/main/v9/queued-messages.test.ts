@@ -133,3 +133,88 @@ it('cancela apenas a mensagem ainda enfileirada sem parar a execução ativa', a
   runtime.complete('turn-1')
   await first
 })
+
+it('resposta da mensagem na fila só nasce na vez dela, abaixo da saída anterior', async () => {
+  const { service, runtime, conversation, send } = setup(false)
+  const first = service.send(conversation.id, 'Primeira tarefa')
+  await vi.waitFor(() => expect(service.store.runs()[0]?.turnId).toBe('turn-1'))
+  const id = requestId('8')
+  await send('Depois disso', id)
+  expect(service.store.history(conversation.id).filter(message => message.role === 'assistant')).toHaveLength(1)
+
+  runtime.complete('turn-1')
+  await vi.waitFor(() => expect(service.store.runs().find(run => run.inputMessageId === id)?.turnId).toBe('turn-2'))
+  const history = service.store.history(conversation.id)
+  expect(history.map(message => message.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
+  expect(history[2]).toMatchObject({ id, status: 'completed' })
+  runtime.complete('turn-2')
+  await first
+})
+
+it('Enviar agora da fila usa steering quando a execução atual aceita', async () => {
+  const { service, runtime, conversation, send } = setup(true)
+  const first = service.send(conversation.id, 'Primeira tarefa')
+  await vi.waitFor(() => expect(service.store.runs()[0]?.turnId).toBe('turn-1'))
+  const id = requestId('9')
+  await send('Corrija também o teste', id)
+
+  await service.sendQueuedNow(id)
+
+  expect(runtime.steer).toHaveBeenCalledWith('thread-test', 'turn-1', 'Corrija também o teste')
+  expect(runtime.interrupt).not.toHaveBeenCalled()
+  expect(service.store.message(id)?.status).toBe('completed')
+  expect(service.store.history(conversation.id).at(-1)?.id).toBe(id)
+  expect(service.store.runs().find(run => run.inputMessageId === id)?.status).toBe('cancelled')
+  runtime.complete('turn-1')
+  await first
+  expect(runtime.send).toHaveBeenCalledTimes(1)
+})
+
+it('Enviar agora da fila sem steering interrompe a execução atual e passa à frente da fila', async () => {
+  const { service, runtime, conversation, send } = setup(false)
+  const first = service.send(conversation.id, 'Primeira tarefa')
+  await vi.waitFor(() => expect(service.store.runs()[0]?.turnId).toBe('turn-1'))
+  const waiting = requestId('10')
+  const urgent = requestId('11')
+  await send('Pode esperar', waiting)
+  await send('Urgente', urgent)
+
+  await service.sendQueuedNow(urgent)
+
+  expect(runtime.interrupt).toHaveBeenCalledWith('thread-test', 'turn-1')
+  await vi.waitFor(() => expect(service.store.runs().find(run => run.inputMessageId === urgent)?.turnId).toBe('turn-2'))
+  expect(service.store.runs().find(run => run.inputMessageId === waiting)?.status).toBe('queued')
+  expect(service.store.message(waiting)?.status).toBe('queued')
+  runtime.complete('turn-2')
+  await vi.waitFor(() => expect(service.store.runs().find(run => run.inputMessageId === waiting)?.turnId).toBe('turn-3'))
+  runtime.complete('turn-3')
+  await first
+})
+
+it('operações da fila recusam mensagens que não estão aguardando', async () => {
+  const { service, runtime, conversation } = setup(true)
+  const first = service.send(conversation.id, 'Primeira tarefa')
+  await vi.waitFor(() => expect(service.store.runs()[0]?.turnId).toBe('turn-1'))
+  const sent = service.store.history(conversation.id).find(message => message.role === 'user')!
+  await expect(service.sendQueuedNow(sent.id)).rejects.toThrow(/fila/)
+  await expect(service.sendQueuedNow('inexistente')).rejects.toThrow(/fila/)
+  await expect(service.sendQueuedNow('x'.repeat(5000))).rejects.toThrow(/fila/)
+  await expect(service.cancelQueuedMessage(sent.id)).rejects.toThrow(/fila/)
+  expect(runtime.steer).not.toHaveBeenCalled()
+  runtime.complete('turn-1')
+  await first
+})
+
+it('parar devolve as mensagens da fila ao chat como interrompidas', async () => {
+  const { service, conversation, send } = setup(false)
+  const first = service.send(conversation.id, 'Primeira tarefa')
+  await vi.waitFor(() => expect(service.store.runs()[0]?.turnId).toBe('turn-1'))
+  const id = requestId('12')
+  await send('Ficou na fila', id)
+
+  await service.stop(conversation.id)
+  await first
+
+  expect(service.store.message(id)).toMatchObject({ status: 'interrupted', text: 'Ficou na fila' })
+  expect(service.store.runs().find(run => run.inputMessageId === id)?.status).toBe('interrupted')
+})

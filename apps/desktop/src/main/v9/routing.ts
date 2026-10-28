@@ -38,6 +38,8 @@ export class WorkspaceQueue {
     })
   }
   isPending(signal: AbortSignal): boolean { return this.pending.some(entry => entry.signal === signal) }
+  /** Passa a entrada para a frente da fila (Enviar agora sem steering). */
+  prioritize(signal: AbortSignal): void { const index = this.pending.findIndex(entry => entry.signal === signal); if (index > 0) this.pending.unshift(...this.pending.splice(index, 1)) }
   enqueueDelegation(key: string, signal: AbortSignal, task: (lease: WorkspaceLease) => Promise<void>, parent?: WorkspaceLease): Promise<void> {
     const scope = parent && this.scopes.get(parent)
     if (!scope || scope.closed || scope.root.closed || scope.root.key !== key) return this.enqueue(key, signal, task)

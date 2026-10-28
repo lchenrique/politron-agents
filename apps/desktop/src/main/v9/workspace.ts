@@ -568,18 +568,7 @@ export class AppService extends EventEmitter {
     if (recordInput) this.missions.onUserMessage(conversationId, inputForAgents)
     if (steeringTargets.length) {
       try {
-        for (const target of steeringTargets) {
-          await target.runtime!.steer!(target.run.threadId!, target.run.turnId!, input)
-          if (target.sessionBindingKey) {
-            const binding = this.store.sessionBinding(target.sessionBindingKey)
-            if (binding) {
-              const delivered = { ...userMessage, status: 'completed' as const }
-              const digests = { ...binding.deliveredDigests, [delivered.id]: messageDigest(delivered) }
-              target.deliveredDigests = Object.fromEntries(Object.entries(digests).slice(-40))
-              this.store.putSessionBinding({ ...binding, deliveredDigests: target.deliveredDigests })
-            }
-          }
-        }
+        await this.steerInto(steeringTargets, userMessage, input)
         const delivered = { ...userMessage, status: 'completed' as const }
         this.store.putMessage(delivered); this.emitEvent({ type: 'message', message: delivered })
       } catch (error) {
@@ -618,14 +607,23 @@ export class AppService extends EventEmitter {
         : inputForAgents
       const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: planMode ? '[MODO PLANO ATIVO] Analise a tarefa, consulte apenas ferramentas de leitura e use propose_plan para apresentar um plano em etapas. NÃO modifique arquivos, execute comandos ou realize alterações até o usuário enviar outra tarefa fora do modo plano.\n\n' + runInput : runInput, planMode, inputMessageId: recordInput ? userMessage.id : undefined, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
-      const message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
-      run.messageId = message.id
+      // Mensagem na fila do usuário: a resposta só nasce quando a vez chegar, abaixo do que já foi dito.
+      let message = userMessage.status === 'queued' && recordInput ? undefined : this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
+      run.messageId = message?.id || ''
       this.store.putRun(run)
       const controller = new AbortController()
       this.active.set(run.id, controller)
       const abortRound = () => controller.abort()
       roundSignal?.signal.addEventListener('abort', abortRound, { once: true })
-      const task = this.queue.enqueue(workspace.path, controller.signal, lease => this.execute({ run, message, conversation, agent: runAgent, lease }, controller.signal))
+      const task = this.queue.enqueue(workspace.path, controller.signal, lease => {
+        if (!message) {
+          this.dispatchQueuedInput(userMessage.id)
+          message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
+          run.messageId = message.id
+          this.store.putRun(run)
+        }
+        return this.execute({ run, message, conversation, agent: runAgent, lease }, controller.signal)
+      })
         if (mode === 'discussion') {
           try { await task } finally { roundSignal?.signal.removeEventListener('abort', abortRound) }
           roundTranscript.push(`${agent.name}: ${this.store.history(conversationId).filter(item => item.runId === run.id && item.role === 'assistant' && item.text.trim()).map(item => item.text).join('\n\n') || '(sem resposta)'}`)
@@ -701,18 +699,69 @@ export class AppService extends EventEmitter {
   async stop(conversationId: string): Promise<void> {
     for (const round of this.groupRoundSignals.get(conversationId) || []) round.abort()
     const runs = this.store.runs().filter(run => run.conversationId === conversationId && ['queued', 'running', 'waiting'].includes(run.status))
-    for (const run of runs) {
-      this.active.get(run.id)?.abort()
-      if (run.threadId && run.turnId) await this.runtimeFor(run.agent.runtime).interrupt(run.threadId, run.turnId).catch(() => undefined)
-      const context = this.contexts.get(run.id)
-      if (context) await this.finish(context, 'interrupted', context.message.text)
-      else {
-        this.store.putRun({ ...run, status: 'interrupted' })
-        const message = this.store.message(run.messageId)
-        if (message) { const next = { ...message, status: 'interrupted' as const }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next }) }
-        this.active.delete(run.id)
+    for (const run of runs) await this.interruptRun(run)
+    // Parar esvazia a fila: as mensagens que esperavam voltam ao chat como interrompidas, sem perder o texto.
+    for (const queued of this.store.history(conversationId).filter(item => item.role === 'user' && item.status === 'queued')) this.dispatchQueuedInput(queued.id, 'interrupted')
+  }
+  private async interruptRun(run: Run): Promise<void> {
+    this.active.get(run.id)?.abort()
+    if (run.threadId && run.turnId) await this.runtimeFor(run.agent.runtime).interrupt(run.threadId, run.turnId).catch(() => undefined)
+    const context = this.contexts.get(run.id)
+    if (context) await this.finish(context, 'interrupted', context.message.text)
+    else {
+      this.store.putRun({ ...run, status: 'interrupted' })
+      const message = this.store.message(run.messageId)
+      if (message) { const next = { ...message, status: 'interrupted' as const }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next }) }
+      this.active.delete(run.id)
+    }
+  }
+  /** A mensagem sai da fila e entra no chat agora, no fim da conversa. */
+  private dispatchQueuedInput(messageId: string, status: 'completed' | 'interrupted' = 'completed'): void {
+    const queued = this.store.message(messageId)
+    if (queued?.role !== 'user' || queued.status !== 'queued') return
+    const next = { ...queued, status, createdAt: new Date().toISOString() }
+    this.store.moveMessageToEnd(next); this.emitEvent({ type: 'message', message: next })
+  }
+  private async steerInto(targets: RunContext[], userMessage: Message, input: string): Promise<void> {
+    for (const target of targets) {
+      await target.runtime!.steer!(target.run.threadId!, target.run.turnId!, input)
+      if (target.sessionBindingKey) {
+        const binding = this.store.sessionBinding(target.sessionBindingKey)
+        if (binding) {
+          const delivered = { ...userMessage, status: 'completed' as const }
+          const digests = { ...binding.deliveredDigests, [delivered.id]: messageDigest(delivered) }
+          target.deliveredDigests = Object.fromEntries(Object.entries(digests).slice(-40))
+          this.store.putSessionBinding({ ...binding, deliveredDigests: target.deliveredDigests })
+        }
       }
     }
+  }
+  /**
+   * Enviar agora uma mensagem da fila. Se todas as execuções ativas dos destinatários aceitam steering (Codex, Pi),
+   * a instrução entra na execução atual; senão a execução atual é interrompida e esta mensagem roda em seguida.
+   */
+  async sendQueuedNow(messageId: string): Promise<void> {
+    const message = typeof messageId === 'string' && messageId.length <= 100 ? this.store.message(messageId) : undefined
+    if (!message || message.role !== 'user' || message.status !== 'queued') throw new Error('A mensagem não está aguardando na fila.')
+    const runs = this.store.runs().filter(run => run.inputMessageId === message.id && run.conversationId === message.conversationId && !run.parentId)
+    const controllers = runs.map(run => this.active.get(run.id))
+    if (!runs.length || runs.some((run, index) => run.status !== 'queued' || !controllers[index] || !this.queue.isPending(controllers[index]!.signal))) {
+      throw new Error('A mensagem já começou a ser executada.')
+    }
+    const targets = runs.map(run => [...this.contexts.values()].find(context => context.run.conversationId === message.conversationId && context.agent.id === run.agentId && !context.run.parentId && ['running', 'waiting'].includes(context.run.status)))
+    const steerable = !message.attachments?.length && !runs.some(run => run.planMode) && targets.every((target, index) => !!target?.runtime?.steer && !!target.run.threadId && !!target.run.turnId
+      && target.agent.runtime === runs[index]!.agent.runtime && target.agent.model === runs[index]!.agent.model)
+    if (steerable) {
+      await this.steerInto(targets as RunContext[], message, message.text)
+      runs.forEach((run, index) => { this.store.putRun({ ...run, status: 'cancelled' }); controllers[index]!.abort(); this.active.delete(run.id) })
+      this.dispatchQueuedInput(message.id)
+      this.emitEvent({ type: 'changed' })
+      return
+    }
+    for (const controller of controllers) this.queue.prioritize(controller!.signal)
+    const current = this.store.runs().filter(run => run.conversationId === message.conversationId && ['running', 'waiting'].includes(run.status))
+    for (const run of current) await this.interruptRun(run)
+    this.emitEvent({ type: 'changed' })
   }
   async cancelDelegation(delegationId: string): Promise<void> {
     const delegation = this.store.delegation(delegationId)
@@ -788,10 +837,6 @@ export class AppService extends EventEmitter {
   private async execute(context: RunContext, signal: AbortSignal): Promise<void> {
     const { run, message, conversation, agent } = context
     if (signal.aborted) return
-    for (const queued of this.store.history(conversation.id).filter(item => item.role === 'user' && item.status === 'queued')) {
-      const next = { ...queued, status: 'completed' as const }
-      this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
-    }
     this.contexts.set(run.id, context)
     context.signal = signal
     try {

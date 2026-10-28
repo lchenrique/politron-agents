@@ -90,6 +90,9 @@ export class WorkspaceStore {
         this.putRun({ ...run, status: 'interrupted' })
         const message = this.message(run.messageId)
         if (message) this.putMessage({ ...message, status: 'interrupted', text: message.text || 'Execução interrompida ao fechar o aplicativo.' })
+        // A fila não sobrevive ao fechamento: a mensagem que esperava fica no chat como interrompida.
+        const input = run.inputMessageId ? this.message(run.inputMessageId) : undefined
+        if (input?.role === 'user' && input.status === 'queued') this.putMessage({ ...input, status: 'interrupted' })
       }
     }
     for (const delegation of this.delegations()) {
@@ -545,6 +548,8 @@ export class WorkspaceStore {
       } catch { /* A busca LIKE continua disponível se FTS5 não existir. */ }
     }
   }
+  /** Reinsere a mensagem para ela ficar no fim da ordem do histórico (rowid). */
+  moveMessageToEnd(value: Message): void { this.db.prepare('DELETE FROM v9_messages WHERE id=?').run(value.id); this.putMessage(value) }
   putRun(value: Run): void { this.put('v9_runs', value) }
   putFileChange(value: FileChange): boolean {
     const result = this.db.prepare('INSERT OR IGNORE INTO v9_file_changes(id,run_id,tool_call_id,workspace_id,data) VALUES(?,?,?,?,?)').run(value.id, value.runId, value.toolCallId, value.workspaceId, JSON.stringify(value))

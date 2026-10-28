@@ -175,6 +175,7 @@ export interface AppAPI {
   historyAround(conversationId: string, cursor: number, limit?: number): Promise<MessagePage>
   send(conversationId: string, text: string, model?: string, effort?: Agent['effort'], planMode?: boolean, options?: SendOptions): Promise<void>
   cancelQueuedMessage(messageId: string): Promise<void>
+  sendQueuedNow(messageId: string): Promise<void>
   uploadAttachment(conversationId: string, name: string, mimeType: string, bytes: Uint8Array): Promise<MessageAttachment>
   readAttachment(conversationId: string, id: string): Promise<{ mimeType: string; bytes: Uint8Array }>
   stop(conversationId: string): Promise<void>

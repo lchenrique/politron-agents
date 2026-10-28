@@ -10,6 +10,8 @@ export function chatRows(messages: Message[]): ChatRow[] {
   const rows: ChatRow[] = []
   for (const message of messages) {
     if (message.role === 'assistant' && message.runId && message.status === 'completed' && !message.text.trim()) continue
+    // Mensagens na fila ficam nos cartões acima do campo; removidas da fila nunca entram no chat.
+    if (message.role === 'user' && (message.status === 'queued' || message.status === 'cancelled')) continue
     const last = rows.at(-1)
     if (groupable(message) && last?.activities && last.runId === message.runId) last.activities.push(message)
     else rows.push(groupable(message) ? { ...message, activities: [message] } : message)

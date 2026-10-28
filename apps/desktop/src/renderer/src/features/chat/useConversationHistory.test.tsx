@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Message } from '../../../../shared/v9'
-import { MAX_CHAT_MESSAGES, STREAM_BATCH_MS, useConversationHistory } from './useConversationHistory'
+import { MAX_CHAT_MESSAGES, STREAM_BATCH_MS, mergeChatMessages, useConversationHistory } from './useConversationHistory'
 
 const makeMessage = (index: number, conversationId = 'chat-a'): Message => ({
   id: `m${index}`, conversationId, agentId: 'agent', author: 'Agente', role: 'assistant',
@@ -147,4 +147,11 @@ describe('histórico com memória limitada e respostas em streaming', () => {
     expect(result.current.messages.at(-1)?.id).toBe('m5799')
     expect(result.current.hasOlderMessages).toBe(true)
   })
+})
+
+it('mensagem que sai da fila vai para o fim, como o host a reinseriu', () => {
+  const queued = { ...makeMessage(1), role: 'user' as const, status: 'queued' as const }
+  const merged = mergeChatMessages([makeMessage(0), queued, makeMessage(2)], [{ ...queued, status: 'completed' }])
+  expect(merged.map(message => message.id)).toEqual(['m0', 'm2', 'm1'])
+  expect(mergeChatMessages(merged, [{ ...makeMessage(3) }]).map(message => message.id)).toEqual(['m0', 'm2', 'm1', 'm3'])
 })

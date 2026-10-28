@@ -313,7 +313,7 @@ export default function AppShell() {
   const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
   const conversationRuns = snapshot.runs.filter(run => run.conversationId === selected?.id && !run.parentId && ['queued', 'running', 'waiting'].includes(run.status))
-  const canSteer = conversationRuns.length > 0 && conversationRuns.every(run => snapshot.steeringRuntimes?.includes(run.agent.runtime) && !!run.threadId && !!run.turnId)
+  const queuedMessages = useMemo(() => messages.filter(message => message.role === 'user' && message.status === 'queued'), [messages])
   // A barra da janela diz onde se está; quem participa e as ações da conversa ficam na faixa da conversa.
   const chiefName = snapshot.agents.find(agent => agent.role === 'chief')?.name
   const contextWorkspace = activeWorkspace || selectedWorkspace
@@ -426,7 +426,7 @@ export default function AppShell() {
             <Composer
               mentionAgents={selectedAgents}
               working={conversationRuns.length > 0}
-              canSteer={canSteer}
+              queued={queuedMessages}
               canAttachImages={canAttachImages}
               conversationId={selected.id}
               reviewChanges={latestReview}

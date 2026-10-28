@@ -344,7 +344,7 @@ export class PwaGateway {
         reply(response, 202, { result: { accepted: true } })
         return
       }
-      if (authorizedMethod === 'v9:cancelQueuedMessage' &&
+      if ((authorizedMethod === 'v9:cancelQueuedMessage' || authorizedMethod === 'v9:sendQueuedNow') &&
         (input.args.length !== 1 || typeof input.args[0] !== 'string' || input.args[0].length > 200)) {
         reply(response, 400, { error: 'Identificador de mensagem inválido.' }); return
       }
