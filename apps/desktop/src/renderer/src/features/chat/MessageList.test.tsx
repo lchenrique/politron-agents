@@ -181,7 +181,7 @@ describe('linha de atividade do agente', () => {
 
   it('enquanto roda, mostra uma única linha no presente e não repete o "está trabalhando"', () => {
     const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...browser(6)]))
-    expect(screen.getByRole('status')).toHaveTextContent('Usando seu navegador real (6 ações)')
+    expect(screen.getByRole('status')).toHaveTextContent(/Usando seu navegador real.*\(6 ações\)/)
     expect(container).not.toHaveTextContent('await tab.goto')
     expect(container).not.toHaveTextContent('está trabalhando')
     expect(container.querySelectorAll('[data-message-id]')).toHaveLength(2)

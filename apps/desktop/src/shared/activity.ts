@@ -50,6 +50,8 @@ export function toolActivityText(name: string, args: Record<string, unknown>): s
     case 'search_history': return join('Busca', clip(args.query))
     case 'ask_agent': return join('Delegação', clip(args.agent))
     case 'delegation_result': return join('Delegação', 'Consultar resultado')
+    case 'external_browser_status': return join('Navegador real', 'Verificar conexão')
+    case 'list_skills': return join('Leitura', 'skills')
     default: return join('Ferramenta', name)
   }
 }
@@ -69,6 +71,11 @@ export function activityNow(texts: string[]): string {
   for (let index = texts.length - 1; index >= 0 && activityCategory(texts[index]!) === category; index--) count++
   const detail = last.split('\n')[0]!.split(SEPARATOR).slice(1).join(SEPARATOR)
   if (category === 'browser' && detail.startsWith('Abrir ')) return `Abrindo ${hostOf(detail.slice(6))} no navegador`
+  // Passo concreto quando há detalhe curto: o comando em execução, o arquivo lido, o site no navegador real.
+  if (count === 1 && category === 'terminal' && detail && !/^(Consultar|Encerrar) processo$/.test(detail)) return `Executando ${clip(detail, 60)}`
+  if (count === 1 && (category === 'read' || category === 'edit') && detail) return `${category === 'read' ? 'Lendo' : 'Editando'} ${clip(detail, 60)}`
+  const target = category === 'realBrowser' ? /(?:^|\s)alvo (https?:\/\/\S+)/.exec(detail)?.[1] : undefined
+  if (target) return `Usando seu navegador real em ${hostOf(target)}${count > 1 ? ` (${count} ações)` : ''}`
   const [label, unit] = PRESENT[category]
   return count > 1 ? `${label} (${count} ${unit})` : label
 }

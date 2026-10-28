@@ -22,8 +22,12 @@ describe('atividade dos agentes', () => {
 
   it('mostra o passo atual no presente, agrupando ações seguidas da mesma categoria', () => {
     expect(activityNow(['Navegador interno · Abrir https://example.com/x'])).toBe('Abrindo example.com no navegador')
-    expect(activityNow(['Terminal · ls', ...real(6)])).toBe('Usando seu navegador real (6 ações)')
-    expect(activityNow([...real(2), 'Terminal · ls'])).toBe('Executando comando')
+    expect(activityNow(['Terminal · ls', ...real(6)])).toBe('Usando seu navegador real em example.com (6 ações)')
+    expect(activityNow(['Navegador real · js\nnodeRepl.write(1)', 'Navegador real · js\nx'])).toBe('Usando seu navegador real (2 ações)')
+    expect(activityNow([...real(2), 'Terminal · node --version'])).toBe('Executando node --version')
+    expect(activityNow(['Terminal · a', 'Terminal · b'])).toBe('Executando comando (2 comandos)')
+    expect(activityNow(['Leitura · src/app.ts'])).toBe('Lendo src/app.ts')
+    expect(toolActivityText('external_browser_status', {})).toBe('Navegador real · Verificar conexão')
     expect(activityNow(['Leitura · a', 'Leitura · b'])).toBe('Lendo arquivos (2 arquivos)')
     expect(activityNow([])).toBe('')
   })

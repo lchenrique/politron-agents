@@ -9,7 +9,7 @@ export function ActivitySummary({ activities, running, durationMs }: { activitie
   if (running) return <ThinkingShimmer role="status" className="my-1.5" label={activityNow(texts)} />
   return <Trace className="my-1.5 max-w-3xl">
     <TraceCollapsible>
-      <TraceCollapsibleTrigger className="w-fit rounded-md py-1 text-xs text-muted-foreground"><TraceTitle className="font-normal text-muted-foreground">{activitySummary(texts, durationMs)}</TraceTitle></TraceCollapsibleTrigger>
+      <TraceCollapsibleTrigger className="w-fit max-w-full rounded-md py-1 text-left text-xs text-muted-foreground"><TraceTitle className="min-w-0 whitespace-normal break-words font-normal text-muted-foreground">{activitySummary(texts, durationMs)}</TraceTitle></TraceCollapsibleTrigger>
       <TraceCollapsibleContent>
         <ul aria-label="Ações do agente" className="max-h-60 space-y-0.5 overflow-y-auto pr-2">
           {activities.map(activity => <li key={activity.id} className="truncate" title={activity.text.slice(0, 500)}>{activity.text.split('\n')[0]}</li>)}
