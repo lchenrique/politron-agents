@@ -16,7 +16,7 @@ import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delega
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
 import { probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
-import { EXTERNAL_BROWSER_JS_BLOCKED, EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPreview, type NodeReplServer } from './external-browser-proxy'
+import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, type NodeReplServer } from './external-browser-proxy'
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, mentionedRecipients, recipients, type WorkspaceLease } from './routing'
 import { OpenRouterDecisionService } from './decision-routing'
@@ -83,13 +83,13 @@ export class AppService extends EventEmitter {
   externalBrowserStatus(owner: PlatformBrowserOwner): ExternalBrowserStatus {
     const valid = [owner?.workspaceId, owner?.conversationId, owner?.agentId].every(value => typeof value === 'string' && !!value && value.length <= 200)
     if (!valid) throw new Error('Dados inválidos para o navegador externo.')
-    return { granted: this.canShareBrowser(owner) && this.store.externalBrowserGrant(owner.conversationId, owner.agentId), problems: [EXTERNAL_BROWSER_JS_BLOCKED, ...this.externalBrowserBridge.probe()] }
+    return { granted: this.canShareBrowser(owner) && this.store.externalBrowserGrant(owner.conversationId, owner.agentId), problems: this.externalBrowserBridge.probe() }
   }
   setExternalBrowserGrant(owner: PlatformBrowserOwner, enabled: boolean): ExternalBrowserStatus {
     this.externalBrowserStatus(owner)
     if (enabled === true && !this.canShareBrowser(owner)) throw new Error('Este agente não pode usar navegador nesta conversa.')
+    // Revogar não fecha o proxy registrado na thread: o authorizer passa a recusar as chamadas seguintes.
     this.store.saveExternalBrowserGrant(owner.conversationId, owner.agentId, enabled === true)
-    if (enabled !== true) this.closeExternalBrowserProxy(`${owner.conversationId}:${owner.agentId}`)
     return this.externalBrowserStatus(owner)
   }
   /** Ponte oficial: sonda e node_repl declarados pelo Codex. Os testes injetam um node_repl falso. */
@@ -102,14 +102,13 @@ export class AppService extends EventEmitter {
     this.externalBrowserProxies.delete(key); this.externalBrowserRuns.delete(key)
     void proxy?.close()
   }
-  /** Inicia (ou reaproveita) o proxy mediado quando há autorização; qualquer falha deixa o agente sem as ferramentas. */
+  /** Inicia (ou reaproveita) o proxy para Codex/Claude sempre que a ponte está íntegra, mesmo sem autorização: sem grant o authorizer recusa, e aprovar vale na mesma execução. Qualquer falha deixa o agente sem as ferramentas. */
   private async externalBrowserMcp(context: RunContext) {
     const owner = { workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }
     const key = `${owner.conversationId}:${owner.agentId}`
     try {
       const status = this.externalBrowserStatus(owner)
-      // Hoje `problems` sempre traz EXTERNAL_BROWSER_JS_BLOCKED: nada abaixo roda e o node_repl nunca é iniciado.
-      if (context.agent.runtime !== 'codex' || context.run.planMode || !status.granted || status.problems.length) { if (!status.granted) this.closeExternalBrowserProxy(key); return null }
+      if (!['codex', 'claude'].includes(context.agent.runtime) || context.run.planMode || !this.canShareBrowser(owner) || status.problems.length) return null
       let proxy = this.externalBrowserProxies.get(key)
       if (!proxy) {
         const upstream = this.externalBrowserBridge.upstream()
@@ -125,17 +124,11 @@ export class AppService extends EventEmitter {
       return null
     }
   }
-  private async authorizeExternalBrowserCall(owner: PlatformBrowserOwner, runId: string | undefined, tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string | null> {
+  /** Sem aprovação por chamada nem filtro de conteúdo (decisão do usuário): basta a execução vinculada e a autorização da conversa+agente. */
+  private async authorizeExternalBrowserCall(owner: PlatformBrowserOwner, runId: string | undefined, _tool: string, _args: Record<string, unknown>, signal: AbortSignal): Promise<string | null> {
     const context = runId ? this.contexts.get(runId) : undefined
-    if (!context || context.conversation.id !== owner.conversationId || context.agent.id !== owner.agentId || context.agent.runtime !== 'codex' || context.run.planMode || context.signal?.aborted || signal.aborted) return 'Nenhuma execução ativa deste agente vinculada ao navegador externo nesta conversa; nada foi executado.'
-    const granted = () => this.externalBrowserStatus(owner).granted
-    if (!granted()) return 'O usuário não autorizou o navegador externo para este agente nesta conversa; nada foi executado.'
-    const preview = externalBrowserApprovalPreview(args, approvalUrl)
-    const targets = preview.targets.slice(0, 3)
-    const action = `Executar ${tool} no navegador externo (Brave/Chrome, extensão oficial)${targets.length ? ` · alvo ${targets.join(', ')}${preview.targets.length > 3 ? ` e mais ${preview.targets.length - 3}` : ''}` : ' · aba controlada pela extensão'}`
-    // Sempre pergunta, inclusive nos modos automático e bypass: autorização explícita por chamada; desconexão/revogação cancela a espera.
-    if (!await this.requestApproval(context, 'browser', { action, task: preview.code, truncated: preview.truncated }, true, true, signal)) return signal.aborted ? 'A chamada ao navegador externo foi cancelada ou revogada antes da decisão; nada foi executado.' : 'O usuário negou a ação no navegador externo; nada foi executado.'
-    if (signal.aborted || context.signal?.aborted || !granted()) return 'O navegador externo foi revogado ou a chamada expirou antes da execução; nada foi executado.'
+    if (!context || context.conversation.id !== owner.conversationId || context.agent.id !== owner.agentId || !['codex', 'claude'].includes(context.agent.runtime) || context.run.planMode || context.signal?.aborted || signal.aborted) return 'Nenhuma execução ativa deste agente vinculada ao navegador externo nesta conversa; nada foi executado.'
+    if (!this.externalBrowserStatus(owner).granted) return 'O usuário não autorizou o navegador real para este agente nesta conversa. Use a ferramenta external_browser_request.'
     return null
   }
   readonly agentTerminals = new AgentTerminalService()
@@ -774,9 +767,9 @@ export class AppService extends EventEmitter {
         approvalMode: agent.approvalMode, terminalEnabled: this.store.terminalEnabled(), planMode: run.planMode === true,
       })).digest('hex').slice(0, 12)
       const toolsKey = fingerprintTools(tools, TOOL_BROKER_VERSION).slice(0, 16)
-      // Sem consentimento salvo não há proxy a iniciar; evita espera extra no caminho comum.
-      const externalBrowser = agent.runtime === 'codex' && this.store.externalBrowserGrant(conversation.id, agent.id) ? await this.externalBrowserMcp(context) || undefined : undefined
-      // Uma thread retomada não troca seus servidores MCP: autorizar, revogar ou reiniciar o proxy exige sessão nova.
+      // Codex/Claude recebem o proxy mesmo sem autorização, para que aprovar external_browser_request valha nesta execução.
+      const externalBrowser = agent.runtime === 'codex' || agent.runtime === 'claude' ? await this.externalBrowserMcp(context) || undefined : undefined
+      // Uma thread retomada não troca seus servidores MCP: reiniciar o proxy (nova URL) exige sessão nova.
       const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}${externalBrowser ? `:x${externalBrowser.url}` : ''}`
       let binding = this.store.sessionBinding(bindingKey)
       if (binding?.runtime && binding.runtime !== agent.runtime) { this.store.deleteSessionBinding(bindingKey); binding = undefined }
@@ -909,7 +902,8 @@ export class AppService extends EventEmitter {
         tool('browser_fill', 'Preenche um campo da página com texto.', { selector: { type: 'string' }, text: { type: 'string' } }, ['selector', 'text']),
         tool('browser_key', 'Indisponível: não é possível comprovar o efeito seguro da tecla neste navegador.', { key: { type: 'string' } }, ['key']),
         tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY']),
-        tool('external_browser_status', 'Verifica se o usuário autorizou, nesta conversa, o navegador externo dele (Brave/Chrome pela extensão oficial do provider) e se a ponte está disponível. Não lê nem lista abas.', {}, [])
+        tool('external_browser_status', 'Verifica se o usuário autorizou, nesta conversa, o navegador real dele (Brave/Chrome pela extensão oficial) e se a ponte está disponível, com o que fazer quando não estiver. Não lê nem lista abas.', {}, []),
+        ...(['codex', 'claude'].includes(context.agent.runtime) ? [tool('external_browser_request', 'Pede ao usuário autorização para usar o navegador real dele (Brave/Chrome, com sessões logadas) nesta conversa. Use só quando a tarefa depende de login ou de algo que só existe no navegador do usuário; para o resto, use o navegador interno (browser_*). Depois de autorizado, use a ferramenta js do servidor MCP politron_external_browser.', {}, [])] : []),
       ] : []),
       ...(context.agent.id !== ASSISTANT_ID ? [tool('propose_self_profile', 'Edite SEU PRÓPRIO perfil cadastrado no Boobot, inclusive se você é o Chief. Use quando perguntarem se você consegue se editar, personalizar aparência, nome, especialidade, instruções, personalidade ou comportamento. O corpo do modelo/pesos não podem ser alterados. Sugira mudanças específicas, preservando campos omitidos. A confirmação segue o modo de aprovação do agente. NÃO permite alterar runtime, modelo, permissões, papel, menção, chaves, ferramentas ou acesso ao computador.', {
         name: { type: 'string', description: 'Novo nome visível (opcional).' },
@@ -1373,13 +1367,21 @@ export class AppService extends EventEmitter {
       check().assertSharing(owner, token, name !== 'browser_open')
       return result
     }
-    if (name === 'external_browser_status') {
-      const status = this.externalBrowserStatus({ workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id })
-      if (!status.granted) throw new Error('O usuário não autorizou o navegador externo para este agente nesta conversa.')
-      // Sempre lança hoje: `problems` inclui o bloqueio fail-closed do js além das peças ausentes da ponte.
-      if (status.problems.length) throw new Error(`Navegador externo indisponível: ${status.problems.join('; ')}.`)
-      if (!this.externalBrowserProxies.get(`${context.conversation.id}:${context.agent.id}`)?.ready) throw new Error('A extensão oficial foi detectada, mas o Politron não conseguiu iniciar a ponte node_repl mediada; nenhuma aba foi acessada. Use o navegador da plataforma.')
-      return `Navegador externo autorizado. Use o servidor MCP ${EXTERNAL_BROWSER_MCP}, ferramenta js (skill oficial control-chrome). Cada chamada pede aprovação do usuário no Politron; cookies, senhas, armazenamento, histórico, perfis, arquivos e CDP direto são bloqueados.`
+    if (name === 'external_browser_status' || name === 'external_browser_request') {
+      const owner = { workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }
+      let status = this.externalBrowserStatus(owner)
+      if (name === 'external_browser_request') {
+        if (status.granted) return 'Navegador real já autorizado para este agente nesta conversa.'
+        if (!await this.requestApproval(context, 'browser', { action: `Permitir ${context.agent.name} usar seu navegador real (Brave/Chrome) nesta conversa`, task: 'O agente poderá ler e agir em qualquer site em que você está logado, incluindo cookies e dados salvos, até você revogar.' }, true, true)) return 'O usuário negou o navegador real nesta conversa.'
+        status = this.setExternalBrowserGrant(owner, true)
+      }
+      const ready = !!this.externalBrowserProxies.get(`${owner.conversationId}:${owner.agentId}`)?.ready
+      const bridge = status.problems.length ? `Ponte indisponível: ${status.problems.join('; ')}. Para corrigir, reinstale o plugin Browser pelo Codex/ChatGPT e a extensão no navegador; até lá, use o navegador interno (browser_*).`
+        : ready ? `Ponte pronta: use a ferramenta js do servidor MCP ${EXTERNAL_BROWSER_MCP}.`
+        : 'A ponte foi detectada, mas o proxy não está ativo nesta execução; ele entra na próxima execução do agente. Até lá, use o navegador interno (browser_*).'
+      if (name === 'external_browser_request') return `Navegador real autorizado nesta conversa. ${bridge}`
+      return [`granted: ${status.granted}`, `problems: ${status.problems.length ? status.problems.join('; ') : 'nenhum'}`,
+        status.granted ? bridge : `${bridge} Sem autorização, peça com a ferramenta external_browser_request.`].join('\n')
     }
     if (name === 'delegation_result') {
       const id = text(args.delegation_id, 100)

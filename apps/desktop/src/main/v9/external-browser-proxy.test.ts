@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { ExternalBrowserProxy, externalBrowserApprovalPreview, externalBrowserCallViolation } from './external-browser-proxy'
+import { ExternalBrowserProxy, externalBrowserApprovalPreview } from './external-browser-proxy'
 
 const fixture = fileURLToPath(new URL('./test-fixtures/fake-node-repl.mjs', import.meta.url))
 // Cada teste inicia um processo node_repl falso; sob a suíte completa 5s não bastam.
@@ -30,21 +30,26 @@ async function connect(proxy: ExternalBrowserProxy, token = proxy.token) {
 const text = (result: Record<string, unknown>) => (result.content as Array<{ text?: string }>).map(item => item.text).join('')
 
 describe('proxy MCP mediado do node_repl', () => {
-  it('fail-closed: nenhum js é encaminhado, nem inofensivo nem com aprovação, e bypasses conhecidos não chegam à aprovação', async () => {
+  it('com o authorizer liberando, js chega ao node_repl e devolve o resultado dele', async () => {
     const { proxy, log, authorize } = setup()
     await proxy.start()
     const client = await connect(proxy)
-    // Bypasses que contornavam o antigo filtro por regex, mais automação comum: tudo recusado antes da aprovação.
-    for (const code of ['await tab.goto("https://exemplo.com")', 'document.\\u0063ookie', "document['coo' + 'kie']", 'document.\u0063ookie',
-      "globalThis[atob('ZXZhbA==')]('1')", "Function('return pro' + 'cess')().env", "eval('local' + 'Storage')",
-      'await import(String.fromCharCode(102, 115))', 'tab.playwright.evaluate("document.cookie")', 'tab.cdp.send("Network.getAllCookies")',
-      'await tab.goto("chrome://password-manager")', 'await tab.goto("file:///C:/")', "const k = 'cook'; document[k + 'ie']"]) {
-      const result = await client.callTool({ name: 'js', arguments: { code } })
-      expect(result.isError, code).toBe(true)
-      expect(text(result)).toMatch(/fail-closed.*nenhuma aba foi acessada/)
-    }
+    const result = await client.callTool({ name: 'js', arguments: { code: 'await tab.goto("https://exemplo.com")' } })
+    expect(result.isError).toBeFalsy()
+    expect(text(result)).toBe('executado: await tab.goto("https://exemplo.com")')
+    expect(authorize).toHaveBeenCalledWith('js', { code: 'await tab.goto("https://exemplo.com")' }, expect.any(AbortSignal))
+    expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1)
+    // Só js é republicado: CDP completo não existe pelo proxy.
     expect(await client.callTool({ name: 'browser_use_full_cdp_access', arguments: {} })).toMatchObject({ isError: true })
-    expect(authorize).not.toHaveBeenCalled()
+  })
+
+  it('authorizer recusando devolve isError com o motivo e nada chega ao node_repl', async () => {
+    const { proxy, log } = setup(vi.fn(async () => 'não autorizado: peça com external_browser_request'))
+    await proxy.start()
+    const client = await connect(proxy)
+    const result = await client.callTool({ name: 'js', arguments: { code: '1' } })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toBe('não autorizado: peça com external_browser_request')
     expect(existsSync(log)).toBe(false)
   })
 
@@ -76,9 +81,6 @@ describe('proxy MCP mediado do node_repl', () => {
     expect(() => proxy.url).toThrow()
   })
 
-  it('política de conteúdo não confia em filtro textual: recusa qualquer js', () => {
-    expect(externalBrowserCallViolation()).toMatch(/fail-closed/)
-  })
 })
 
 describe('prévia da aprovação do navegador externo', () => {

@@ -8,23 +8,12 @@ import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, typ
 
 export const EXTERNAL_BROWSER_MCP = 'politron_external_browser'
 export interface NodeReplServer { command: string; args: string[]; env: Record<string, string> }
-/** Devolve null quando a chamada foi aprovada; caso contrário, o motivo da recusa mostrado ao modelo. */
+/** Devolve null quando a chamada pode seguir; caso contrário, o motivo da recusa mostrado ao modelo. */
 export type ExternalBrowserAuthorizer = (tool: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<string | null>
 
 // A skill oficial control-chrome usa somente `js`; nada além disso é republicado (nem CDP completo).
 const ALLOWED_TOOLS = new Set(['js'])
 const failure = (text: string): CallToolResult => ({ isError: true, content: [{ type: 'text', text }] })
-
-/**
- * Fail-closed. O cliente oficial aceita `playwright.evaluate` com código de página em texto e comandos CDP crus,
- * e o node_repl é Node persistente com import dinâmico; sem parser JS nem ponte real para verificar, nenhuma
- * allowlist de `js` é demonstrável (regex não é sandbox). Por isso nenhum `js` é encaminhado nem registrado.
- */
-export const EXTERNAL_BROWSER_JS_BLOCKED = 'o Politron não encaminha a ferramenta js ao node_repl (fail-closed): não há política verificável que impeça ler cookies, senhas, armazenamento, histórico, perfis ou arquivos e usar CDP direto, porque o cliente oficial executa código de página em texto e CDP cru; nenhuma aba foi acessada. Use o navegador da plataforma'
-/** Único ponto para reativar o encaminhamento, e somente com uma política comprovada por testes contra bypasses. */
-export function externalBrowserCallViolation(): string | null {
-  return `Chamada bloqueada: ${EXTERNAL_BROWSER_JS_BLOCKED}. Nada foi executado.`
-}
 
 const PREVIEW_LIMIT = 4000
 const UNSAFE = ' [restante oculto: o Politron não conseguiu garantir a redação de segredos]'
@@ -67,8 +56,8 @@ export function externalBrowserApprovalPreview(args: Record<string, unknown>, re
 }
 
 /**
- * Servidor MCP do Politron entre o Codex e o node_repl oficial. O Codex só fala com este proxy;
- * cada tools/call passa pela política de conteúdo e pela aprovação do Politron antes de chegar ao node_repl.
+ * Servidor MCP do Politron entre o agente (Codex/Claude) e o node_repl oficial. O agente só fala com este proxy;
+ * cada tools/call passa pelo authorizer (autorização da conversa+agente, sem filtro de conteúdo) antes de chegar ao node_repl.
  */
 export class ExternalBrowserProxy {
   readonly token = randomBytes(32).toString('hex')
@@ -122,11 +111,9 @@ export class ExternalBrowserProxy {
     const stopped = 'O navegador externo foi revogado ou encerrado; nada foi executado.'
     if (this.closed || !this.upstream) return failure(stopped)
     if (!this.tools.some(tool => tool.name === name)) return failure('Ferramenta não disponível pelo Politron; nada foi executado.')
-    const violation = externalBrowserCallViolation()
-    if (violation) return failure(violation)
-    const refusal = await this.authorize(name, args, signal).catch(() => 'A aprovação não pôde ser concluída; nada foi executado.')
+    const refusal = await this.authorize(name, args, signal).catch(() => 'A autorização não pôde ser verificada; nada foi executado.')
     if (refusal) return failure(refusal)
-    // Revalida depois da espera: revogação ou desistência do cliente durante a aprovação cancela o envio.
+    // Revalida depois da espera: encerramento ou desistência do cliente durante a autorização cancela o envio.
     if (this.closed || !this.upstream || signal.aborted) return failure(stopped)
     return await this.upstream.callTool({ name, arguments: args }) as CallToolResult
   }

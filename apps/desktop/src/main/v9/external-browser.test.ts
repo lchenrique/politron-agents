@@ -10,6 +10,8 @@ vi.mock('electron', () => ({
 import { EventEmitter } from 'node:events'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { AppService } from './workspace'
 import { probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
 import type { AgentRuntime } from './agent-runtime'
@@ -60,10 +62,10 @@ describe('sonda da ponte oficial do navegador externo', () => {
   })
 })
 
-async function setup(computerUse = true, runtime: 'opencode' | 'codex' = 'opencode', agentRuntime?: AgentRuntime) {
+async function setup(computerUse = true, runtime: 'opencode' | 'codex' | 'claude' = 'opencode', agentRuntime?: AgentRuntime) {
   const root = temp('politron-external-')
   const service = new AppService(join(root, 'profile'), agentRuntime); services.push(service)
-  const agent = service.saveAgent({ name: 'Boo Externo', runtime, model: runtime === 'codex' ? 'gpt-5.4' : 'opencode/big-pickle', instructions: 'Teste.', canWrite: false, computerUse, approvalMode: 'bypass' })
+  const agent = service.saveAgent({ name: 'Boo Externo', runtime, model: runtime === 'codex' ? 'gpt-5.4' : runtime === 'claude' ? 'claude-sonnet-4-5' : 'opencode/big-pickle', instructions: 'Teste.', canWrite: false, computerUse, approvalMode: 'bypass' })
   const workspace = await service.saveWorkspace({ name: 'QA', path: root, permissions: { chiefCreateAgents: false, chiefEditAgents: false, chiefManageTeam: false, chiefCreateSessions: false, filesWrite: 'inherit', computerUse: 'inherit' } })
   const conversation = service.saveConversation({ name: 'QA', workspaceId: workspace.id, agentIds: [agent.id] })
   const owner = { workspaceId: workspace.id, conversationId: conversation.id, agentId: agent.id }
@@ -79,7 +81,7 @@ describe('navegador externo por conversa e agente', () => {
     const { service, broker, context, owner } = await setup()
     expect(service.externalBrowserStatus(owner).granted).toBe(false)
     expect(broker.tools(context).map(tool => tool.name)).toContain('external_browser_status')
-    await expect(broker.callTool(context, 'external_browser_status', {})).rejects.toThrow(/não autorizou/)
+    await expect(broker.callTool(context, 'external_browser_status', {})).resolves.toMatch(/granted: false[\s\S]*external_browser_request/)
   })
   it('autorização explícita persiste, ponte ausente gera erro claro e revogação bloqueia de novo', async () => {
     const paths = bridge({ nodeRepl: 'missing' })
@@ -92,18 +94,18 @@ describe('navegador externo por conversa e agente', () => {
     const reopened = new AppService(join(root, 'profile')); services.push(reopened)
     expect(reopened.externalBrowserStatus(owner).granted).toBe(true)
     const reopenedBroker = reopened as unknown as typeof broker
-    await expect(reopenedBroker.callTool(context, 'external_browser_status', {})).rejects.toThrow(/indisponível.*node_repl/)
+    await expect(reopenedBroker.callTool(context, 'external_browser_status', {})).resolves.toMatch(/granted: true[\s\S]*node_repl[\s\S]*reinstale o plugin Browser pelo Codex\/ChatGPT/)
     expect(reopened.snapshot().conversations.length).toBeGreaterThan(0)
     reopened.setExternalBrowserGrant(owner, false)
     expect(reopened.externalBrowserStatus(owner).granted).toBe(false)
-    await expect(reopenedBroker.callTool(context, 'external_browser_status', {})).rejects.toThrow(/não autorizou/)
+    await expect(reopenedBroker.callTool(context, 'external_browser_status', {})).resolves.toMatch(/granted: false/)
   })
   it('com a ponte detectada não simula acesso: nenhuma aba é lida', async () => {
     const paths = bridge({ nodeRepl: 'present', host: true })
     Object.assign(process.env, { CODEX_HOME: paths.codexHome, LOCALAPPDATA: paths.localAppData })
     const { service, broker, context, owner } = await setup()
     service.setExternalBrowserGrant(owner, true)
-    await expect(broker.callTool(context, 'external_browser_status', {})).rejects.toThrow(/nenhuma aba foi acessada/)
+    await expect(broker.callTool(context, 'external_browser_status', {})).resolves.toMatch(/granted: true[\s\S]*problems: nenhum[\s\S]*não está ativo nesta execução/)
   })
   it('lê comando, argumentos e ambiente do node_repl declarado pelo Codex', () => {
     const codexHome = temp('politron-codex-')
@@ -141,120 +143,107 @@ function fakeBridge(service: AppService, command = process.execPath, problems: s
 }
 const calls = (log: string) => existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').length : 0
 
-describe('proxy mediado do navegador externo no AppService', () => {
-  it('sem autorização o proxy não é registrado e o node_repl não é iniciado', async () => {
-    const { service, broker, context } = await setup(true, 'codex')
-    const log = fakeBridge(service)
-    expect(await (service as unknown as Mediated).externalBrowserMcp(context)).toBeNull()
-    await expect(broker.callTool(context, 'external_browser_status', {})).rejects.toThrow(/não autorizou/)
-    expect(calls(log)).toBe(0)
-  })
+async function mcp(registration: Registration) {
+  const client = new Client({ name: 'codex-test', version: '1.0.0' })
+  await client.connect(new StreamableHTTPClientTransport(new URL(registration.url), { requestInit: { headers: { Authorization: `Bearer ${registration.token}` } } }))
+  return client
+}
+const output = (result: Record<string, unknown>) => (result.content as Array<{ text?: string }>).map(item => item.text).join('')
 
-  it('com autorização e ponte íntegra o js segue fail-closed: proxy não registrado, node_repl não iniciado e diagnóstico claro', async () => {
-    const { service, broker, context, owner } = await setup(true, 'codex')
+describe('navegador real liberado por autorização da conversa', () => {
+  async function running(runtime: 'codex' | 'claude' = 'codex') {
+    const { service, broker, context, owner } = await setup(true, runtime)
     const log = fakeBridge(service)
-    service.setExternalBrowserGrant(owner, true)
-    const mediated = service as unknown as Mediated
-    mediated.contexts.set(context.run.id, context)
-    expect(service.externalBrowserStatus(owner).problems.join(' ')).toMatch(/fail-closed/)
-    expect(await mediated.externalBrowserMcp(context)).toBeNull()
-    await expect(broker.callTool(context, 'external_browser_status', {})).rejects.toThrow(/indisponível.*fail-closed.*nenhuma aba foi acessada/)
-    expect(calls(log)).toBe(0)
-  })
-
-  /** Aprovação mediada, exercitada direto: hoje nenhum js chega a ela, mas ela continua vinculada e cancelável. */
-  async function mediation() {
-    const { service, context, owner } = await setup(true, 'codex')
-    service.setExternalBrowserGrant(owner, true)
     const mediated = service as unknown as Mediated
     mediated.contexts.set(context.run.id, context)
     const approvals: Approval[] = []
     service.on('workspace-event', (event: WorkspaceEvent) => { if (event.type === 'approval') approvals.push(event.approval) })
-    return { service, context, owner, mediated, approvals }
+    return { service, broker, context, owner, log, mediated, approvals }
   }
-  const pending = async (approvals: Approval[]) => { for (let i = 0; i < 100 && !approvals.some(item => item.status === 'pending'); i++) await new Promise(resolve => setTimeout(resolve, 5)); return approvals.find(item => item.status === 'pending')! }
+  const pending = async (approvals: Approval[]) => { for (let i = 0; i < 200 && !approvals.some(item => item.status === 'pending'); i++) await new Promise(resolve => setTimeout(resolve, 5)); return approvals.find(item => item.status === 'pending')! }
 
-  it('aprovação por conversa e agente pergunta mesmo em bypass, sem segredos e com truncamento explícito', async () => {
-    const { service, context, owner, mediated, approvals } = await mediation()
-    const code = `await tab.goto("https://exemplo.com/conta?token=segredo#frag"); await tab.fill("#senha", "hunter2"); ${'tab.click(1);'.repeat(600)}`
-    const decision = mediated.authorizeExternalBrowserCall(owner, context.run.id, 'js', { code }, new AbortController().signal)
-    const approval = await pending(approvals)
-    expect(approval).toMatchObject({ kind: 'browser', runId: context.run.id, conversationId: owner.conversationId, agentId: owner.agentId })
-    expect(approval.details.action).toMatch(/navegador externo.*https:\/\/exemplo\.com\/conta/)
-    expect(approval.details.truncated).toBe(true)
-    expect(approval.details.task).toMatch(/\[prévia truncada: \d+ de \d+ caracteres exibidos\]$/)
-    expect(JSON.stringify(approval.details)).not.toMatch(/segredo|frag|hunter2/)
-    await service.respondApproval(approval.id, false)
-    await expect(decision).resolves.toMatch(/negou/)
+  it('sem grant o js é recusado citando external_browser_request; o pedido aprovado libera a mesma execução sem nova aprovação, e revogar volta a recusar', async () => {
+    const { service, broker, context, owner, log, mediated, approvals } = await running()
+    const registration = await mediated.externalBrowserMcp(context)
+    expect(registration).toMatchObject({ tools: ['js'] })
+    const client = await mcp(registration!)
+    try {
+      const refused = await client.callTool({ name: 'js', arguments: { code: 'tab.url()' } })
+      expect(refused.isError).toBe(true)
+      expect(output(refused)).toBe('O usuário não autorizou o navegador real para este agente nesta conversa. Use a ferramenta external_browser_request.')
+      expect(calls(log)).toBe(0)
+
+      expect(broker.tools(context).map(tool => tool.name)).toContain('external_browser_request')
+      const request = broker.callTool(context, 'external_browser_request', {})
+      const approval = await pending(approvals)
+      expect(approval).toMatchObject({ kind: 'browser', details: { action: 'Permitir Boo Externo usar seu navegador real (Brave/Chrome) nesta conversa', task: 'O agente poderá ler e agir em qualquer site em que você está logado, incluindo cookies e dados salvos, até você revogar.' } })
+      await service.respondApproval(approval.id, true)
+      await expect(request).resolves.toMatch(/autorizado[\s\S]*pronta/i)
+      expect(service.externalBrowserStatus(owner).granted).toBe(true)
+      await expect(broker.callTool(context, 'external_browser_request', {})).resolves.toMatch(/já autorizado/i)
+
+      const before = approvals.length
+      for (const code of ['tab.url()', 'document.cookie']) {
+        const result = await client.callTool({ name: 'js', arguments: { code } })
+        expect(result.isError).toBeFalsy()
+        expect(output(result)).toBe(`executado: ${code}`)
+      }
+      expect(approvals.length).toBe(before)
+      expect(calls(log)).toBe(2)
+
+      service.setExternalBrowserGrant(owner, false)
+      const revoked = await client.callTool({ name: 'js', arguments: { code: '1' } })
+      expect(revoked.isError).toBe(true)
+      expect(output(revoked)).toMatch(/external_browser_request/)
+      expect(calls(log)).toBe(2)
+    } finally { await client.close() }
   })
 
-  it('desconexão da requisição cancela a aprovação pendente e o waiter', async () => {
-    const { service, context, owner, mediated, approvals } = await mediation()
-    const request = new AbortController()
-    const decision = mediated.authorizeExternalBrowserCall(owner, context.run.id, 'js', { code: 'tab.click("#ok")' }, request.signal)
-    const approval = await pending(approvals)
-    request.abort()
-    await expect(decision).resolves.toMatch(/nada foi executado/)
-    expect(service.store.approval(approval.id)?.status).toBe('interrupted')
-    expect(mediated.approvalWaiters.has(approval.id)).toBe(false)
-    await expect(service.respondApproval(approval.id, true)).rejects.toThrow(/não está mais pendente/)
-    expect(await mediated.authorizeExternalBrowserCall(owner, context.run.id, 'js', { code: '1' }, request.signal)).toMatch(/nada foi executado/)
+  it('pedido negado não grava autorização', async () => {
+    const { service, broker, context, owner, approvals } = await running()
+    const request = broker.callTool(context, 'external_browser_request', {})
+    await service.respondApproval((await pending(approvals)).id, false)
+    await expect(request).resolves.toMatch(/negou/)
+    expect(service.externalBrowserStatus(owner).granted).toBe(false)
   })
 
-  it('cancelamento antes de registrar o waiter restaura o estado da execução', async () => {
-    const { service, context, owner, mediated } = await mediation()
-    const request = new AbortController()
-    const put = service.store.putApproval.bind(service.store)
-    vi.spyOn(service.store, 'putApproval').mockImplementation(approval => {
-      put(approval)
-      if (approval.status === 'pending') request.abort()
-    })
-    await expect(mediated.authorizeExternalBrowserCall(owner, context.run.id, 'js', { code: 'tab.click("#ok")' }, request.signal)).resolves.toMatch(/cancelada/)
-    expect(service.store.runs().find(run => run.id === context.run.id)?.status).toBe('running')
-    expect(service.store.approvals().at(-1)?.status).toBe('interrupted')
+  it('agente Claude recebe o proxy; Pi e OpenCode não', async () => {
+    const { context, mediated } = await running('claude')
+    expect(await mediated.externalBrowserMcp(context)).toMatchObject({ tools: ['js'] })
+    for (const runtime of ['pi', 'opencode'] as const) {
+      const other = await setup(true, 'opencode')
+      const log = fakeBridge(other.service)
+      const agent = { ...other.context.agent, runtime }
+      expect(await (other.service as unknown as Mediated).externalBrowserMcp({ ...other.context, agent })).toBeNull()
+      expect(calls(log)).toBe(0)
+      expect(other.broker.tools({ ...other.context, agent }).map(tool => tool.name)).not.toContain('external_browser_request')
+    }
   })
 
-  it('revogação durante a espera da aprovação impede a execução', async () => {
-    const { service, context, owner, mediated, approvals } = await mediation()
-    const decision = mediated.authorizeExternalBrowserCall(owner, context.run.id, 'js', { code: 'tab.click("#ok")' }, new AbortController().signal)
-    const approval = await pending(approvals)
-    service.store.saveExternalBrowserGrant(owner.conversationId, owner.agentId, false)
-    await service.respondApproval(approval.id, true)
-    await expect(decision).resolves.toMatch(/revogado/)
-  })
-
-  it('só autoriza a execução vinculada ao proxy: outra execução, outro agente ou nenhuma são recusados sem aprovação', async () => {
-    const { context, owner, mediated, approvals } = await mediation()
-    const other = { ...context, run: { ...context.run, id: 'run-outra' } }
-    mediated.contexts.set(other.run.id, { ...other, agent: { ...context.agent, id: 'outro-agente' } })
+  it('só autoriza a execução vinculada ao proxy: outra execução, outro agente ou nenhuma são recusados', async () => {
+    const { service, context, owner, mediated } = await running()
+    service.setExternalBrowserGrant(owner, true)
+    mediated.contexts.set('run-outra', { ...context, run: { ...context.run, id: 'run-outra' }, agent: { ...context.agent, id: 'outro-agente' } })
     const signal = new AbortController().signal
+    expect(await mediated.authorizeExternalBrowserCall(owner, context.run.id, 'js', { code: '1' }, signal)).toBeNull()
     expect(await mediated.authorizeExternalBrowserCall(owner, undefined, 'js', { code: '1' }, signal)).toMatch(/Nenhuma execução ativa/)
     expect(await mediated.authorizeExternalBrowserCall(owner, 'run-inexistente', 'js', { code: '1' }, signal)).toMatch(/Nenhuma execução ativa/)
     expect(await mediated.authorizeExternalBrowserCall(owner, 'run-outra', 'js', { code: '1' }, signal)).toMatch(/Nenhuma execução ativa/)
-    expect(approvals).toHaveLength(0)
   })
 
-  it('node_repl que não inicia ou ponte com peças ausentes falham fechadas e o app segue', async () => {
+  it('sonda com problema ou node_repl que não inicia: sem proxy, status explica e o app segue', async () => {
     const { service, broker, context, owner } = await setup(true, 'codex')
-    fakeBridge(service, join(tmpdir(), 'node_repl-inexistente.exe'))
     service.setExternalBrowserGrant(owner, true)
-    expect(await (service as unknown as Mediated).externalBrowserMcp(context)).toBeNull()
-    await expect(broker.callTool(context, 'external_browser_status', {})).rejects.toThrow(/nenhuma aba foi acessada/)
     const log = fakeBridge(service, process.execPath, ['servidor MCP node_repl configurado aponta para um executável inexistente'])
     expect(await (service as unknown as Mediated).externalBrowserMcp(context)).toBeNull()
-    await expect(broker.callTool(context, 'external_browser_status', {})).rejects.toThrow(/indisponível.*node_repl/)
+    await expect(broker.callTool(context, 'external_browser_status', {})).resolves.toMatch(/executável inexistente[\s\S]*reinstale o plugin Browser pelo Codex\/ChatGPT/)
     expect(calls(log)).toBe(0)
+    fakeBridge(service, join(tmpdir(), 'node_repl-inexistente.exe'))
+    expect(await (service as unknown as Mediated).externalBrowserMcp(context)).toBeNull()
     expect(service.snapshot().conversations.length).toBeGreaterThan(0)
   })
 
-  it('agentes fora do Codex não recebem o proxy', async () => {
-    const { service, context, owner } = await setup(true, 'opencode')
-    fakeBridge(service)
-    service.setExternalBrowserGrant(owner, true)
-    expect(await (service as unknown as Mediated).externalBrowserMcp(context)).toBeNull()
-  })
-
-  it('a execução do agente não registra o proxy na thread do Codex, nem com autorização', async () => {
+  it('a execução do agente registra o proxy na thread mesmo sem grant, e nunca o node_repl direto', async () => {
     const threads: unknown[] = []
     const runtime = Object.assign(new EventEmitter(), {
       supportsImages: false, models: async () => [], respond: () => undefined, interrupt: async () => undefined, close: () => undefined,
@@ -263,12 +252,10 @@ describe('proxy mediado do navegador externo no AppService', () => {
     }) as unknown as AgentRuntime
     const { service, owner } = await setup(true, 'codex', runtime)
     fakeBridge(service)
-    const waitThread = async (count: number) => { for (let i = 0; i < 300 && threads.length < count; i++) await new Promise(resolve => setTimeout(resolve, 10)) }
-    await service.send(owner.conversationId, 'sem autorização'); await waitThread(1)
-    service.setExternalBrowserGrant(owner, true)
-    await service.send(owner.conversationId, 'com autorização'); await waitThread(2)
-    expect(threads[0]).toBeUndefined()
-    expect(threads).toHaveLength(2)
-    expect(threads[1]).toBeUndefined()
+    await service.send(owner.conversationId, 'sem autorização')
+    for (let i = 0; i < 300 && !threads.length; i++) await new Promise(resolve => setTimeout(resolve, 10))
+    expect(threads).toHaveLength(1)
+    expect(threads[0]).toMatchObject({ url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/), tools: ['js'] })
+    expect(JSON.stringify(threads[0])).not.toContain('fake-node-repl')
   })
 })
