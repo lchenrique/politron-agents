@@ -65,6 +65,12 @@ export class AppService extends EventEmitter {
   readonly decisionRouting: OpenRouterDecisionService
   private platformBrowser: PlatformBrowser | null = null
   setPlatformBrowser(browser: PlatformBrowser) { this.platformBrowser = browser }
+  private browserBusyBy(owner: PlatformBrowserOwner): { agent: string; conversation: string } | null {
+    const current = this.platformBrowser?.sharingState?.()
+    if (!current || (current.conversationId === owner.conversationId && current.agentId === owner.agentId)) return null
+    const active = [...this.contexts.values()].find(c => c.conversation.id === current.conversationId && c.agent.id === current.agentId && !c.signal?.aborted && ['running', 'waiting'].includes(c.run.status))
+    return active ? { agent: active.agent.name, conversation: active.conversation.name } : null
+  }
   canShareBrowser(owner: PlatformBrowserOwner): boolean {
     try {
       const conversation = this.store.conversation(owner.conversationId)
@@ -897,8 +903,8 @@ export class AppService extends EventEmitter {
         tool('workspace_process_status', 'Consulta status, código de saída e o final da saída de um processo iniciado nesta conversa.', { session_id: { type: 'string' } }, ['session_id']),
         tool('workspace_stop_process', 'Encerra um processo iniciado nesta conversa e seus processos filhos.', { session_id: { type: 'string' } }, ['session_id'])] : []),
       ...(canUseComputer && !planning ? [
-        tool('browser_open', 'Abre um endereço HTTP ou HTTPS no navegador compartilhado da plataforma, quando autorizado pelo usuário.', { url: { type: 'string' } }, ['url']),
-        tool('browser_observe', 'Lê o conteúdo visível e os controles da página aberta pelo agente.', {}, []),
+        tool('browser_open', 'Abre um endereço HTTP ou HTTPS no navegador interno da plataforma (abre a aba Navegador automaticamente e compartilha com você, sem clique do usuário). É o navegador padrão; prefira-o ao externo.', { url: { type: 'string' } }, ['url']),
+        tool('browser_observe', 'Lê o conteúdo visível e os controles da página aberta no navegador interno (use browser_open antes se não houver página).', {}, []),
         tool('browser_click', 'Clica em um seletor CSS ou em uma posição dentro da página.', { selector: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' } }, []),
         tool('browser_fill', 'Preenche um campo da página com texto.', { selector: { type: 'string' }, text: { type: 'string' } }, ['selector', 'text']),
         tool('browser_key', 'Indisponível: não é possível comprovar o efeito seguro da tecla neste navegador.', { key: { type: 'string' } }, ['key']),
@@ -1348,17 +1354,21 @@ export class AppService extends EventEmitter {
       }
       const activeBrowser = check()
       if (name === 'browser_key') throw new Error('Tecla não suportada com segurança; o foco não foi alterado.')
+      const busy = this.browserBusyBy(owner)
+      if (busy) throw new Error(`Aguarde: navegador em uso por ${busy.agent} em ${busy.conversation}.`)
       const operation = name === 'browser_open' || name === 'browser_observe' ? '' : name.replace('browser_', '')
-      const token = await activeBrowser.captureDocument(owner, operation, args)
+      // Abrir: a aprovação vem antes de o acquire navegar.
+      if (name === 'browser_open' && !await this.requestApproval(context, 'browser', { action: `Abrir ${approvalUrl(text(args.url, 2000))}` })) return 'Ação de navegador negada pelo usuário.'
+      await check().acquireForAgent(owner, name === 'browser_open' ? text(args.url, 2000) : undefined)
+      const token = await check().captureDocument(owner, operation, args)
       check().assertSharing(owner, token)
-      if (name !== 'browser_observe') {
-        const action = name === 'browser_open' ? `Abrir ${approvalUrl(text(args.url, 2000))}` : `${operation}: ${redactApprovalUrls(JSON.stringify(args)).slice(0, 1000)}`
+      if (name !== 'browser_observe' && name !== 'browser_open') {
+        const action = `${operation}: ${redactApprovalUrls(JSON.stringify(args)).slice(0, 1000)}`
         if (!await this.requestApproval(context, 'browser', { action })) return 'Ação de navegador negada pelo usuário.'
       }
       const browser = check()
       browser.assertSharing(owner, token)
-      const result = name === 'browser_open' ? await browser.openForAgent(owner, args.url, token)
-        : name === 'browser_observe' ? await browser.observeForAgent(owner, token)
+      const result = name === 'browser_open' || name === 'browser_observe' ? await browser.observeForAgent(owner, token)
         : await browser.actForAgent(owner, name.replace('browser_', ''), args, token)
       check().assertSharing(owner, token, name !== 'browser_open')
       return result

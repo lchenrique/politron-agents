@@ -60,12 +60,44 @@ describe('Ferramentas de pergunta, plano e autonomia', () => {
   it('usa apenas a view compartilhada e respeita a permissão atual do agente', async () => {
     const { service, broker, context } = await setup()
     const observe = vi.fn(async () => ({ text: 'página visível' }))
-    service.setPlatformBrowser({ observeForAgent: observe, captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
+    service.setPlatformBrowser({ observeForAgent: observe, acquireForAgent: async () => undefined, sharingState: () => null, captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
     await expect(broker.callTool(context, 'browser_observe', {})).resolves.toEqual({ text: 'página visível' })
     expect(observe).toHaveBeenCalledWith({ workspaceId: context.conversation.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }, 1)
     service.saveAgent({ ...context.agent, computerUse: false })
     await expect(broker.callTool(context, 'browser_observe', {})).rejects.toThrow(/bloqueado/i)
     expect(observe).toHaveBeenCalledTimes(1)
+  })
+  const fakeBrowser = (over: Record<string, unknown> = {}) => ({
+    observeForAgent: vi.fn(async () => ({ text: 'obs' })), openForAgent: vi.fn(async () => ({ text: 'aberto' })),
+    acquireForAgent: vi.fn(async () => undefined), sharingState: () => null,
+    captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined, ...over,
+  })
+  it('browser_open sem compartilhamento prévio aprova, adquire com a URL e devolve a observação', async () => {
+    const { service, broker, context } = await setup()
+    const order: string[] = []
+    const browser = fakeBrowser({ acquireForAgent: vi.fn(async () => { order.push('acquire') }) })
+    service.setPlatformBrowser(browser as never)
+    ;(service as unknown as { requestApproval: unknown }).requestApproval = async () => { order.push('approval'); return true }
+    await expect(broker.callTool(context, 'browser_open', { url: 'https://example.com/' })).resolves.toEqual({ text: 'obs' })
+    expect(browser.acquireForAgent).toHaveBeenCalledWith({ workspaceId: context.conversation.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }, 'https://example.com/')
+    expect(order).toEqual(['approval', 'acquire'])
+    expect(browser.openForAgent).not.toHaveBeenCalled()
+  })
+  it('browser_observe com navegador vazio orienta browser_open', async () => {
+    const { service, broker, context } = await setup()
+    service.setPlatformBrowser(fakeBrowser({ acquireForAgent: async () => { throw new Error('Nenhuma página aberta: use browser_open primeiro.') } }) as never)
+    await expect(broker.callTool(context, 'browser_observe', {})).rejects.toThrow(/browser_open primeiro/)
+  })
+  it('navegador em uso por outro agente ativo rejeita; sem run ativo adquire', async () => {
+    const { service, broker, context } = await setup()
+    const other = { workspaceId: context.conversation.workspaceId, conversationId: context.conversation.id, agentId: 'outro-agente' }
+    const browser = fakeBrowser({ sharingState: () => other })
+    service.setPlatformBrowser(browser as never)
+    await expect(broker.callTool(context, 'browser_observe', {})).resolves.toEqual({ text: 'obs' })
+    const contexts = (service as unknown as { contexts: Map<string, unknown> }).contexts
+    contexts.set('run-outro', { run: { status: 'running' }, conversation: context.conversation, agent: { id: 'outro-agente', name: 'Outro' }, signal: new AbortController().signal })
+    await expect(broker.callTool(context, 'browser_observe', {})).rejects.toThrow(/navegador em uso por .* em /)
+    contexts.delete('run-outro')
   })
   it('bypass oferece ferramentas habilitadas no agente e no workspace', async () => {
     const { broker, context } = await setup()
