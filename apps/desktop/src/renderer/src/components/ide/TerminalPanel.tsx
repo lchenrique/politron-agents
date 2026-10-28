@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, memo } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { Button } from "@/components/ui/button";
 import { AgentTerminalSessions } from "./AgentTerminalSessions";
 
 const RealTerminal = memo(({ workspaceId }: { workspaceId?: string | null }) => {
@@ -160,19 +161,21 @@ const TerminalPanel = memo(({ workspaceId, conversationId, showLogs = true }: { 
     <div className="flex flex-col h-full flex-1 min-h-[150px]">
       <div className="flex border-border border-b h-[34px] items-center px-2 gap-0.5 shrink-0 bg-muted/40">
         {tabs.map((tab) => (
-          <button
+          <Button
             key={tab}
+            variant="ghost"
+            size={null}
             onClick={() => setActiveTab(tab)}
-            className={`px-2.5 h-[34px] flex items-center text-[11px] font-medium transition-colors cursor-pointer border-b-2 ${
+            className={`px-2.5 h-[34px] flex items-center rounded-none text-[11px] font-medium transition-colors cursor-pointer border-b-2 hover:bg-transparent ${
               activeTab === tab
-                ? "text-foreground border-b-primary"
+                ? "text-foreground border-b-primary hover:text-foreground"
                 : "text-muted-foreground border-b-transparent hover:text-foreground"
             }`}
           >
             <span>{TAB_LABELS[tab]}</span>
-          </button>
+          </Button>
         ))}
-        {hasProject && <button type="button" onClick={openExternal} title="Abre o terminal do sistema na pasta do projeto, fora do Boobot" className="ml-auto px-2 h-[26px] rounded text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground">Abrir terminal externo</button>}
+        {hasProject && <Button type="button" variant="ghost" size={null} onClick={openExternal} title="Abre o terminal do sistema na pasta do projeto, fora do Boobot" className="ml-auto px-2 h-[26px] rounded text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground">Abrir terminal externo</Button>}
       </div>
       {externalError && <p role="alert" className="shrink-0 px-3 py-1 text-[11px] text-destructive">{externalError}</p>}
 

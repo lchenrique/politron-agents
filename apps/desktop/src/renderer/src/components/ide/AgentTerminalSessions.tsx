@@ -94,12 +94,12 @@ export function AgentTerminalSessions({ workspaceId, conversationId }: { workspa
     {error && <p role="alert" className="shrink-0 px-3 py-1.5 text-xs text-destructive">{error}</p>}
     {sessions.length > 0 ? <ul aria-label="Processos dos agentes" className="max-h-28 shrink-0 overflow-y-auto border-b border-border">
       {[...sessions].reverse().map(session => <li key={session.id} className={'flex items-center gap-2 px-2 py-1 text-[11px] ' + (session.id === selectedId ? 'bg-accent' : '')}>
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-pressed={session.id === selectedId} onClick={() => setSelectedId(session.id)} title={session.cwd}>
+        <Button type="button" variant="ghost" size={null} className="flex min-w-0 flex-1 justify-start gap-2 rounded-none text-left text-[11px] font-normal text-inherit hover:bg-transparent hover:text-inherit" aria-pressed={session.id === selectedId} onClick={() => setSelectedId(session.id)} title={session.cwd}>
           <span aria-hidden="true" className={'size-2 shrink-0 rounded-full ' + (session.status === 'running' ? 'bg-success' : session.status === 'completed' ? 'bg-muted-foreground' : 'bg-destructive')} />
           <span className="shrink-0 font-medium">{session.agentName}</span>
           <code className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{session.command}</code>
           <span className="shrink-0 text-muted-foreground">{STATUS_LABEL[session.status]}{session.exitCode !== null ? ` · ${session.exitCode}` : ''}</span>
-        </button>
+        </Button>
         {session.status === 'running' && <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[11px]" aria-label={`Parar ${session.command}`} onClick={() => stop(session)}><Square className="mr-1 size-3" />Parar</Button>}
       </li>)}
     </ul> : <p className="shrink-0 px-3 py-2 text-xs text-muted-foreground">Os comandos executados pelos agentes desta conversa aparecem aqui.</p>}

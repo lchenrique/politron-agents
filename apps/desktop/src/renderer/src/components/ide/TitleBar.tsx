@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { Minus, Square, X, PanelsTopLeft, PanelLeftClose, PanelLeftOpen, PanelRight, Files, Terminal, Globe, UserRound, FileDiff, MessageSquare, PictureInPicture2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { ThemeSelector } from './ThemeSelector'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { DockTool, DockZone } from '../../features/panels/DockWorkspace'
@@ -28,12 +29,12 @@ const tools = [
 ] as const
 
 // Botões do chrome: mesma medida e estados em toda a barra, sobre a superfície contínua da janela.
-const chromeButton = 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring'
+const chromeButton = 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0'
 
 function OpenToolsMenu({ onOpenTool, onDevelopmentLayout, browserMode = false, browserCanReadFiles = false }: Pick<TitleBarProps, 'onOpenTool' | 'onDevelopmentLayout' | 'browserMode' | 'browserCanReadFiles'>) {
   const availableTools = browserMode ? tools.filter(tool => tool.kind === 'diff' || tool.kind === 'chat' || tool.kind === 'files' && browserCanReadFiles) : tools
   return <DropdownMenu>
-    <DropdownMenuTrigger asChild><button type="button" aria-label="Abrir painéis e abas" title="Abrir arquivos, terminal, navegador ou mascote" className={chromeButton}><PanelsTopLeft className="size-4" /></button></DropdownMenuTrigger>
+    <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size={null} aria-label="Abrir painéis e abas" title="Abrir arquivos, terminal, navegador ou mascote" className={chromeButton}><PanelsTopLeft className="size-4" /></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end" className="w-56">
       <DropdownMenuLabel>Abrir painel</DropdownMenuLabel>
       <DropdownMenuGroup>{availableTools.map(tool => { const Icon = tool.icon; return <DropdownMenuItem key={tool.kind} onSelect={() => onOpenTool(tool.kind, tool.kind === 'chat' ? 'main' : 'side')}><Icon />{tool.label}</DropdownMenuItem> })}</DropdownMenuGroup>
@@ -45,8 +46,8 @@ function OpenToolsMenu({ onOpenTool, onDevelopmentLayout, browserMode = false, b
 
 function NavigationButtons({ sidebarCollapsed, onToggleSidebar, onOpenTool, panelTool }: { sidebarCollapsed: boolean; onToggleSidebar: () => void; onOpenTool: TitleBarProps['onOpenTool']; panelTool: DockTool }) {
   return <>
-    <button type="button" onClick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Expandir sidebar' : 'Recolher sidebar'} title="Recolher/expandir sidebar · Ctrl+B" className={chromeButton}>{sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}</button>
-    <button type="button" onClick={() => onOpenTool(panelTool, 'side')} aria-label="Abrir painel direito" title="Abrir painel direito · Arquivos, Terminal, Navegador, Mascote e Alterações" className={chromeButton}><PanelRight className="size-4" /></button>
+    <Button type="button" variant="ghost" size={null} onClick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Expandir sidebar' : 'Recolher sidebar'} title="Recolher/expandir sidebar · Ctrl+B" className={chromeButton}>{sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}</Button>
+    <Button type="button" variant="ghost" size={null} onClick={() => onOpenTool(panelTool, 'side')} aria-label="Abrir painel direito" title="Abrir painel direito · Arquivos, Terminal, Navegador, Mascote e Alterações" className={chromeButton}><PanelRight className="size-4" /></Button>
   </>
 }
 
@@ -71,13 +72,13 @@ export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarColla
     <div className="flex shrink-0 items-center gap-1"><ThemeSelector compact /><OpenToolsMenu browserMode browserCanReadFiles={browserCanReadFiles} onOpenTool={onOpenTool} onDevelopmentLayout={onDevelopmentLayout} /></div>
   </div>
   const navigation = <div className="flex shrink-0 items-center gap-0.5 px-1.5" style={noDrag}>
-    <button type="button" onClick={onOpenHome} aria-label="Ir para a central" title="Central do Chief" className={chromeButton}><img src={logo} alt="" width={18} height={16} /></button>
-    <button type="button" onClick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'} title="Recolher/expandir barra lateral · Ctrl+B" className={chromeButton}>{sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}</button>
+    <Button type="button" variant="ghost" size={null} onClick={onOpenHome} aria-label="Ir para a central" title="Central do Chief" className={chromeButton}><img src={logo} alt="" width={18} height={16} /></Button>
+    <Button type="button" variant="ghost" size={null} onClick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'} title="Recolher/expandir barra lateral · Ctrl+B" className={chromeButton}>{sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}</Button>
     {search}
   </div>
   const globalControls = <div className="flex shrink-0 items-center gap-1" style={noDrag}>
     <ThemeSelector compact className="mr-1" />
-    <button type="button" onClick={() => void window.vibeAPI.windowControls.showMascot()} aria-label="Abrir mascote flutuante" title="Abrir mascote flutuante" className={chromeButton}><PictureInPicture2 className="size-4" /></button>
+    <Button type="button" variant="ghost" size={null} onClick={() => void window.vibeAPI.windowControls.showMascot()} aria-label="Abrir mascote flutuante" title="Abrir mascote flutuante" className={chromeButton}><PictureInPicture2 className="size-4" /></Button>
     <OpenToolsMenu onOpenTool={onOpenTool} onDevelopmentLayout={onDevelopmentLayout} />
   </div>
   if (isWindows) return <div role="toolbar" aria-label="Barra da janela" className={'relative z-40 flex h-10 shrink-0 select-none items-stretch bg-chrome ' + (className || '')} style={drag}>
@@ -85,16 +86,16 @@ export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarColla
     <WindowLocation location={location} />
     {globalControls}
     <div className="ml-2 flex shrink-0 items-stretch" style={noDrag}>
-      <button type="button" title="Minimizar" aria-label="Minimizar" onClick={() => window.vibeAPI.windowControls.minimize()} className="flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/[0.07] hover:text-foreground"><Minus className="size-3.5" /></button>
-      <button type="button" title="Maximizar" aria-label="Maximizar" onClick={() => window.vibeAPI.windowControls.maximize()} className="flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/[0.07] hover:text-foreground"><Square className="size-3" /></button>
-      <button type="button" title="Ocultar na bandeja" aria-label="Ocultar Boobot na bandeja" onClick={() => window.vibeAPI.windowControls.close()} className="flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-[#c42b1c] hover:text-white"><X className="size-3.5" /></button>
+      <Button type="button" variant="ghost" size={null} title="Minimizar" aria-label="Minimizar" onClick={() => window.vibeAPI.windowControls.minimize()} className="flex h-auto w-11 items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-foreground/[0.07] hover:text-foreground"><Minus className="size-3.5" /></Button>
+      <Button type="button" variant="ghost" size={null} title="Maximizar" aria-label="Maximizar" onClick={() => window.vibeAPI.windowControls.maximize()} className="flex h-auto w-11 items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-foreground/[0.07] hover:text-foreground"><Square className="size-3" /></Button>
+      <Button type="button" variant="ghost" size={null} title="Ocultar na bandeja" aria-label="Ocultar Boobot na bandeja" onClick={() => window.vibeAPI.windowControls.close()} className="flex h-auto w-11 items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-[#c42b1c] hover:text-white"><X className="size-3.5" /></Button>
     </div>
   </div>
   return <div role="toolbar" aria-label="Barra da janela" className={'relative z-40 flex h-[42px] shrink-0 items-center gap-2 bg-chrome px-3 ' + (className || '')} style={drag}>
     <div className="flex gap-2 px-1" style={noDrag}>
-      <button aria-label="Ocultar Boobot na bandeja" onClick={() => window.vibeAPI.windowControls.close()} className="size-3 rounded-full bg-[#ff5f57]" />
-      <button aria-label="Minimizar" onClick={() => window.vibeAPI.windowControls.minimize()} className="size-3 rounded-full bg-[#febc2e]" />
-      <button aria-label="Maximizar" onClick={() => window.vibeAPI.windowControls.maximize()} className="size-3 rounded-full bg-[#28c840]" />
+      <Button variant={null} size={null} aria-label="Ocultar Boobot na bandeja" onClick={() => window.vibeAPI.windowControls.close()} className="size-3 rounded-full bg-[#ff5f57]" />
+      <Button variant={null} size={null} aria-label="Minimizar" onClick={() => window.vibeAPI.windowControls.minimize()} className="size-3 rounded-full bg-[#febc2e]" />
+      <Button variant={null} size={null} aria-label="Maximizar" onClick={() => window.vibeAPI.windowControls.maximize()} className="size-3 rounded-full bg-[#28c840]" />
     </div>
     {navigation}
     <WindowLocation location={location} />
