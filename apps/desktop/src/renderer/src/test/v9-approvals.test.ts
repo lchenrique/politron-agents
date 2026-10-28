@@ -128,7 +128,7 @@ describe('aprovações inline V9', () => {
   it('remove queries de URLs embutidas em argumentos de clique', async () => {
     const { service, context } = setup()
     context.agent = service.saveAgent({ ...context.agent, computerUse: true })
-    service.setPlatformBrowser({ captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
+    service.setPlatformBrowser({ acquireForAgent: async () => undefined, sharingState: () => null, captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
     const pending = (service as any).callTool(context, 'browser_click', { selector: 'a[href="https://example.com/path?token=secret#private"]' }, 'browser-private-selector') as Promise<string>
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
     const action = String(service.store.approvals()[0].details.action)
@@ -138,15 +138,18 @@ describe('aprovações inline V9', () => {
   it('não executa aprovação pendente após revogação e novo compartilhamento', async () => {
     const { service, context } = setup()
     context.agent = service.saveAgent({ ...context.agent, computerUse: true })
-    let generation = 1
-    const open = vi.fn()
-    service.setPlatformBrowser({ openForAgent: open, captureDocument: async () => generation, assertSharing: (_owner: unknown, token: number) => { if (token !== generation) throw new Error('Compartilhamento revogado.') }, revokeSharing: () => undefined } as never)
+    let revoked = false
+    const open = vi.fn(), observe = vi.fn()
+    // Revogação durante a aprovação pendente: o acquire recusa e nada é executado.
+    service.setPlatformBrowser({ openForAgent: open, observeForAgent: observe, sharingState: () => null,
+      acquireForAgent: async () => { if (revoked) throw new Error('Compartilhamento do navegador bloqueado pelo usuário nesta conversa.') },
+      captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
     const pending = (service as any).callTool(context, 'browser_open', { url: 'https://example.com' }, 'browser-stale') as Promise<unknown>
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
-    generation++
+    revoked = true
     await service.respondApproval(service.store.approvals()[0].id, true)
-    await expect(pending).rejects.toThrow(/revogado/)
-    expect(open).not.toHaveBeenCalled()
+    await expect(pending).rejects.toThrow(/bloqueado/)
+    expect(open).not.toHaveBeenCalled(); expect(observe).not.toHaveBeenCalled()
   })
 
   it('não aplica clique aprovado antes de reload da mesma página', async () => {
