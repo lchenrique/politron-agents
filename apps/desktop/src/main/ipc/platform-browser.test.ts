@@ -191,6 +191,28 @@ describe('navegador da plataforma', () => {
       expect(browser.sharingState()).toEqual(owner)
       expect(fake.view.webContents.loaded).toHaveLength(1)
     })
+    it('ocultar a aba revoga sem bloquear', async () => {
+      const { browser } = setup()
+      browser.navigate('https://example.com/')
+      const first = browser.acquireForAgent(owner); browser.setBounds(bounds, true); await first
+      browser.setBounds(bounds, false)
+      expect(browser.sharingState()).toBeNull()
+      const next = browser.acquireForAgent(owner); browser.setBounds(bounds, true); await next
+      expect(browser.sharingState()).toEqual(owner)
+    })
+    it('revogação do usuário durante a espera rejeita e não compartilha', async () => {
+      const { browser } = setup()
+      browser.navigate('https://example.com/')
+      const pending = browser.acquireForAgent(owner)
+      browser.revokeSharing(true)
+      browser.setBounds(bounds, true)
+      await expect(pending).rejects.toThrow(/bloqueado pelo usuário/)
+      expect(browser.sharingState()).toBeNull()
+    })
+    it('dono inválido ou não autorizado é rejeitado', async () => {
+      await expect(setup().browser.acquireForAgent({ ...owner, agentId: '' })).rejects.toThrow(/Não é possível compartilhar/)
+      await expect(setup(() => false).browser.acquireForAgent(owner)).rejects.toThrow(/Não é possível compartilhar/)
+    })
     it('timeout quando a aba não aparece', async () => {
       const { browser } = setup()
       await expect(browser.acquireForAgent(owner, 'https://example.com/', 50)).rejects.toThrow(/não pôde ser aberta/)

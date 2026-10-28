@@ -158,13 +158,15 @@ export class PlatformBrowser {
   }
   sharingState(): PlatformBrowserOwner | null { return this.sharing ? { ...this.sharing } : null }
   grantSharing(owner: PlatformBrowserOwner): void {
-    this.blocked.delete(ownerKey(owner))
     if (!validOwner(owner) || !sameOwner(owner, this.context) || !this.visible || !this.view || !safeWebUrl(this.view.webContents.getURL()) || !this.authorizeOwner(owner)) throw new Error('Não é possível compartilhar este navegador neste contexto.')
+    this.blocked.delete(ownerKey(owner))
     this.generation++; this.sharing = { ...owner }; this.publish()
   }
   /** O agente abre/mostra a aba e assume o compartilhamento sem clique, salvo bloqueio por revogação do usuário. */
   async acquireForAgent(owner: PlatformBrowserOwner, url?: string, timeoutMs = 5000): Promise<void> {
-    if (this.blocked.has(ownerKey(owner))) throw new Error('Compartilhamento do navegador bloqueado pelo usuário nesta conversa.')
+    if (!validOwner(owner) || !this.authorizeOwner(owner)) throw new Error('Não é possível compartilhar este navegador neste contexto.')
+    const blockedError = () => new Error('Compartilhamento do navegador bloqueado pelo usuário nesta conversa.')
+    if (this.blocked.has(ownerKey(owner))) throw blockedError()
     if (!url && sameOwner(owner, this.sharing) && this.visible) return
     const view = this.ensure()
     this.context = { ...owner }
@@ -183,11 +185,15 @@ export class PlatformBrowser {
       this.navigate(url)
       await until(() => stopped, wake => watch(this.stopWaiters)(() => { stopped = true; wake() })) // expirar aqui não é erro: segue com a página atual
     }
+    // Reconfere após as esperas: o usuário pode ter revogado, escondido a aba ou trocado o contexto.
+    if (this.blocked.has(ownerKey(owner))) throw blockedError()
+    if (this.view !== view || view.webContents.isDestroyed() || !this.visible || !sameOwner(owner, this.context)) throw new Error('A aba Navegador não pôde ser aberta.')
     if (!safeWebUrl(view.webContents.getURL())) throw new Error('Nenhuma página aberta: use browser_open primeiro.')
     this.generation++; this.sharing = { ...owner }; this.publish()
   }
   revokeSharing(byUser = false): void {
-    if (byUser && this.sharing) this.blocked.add(ownerKey(this.sharing))
+    const current = this.sharing ?? this.context
+    if (byUser && current) this.blocked.add(ownerKey(current))
     this.generation++
     if (this.sharing) { this.sharing = null; this.publish() }
   }
