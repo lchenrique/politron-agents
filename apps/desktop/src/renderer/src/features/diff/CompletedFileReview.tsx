@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, Files, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import AIDiffReview, { type FileChange as ReviewFile } from '@/components/kokonutui/ai-diff-review'
 import type { FileChange } from '../../../../shared/v9'
 import { toFileDiff } from './file-diff-model'
@@ -45,17 +46,17 @@ export function CompletedFileReview({ changes, label = 'Revisão de arquivos mod
 
   return <section aria-label={label} className="mb-2 overflow-hidden rounded-xl border border-border/70 bg-card/95 shadow-sm">
     <div className="flex min-h-9 items-center gap-2 px-2.5">
-      <button type="button" aria-label="Revisar arquivos modificados" aria-expanded={expanded}
+      <Button type="button" variant="ghost" size={null} aria-label="Revisar arquivos modificados" aria-expanded={expanded}
         onClick={() => setExpanded(open => !open)}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        className="flex min-w-0 flex-1 justify-start gap-2 rounded-none text-left text-xs font-normal text-inherit outline-none hover:bg-transparent hover:text-inherit focus-visible:ring-2 focus-visible:ring-ring">
         <Files aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 truncate font-medium">{applied.length} {applied.length === 1 ? 'arquivo modificado' : 'arquivos modificados'}</span>
         <span className="shrink-0 font-mono text-[11px] text-emerald-600">+{totals.added}</span>
         <span className="shrink-0 font-mono text-[11px] text-red-500">−{totals.removed}</span>
         <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">Já aplicados · Revisar</span>
         <ChevronDown aria-hidden className={'size-3.5 shrink-0 transition-transform ' + (expanded ? 'rotate-180' : '')} />
-      </button>
-      <button type="button" aria-label="Dispensar revisão" title="Ocultar revisão" className="rounded-md p-1 text-muted-foreground hover:bg-accent" onClick={() => setDismissed(true)}><X className="size-3.5" /></button>
+      </Button>
+      <Button type="button" variant="ghost" size={null} aria-label="Dispensar revisão" title="Ocultar revisão" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-muted-foreground" onClick={() => setDismissed(true)}><X className="size-3.5" /></Button>
     </div>
     {expanded && <div className="max-h-72 overflow-y-auto border-t border-border/50 p-1.5">
       <AIDiffReview readOnly compact files={files} className="max-w-none" />

@@ -10,6 +10,7 @@
 import { memo, useMemo, useState } from 'react';
 import type { FileChangesBlock } from './types';
 import { ChevronDown, ChevronUp, FilePlus, FileEdit, FileMinus, FolderOpen } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface FileChangesCardProps {
   block: FileChangesBlock;
@@ -31,12 +32,14 @@ export const FileChangesCard = memo(({ block, defaultExpanded = false }: FileCha
     <div className="flex w-full group py-2">
       <div className="flex-1 ml-12 rounded-xl overflow-hidden border border-zinc-800/80 bg-zinc-900/40">
         {/* Header */}
-        <button
+        <Button
+          variant="ghost"
+          size={null}
           onClick={() => setIsExpanded((current) => !current)}
-          className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-zinc-800/30 transition-colors"
+          className="w-full flex items-center justify-start gap-3 rounded-none px-4 py-3 text-left font-normal whitespace-normal text-inherit hover:bg-zinc-800/30 hover:text-inherit transition-colors"
         >
           <div className="shrink-0 text-zinc-400">
-            <FolderOpen className="w-5 h-5" />
+            <FolderOpen className="size-5" />
           </div>
 
           <div className="flex-1 min-w-0">
@@ -46,19 +49,19 @@ export const FileChangesCard = memo(({ block, defaultExpanded = false }: FileCha
             <div className="flex items-center gap-3 mt-1">
               {stats.created > 0 && (
                 <span className="flex items-center gap-1 text-xs text-emerald-400">
-                  <FilePlus className="w-3 h-3" />
+                  <FilePlus className="size-3" />
                   {stats.created} created
                 </span>
               )}
               {stats.modified > 0 && (
                 <span className="flex items-center gap-1 text-xs text-amber-400">
-                  <FileEdit className="w-3 h-3" />
+                  <FileEdit className="size-3" />
                   {stats.modified} modified
                 </span>
               )}
               {stats.deleted > 0 && (
                 <span className="flex items-center gap-1 text-xs text-red-400">
-                  <FileMinus className="w-3 h-3" />
+                  <FileMinus className="size-3" />
                   {stats.deleted} deleted
                 </span>
               )}
@@ -67,12 +70,12 @@ export const FileChangesCard = memo(({ block, defaultExpanded = false }: FileCha
 
           <div className="shrink-0 text-zinc-500">
             {isExpanded ? (
-              <ChevronUp className="w-4 h-4" />
+              <ChevronUp className="size-4" />
             ) : (
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="size-4" />
             )}
           </div>
-        </button>
+        </Button>
 
         {/* File list */}
         {isExpanded && (

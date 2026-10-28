@@ -287,13 +287,13 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
             const chat = tab.kind === 'chat' ? chatTab : undefined
             return <div key={tab.id} data-testid={tab.kind === 'chat' ? 'chat-tab' : undefined} className={'group flex h-7 shrink-0 items-center gap-0.5 rounded-md pr-0.5 ' + (chat?.trailing && active ? 'max-w-80 ' : 'max-w-48 ') + (chat?.leading ? 'pl-0.5 ' : '') + (active ? 'bg-background text-foreground shadow-xs ring-1 ring-border' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
               {chat?.leading}
-              <button type="button" draggable aria-label={'Aba ' + label} title={tab.path || chat?.title || label}
+              <Button type="button" variant="ghost" size={null} draggable aria-label={'Aba ' + label} title={tab.path || chat?.title || label}
                 onDragStart={event => { event.dataTransfer.setData('application/x-politron-tab', tab.id); event.dataTransfer.effectAllowed = 'move' }}
                 onDragEnd={() => setDrop(null)}
                 onClick={() => setLayout(current => changeActive(current, group.id, tab.id))}
-                className={'flex h-7 min-w-0 items-center gap-1.5 text-[11px] ' + (chat?.leading ? 'pl-1 font-semibold' : 'pl-2 font-medium')}>
+                className={'flex h-7 min-w-0 items-center justify-start gap-1.5 rounded-none text-[11px] text-inherit hover:bg-transparent hover:text-inherit ' + (chat?.leading ? 'pl-1 font-semibold' : 'pl-2 font-medium')}>
                 {!chat?.leading && <Icon className="size-3.5 shrink-0" />}<span className="truncate">{label}</span>{drafts[tab.id] && drafts[tab.id].content !== drafts[tab.id].baseline && <span aria-label="Arquivo modificado" className="size-2 shrink-0 rounded-full bg-warning" />}
-              </button>
+              </Button>
               {active && chat?.trailing}
               <Button variant="ghost" size="icon" className={'size-5 shrink-0 hover:opacity-100 focus-visible:opacity-100 ' + (active ? 'opacity-65' : 'opacity-0 group-hover:opacity-65')} aria-label={'Fechar ' + label} title="Fechar aba" onClick={() => closeTab(tab.id)}><X className="size-3" /></Button>
             </div>

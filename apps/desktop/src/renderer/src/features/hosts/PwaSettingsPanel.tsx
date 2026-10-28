@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, KeyRound, ShieldCheck, Smartphone, Unplug } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import type { PwaDesktopStatus } from '../../../../shared/pwa-desktop'
 
 export function PwaSettingsPanel() {
@@ -54,30 +55,30 @@ export function PwaSettingsPanel() {
             setStatus(await api.revokeDevice(device.id)))}>Desconectar</Button></div>
         <label className="flex items-center justify-between gap-2">
           <span>Permitir enviar mensagens e interromper tarefas</span>
-          <input type="checkbox" aria-label={`Permitir chat para ${device.label}`} checked={device.chat} disabled={busy}
-            onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
-              chat: event.target.checked, approvals: device.approvals, filesRead: device.filesRead, filesWrite: device.filesWrite,
+          <Checkbox aria-label={`Permitir chat para ${device.label}`} checked={device.chat} disabled={busy}
+            onCheckedChange={checked => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
+              chat: checked === true, approvals: device.approvals, filesRead: device.filesRead, filesWrite: device.filesWrite,
             })))} />
         </label>
         <label className="flex items-center justify-between gap-2">
           <span>Permitir aprovar ações pendentes</span>
-          <input type="checkbox" aria-label={`Permitir aprovações para ${device.label}`} checked={device.approvals} disabled={busy}
-            onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
-              chat: device.chat, approvals: event.target.checked, filesRead: device.filesRead, filesWrite: device.filesWrite,
+          <Checkbox aria-label={`Permitir aprovações para ${device.label}`} checked={device.approvals} disabled={busy}
+            onCheckedChange={checked => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
+              chat: device.chat, approvals: checked === true, filesRead: device.filesRead, filesWrite: device.filesWrite,
             })))} />
         </label>
         <label className="flex items-center justify-between gap-2">
           <span>Permitir ler arquivos dos workspaces</span>
-          <input type="checkbox" aria-label={`Permitir leitura de arquivos para ${device.label}`} checked={device.filesRead} disabled={busy || device.filesWrite}
-            onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
-              chat: device.chat, approvals: device.approvals, filesRead: event.target.checked, filesWrite: device.filesWrite,
+          <Checkbox aria-label={`Permitir leitura de arquivos para ${device.label}`} checked={device.filesRead} disabled={busy || device.filesWrite}
+            onCheckedChange={checked => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
+              chat: device.chat, approvals: device.approvals, filesRead: checked === true, filesWrite: device.filesWrite,
             })))} />
         </label>
         <label className="flex items-center justify-between gap-2">
           <span>Permitir salvar edições de arquivos</span>
-          <input type="checkbox" aria-label={`Permitir edição de arquivos para ${device.label}`} checked={device.filesWrite} disabled={busy}
-            onChange={event => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
-              chat: device.chat, approvals: device.approvals, filesRead: device.filesRead || event.target.checked, filesWrite: event.target.checked,
+          <Checkbox aria-label={`Permitir edição de arquivos para ${device.label}`} checked={device.filesWrite} disabled={busy}
+            onCheckedChange={checked => void perform(async () => setStatus(await api.setDevicePermissions(device.id, {
+              chat: device.chat, approvals: device.approvals, filesRead: device.filesRead || checked === true, filesWrite: checked === true,
             })))} />
         </label>
       </div>)}
