@@ -1,12 +1,12 @@
 /** Atividade de ferramentas no chat: rótulos gravados como `Categoria · detalhe` e resumos por modelo (sem LLM). */
 
-export type ActivityCategory = 'realBrowser' | 'browser' | 'terminal' | 'read' | 'edit' | 'search' | 'delegation' | 'followUp' | 'other'
+export type ActivityCategory = 'realBrowser' | 'browser' | 'terminal' | 'read' | 'edit' | 'search' | 'delegation' | 'followUp' | 'learning' | 'other'
 
 // Consultar o resultado acompanha uma delegação existente: não conta como nova tarefa delegada.
 const PREFIXES: [string, ActivityCategory][] = [
   ['Delegação · Consultar resultado', 'followUp'],
   ['Navegador real', 'realBrowser'], ['Navegador interno', 'browser'], ['Terminal', 'terminal'],
-  ['Leitura', 'read'], ['Edição', 'edit'], ['Busca', 'search'], ['Delegação', 'delegation'],
+  ['Leitura', 'read'], ['Edição', 'edit'], ['Busca', 'search'], ['Delegação', 'delegation'], ['Aprendizado', 'learning'],
 ]
 const SEPARATOR = ' · '
 
@@ -20,11 +20,12 @@ const PAST: Record<ActivityCategory, (count: number) => string> = {
   search: count => `fez ${plural(count, 'busca', 'buscas')}`,
   delegation: count => `delegou ${plural(count, 'tarefa', 'tarefas')}`,
   followUp: () => 'acompanhou as delegações',
+  learning: count => `aprendeu ${plural(count, 'skill', 'skills')}`,
   other: count => `usou ${plural(count, 'ferramenta', 'ferramentas')}`,
 }
 const PRESENT: Record<ActivityCategory, [string, string]> = {
   realBrowser: ['Usando seu navegador real', 'ações'], browser: ['Usando o navegador interno', 'ações'], terminal: ['Executando comando', 'comandos'],
-  read: ['Lendo arquivos', 'arquivos'], edit: ['Editando arquivos', 'arquivos'], search: ['Buscando', 'buscas'], delegation: ['Delegando tarefa', 'tarefas'], followUp: ['Acompanhando as delegações', 'consultas'], other: ['Usando ferramentas', 'ferramentas'],
+  read: ['Lendo arquivos', 'arquivos'], edit: ['Editando arquivos', 'arquivos'], search: ['Buscando', 'buscas'], delegation: ['Delegando tarefa', 'tarefas'], followUp: ['Acompanhando as delegações', 'consultas'], learning: ['Registrando aprendizado', 'skills'], other: ['Usando ferramentas', 'ferramentas'],
 }
 
 const clip = (value: unknown, max = 120) => {
@@ -35,7 +36,8 @@ const join = (label: string, detail: string) => detail ? `${label}${SEPARATOR}${
 
 /** Rótulo de uma chamada de ferramenta do Politron, ou null para as que já têm cartão próprio (aprovações, perguntas). */
 export function toolActivityText(name: string, args: Record<string, unknown>): string | null {
-  if (name === 'ask_user' || name.startsWith('propose_') || name === 'external_browser_request') return null
+  // save_skill ganha a linha "Aprendizado · <skill>" só depois de gravar de fato.
+  if (name === 'ask_user' || name.startsWith('propose_') || name === 'external_browser_request' || name === 'save_skill') return null
   switch (name) {
     case 'browser_open': return join('Navegador interno', `Abrir ${clip(args.url)}`)
     case 'browser_observe': return join('Navegador interno', 'Ler a página')

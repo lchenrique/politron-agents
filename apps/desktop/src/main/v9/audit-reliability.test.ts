@@ -73,13 +73,13 @@ describe('auditoria de permissões por agente', () => {
     await expect(broker.callTool(context, 'workspace_run_command', { command: 'npm --version' })).rejects.toThrow(/desativada/)
     expect(service.store.approvals()).toEqual([])
   })
-  it('não oferece escrita, skills ou terminal a um agente permanente sem escrita', () => {
+  it('não oferece escrita nem terminal a um agente permanente sem escrita; skills continuam (ficam nos dados do app)', () => {
     const { service, broker, conversation } = setup()
     const agent = service.saveAgent({ instructions: 'Execute apenas a tarefa sintética da auditoria.', name: 'Somente leitura', alias: 'leitura', canWrite: false })
     const chat = conversation(agent)
     const names = broker.tools({ agent, run: { workspaceId: chat.workspaceId } }).map(tool => tool.name)
     expect(names).not.toContain('workspace_write')
-    expect(names).not.toContain('save_skill')
+    expect(names).toContain('save_skill')
     expect(names).not.toContain('workspace_run_command')
     expect(names).toContain('workspace_read')
   })

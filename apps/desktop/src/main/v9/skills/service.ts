@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs'
 import { join, sep } from 'node:path'
 import type { SkillInfo } from '../../../shared/skills'
 import { discoverSkills, parseSkillFrontmatter } from './discover'
+import { containsSecret } from './learning'
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,63}$/
 
@@ -33,7 +34,7 @@ export class SkillsService {
   }
 
   /**
-   * Um agente (com permissão de escrita) grava ou atualiza uma skill própria do Politron — nunca em
+   * Um agente grava ou atualiza uma skill própria do Politron — nunca em
    * ~/.codex/skills nem ~/.claude/skills, que ficam só de leitura. `operation: 'update'` sobrescreve
    * o corpo mantendo o nome já cadastrado; não existe patch incremental nesta primeira versão.
    */
@@ -42,6 +43,7 @@ export class SkillsService {
     if (!SLUG.test(slug)) throw new Error('O identificador da skill deve ter só letras minúsculas, números e hífen (ex.: corrigir-login-expirado).')
     const description = input.description.trim().slice(0, 500)
     if (!description) throw new Error('Descreva quando essa skill deve ser usada.')
+    if (containsSecret(`${input.name}\n${description}\n${input.content}`)) throw new Error('A skill parece conter um segredo (chave de API, token ou chave privada). Remova o valor e descreva onde obtê-lo.')
     const name = input.name.trim().slice(0, 100) || slug
     const dir = join(this.learnedDir, slug)
     const exists = await fs.stat(join(dir, 'SKILL.md')).then(() => true, () => false)
@@ -78,7 +80,8 @@ export class SkillsService {
   }
 
   async readContent(id: string): Promise<string> {
-    const skill = (await this.list()).find(item => item.id === id)
+    const skills = await this.list()
+    const skill = skills.find(item => item.id === id) || skills.find(item => item.name === id)
     if (!skill) throw new Error('Skill não encontrada.')
     return fs.readFile(join(skill.path, 'SKILL.md'), 'utf8')
   }

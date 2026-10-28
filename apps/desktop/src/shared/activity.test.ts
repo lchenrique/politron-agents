@@ -39,4 +39,13 @@ describe('atividade dos agentes', () => {
     // Consultas de resultado acompanham delegações: não viram "delegou N tarefas".
     expect(activitySummary(['Delegação · Examen', ...Array(5).fill('Delegação · Consultar resultado')])).toBe('Delegou 1 tarefa · acompanhou as delegações')
   })
+
+  it('registra aprendizado de skills como categoria própria', () => {
+    expect(toolActivityText('save_skill', { slug: 'x' })).toBeNull()
+    expect(activityCategory('Aprendizado · Corrigir build')).toBe('learning')
+    expect(activityCategory('Aprendizado · Corrigir build (atualizada)')).toBe('learning')
+    expect(activityNow(['Aprendizado · Corrigir build'])).toBe('Registrando aprendizado')
+    expect(activitySummary(['Aprendizado · A'])).toBe('Aprendeu 1 skill')
+    expect(activitySummary(['Terminal · a', 'Aprendizado · A', 'Aprendizado · B'])).toBe('Executou 1 comando · aprendeu 2 skills')
+  })
 })

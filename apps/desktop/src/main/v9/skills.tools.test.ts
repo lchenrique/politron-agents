@@ -37,12 +37,22 @@ function setup() {
 }
 
 describe('skills como ferramenta do agente', () => {
-  it('expõe list_skills, read_skill e save_skill; save_skill some quando o workspace bloqueia escrita', () => {
+  it('expõe list_skills, read_skill e save_skill mesmo quando o workspace bloqueia escrita (skill fica nos dados do app)', () => {
     const { names, service, workspace } = setup()
     expect(names()).toEqual(expect.arrayContaining(['list_skills', 'read_skill', 'save_skill']))
     service.store.saveWorkspace({ id: workspace.id, permissions: { chiefCreateAgents: false, chiefEditAgents: false, chiefManageTeam: false, chiefCreateSessions: false, filesWrite: 'deny', computerUse: 'inherit' } })
-    expect(names()).not.toContain('save_skill')
-    expect(names()).toEqual(expect.arrayContaining(['list_skills', 'read_skill']))
+    expect(names()).toEqual(expect.arrayContaining(['list_skills', 'read_skill', 'save_skill']))
+  })
+
+  it('Boo sem escrita grava skill e vê o aprendizado na conversa; segredos são recusados', async () => {
+    const { service, workspace } = setup()
+    const agent = service.saveAgent({ name: 'Leitor', alias: 'leitor', instructions: 'Só lê.', canWrite: false })
+    const conversation = service.saveConversation({ name: 'Skills', workspaceId: workspace.id })
+    const call = (args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent, conversation, run: { id: 'run-x', workspaceId: workspace.id, workspacePath: workspace.path } }, 'save_skill', args)
+    await call({ operation: 'create', slug: 'ler-logs', name: 'Ler logs', description: 'Quando investigar falha.', content: 'Abra logs/main.log.' })
+    await call({ operation: 'update', slug: 'ler-logs', name: 'Ler logs', description: 'Quando investigar falha.', content: 'Abra logs/main.log e o Crashpad.' })
+    expect(service.store.history(conversation.id).filter(message => message.role === 'activity').map(message => message.text)).toEqual(['Aprendizado · Ler logs', 'Aprendizado · Ler logs (atualizada)'])
+    await expect(call({ operation: 'create', slug: 'chave', name: 'Chave', description: 'Quando chamar a API.', content: 'curl -H "Authorization: Bearer sk-abcdefghijklmnopqrstuvwxyz"' })).rejects.toThrow(/segredo/)
   })
 
   it('agente grava uma skill, ela aparece em list_skills e dá para ler o conteúdo completo', async () => {

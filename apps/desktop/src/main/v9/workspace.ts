@@ -32,6 +32,7 @@ import { ClaudeCredentialStore } from './credentials'
 import { AttachmentStore } from '../pwa/attachment-store'
 import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
 import { SkillsService } from './skills/service'
+import { reflectionPrompt, shouldReflect, skillsPromptBlock } from './skills/learning'
 import { MissionEngine } from './missions'
 import { describeTrigger, validateTrigger } from '../../shared/missions'
 import { toolActivityText } from '../../shared/activity'
@@ -39,7 +40,11 @@ import { delegatedConversationName } from '../../shared/delegation-title'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
 
-type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string }
+type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
+  /** Autoaprendizado: chamadas de ferramenta (fora as de skill), erro seguido de sucesso, skill já gravada e revisão final em curso. */
+  voiceReply?: boolean; toolCalls?: number; toolFailed?: boolean; recovered?: boolean; savedSkill?: boolean; reflecting?: boolean }
+const SKILL_TOOLS = new Set(['list_skills', 'read_skill', 'save_skill'])
+const REFLECTION_TIMEOUT_MS = 60_000
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
 const approvalUrl = (value: string) => { const safe = safeWebUrl(value); if (!safe) return '[endereço inválido]'; const url = new URL(safe); url.search = ''; url.hash = ''; return url.href }
 const redactApprovalUrls = (value: string) => value.replace(/https?:\/\/[^\s"'\\<>]+/gi, approvalUrl)
@@ -626,7 +631,7 @@ export class AppService extends EventEmitter {
           run.messageId = message.id
           this.store.putRun(run)
         }
-        return this.execute({ run, message, conversation, agent: runAgent, lease }, controller.signal)
+        return this.execute({ run, message, conversation, agent: runAgent, lease, voiceReply }, controller.signal)
       })
         if (mode === 'discussion') {
           try { await task } finally { roundSignal?.signal.removeEventListener('abort', abortRound) }
@@ -881,18 +886,21 @@ export class AppService extends EventEmitter {
         delegatedRequestIds: this.delegatedRequestIds(run),
       })
       let turnContext = makeTurnContext()
+      // Lista curta de skills no turno (não no prompt de sistema, que fica fixo numa sessão retomada).
+      const skillsBlock = skillsPromptBlock(await this.skills.list().catch(() => []))
+      const withSkills = (value: string) => skillsBlock ? `${skillsBlock}\n\n${value}` : value
       let threadId = thread.id
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
       let result
-      try { result = await runtime.send(threadId, await this.runtimeInput(run, turnContext.text), agent.model || undefined, 600000) }
+      try { result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000) }
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || didRetryUnavailable || !binding?.threadId || thread.history !== 'resume-pending') throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
         thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions, externalBrowser)
         threadId = thread.id; run.threadId = threadId; this.store.putRun(run)
         turnContext = makeTurnContext()
-        result = await runtime.send(threadId, await this.runtimeInput(run, turnContext.text), agent.model || undefined, 600000)
+        result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000)
       }
       if (result.thread?.id) { run.threadId = result.thread.id; this.store.putRun(run) }
       const turn = result.turn
@@ -936,6 +944,7 @@ export class AppService extends EventEmitter {
         context.deliveredDigests = Object.fromEntries(Object.entries(nextDigests).slice(-40))
         this.store.putSessionBinding({ key: context.sessionBindingKey, threadId: run.threadId || threadId, runtime: agent.runtime, contextVersion: 1, deliveredDigests: context.deliveredDigests })
       }
+      await this.reflect(context, runtime, signal)
     } catch (error) {
       await this.finish(context, signal.aborted ? 'interrupted' : 'failed', context.message.text || (error instanceof Error ? error.message : 'Erro ao executar o agente.'))
     } finally { this.contexts.delete(run.id); this.active.delete(run.id) }
@@ -953,6 +962,38 @@ export class AppService extends EventEmitter {
     this.missions.onRunFinished(context.run)
     if (status === 'completed' && !this.store.openMission(context.conversation.id)) this.notifyWhenAway(context.conversation.id, 'Tarefa concluída', `${context.agent.name} concluiu a resposta.`)
     else if (status === 'failed') this.notifyWhenAway(context.conversation.id, 'Tarefa precisa de atenção', `${context.agent.name} não conseguiu concluir a resposta.`)
+  }
+  /**
+   * Revisão de aprendizado: depois de a resposta já constar como concluída, um turno curto e oculto na mesma thread
+   * pergunta ao agente se algo vira skill. Roda dentro da vaga da fila (a próxima mensagem da conversa usa a mesma
+   * thread e espera), limitado a 60 s; texto do agente não vai ao chat e só ferramentas de skill são aceitas.
+   */
+  private async reflect(context: RunContext, runtime: AgentRuntime, signal: AbortSignal): Promise<void> {
+    const { run } = context
+    const threadId = run.threadId
+    if (signal.aborted || !threadId || context.voiceReply || !shouldReflect({ status: run.status, planMode: run.planMode === true, delegated: !!run.parentId,
+      toolCalls: context.toolCalls || 0, recoveredFromError: !!context.recovered, savedSkill: !!context.savedSkill })) return
+    context.reflecting = true
+    let turnId: string | undefined
+    const timeout = new AbortController()
+    const timer = setTimeout(() => timeout.abort(), REFLECTION_TIMEOUT_MS)
+    try {
+      const block = skillsPromptBlock(await this.skills.list().catch(() => []))
+      const result = await runtime.send(threadId, reflectionPrompt(block), context.agent.model || undefined, REFLECTION_TIMEOUT_MS)
+      turnId = result.turn?.id
+      if (!turnId || result.turn?.status === 'failed' || result.turn?.status === 'interrupted') return
+      // Só em memória: as chamadas de ferramenta da revisão localizam este contexto pelo turno atual.
+      run.turnId = turnId
+      const key = `${threadId}:${turnId}`
+      await new Promise<void>(resolve => {
+        if (this.completedTurns.get(runtime)?.has(key)) { resolve(); return }
+        const finish = () => { runtime.off('event', done); signal.removeEventListener('abort', finish); timeout.signal.removeEventListener('abort', finish); resolve() }
+        const done = (event: { method?: string; params?: { threadId?: string; turn?: { id?: string } } }) => { if (event.method === 'turn/completed' && event.params?.threadId === threadId && event.params?.turn?.id === turnId) finish() }
+        runtime.on('event', done); signal.addEventListener('abort', finish, { once: true }); timeout.signal.addEventListener('abort', finish, { once: true })
+      })
+      if (signal.aborted || timeout.signal.aborted) await runtime.interrupt(threadId, turnId).catch(() => undefined)
+    } catch { /* revisão é opcional: falha não afeta a resposta já entregue */ }
+    finally { clearTimeout(timer); context.reflecting = false }
   }
   /** Chamado dentro da transação que cria/associa o time. Não inicia execuções. */
   private addTeamToConversation(context: RunContext, team: string[]): Conversation {
@@ -1029,7 +1070,7 @@ export class AppService extends EventEmitter {
       tool('save_context_checkpoint', 'Salva um resumo de continuidade deste trabalho para uma futura sessão nova. Use em trabalhos longos ou antes de uma troca de contexto; não substitui os registros originais nem repete ações.', { summary: { type: 'string', description: 'Objetivo, progresso com evidências e próximos passos.' }, decisions: { type: 'array', items: { type: 'string' }, maxItems: 20 }, pending: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, ['summary']),
       tool('list_skills', 'Lista as skills disponíveis (nome e quando usar cada uma): as já instaladas no Codex/Claude Code desta máquina, as que o usuário adicionou e as que você ou outro agente já aprenderam. Use antes de uma tarefa para ver se já existe um procedimento conhecido; chame read_skill para ler o conteúdo completo de uma antes de segui-la.', {}, []),
       tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id devolvido por list_skills.', { id: { type: 'string' } }, ['id']),
-      ...(canWrite && !planning ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
+      ...(!planning ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
       ...(context.agent.role === 'chief' && !planning ? [
         tool('propose_agent', 'Propõe criar um agente novo (um "Boo" novo) ou alterar o perfil de um agente que já participa desta equipe. A confirmação segue o modo do Chief. Agentes novos herdam acesso a arquivos, navegador e modo de aprovação do Chief, respeitando a política do workspace. Se o usuário pedir para "criar um Boo", isso significa criar um agente: use esta ferramenta diretamente, sem perguntar o que "Pits" significa.', { operation: { type: 'string', enum: ['create', 'update'] }, agent: { type: 'string', description: 'Para update, nome ou menção do agente da equipe.' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' } }, ['operation', 'name', 'instructions']),
         tool('propose_agent_model', 'Propõe mudar o runtime/modelo/esforço de um Boo da equipe. Use quando o usuário pedir para trocar GPT por Claude, Codex por outro motor ou definir outro modelo para front-end/back-end. A confirmação segue o modo de aprovação do Chief; NÃO muda permissões, papel, nome nem avatar. Modelo vazio seleciona o padrão do runtime.', { agent: { type: 'string', description: 'Nome ou @menção do Boo a reconfigurar.' }, runtime: { type: 'string', enum: ['codex','claude','pi','opencode','antigravity'] }, model: { type: 'string', description: 'Identificador exato do modelo; vazio usa o padrão do motor.' }, effort: { type: 'string', enum: ['low','medium','high','xhigh','max'] } }, ['agent','runtime']),
@@ -1053,16 +1094,21 @@ export class AppService extends EventEmitter {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (!context) { runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: 'Execução não encontrada.' }] }); return }
       const activity = typeof params.tool === 'string' ? toolActivityText(params.tool, params.arguments || {}) : null
-      if (activity) this.addMessage(context.conversation.id, context.agent, 'activity', redactApprovalUrls(activity), 'completed', context.run.id)
+      if (activity && !context.reflecting) this.addMessage(context.conversation.id, context.agent, 'activity', redactApprovalUrls(activity), 'completed', context.run.id)
+      const counts = !context.reflecting && !SKILL_TOOLS.has(params.tool)
       try {
         const result = await this.callTool(context, params.tool, params.arguments || {}, String(event.id ?? params.toolCallId ?? ''))
         runtime.respond(event.id, { success: true, contentItems: [{ type: 'inputText', text: typeof result === 'string' ? result : JSON.stringify(result) }] })
-      } catch (error) { runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: error instanceof Error ? error.message : 'A ferramenta falhou.' }] }) }
+        if (counts) { context.toolCalls = (context.toolCalls || 0) + 1; if (context.toolFailed) context.recovered = true }
+      } catch (error) {
+        runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: error instanceof Error ? error.message : 'A ferramenta falhou.' }] })
+        if (counts) { context.toolCalls = (context.toolCalls || 0) + 1; context.toolFailed = true }
+      }
       return
     }
     if (event.method === 'item/agentMessage/delta') {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
-      if (context && typeof params.delta === 'string' && params.delta.length) {
+      if (context && !context.reflecting && typeof params.delta === 'string' && params.delta.length) {
         this.replyFor(context, typeof params.itemId === 'string' ? params.itemId : undefined)
         const firstToken = !context.message.text
         context.message.text += params.delta
@@ -1078,7 +1124,7 @@ export class AppService extends EventEmitter {
     }
     if (event.method === 'item/completed' && params.item?.type === 'agentMessage') {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
-      if (context && typeof params.item.text === 'string') {
+      if (context && !context.reflecting && typeof params.item.text === 'string') {
         const itemId = typeof params.item.id === 'string' ? params.item.id : undefined
         let value: string = params.item.text
         // Sem id, Pi/OpenCode/CLI entregam o texto acumulado do turno: tira o que já foi para mensagens anteriores.
@@ -1095,6 +1141,7 @@ export class AppService extends EventEmitter {
     }
   }
   private async callTool(context: RunContext, name: string, args: Record<string, unknown>, callId = ''): Promise<unknown> {
+    if (context.reflecting && !SKILL_TOOLS.has(name)) throw new Error('Na revisão de aprendizado só as ferramentas de skill estão disponíveis.')
     const root = context.run.workspacePath
     const inside = (input: unknown) => {
       const rel = text(input, 1000)
@@ -1278,10 +1325,12 @@ export class AppService extends EventEmitter {
     }
     if (name === 'read_skill') return this.skills.readContent(text(args.id, 500))
     if (name === 'save_skill') {
-      if (workspace.permissions?.filesWrite === 'deny' || !context.agent.canWrite) throw new Error('Este Boo não tem permissão para criar ou alterar skills.')
+      // Skill fica na pasta de dados do app, não no projeto: não depende da permissão de escrita de arquivos.
       const operation = args.operation === 'update' ? 'update' : args.operation === 'create' ? 'create' : null
       if (!operation) throw new Error('Escolha create ou update.')
       const saved = await this.skills.save({ operation, slug: text(args.slug, 100), name: text(args.name ?? args.slug, 100), description: text(args.description, 500), content: text(args.content, 20000) })
+      context.savedSkill = true
+      if (context.conversation) this.addMessage(context.conversation.id, context.agent, 'activity', `Aprendizado · ${saved.name}${operation === 'update' ? ' (atualizada)' : ''}`, 'completed', context.run.id)
       this.emitEvent({ type: 'changed' })
       return `Skill "${saved.name}" ${operation === 'create' ? 'criada' : 'atualizada'} (${saved.id}). Aparece em Configurações → Skills.`
     }
