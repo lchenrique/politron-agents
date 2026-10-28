@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { PocketVoicesInfo } from '../../../../shared/v9'
 import type { Agent } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
 
 const selectClass = 'h-8 w-full rounded-md border border-input bg-background px-2 text-xs'
+// Radix Select não aceita item com valor vazio; o estado continua usando ''.
+const ALL_BOOS = '__all__'
 
 export function PocketTtsSettings({ installed }: { installed: boolean }) {
   const [info, setInfo] = useState<PocketVoicesInfo | null>(null)
@@ -63,18 +66,24 @@ export function PocketTtsSettings({ installed }: { installed: boolean }) {
       <p className="mt-1 text-[11px] text-muted-foreground">Funciona no seu computador, sem servidor de voz. Escolha uma voz por Boo ou mantenha a voz geral.</p>
     </div>
     <label className="block space-y-1 text-[11px] text-muted-foreground">Configurar voz para
-      <select aria-label="Selecionar Boo para voz" className={selectClass} value={agentId}
-        onChange={event => { setAgentId(event.target.value); setPreview(null) }}>
-        <option value="">Todos os Boos · voz geral</option>
-        {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-      </select>
+      <Select value={agentId || ALL_BOOS}
+        onValueChange={value => { setAgentId(value === ALL_BOOS ? '' : value); setPreview(null) }}>
+        <SelectTrigger aria-label="Selecionar Boo para voz" className={selectClass}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_BOOS}>Todos os Boos · voz geral</SelectItem>
+          {agents.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
     </label>
     <label className="block space-y-1 text-[11px] text-muted-foreground">Voz selecionada
-      <select aria-label="Selecionar voz PocketTTS" className={selectClass} value={selected || ''}
-        onChange={event => void chooseVoice(event.target.value)} disabled={!info || busy}>
-        {agentId && <option value="inherit">Usar voz geral</option>}
-        {(info?.choices || []).map(voice => <option key={voice.id} value={voice.id}>{voice.name}</option>)}
-      </select>
+      <Select value={selected || ''}
+        onValueChange={value => void chooseVoice(value)} disabled={!info || busy}>
+        <SelectTrigger aria-label="Selecionar voz PocketTTS" className={selectClass}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {agentId && <SelectItem value="inherit">Usar voz geral</SelectItem>}
+          {(info?.choices || []).map(voice => <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
     </label>
     <div className="flex flex-wrap gap-2">
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void importVoice()}>Importar voz</Button>

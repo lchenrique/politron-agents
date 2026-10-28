@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Agent } from '../../../../shared/v9'
 import type { PiperVoice, RealtimeSettings, RealtimeStatus } from '../../../../shared/realtime'
 
@@ -10,6 +11,8 @@ const voices: { id: PiperVoice; name: string }[] = [
   { id: 'dii', name: 'Dii · feminina · experimental · uso não comercial' },
 ]
 const selectClass = 'h-8 w-full rounded-md border border-input bg-background px-2 text-xs'
+// Radix Select não aceita item com valor vazio; o estado continua usando ''.
+const ALL_BOOS = '__all__'
 
 export function PiperTtsSettings({ status, save, install, installing }: {
   status: RealtimeStatus
@@ -37,16 +40,22 @@ export function PiperTtsSettings({ status, save, install, installing }: {
   return <section aria-label="Vozes Piper" className="space-y-2 rounded-lg border border-border/60 p-3 text-xs">
     <h4 className="font-medium">Piper · vozes locais</h4>
     <label className="block space-y-1 text-muted-foreground">Configurar voz para
-      <select aria-label="Selecionar Boo para voz Piper" className={selectClass} value={agentId} onChange={event => setAgentId(event.target.value)}>
-        <option value="">Todos os Boos · voz geral</option>
-        {agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-      </select>
+      <Select value={agentId || ALL_BOOS} onValueChange={value => setAgentId(value === ALL_BOOS ? '' : value)}>
+        <SelectTrigger aria-label="Selecionar Boo para voz Piper" className={selectClass}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_BOOS}>Todos os Boos · voz geral</SelectItem>
+          {agents.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
     </label>
     <label className="block space-y-1 text-muted-foreground">Voz selecionada
-      <select aria-label="Selecionar voz Piper" className={selectClass} value={selected} onChange={event => void choose(event.target.value)}>
-        {agentId && <option value="inherit">Usar voz geral</option>}
-        {voices.map(voice => <option key={voice.id} value={voice.id}>{voice.name}</option>)}
-      </select>
+      <Select value={selected} onValueChange={value => void choose(value)}>
+        <SelectTrigger aria-label="Selecionar voz Piper" className={selectClass}><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {agentId && <SelectItem value="inherit">Usar voz geral</SelectItem>}
+          {voices.map(voice => <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
     </label>
     {status.installedPiperVoices.includes(effective) ? <p className="text-[11px] text-emerald-600">Voz selecionada instalada. A síntese acontece localmente.</p>
       : <Button size="sm" variant="outline" disabled={installing} onClick={() => void install(effective)}>{installing ? 'Baixando voz…' : 'Baixar voz selecionada'}</Button>}

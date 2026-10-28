@@ -6,6 +6,10 @@ const status = { geminiKey: true, groqKey: false, localModels: false, vadInstall
 const chatVoiceStatus = { provider: 'realtime', engine: 'piper', speech: true }
 beforeEach(() => vi.stubGlobal('appAPI', { voiceStatus: vi.fn(async () => chatVoiceStatus), snapshot: vi.fn(async () => ({ agents: [] })) }))
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear() })
+async function choose(select: string, option: string) {
+  fireEvent.click(await screen.findByRole('combobox', { name: select }))
+  fireEvent.click(await screen.findByRole('option', { name: option }))
+}
 it('permite substituir uma chave já configurada sem expor nem remover a anterior primeiro', async () => {
   const api = { status: vi.fn(async () => status), geminiModels: vi.fn(async () => ['gemini-live-fixture']), saveKey: vi.fn(async () => undefined), clearKey: vi.fn(async () => undefined) }
   vi.stubGlobal('realtimeAPI', api); render(<RealtimeSettingsPanel />)
@@ -55,8 +59,7 @@ it('oferece PocketTTS na configuração usada pela chamada real, inclusive parti
   await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ ttsEngine: 'pocket' }))
   expect(localStorage.getItem('politron.realtime.mode')).toBe('free')
   expect(await screen.findByRole('region', { name: 'Vozes PocketTTS' })).toBeInTheDocument()
-  await screen.findByRole('option', { name: 'Rafael · masculina' })
-  expect(screen.getByLabelText('Selecionar voz PocketTTS')).toHaveValue('rafael')
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Selecionar voz PocketTTS' })).toHaveTextContent('Rafael · masculina'))
 })
 
 it('configura voz Piper feminina para um Boo e permite voltar à voz geral', async () => {
@@ -65,12 +68,10 @@ it('configura voz Piper feminina para um Boo e permite voltar à voz geral', asy
   vi.stubGlobal('realtimeAPI', { status: vi.fn(async () => ({ ...status, settings })), geminiModels: vi.fn(async () => []), saveSettings })
   vi.stubGlobal('appAPI', { voiceStatus: vi.fn(async () => chatVoiceStatus), snapshot: vi.fn(async () => ({ agents: [{ id: 'boo-1', name: 'Brigid' }] })) })
   render(<RealtimeSettingsPanel />)
-  expect(await screen.findByLabelText('Voz das respostas do chat')).toHaveValue('realtime')
-  fireEvent.change(await screen.findByLabelText('Selecionar Boo para voz Piper'), { target: { value: 'boo-1' } })
-  await screen.findByRole('option', { name: 'Brigid' })
-  fireEvent.change(screen.getByLabelText('Selecionar Boo para voz Piper'), { target: { value: 'boo-1' } })
-  fireEvent.change(screen.getByLabelText('Selecionar voz Piper'), { target: { value: 'dii' } })
+  expect(await screen.findByRole('combobox', { name: 'Voz das respostas do chat' })).toHaveTextContent('Seguir as vozes locais abaixo · recomendado')
+  await choose('Selecionar Boo para voz Piper', 'Brigid')
+  await choose('Selecionar voz Piper', 'Dii · feminina · experimental · uso não comercial')
   await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ piperAgentVoices: { 'boo-1': 'dii' } }))
-  fireEvent.change(screen.getByLabelText('Selecionar voz Piper'), { target: { value: 'inherit' } })
+  await choose('Selecionar voz Piper', 'Usar voz geral')
   await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ piperAgentVoices: {} }))
 })

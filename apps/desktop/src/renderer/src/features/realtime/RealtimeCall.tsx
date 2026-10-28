@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, KeyRound, Phone, PhoneOff, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
 import type { PiperVoice, RealtimeEvent, RealtimeMode, RealtimePhase, RealtimeProvider, RealtimeSettings, RealtimeStatus } from '../../../../shared/realtime'
 import { errorText } from '../app/appShellShared'
@@ -17,6 +19,8 @@ const PHASE_LABEL: Record<RealtimePhase, string> = {
 }
 const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Aoede', 'Leda', 'Orus', 'Zephyr']
 const selectClass = 'h-8 w-full rounded-md border border-input bg-background px-2 text-xs'
+// Radix Select não aceita item com valor vazio; a configuração continua usando '' para o modelo automático.
+const AUTO_MODEL = '__auto__'
 
 function KeyField({ provider, label, help, configured, onSaved }: { provider: RealtimeProvider; label: string; help: string; configured: boolean; onSaved: () => void }) {
   const [value, setValue] = useState('')
@@ -76,24 +80,27 @@ export function RealtimeSettingsPanel() {
       <ChatSpeechSettings />
       <div role="radiogroup" aria-label="Motor de voz" className="grid grid-cols-3 gap-1 rounded-lg border border-border/60 p-1">
         {([['gemini', 'Gemini Live', 'Voz Gemini'], ['piper', 'Agente + Piper', 'Leve e rápido'], ['pocket', 'PocketTTS', 'Vozes locais dos Boos']] as const).map(([value, label, hint]) =>
-          <button key={value} type="button" role="radio" aria-checked={mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')}
+          <Button key={value} type="button" variant="ghost" size={null} role="radio" aria-checked={mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')}
             onClick={() => { if (value === 'gemini') onModeChange('gemini'); else { onModeChange('free'); void saveSetting({ ttsEngine: value }) } }}
-            className={`rounded-md px-2 py-1.5 text-left text-xs transition-colors ${(mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')) ? 'bg-accent font-medium' : 'text-muted-foreground hover:bg-accent/50'}`}>
+            className={`block whitespace-normal rounded-md px-2 py-1.5 text-left text-xs transition-colors ${(mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')) ? 'bg-accent font-medium text-inherit hover:bg-accent hover:text-inherit' : 'font-normal text-muted-foreground hover:bg-accent/50 hover:text-muted-foreground'}`}>
             {label}<span className="block text-[10px] font-normal text-muted-foreground">{hint}</span>
-          </button>)}
+          </Button>)}
       </div>
-      <label className="flex items-start gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={headphones} onChange={event => onHeadphonesChange(event.target.checked)} /><span>Estou de fone. Permite interromper o agente enquanto ele fala.</span></label>
+      <label className="flex items-start gap-2 text-xs text-muted-foreground"><Checkbox checked={headphones} onCheckedChange={checked => onHeadphonesChange(checked === true)} /><span>Estou de fone. Permite interromper o agente enquanto ele fala.</span></label>
       {status && (mode === 'gemini'
         ? <KeyField provider="gemini" configured={!!status.geminiKey} label="Chave do Gemini Live" help="Chave do Google AI Studio. O uso depende dos limites da sua conta." onSaved={() => { setCredentialRevision(value => value + 1); void refresh(); notifySaved() }} />
         : <KeyField provider="groq" configured={!!status.groqKey} label="Chave do Groq para Whisper" help="Usada somente para transcrever sua fala pela internet. Com Parakeet local, essa chave não é necessária." onSaved={() => { void refresh(); notifySaved() }} />)}
       {status && mode === 'free' && <div className="space-y-3 rounded-lg border border-border/60 p-3 text-xs">
         <p>O Boo selecionado usa o runtime e modelo configurados no seu perfil. Silero detecta a fala; Piper ou PocketTTS gera o áudio localmente. Whisper usa Groq para transcrever; Parakeet faz isso no computador.</p>
         <label className="block space-y-1 text-[11px] text-muted-foreground">Modelo de transcrição (ASR)
-          <select className={selectClass} value={settings?.transcriptionModel || 'whisper-large-v3-turbo'} onChange={event => void saveSetting({ transcriptionModel: event.target.value as RealtimeSettings['transcriptionModel'] })}>
-            <option value="whisper-large-v3-turbo">Whisper Large V3 Turbo · Groq na nuvem · rápido</option>
-            <option value="whisper-large-v3">Whisper Large V3 · Groq na nuvem · mais preciso</option>
-            <option value="parakeet-v3">Parakeet V3 · local · português · ~680 MB</option>
-          </select>
+          <Select value={settings?.transcriptionModel || 'whisper-large-v3-turbo'} onValueChange={value => void saveSetting({ transcriptionModel: value as RealtimeSettings['transcriptionModel'] })}>
+            <SelectTrigger aria-label="Modelo de transcrição (ASR)" className={selectClass}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="whisper-large-v3-turbo">Whisper Large V3 Turbo · Groq na nuvem · rápido</SelectItem>
+              <SelectItem value="whisper-large-v3">Whisper Large V3 · Groq na nuvem · mais preciso</SelectItem>
+              <SelectItem value="parakeet-v3">Parakeet V3 · local · português · ~680 MB</SelectItem>
+            </SelectContent>
+          </Select>
         </label>
         {settings?.transcriptionModel === 'parakeet-v3' && !status.parakeetInstalled && <div className="flex items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">O Parakeet roda no computador e só é baixado quando você pedir.</span><Button size="sm" variant="outline" onClick={() => void installParakeet()} disabled={!!installingExtra}>{installingExtra === 'parakeet' ? 'Baixando Parakeet…' : 'Baixar Parakeet'}</Button></div>}
         {settings?.transcriptionModel === 'parakeet-v3' && status.parakeetInstalled && <p className="text-[11px] text-emerald-600">Parakeet instalado. A transcrição fica no computador.</p>}
@@ -101,9 +108,10 @@ export function RealtimeSettingsPanel() {
       </div>}
       {status && <div className="space-y-3">
         <label className="block space-y-1 text-[11px] text-muted-foreground">Motor para leitura do chat e ligações locais
-          <select aria-label="Motor local das vozes" className={selectClass} value={settings?.ttsEngine || 'piper'} onChange={event => void saveSetting({ ttsEngine: event.target.value as RealtimeSettings['ttsEngine'] })}>
-            <option value="piper">Piper · leve e rápido</option><option value="pocket">PocketTTS · vozes dos Boos</option>
-          </select>
+          <Select value={settings?.ttsEngine || 'piper'} onValueChange={value => void saveSetting({ ttsEngine: value as RealtimeSettings['ttsEngine'] })}>
+            <SelectTrigger aria-label="Motor local das vozes" className={selectClass}><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="piper">Piper · leve e rápido</SelectItem><SelectItem value="pocket">PocketTTS · vozes dos Boos</SelectItem></SelectContent>
+          </Select>
         </label>
         {settings?.ttsEngine === 'pocket' ? <PocketTtsSettings installed={status.pocketInstalled} />
           : <PiperTtsSettings status={status} save={saveSetting} install={installVoice} installing={!!installingExtra} />}
@@ -111,13 +119,16 @@ export function RealtimeSettingsPanel() {
       {mode === 'gemini' && <p className="text-[11px] text-muted-foreground">O Gemini escuta e dá voz ao agente selecionado. As respostas, ferramentas e permissões são as do próprio Boo, com o modelo configurado no perfil dele.</p>}
       {settings && mode === 'gemini' && hasKey && <div className="grid grid-cols-2 gap-2">
         <label className="space-y-1 text-[11px] text-muted-foreground">Modelo
-          <select className={selectClass} value={settings.geminiModel} onChange={event => void saveSetting({ geminiModel: event.target.value })}>
-            <option value="">Automático</option>
-            {models.map(model => <option key={model} value={model}>{model}</option>)}
-          </select>
+          <Select value={settings.geminiModel || AUTO_MODEL} onValueChange={value => void saveSetting({ geminiModel: value === AUTO_MODEL ? '' : value })}>
+            <SelectTrigger aria-label="Modelo" className={selectClass}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={AUTO_MODEL}>Automático</SelectItem>
+              {models.map(model => <SelectItem key={model} value={model}>{model}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </label>
         <label className="space-y-1 text-[11px] text-muted-foreground">Voz
-          <select className={selectClass} value={settings.geminiVoice} onChange={event => void saveSetting({ geminiVoice: event.target.value })}>{GEMINI_VOICES.map(voice => <option key={voice}>{voice}</option>)}</select>
+          <Select value={settings.geminiVoice} onValueChange={value => void saveSetting({ geminiVoice: value })}><SelectTrigger aria-label="Voz" className={selectClass}><SelectValue /></SelectTrigger><SelectContent>{GEMINI_VOICES.map(voice => <SelectItem key={voice} value={voice}>{voice}</SelectItem>)}</SelectContent></Select>
         </label>
       </div>}
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
