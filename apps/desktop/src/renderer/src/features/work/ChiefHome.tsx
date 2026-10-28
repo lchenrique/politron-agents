@@ -78,7 +78,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
         </span>
         <ChevronDown aria-hidden className={cn('mt-1 size-4 shrink-0 text-muted-foreground transition-transform duration-200', isOpen && 'rotate-180')} />
       </button>
-      {isOpen && <div className="space-y-4 border-t border-border/50 bg-muted/20 px-4 py-4 sm:pl-[3.25rem]">
+      {isOpen && <div className="space-y-4 border-t border-border/50 bg-muted/20 px-4 py-4 @md:pl-[3.25rem]">
         <StepList steps={mission.steps} />
         {mission.result && <div className="rounded-lg border border-success/25 bg-success-soft px-3 py-2 text-xs leading-5 whitespace-pre-wrap">{mission.result}</div>}
         {!!mission.updates.length && <ul className="space-y-1 text-[11px] leading-5 text-muted-foreground">
@@ -93,7 +93,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
   }
 
   const attention = waiting.length + approvals.length
-  return <div className="min-h-0 flex-1 overflow-auto">
+  return <div className="@container min-h-0 flex-1 overflow-auto">
     <div className="ds-page max-w-5xl">
       <section aria-labelledby="chief-brief-title" className="max-w-3xl">
         <p className="ds-eyebrow mb-3">Central</p>
@@ -125,7 +125,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
                 {owners.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.role === 'chief' ? `${agent.name} (Chief)` : agent.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">Ctrl + Enter</span>
+            <span className="ml-auto hidden text-[11px] text-muted-foreground @md:inline">Ctrl + Enter</span>
             <Button type="submit" size="sm" disabled={!goal.trim() || sending || !canChat}>{sending ? <Loader2 className="size-4 animate-spin" /> : <SendHorizontal className="size-4" />}Atribuir</Button>
           </div>
         </form>
@@ -134,7 +134,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
         </div>}
       </section>
 
-      <div className="mt-12 grid gap-10 lg:grid-cols-[minmax(0,1fr)_17rem]">
+      <div className="mt-12 grid gap-10 @3xl:grid-cols-[minmax(0,1fr)_17rem]">
         <div className="min-w-0 space-y-10">
           {attention > 0 && <section aria-labelledby="attention-title">
             <h2 id="attention-title" className="ds-section-title mb-3 flex items-center gap-2">Precisa de você <span className="ds-count" data-tone="attention">{attention}</span></h2>
