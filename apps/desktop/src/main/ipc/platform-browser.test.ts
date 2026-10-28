@@ -167,6 +167,8 @@ describe('navegador da plataforma', () => {
       const { fake, host, browser } = setup()
       const pending = browser.acquireForAgent(owner, 'https://example.com/')
       expect(host.webContents.send).toHaveBeenCalledWith('platformBrowser:reveal', owner)
+      // Com a aba já aberta e sem view, só o estado publicado faz o painel medir a área de novo.
+      expect(host.webContents.send).toHaveBeenCalledWith('platformBrowser:state', expect.objectContaining({ sharing: null }))
       browser.setBounds(bounds, true)
       await Promise.resolve(); await Promise.resolve()
       ;(fake.listeners.get('did-stop-loading') as () => void)()

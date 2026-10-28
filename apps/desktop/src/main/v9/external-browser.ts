@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { NodeReplServer } from './external-browser-proxy'
 
 const read = (file: string) => { try { return readFileSync(file, 'utf8') } catch { return '' } }
@@ -34,8 +35,34 @@ export function readNodeReplServer(codexHome = defaultCodexHome(), parentEnv: No
   if (typeof server.command !== 'string' || !server.command) return null
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(tomlSection(source, 'mcp_servers.node_repl.env'))) if (typeof value === 'string') env[key] = value
-  for (const name of Array.isArray(server.env_vars) ? server.env_vars : []) if (typeof name === 'string' && typeof parentEnv[name] === 'string') env[name] = parentEnv[name]
+  // BROWSER_USE_ACCESS_* são credenciais do turno do app Codex; o Politron não é um turno do Codex e não as repassa.
+  for (const name of Array.isArray(server.env_vars) ? server.env_vars : []) if (typeof name === 'string' && !name.startsWith('BROWSER_USE_ACCESS_') && typeof parentEnv[name] === 'string') env[name] = parentEnv[name]
   return { command: server.command, args: Array.isArray(server.args) ? server.args.filter((arg): arg is string => typeof arg === 'string') : [], env }
+}
+
+/** Caminho do browser-client.mjs da versão mais recente do plugin oficial chrome@openai-bundled, ou null. */
+export function browserClientPath(codexHome = defaultCodexHome()): string | null {
+  const plugin = join(codexHome, 'plugins', 'cache', 'openai-bundled', 'chrome')
+  try {
+    const versions = readdirSync(plugin).filter(version => existsSync(join(plugin, version, 'scripts', 'browser-client.mjs')))
+    const latest = versions.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop()
+    return latest ? join(plugin, latest, 'scripts', 'browser-client.mjs') : null
+  } catch { return null }
+}
+
+/** Instruções de uso que o Codex entrega pela skill control-chrome; sem elas o agente não sabe iniciar a ponte. */
+export function externalBrowserGuide(clientPath: string): string {
+  return [
+    'Controla o navegador real do usuário (Brave/Chrome com as sessões logadas) pela extensão oficial. Executa JavaScript num Node REPL persistente; escreva a saída com nodeRepl.write(...).',
+    'Na primeira chamada da sessão, inicie a ponte e leia a documentação inteira do navegador antes de agir:',
+    `const { setupBrowserRuntime } = await import(${JSON.stringify(pathToFileURL(clientPath).href)});`,
+    'const agent = await setupBrowserRuntime();',
+    'const browser = await agent.browsers.get("extension");',
+    'nodeRepl.write(await browser.documentation());',
+    'Reutilize agent e browser nas chamadas seguintes (não declare de novo). Abra abas com await browser.tabs.new() e siga a API descrita na documentação.',
+    'Se a extensão não conectar, leia nodeRepl.write(await agent.documentation.get("chrome-troubleshooting")).',
+    'Não leia cookies, armazenamento local, senhas, perfis nem histórico.',
+  ].join('\n')
 }
 
 /**

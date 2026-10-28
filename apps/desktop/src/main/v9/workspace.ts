@@ -15,7 +15,7 @@ import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
 import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
-import { probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
+import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
 import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPreview, type NodeReplServer } from './external-browser-proxy'
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, mentionedRecipients, recipients, type WorkspaceLease } from './routing'
@@ -94,7 +94,10 @@ export class AppService extends EventEmitter {
     return this.externalBrowserStatus(owner)
   }
   /** Ponte oficial: sonda e node_repl declarados pelo Codex. Os testes injetam um node_repl falso. */
-  externalBrowserBridge: { probe: () => string[]; upstream: () => NodeReplServer | null; startTimeoutMs?: number } = { probe: () => probeExternalBrowserBridge(), upstream: () => readNodeReplServer() }
+  externalBrowserBridge: { probe: () => string[]; upstream: () => NodeReplServer | null; startTimeoutMs?: number; guide: () => string } = {
+    probe: () => probeExternalBrowserBridge(), upstream: () => readNodeReplServer(),
+    guide: () => { const client = browserClientPath(); return client ? externalBrowserGuide(client) : '' },
+  }
   private readonly externalBrowserProxies = new Map<string, ExternalBrowserProxy>()
   /** conversa:agente cujo node_repl falhou ao iniciar nesta sessão do app; só um pedido/autorização explícita (ou reiniciar o app) tenta de novo. */
   private readonly externalBrowserFailures = new Set<string>()
@@ -119,7 +122,8 @@ export class AppService extends EventEmitter {
       if (!proxy) {
         const upstream = this.externalBrowserBridge.upstream()
         if (!upstream) return null
-        proxy = new ExternalBrowserProxy(upstream, (tool, args, signal) => this.authorizeExternalBrowserCall(owner, this.externalBrowserRuns.get(key), tool, args, signal), this.externalBrowserBridge.startTimeoutMs)
+        proxy = new ExternalBrowserProxy(upstream, (tool, args, signal) => this.authorizeExternalBrowserCall(owner, this.externalBrowserRuns.get(key), tool, args, signal), this.externalBrowserBridge.startTimeoutMs, this.externalBrowserBridge.guide(),
+          () => { const runId = this.externalBrowserRuns.get(key); return runId ? JSON.stringify({ session_id: owner.conversationId, turn_id: runId }) : null })
         this.externalBrowserProxies.set(key, proxy)
       }
       this.externalBrowserRuns.set(key, context.run.id)

@@ -7,6 +7,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult, type Tool } from '@modelcontextprotocol/sdk/types.js'
 
 export const EXTERNAL_BROWSER_MCP = 'politron_external_browser'
+const TURN_METADATA = 'x-codex-turn-metadata'
 export interface NodeReplServer { command: string; args: string[]; env: Record<string, string> }
 /** Devolve null quando a chamada pode seguir; caso contrário, o motivo da recusa mostrado ao modelo. */
 export type ExternalBrowserAuthorizer = (tool: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<string | null>
@@ -69,7 +70,8 @@ export class ExternalBrowserProxy {
   private readonly connections = new Set<Server>()
   private readonly server = createServer((request, response) => { void this.handle(request, response).catch(() => this.json(response, 500, { error: 'Falha no proxy do navegador externo.' })) })
 
-  constructor(private readonly spec: NodeReplServer, private readonly authorize: ExternalBrowserAuthorizer, private readonly startTimeoutMs = 10_000) {}
+  constructor(private readonly spec: NodeReplServer, private readonly authorize: ExternalBrowserAuthorizer, private readonly startTimeoutMs = 10_000, private readonly guide = '',
+    private readonly turnMetadata: () => string | null = () => null) {}
   get url(): string { if (!this.address) throw new Error('Proxy do navegador externo não iniciado.'); return `${this.address}/mcp` }
   get toolNames(): string[] { return this.tools.map(tool => tool.name) }
   get ready(): boolean { return !!this.address && !this.closed }
@@ -83,6 +85,8 @@ export class ExternalBrowserProxy {
     try {
       await client.connect(new StdioClientTransport({ command: this.spec.command, args: this.spec.args, env: this.spec.env, stderr: 'ignore' }), { signal, timeout: this.startTimeoutMs })
       this.tools = (await client.listTools(undefined, { signal, timeout: this.startTimeoutMs })).tools.filter(tool => ALLOWED_TOOLS.has(tool.name))
+        // O Codex entrega o guia pela skill; aqui ele vai na descrição para qualquer runtime saber iniciar a ponte.
+        .map(tool => this.guide ? { ...tool, description: `${this.guide}\n\n${tool.description || ''}`.trim() } : tool)
     } catch {
       await client.close().catch(() => undefined)
       throw new Error('O node_repl oficial não pôde ser iniciado; nenhuma aba foi acessada.')
@@ -109,7 +113,7 @@ export class ExternalBrowserProxy {
     response.end(JSON.stringify(value))
   }
 
-  private async call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<CallToolResult> {
+  private async call(name: string, args: Record<string, unknown>, signal: AbortSignal, meta: Record<string, unknown> = {}): Promise<CallToolResult> {
     const stopped = 'O navegador externo foi revogado ou encerrado; nada foi executado.'
     if (this.closed || !this.upstream) return failure(stopped)
     if (!this.tools.some(tool => tool.name === name)) return failure('Ferramenta não disponível pelo Politron; nada foi executado.')
@@ -118,7 +122,10 @@ export class ExternalBrowserProxy {
     // Revalida depois da espera: encerramento ou desistência do cliente durante a autorização cancela o envio.
     if (this.closed || !this.upstream || signal.aborted) return failure(stopped)
     // Mesmo limite do tool_timeout_sec 600 do Codex; a desistência do cliente cancela a chamada no node_repl.
-    return await this.upstream.callTool({ name, arguments: args }, undefined, { timeout: 600_000, signal }) as CallToolResult
+    // O runtime oficial exige x-codex-turn-metadata (session_id/turn_id) para vincular abas ao turno; o Codex envia o seu,
+    // os demais runtimes recebem os ids do Politron (conversa e execução).
+    const turn = meta[TURN_METADATA] ?? this.turnMetadata()
+    return await this.upstream.callTool({ name, arguments: args, _meta: { ...meta, ...(turn ? { [TURN_METADATA]: turn } : {}) } }, undefined, { timeout: 600_000, signal }) as CallToolResult
   }
 
   private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -130,7 +137,7 @@ export class ExternalBrowserProxy {
     const server = new Server({ name: EXTERNAL_BROWSER_MCP, version: '1.0.0' }, { capabilities: { tools: {} } })
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: this.tools }))
     server.setRequestHandler(CallToolRequestSchema, async input => {
-      try { return await this.call(input.params.name, input.params.arguments || {}, abort.signal) }
+      try { return await this.call(input.params.name, input.params.arguments || {}, abort.signal, input.params._meta || {}) }
       catch { return failure('A chamada ao navegador externo falhou.') }
     })
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })

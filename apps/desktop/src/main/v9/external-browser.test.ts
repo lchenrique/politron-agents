@@ -9,11 +9,11 @@ vi.mock('electron', () => ({
 }))
 import { EventEmitter } from 'node:events'
 import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { AppService } from './workspace'
-import { probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
+import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
 import type { AgentRuntime } from './agent-runtime'
 import type { Approval, WorkspaceEvent } from '../../shared/v9'
 
@@ -133,6 +133,9 @@ describe('navegador externo por conversa e agente', () => {
       command: 'C:\\Codex\\node_repl.exe', args: ['--modo', 'repl'],
       env: { BROWSER_USE_AVAILABLE_BACKENDS: 'chrome,iab', NODE_REPL_TRUSTED_SERVICES: '{"browser":"C:/x/browser-service.mjs"}' },
     })
+    // env_vars do Codex: repassa o ambiente comum, nunca as credenciais de turno do app Codex.
+    writeFileSync(join(codexHome, 'config.toml'), ['[mcp_servers.node_repl]', "command = 'C:\\Codex\\node_repl.exe'", 'env_vars = ["BROWSER_USE_ACCESS_EXECUTOR_ID", "BROWSER_USE_ACCESS_PIPE_PATH", "CODEX_WINDOWS_REGISTERED_CORE"]'].join('\n'))
+    expect(readNodeReplServer(codexHome, { BROWSER_USE_ACCESS_EXECUTOR_ID: 'x', BROWSER_USE_ACCESS_PIPE_PATH: 'y', CODEX_WINDOWS_REGISTERED_CORE: '1' })?.env).toEqual({ CODEX_WINDOWS_REGISTERED_CORE: '1' })
     writeFileSync(join(codexHome, 'config.toml'), '')
     expect(readNodeReplServer(codexHome)).toBeNull()
   })
@@ -152,7 +155,7 @@ type Mediated = { externalBrowserMcp(context: unknown): Promise<Registration | n
 /** Ponte injetada: node_repl falso no lugar do oficial, que está quebrado na máquina real. */
 function fakeBridge(service: AppService, command = process.execPath, problems: string[] = []) {
   const log = join(temp('politron-repl-log-'), 'calls.log')
-  service.externalBrowserBridge = { probe: () => problems, upstream: () => ({ command, args: [fixture], env: { FAKE_NODE_REPL_LOG: log } }) }
+  service.externalBrowserBridge = { probe: () => problems, guide: () => 'GUIA: setupBrowserRuntime', upstream: () => ({ command, args: [fixture], env: { FAKE_NODE_REPL_LOG: log } }) }
   return log
 }
 const calls = (log: string) => existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').length : 0
@@ -163,6 +166,19 @@ async function mcp(registration: Registration) {
   return client
 }
 const output = (result: Record<string, unknown>) => (result.content as Array<{ text?: string }>).map(item => item.text).join('')
+
+describe('guia da ponte oficial', () => {
+  it('aponta para o browser-client da versão mais recente do plugin e importa por URL de arquivo', () => {
+    const home = temp('politron-codex-')
+    for (const version of ['1.2.0', '1.10.0']) { mkdirSync(join(home, 'plugins', 'cache', 'openai-bundled', 'chrome', version, 'scripts'), { recursive: true }); writeFileSync(join(home, 'plugins', 'cache', 'openai-bundled', 'chrome', version, 'scripts', 'browser-client.mjs'), '') }
+    const client = browserClientPath(home)!
+    expect(client).toContain(join('chrome', '1.10.0', 'scripts', 'browser-client.mjs'))
+    const guide = externalBrowserGuide(client)
+    expect(guide).toContain(`await import(${JSON.stringify(pathToFileURL(client).href)})`)
+    expect(guide).toContain('agent.browsers.get("extension")')
+    expect(browserClientPath(temp('politron-vazio-'))).toBeNull()
+  })
+})
 
 describe('navegador real liberado por autorização da conversa', () => {
   async function running(runtime: 'codex' | 'claude' = 'codex') {
@@ -182,6 +198,8 @@ describe('navegador real liberado por autorização da conversa', () => {
     expect(registration).toMatchObject({ tools: ['js'] })
     const client = await mcp(registration!)
     try {
+      // O guia de uso da ponte (no Codex vem pela skill control-chrome) chega a qualquer runtime pela descrição do js.
+      expect((await client.listTools()).tools[0].description).toMatch(/^GUIA: setupBrowserRuntime/)
       const refused = await client.callTool({ name: 'js', arguments: { code: 'tab.url()' } })
       expect(refused.isError).toBe(true)
       expect(output(refused)).toBe('O usuário não autorizou o navegador real para este agente nesta conversa. Use a ferramenta external_browser_request.')
@@ -302,7 +320,7 @@ describe('navegador real liberado por autorização da conversa', () => {
   it('node_repl que trava no início: a execução segue sem proxy dentro do prazo e não tenta de novo até um pedido explícito', async () => {
     const { service, broker, context, owner, mediated, approvals } = await running()
     let starts = 0
-    service.externalBrowserBridge = { probe: () => [], startTimeoutMs: 300, upstream: () => { starts++; return { command: process.execPath, args: ['-e', 'setInterval(() => undefined, 1000)'], env: {} } } }
+    service.externalBrowserBridge = { probe: () => [], guide: () => '', startTimeoutMs: 300, upstream: () => { starts++; return { command: process.execPath, args: ['-e', 'setInterval(() => undefined, 1000)'], env: {} } } }
     const began = Date.now()
     expect(await mediated.externalBrowserMcp(context)).toBeNull()
     expect(Date.now() - began).toBeLessThan(5000)

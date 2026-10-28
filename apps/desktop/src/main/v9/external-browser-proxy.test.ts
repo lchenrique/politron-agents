@@ -40,10 +40,24 @@ describe('proxy MCP mediado do node_repl', () => {
     expect(text(result)).toBe('executado: await tab.goto("https://exemplo.com")')
     expect(authorize).toHaveBeenCalledWith('js', { code: 'await tab.goto("https://exemplo.com")' }, expect.any(AbortSignal))
     // Chamada ao node_repl com o limite de 600 s do Codex e o sinal de desistência da requisição.
-    expect(upstreamCall).toHaveBeenCalledWith({ name: 'js', arguments: { code: 'await tab.goto("https://exemplo.com")' } }, undefined, { timeout: 600_000, signal: (authorize.mock.calls[0] as unknown[])[2] })
+    expect(upstreamCall).toHaveBeenCalledWith({ name: 'js', arguments: { code: 'await tab.goto("https://exemplo.com")' }, _meta: {} }, undefined, { timeout: 600_000, signal: (authorize.mock.calls[0] as unknown[])[2] })
     expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1)
     // Só js é republicado: CDP completo não existe pelo proxy.
     expect(await client.callTool({ name: 'browser_use_full_cdp_access', arguments: {} })).toMatchObject({ isError: true })
+  })
+  it('repassa o x-codex-turn-metadata recebido e, sem ele, envia o turno do Politron', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'politron-proxy-')); cleanup.push(() => rmSync(dir, { recursive: true, force: true }))
+    const turn = JSON.stringify({ session_id: 'conversa', turn_id: 'execucao' })
+    const proxy = new ExternalBrowserProxy({ command: process.execPath, args: [fixture], env: { FAKE_NODE_REPL_LOG: join(dir, 'calls.log') } }, async () => null, 10_000, '', () => turn)
+    cleanup.push(() => proxy.close())
+    await proxy.start()
+    const client = await connect(proxy)
+    const upstreamCall = vi.spyOn(Client.prototype, 'callTool'); cleanup.push(() => upstreamCall.mockRestore())
+    await client.callTool({ name: 'js', arguments: { code: '1' } })
+    expect(upstreamCall).toHaveBeenCalledWith({ name: 'js', arguments: { code: '1' }, _meta: { 'x-codex-turn-metadata': turn } }, undefined, expect.anything())
+    const codexTurn = JSON.stringify({ session_id: 'codex', turn_id: 'turno' })
+    await client.callTool({ name: 'js', arguments: { code: '2' }, _meta: { 'x-codex-turn-metadata': codexTurn } })
+    expect(upstreamCall).toHaveBeenCalledWith({ name: 'js', arguments: { code: '2' }, _meta: { 'x-codex-turn-metadata': codexTurn } }, undefined, expect.anything())
   })
 
   it('authorizer recusando devolve isError com o motivo e nada chega ao node_repl', async () => {

@@ -171,6 +171,8 @@ export class PlatformBrowser {
     const view = this.ensure()
     this.context = { ...owner }
     this.host()?.webContents.send('platformBrowser:reveal', owner)
+    // A view pode ter acabado de nascer com a aba já aberta: o estado faz o painel medir a área de novo.
+    this.publish()
     // Espera um evento (ou o prazo); resolve false se expirou.
     const until = (ready: () => boolean, register: (wake: () => void) => () => void) => new Promise<boolean>(resolve => {
       if (ready()) return resolve(true)
