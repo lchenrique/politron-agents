@@ -32,13 +32,22 @@ const clip = (value: unknown, max = 120) => {
   const line = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
+const CHIEF_ACTIONS = new Set(['agent_create', 'project_create', 'project_update', 'session_create', 'session_update', 'session_send', 'team_set', 'agent_update', 'self_update', 'routine_create', 'routine_update',
+  'mission_create', 'mission_control', 'sidebar_update', 'project_archive', 'project_delete', 'session_delete', 'agent_delete', 'routine_delete', 'mission_cancel', 'settings_update'])
 const join = (label: string, detail: string) => detail ? `${label}${SEPARATOR}${detail}` : label
 
 /** Rótulo de uma chamada de ferramenta do Politron, ou null para as que já têm cartão próprio (aprovações, perguntas). */
 export function toolActivityText(name: string, args: Record<string, unknown>): string | null {
   // save_skill ganha a linha "Aprendizado · <skill>" só depois de gravar de fato.
   if (name === 'ask_user' || name.startsWith('propose_') || name === 'external_browser_request' || name === 'save_skill') return null
+  // Ações do Chief gravam "Sistema · <o que fez>" depois de concluir (ou o cartão de confirmação).
+  if (CHIEF_ACTIONS.has(name)) return null
   switch (name) {
+    case 'project_list': return join('Leitura', 'projetos')
+    case 'project_overview': return join('Leitura', 'panorama do projeto')
+    case 'session_history': return join('Leitura', 'histórico de sessão')
+    case 'mission_list': return join('Leitura', 'missões')
+    case 'routine_list': return join('Leitura', 'rotinas')
     case 'browser_open': return join('Navegador interno', `Abrir ${clip(args.url)}`)
     case 'browser_observe': return join('Navegador interno', 'Ler a página')
     case 'browser_click': return join('Navegador interno', 'Clicar')

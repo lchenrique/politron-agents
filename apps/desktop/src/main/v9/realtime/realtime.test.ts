@@ -121,9 +121,9 @@ describe('ferramentas de gestão durante ligação por voz', () => {
     const tools = getTools(service, chief)
     expect(tools.map(tool => tool.name)).toEqual(['executar_tarefa', 'propor_criacao_boo', 'editar_meu_perfil'])
     expect(await tools.find(tool => tool.name === 'propor_criacao_boo')!.run({ tarefa: 'Crie um Boo especialista em design' })).toContain('Proposta enviada')
-    expect(app.respondToAgent).toHaveBeenCalledWith('conv-chief-voice', expect.stringContaining('propose_boos'), chief.id)
+    expect(app.respondToAgent).toHaveBeenCalledWith('conv-chief-voice', expect.stringContaining('agent_create'), chief.id)
     expect(await tools.find(tool => tool.name === 'editar_meu_perfil')!.run({ tarefa: 'Mude sua cor para azul' })).toContain('Proposta enviada')
-    expect(app.respondToAgent).toHaveBeenCalledWith('conv-chief-voice', expect.stringContaining('propose_self_profile'), chief.id)
+    expect(app.respondToAgent).toHaveBeenCalledWith('conv-chief-voice', expect.stringContaining('self_update'), chief.id)
   })
 
   it('não expõe criação de agente a Boos comuns', () => {

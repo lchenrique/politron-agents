@@ -20,14 +20,26 @@ describe('preâmbulo de sistema compartilhado entre Codex e Claude', () => {
 
   it('orienta o Chief a montar a equipe quando útil e distinguir Boos temporários', () => {
     const prompt = buildAgentSystemPrompt({ ...agent, role: 'chief' })
-    expect(prompt).toContain('propose_boos')
+    expect(prompt).toContain('agent_create')
     expect(prompt).toContain('group_members')
     expect(prompt).toContain('purpose=team')
     expect(prompt).toContain('purpose=task')
     expect(prompt).toContain('Boos dessa equipe devem ser PERMANENTES')
     expect(prompt).toContain('temporary=true')
-    expect(prompt).toContain('propose_team')
+    expect(prompt).toContain('team_set')
     expect(prompt).toContain('conclua')
+  })
+
+  it('Chief age direto, confirma só o que não tem volta e nunca aprova a si mesmo; Boo comum segue com propostas', () => {
+    const chief = buildAgentSystemPrompt({ ...agent, role: 'chief' })
+    for (const name of ['project_list', 'project_overview', 'session_history', 'project_create', 'session_send', 'agent_update', 'self_update', 'project_delete', 'settings_update']) expect(chief).toContain(name)
+    expect(chief).toContain('mesmo no Bypass')
+    expect(chief).toContain('nunca responde nem aprova essas confirmações')
+    expect(chief).toContain('Documentos\\Boobot\\<nome>')
+    expect(chief).not.toContain('propose_self_profile')
+    const worker = buildAgentSystemPrompt(agent)
+    expect(worker).toContain('propose_self_profile')
+    expect(worker).not.toContain('project_create')
   })
 
   it('explica o bypass e o acesso por ferramentas sem confundir o sandbox nativo com a pasta', () => {

@@ -4,7 +4,6 @@ export type DelegationEligibilityContext = {
   agentId: string
   role?: Agent['role']
   workspaceId: string
-  eligibleAgentIds: Iterable<string>
   ancestry: string[]
   maxDepth?: number
 }
@@ -19,11 +18,5 @@ export function delegationEligibility(context: DelegationEligibilityContext, can
   if (candidate.temporary && candidate.temporaryStatus !== 'available') return { canDelegate: false, reason: 'O agente temporário já está ocupado.' }
   if (context.ancestry.includes(candidate.id)) return { canDelegate: false, reason: 'A delegação criaria um ciclo de agentes.' }
   if (context.ancestry.length >= (context.maxDepth ?? 4)) return { canDelegate: false, reason: 'A delegação atingiu o limite de profundidade.' }
-
-  const isTeamMember = new Set(context.eligibleAgentIds).has(candidate.id)
-  const mayDelegateOutsideTeam = context.role !== 'chief' && !candidate.temporary
-  if (!isTeamMember && !isWorkspaceTemporary && !mayDelegateOutsideTeam) {
-    return { canDelegate: false, reason: 'O agente não está na equipe desta conversa ou do workspace.' }
-  }
   return { canDelegate: true }
 }

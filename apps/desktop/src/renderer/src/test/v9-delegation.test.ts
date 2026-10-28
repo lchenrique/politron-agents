@@ -153,22 +153,19 @@ describe('delegação entre conversas V9', () => {
     expect(runtime.started).toBe(1)
   })
 
-  it('revalida a equipe do Chief após a aprovação da continuação', async () => {
+  it('Chief delega e continua a delegação sem pedir aprovação', async () => {
     const runtime = new FakeRuntime()
     const { service, context, requester, recipient, source } = setup(runtime)
     const chief = service.saveAgent({ id: requester.id, name: requester.name, alias: requester.alias, instructions: requester.instructions, role: 'chief' })
     const teamConversation = service.saveConversation({ id: source.id, agentIds: [chief.id, recipient.id] })
     const chiefContext = { ...context, agent: chief, conversation: teamConversation, run: { ...context.run, agentId: chief.id, agent: chief } }
-    const approve = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
-    await (service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Pedido aprovado inicialmente' }, 'tool-chief-first')
+    const approve = vi.spyOn(service as any, 'requestApproval')
+    await (service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Pedido inicial' }, 'tool-chief-first')
     const previous = service.store.delegations()[0]
-    approve.mockImplementation(async () => {
-      service.saveConversation({ id: source.id, agentIds: [chief.id] })
-      return true
-    })
-    await expect((service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Complemento sem equipe', delegation_id: previous.id }, 'tool-chief-followup')).rejects.toThrow('não está na equipe')
-    expect(approve).toHaveBeenCalledTimes(2)
-    expect(runtime.started).toBe(1)
+    await (service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Complemento', delegation_id: previous.id }, 'tool-chief-followup')
+    expect(approve).not.toHaveBeenCalled()
+    expect(runtime.started).toBe(2)
+    expect(service.store.delegations()[1].previousDelegationId).toBe(previous.id)
   })
 
   it('registra falha e não mascara o erro do destinatário', async () => {

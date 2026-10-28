@@ -15,8 +15,8 @@ async function runTransport(tryNative: boolean) {
   let nativeBashOffered = false
   const actions = [
     { action: 'tool', tool: 'group_members', arguments: '{}', text: '' },
-    { action: 'tool', tool: 'propose_boos', arguments: JSON.stringify({ purpose: 'team', agents: [{ name: 'Íris QA', instructions: 'Revise interfaces.' }] }), text: '' },
-    { action: 'final', tool: 'none', arguments: '{}', text: 'O Boo Íris QA foi criado com aprovação.' },
+    { action: 'tool', tool: 'agent_create', arguments: JSON.stringify({ purpose: 'team', agents: [{ name: 'Íris QA', instructions: 'Revise interfaces.' }] }), text: '' },
+    { action: 'final', tool: 'none', arguments: '{}', text: 'O Boo Íris QA foi criado.' },
   ]
   const inputs: string[] = []
   const server = createServer(async (request, response) => {
@@ -87,8 +87,8 @@ async function runTransport(tryNative: boolean) {
       expect(service.store.runs().every(run => run.status === 'failed')).toBe(true)
       return
     }
-    expect(calls).toEqual(['group_members', 'propose_boos'])
-    expect(approvals).toBe(1)
+    expect(calls).toEqual(['group_members', 'agent_create'])
+    expect(approvals).toBe(0)
     expect(service.store.agents().find(agent => agent.name === 'Íris QA')).toMatchObject({ temporary: false, canWrite: false, computerUse: false })
     expect(service.store.runs().every(run => run.status === 'completed')).toBe(true)
     expect(inputs).toHaveLength(3)

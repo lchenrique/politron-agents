@@ -36,7 +36,7 @@ function setup(runtime: Agent['runtime'] = 'codex') {
   const conversation = service.store.saveConversation({ workspaceId: workspace.id, agentIds: [chief.id] })
   const names = (agent: Agent = chief) => ((service as unknown as { tools: (context: unknown) => { name: string }[] }).tools({ agent, run: { workspaceId: workspace.id } })).map(tool => tool.name)
   const propose = (name: string, args: Record<string, unknown>) => (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool({ agent: chief, run: { id: 'chief-run', ancestry: [chief.id], workspaceId: workspace.id, workspacePath: workspace.path }, conversation }, name, args)
-  return { service, chief, workspace, names, propose }
+  return { service, chief, workspace, conversation, names, propose }
 }
 
 function spyOnApproval(service: AppService) {
@@ -64,77 +64,88 @@ describe('delegação no workspace correto', () => {
   })
 })
 
-describe('troca segura de runtime pelo Chief', () => {
-  it('permite trocar o Boo da equipe para Claude com aprovação, sem alterar permissões', async () => {
-    const { service, chief, workspace, names } = setup()
+describe('edição direta de Boos pelo Chief', () => {
+  it('troca motor e modelo de um Boo sem pedir aprovação e sem alterar permissões', async () => {
+    const { service, workspace, names, propose, conversation } = setup()
     const worker = service.saveAgent({ name: 'Frontend', alias: 'front', instructions: 'Trabalhe no frontend.', runtime: 'codex', model: 'gpt-5', canWrite: false })
-    service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [worker.id], permissions: { ...permissions, chiefEditAgents: true } })
-    const conversation = service.store.saveConversation({ name: 'Chief', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
-    const context = { agent: chief, run: { workspaceId: workspace.id, workspacePath: workspace.path }, conversation }
-    const call = (service as any).callTool.bind(service)
-    const approval = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
-    expect(names()).toContain('propose_agent_model')
-    const result = await call(context, 'propose_agent_model', { agent: '@front', runtime: 'claude', model: 'claude-sonnet-4-6' })
-    expect(result).toContain('claude')
-    expect(approval).toHaveBeenCalledWith(context, 'agent-change', expect.any(Object))
-    expect(service.store.agent(worker.id)).toMatchObject({ runtime: 'claude', model: 'claude-sonnet-4-6', canWrite: false, computerUse: false, name: 'Frontend' })
+    service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefEditAgents: true } })
+    const approval = spyOnApproval(service)
+    expect(names()).toEqual(expect.arrayContaining(['agent_update', 'self_update']))
+    expect(names()).not.toContain('propose_agent_model')
+    expect(await propose('agent_update', { agent: '@front', runtime: 'claude', model: 'claude-sonnet-4-6', instructions: 'Cuide da interface.' })).toContain('atualizado')
+    expect(approval).not.toHaveBeenCalled()
+    expect(service.store.agent(worker.id)).toMatchObject({ runtime: 'claude', model: 'claude-sonnet-4-6', instructions: 'Cuide da interface.', canWrite: false, computerUse: false, role: 'agent', name: 'Frontend' })
+    expect(service.store.history(conversation.id).some(message => message.role === 'activity' && message.text.startsWith('Sistema · Atualizou o Boo Frontend'))).toBe(true)
   })
-  it('não altera modelo se a aprovação for negada', async () => {
-    const { service, chief, workspace } = setup()
+  it('não promove Boo a Chief, não mexe em permissões nem edita a si mesmo por agent_update', async () => {
+    const { service, workspace, propose } = setup()
     const worker = service.saveAgent({ name: 'Frontend', alias: 'front', instructions: 'Trabalhe.' })
-    service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [worker.id], permissions: { ...permissions, chiefEditAgents: true } })
-    const conversation = service.store.saveConversation({ name: 'Chief', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
-    vi.spyOn(service as any, 'requestApproval').mockResolvedValue(false)
-    const result = await (service as any).callTool({ agent: chief, run: { workspaceId: workspace.id, workspacePath: workspace.path }, conversation }, 'propose_agent_model', { agent: 'front', runtime: 'claude' })
-    expect(result).toContain('não aprovada')
-    expect(service.store.agent(worker.id).runtime).toBe('codex')
+    service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefEditAgents: true } })
+    await expect(propose('agent_update', { agent: 'front', role: 'chief' })).rejects.toThrow(/não editáveis/)
+    await expect(propose('agent_update', { agent: 'front', canWrite: true })).rejects.toThrow(/não editáveis/)
+    await expect(propose('agent_update', { agent: '@chief', description: 'x' })).rejects.toThrow(/self_update/)
+    expect(service.store.agent(worker.id).role).toBe('agent')
+  })
+  it('respeita a permissão do projeto para editar Boos', async () => {
+    const { service, workspace, propose } = setup()
+    service.saveAgent({ name: 'Frontend', alias: 'front', instructions: 'Trabalhe.' })
+    service.store.saveWorkspace({ id: workspace.id, permissions })
+    await expect(propose('agent_update', { agent: 'front', model: 'x' })).rejects.toThrow(/não pode editar Boos/)
   })
 })
 
 describe('autoedição do Chief', () => {
-  it('expõe ferramenta própria e exige aprovação para editar seu perfil, sem abrir permissões', async () => {
+  it('self_update grava descrição, instruções, aparência e modelo direto, sem papel nem permissões', async () => {
     const { service, chief, names, propose } = setup()
-    expect(names()).toContain('propose_self_profile')
-    const approval = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
-    const result = await propose('propose_self_profile', { description: 'Líder estratégico', instructions: 'Coordene com clareza.', color: '#abcdef', pitsShape: 'drop', pitsAccessory: 'glasses' })
+    expect(names()).not.toContain('propose_self_profile')
+    const approval = spyOnApproval(service)
+    const result = await propose('self_update', { description: 'Líder estratégico', instructions: 'Coordene com clareza.', color: '#abcdef', pitsShape: 'drop', model: 'gpt-5.5', effort: 'high' })
     expect(result).toContain('Perfil de')
-    expect(approval).toHaveBeenCalledOnce()
-    expect(approval.mock.calls[0][1]).toBe('agent-change')
-    expect(approval.mock.calls[0][1]).toBe('agent-change')
-    expect(service.store.agent(chief.id)).toMatchObject({ role: 'chief', alias: 'chief', instructions: 'Coordene com clareza.', description: 'Líder estratégico', color: '#abcdef', pitsShape: 'drop', pitsAccessory: 'glasses', canWrite: false, computerUse: false })
+    expect(approval).not.toHaveBeenCalled()
+    expect(service.store.agent(chief.id)).toMatchObject({ role: 'chief', alias: 'chief', instructions: 'Coordene com clareza.', description: 'Líder estratégico', color: '#abcdef', pitsShape: 'drop', model: 'gpt-5.5', effort: 'high', canWrite: false, computerUse: false })
   })
-  it('mantém a identidade intacta quando o usuário nega e rejeita troca de motor', async () => {
+  it('recusa papel e permissões na autoedição', async () => {
     const { service, chief, propose } = setup()
-    vi.spyOn(service as any, 'requestApproval').mockResolvedValue(false)
-    expect(await propose('propose_self_profile', { name: 'Hórus' })).toMatch(/não aprovou/)
-    expect(service.store.agent(chief.id).name).toBe('Chief')
-    await expect(propose('propose_self_profile', { runtime: 'claude' })).rejects.toThrow(/sensível/)
-    expect(service.store.agent(chief.id).runtime).toBe('codex')
+    await expect(propose('self_update', { role: 'agent' })).rejects.toThrow(/sensível/)
+    await expect(propose('self_update', { canWrite: true })).rejects.toThrow(/sensível/)
+    await expect(propose('propose_self_profile', { name: 'Hórus' })).rejects.toThrow(/age direto/)
+    expect(service.store.agent(chief.id)).toMatchObject({ role: 'chief', canWrite: false, name: 'Chief' })
+  })
+  it('Boo comum continua com propose_self_profile e aprovação', async () => {
+    const { service, workspace, names } = setup()
+    const worker = service.saveAgent({ name: 'Nina', alias: 'nina', instructions: 'Revise.' })
+    expect(names(worker)).toContain('propose_self_profile')
+    expect(names(worker)).not.toContain('self_update')
+    const approval = spyOnApproval(service).mockResolvedValue(true)
+    const conversation = service.store.saveConversation({ workspaceId: workspace.id, agentIds: [worker.id] })
+    await (service as any).callTool({ agent: worker, run: { id: 'w', workspaceId: workspace.id, workspacePath: workspace.path }, conversation }, 'propose_self_profile', { description: 'Revisora' })
+    expect(approval).toHaveBeenCalledOnce()
+    expect(service.store.agent(worker.id).description).toBe('Revisora')
   })
 })
 
 describe('permissões independentes do Chief', () => {
-  it('exibe as ferramentas do Chief, mas nega criar agente sem permissão', async () => {
+  it('exibe as ferramentas diretas do Chief, mas nega criar Boo ou sessão sem permissão do projeto', async () => {
     const { service, workspace, names, propose } = setup()
     service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefManageTeam: true } })
-    expect(names()).toEqual(expect.arrayContaining(['propose_team', 'propose_agent', 'propose_session']))
-    await expect(propose('propose_agent', { operation: 'create', name: 'Teste', instructions: 'Trabalhe.' })).rejects.toThrow(/não pode criar agentes/)
-    await expect(propose('propose_session', { name: 'Nova sessão', agents: [] })).rejects.toThrow(/não pode criar sessões/)
+    expect(names()).toEqual(expect.arrayContaining(['team_set', 'agent_create', 'session_create']))
+    expect(names()).not.toContain('propose_team')
+    await expect(propose('agent_create', { agents: [{ name: 'Teste', instructions: 'Trabalhe.' }] })).rejects.toThrow(/não pode criar agentes/)
+    await expect(propose('session_create', { project_id: workspace.id, name: 'Nova sessão' })).rejects.toThrow(/não pode criar sessões/)
   })
 
-  it('exibe proposta de sessão, mas aplica permissões na execução', async () => {
-    const { service, workspace, names, propose } = setup()
+  it('aplica a permissão de equipe ao team_set', async () => {
+    const { service, workspace, propose } = setup()
     service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateSessions: true } })
-    expect(names()).toEqual(expect.arrayContaining(['propose_team', 'propose_agent', 'propose_session']))
-    await expect(propose('propose_team', { agents: [] })).rejects.toThrow(/não pode alterar a equipe/)
-    await expect(propose('propose_agent', { operation: 'create', name: 'Teste', instructions: 'Trabalhe.' })).rejects.toThrow(/não pode criar agentes/)
+    await expect(propose('team_set', { project_id: workspace.id, agents: [] })).rejects.toThrow(/não pode alterar o time/)
   })
 
   it('não oferece ferramentas do Chief a agentes normais', () => {
     const { service, workspace, chief, names } = setup()
     service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true, chiefEditAgents: true, chiefManageTeam: true, chiefCreateSessions: true } })
-    expect(names()).toEqual(expect.arrayContaining(['propose_agent', 'propose_team', 'propose_session']))
-    expect(names({ ...chief, role: 'agent' })).not.toEqual(expect.arrayContaining(['propose_agent', 'propose_team', 'propose_session']))
+    expect(names()).toEqual(expect.arrayContaining(['agent_create', 'team_set', 'session_create', 'project_list', 'project_delete']))
+    const normal = names({ ...chief, role: 'agent' })
+    for (const name of ['agent_create', 'team_set', 'session_create', 'project_list', 'project_create', 'project_delete', 'settings_update', 'self_update', 'routine_create']) expect(normal).not.toContain(name)
   })
 })
 
@@ -177,30 +188,16 @@ describe('visibilidade de agentes pelo group_members', () => {
     const call = (name: string, args: Record<string, unknown>) => (service as any).callTool(context, name, args, 'call-' + name)
     const members = await call('group_members', {}) as { alias: string; canDelegate: boolean; reason?: string }[]
     expect(members.find(item => item.alias === '@nina')).toMatchObject({ canDelegate: true, availability: 'busy' })
-    expect(members.find(item => item.alias === '@verati')).toMatchObject({ canDelegate: false, reason: expect.stringMatching(/equipe/) })
+    expect(members.find(item => item.alias === '@verati')).toMatchObject({ canDelegate: true })
 
-    const approval = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
+    const approval = vi.spyOn(service as any, 'requestApproval')
     const delegate = vi.spyOn(service as any, 'delegate').mockResolvedValue('Tarefa concluída.')
-    await expect(call('ask_agent', { agent: outsider.alias, task: 'Revisão curta.' })).rejects.toThrow(/equipe/)
-    expect(approval).not.toHaveBeenCalled()
     await expect(call('ask_agent', { agent: worker.alias, task: 'Revisão curta.' })).resolves.toBe('Tarefa concluída.')
-    expect(approval).toHaveBeenCalledOnce()
+    await expect(call('ask_agent', { agent: outsider.alias, task: 'Outra revisão.' })).resolves.toBe('Tarefa concluída.')
+    expect(approval).not.toHaveBeenCalled()
     expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ agent: chief }), worker, 'Revisão curta.', expect.any(String), true, undefined)
-  })
-
-  it('revalida a equipe depois da aprovação antes de iniciar a delegação', async () => {
-    const { service, chief, workspace } = setup()
-    const worker = service.saveAgent({ name: 'Nina', alias: 'nina', instructions: 'Revise o projeto.' })
-    service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [worker.id] })
-    const conversation = service.store.saveConversation({ name: 'Chief', workspaceId: workspace.id, agentIds: [chief.id] })
-    const context = { agent: chief, conversation, run: { id: 'run-chief', ancestry: [chief.id], workspaceId: workspace.id, workspacePath: workspace.path } }
-    vi.spyOn(service as any, 'requestApproval').mockImplementation(async () => {
-      service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [] })
-      return true
-    })
-    const delegate = vi.spyOn(service as any, 'delegate').mockResolvedValue('Não deve executar.')
-    await expect((service as any).callTool(context, 'ask_agent', { agent: worker.alias, task: 'Revise.' }, 'team-change')).rejects.toThrow(/equipe/)
-    expect(delegate).not.toHaveBeenCalled()
+    // Quem recebe entra no time da conversa, com o Chief como líder; o pedido sai mesmo sem confirmação.
+    expect(service.store.conversation(conversation.id)).toMatchObject({ kind: 'group', agentIds: [chief.id, worker.id, outsider.id], leaderAgentId: chief.id })
   })
 })
 
@@ -210,7 +207,7 @@ describe('Boos temporários do Chief', () => {
     service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true, chiefManageTeam: false } })
     const approval = spyOnApproval(service).mockResolvedValue(true)
 
-    await expect(propose('propose_boos', { purpose: 'team', agents: [{ name: 'Nox', instructions: 'Revise a interface.' }] }))
+    await expect(propose('agent_create', { purpose: 'team', agents: [{ name: 'Nox', instructions: 'Revise a interface.' }] }))
       .rejects.toThrow(/Nenhum Boo foi criado.*Chief pode propor mudanças na equipe/)
 
     expect(approval).not.toHaveBeenCalled()
@@ -223,37 +220,17 @@ describe('Boos temporários do Chief', () => {
     service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true, chiefManageTeam: false } })
     spyOnApproval(service).mockResolvedValue(true)
 
-    await propose('propose_boos', { purpose: 'task', agents: [{ name: 'Têmis', instructions: 'Valide os testes.' }] })
+    await propose('agent_create', { purpose: 'task', agents: [{ name: 'Têmis', instructions: 'Valide os testes.' }] })
 
     expect(service.store.agents().find(agent => agent.name === 'Têmis')).toMatchObject({ temporary: true, temporaryStatus: 'available', temporaryWorkspaceId: workspace.id })
     expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
   })
 
-  it('invalida aprovação pendente quando o motor falha, impedindo criação tardia', async () => {
-    const { service, chief, workspace } = setup('antigravity')
-    service.store.saveWorkspace({ id: workspace.id, permissions: { ...permissions, chiefCreateAgents: true, chiefManageTeam: true } })
-    const conversation = service.store.saveConversation({ name: 'Chief', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
-    const controller = new AbortController()
-    const message = { id: 'timeout-message', conversationId: conversation.id, agentId: chief.id, author: chief.name, role: 'assistant' as const, text: '', status: 'running' as const, runId: 'timeout-run', createdAt: new Date().toISOString() }
-    const run = { id: 'timeout-run', status: 'running', workspaceId: workspace.id, workspacePath: workspace.path, conversationId: conversation.id, agentId: chief.id, messageId: message.id }
-    const context = { agent: chief, run, message, conversation, signal: controller.signal }
-    service.store.putMessage(message)
-    ;(service as any).active.set(run.id, controller)
-    const pending = (service as any).callTool(context, 'propose_boos', { agents: [{ instructions: 'Revise interfaces.' }] })
-    const approval = service.store.approvals().find(item => item.runId === run.id)!
-    expect(approval.status).toBe('pending')
-    await (service as any).finish(context, 'failed', 'O motor encerrou.')
-    expect(service.store.approval(approval.id)?.status).toBe('interrupted')
-    await expect(service.respondApproval(approval.id, true)).rejects.toThrow('não está mais pendente')
-    expect(String(await pending)).toContain('negada')
-    expect(service.store.agents().filter(item => item.role !== 'chief')).toHaveLength(0)
-  })
-
-  it.each(['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const)('propõe equipe com aprovação e preserva escopo em qualquer motor: %s', async runtime => {
+  it.each(['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const)('cria equipe direto e preserva escopo em qualquer motor: %s', async runtime => {
     const { service, workspace, propose, names } = setup(runtime)
-    expect(names()).toEqual(expect.arrayContaining(['group_members', 'propose_boos', 'propose_team', 'ask_agent']))
-    const approval = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
-    const reply = await propose('propose_boos', { agents: [
+    expect(names()).toEqual(expect.arrayContaining(['group_members', 'agent_create', 'team_set', 'ask_agent']))
+    const approval = vi.spyOn(service as any, 'requestApproval')
+    const reply = await propose('agent_create', { agents: [
       { description: 'Arquitetura do projeto', instructions: 'Planeje a arquitetura.' },
       { description: 'Implementação frontend', instructions: 'Implemente o frontend.' },
       { name: 'Nox', description: 'Revisão de qualidade', instructions: 'Revise o código.', temporary: false },
@@ -261,7 +238,7 @@ describe('Boos temporários do Chief', () => {
     expect(String(reply)).toContain('Atena')
     expect(String(reply)).toContain('Hefesto')
     expect(String(reply)).toContain('Nox')
-    expect(approval).toHaveBeenCalledTimes(1)
+    expect(approval).not.toHaveBeenCalled()
     const created = service.store.agents().filter(item => item.name !== 'Chief')
     expect(created.map(item => item.name)).toEqual(expect.arrayContaining(['Atena', 'Hefesto', 'Nox']))
     expect(new Set(created.map(item => item.color)).size).toBe(3)
@@ -276,50 +253,36 @@ describe('Boos temporários do Chief', () => {
 
   it('pedido de equipe mantém permanência, exceto membros explicitamente temporários', async () => {
     const { service, propose } = setup()
-    const approval = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
-    await propose('propose_boos', { purpose: 'team', agents: [
+    await propose('agent_create', { purpose: 'team', agents: [
       { name: 'Nox', instructions: 'Coordene o produto.' },
       { name: 'Íris', instructions: 'Cuide de suporte.', temporary: true },
     ] })
     expect(service.store.agents().find(item => item.name === 'Nox')?.temporary).toBe(false)
     expect(service.store.agents().find(item => item.name === 'Íris')).toMatchObject({ temporary: true, temporaryStatus: 'available' })
-    const proposal = JSON.parse((approval.mock.calls[0][2] as { proposal: string }).proposal)
-    expect(proposal.purpose).toBe('team')
   })
 
-  it('o Chief pode propor espontaneamente reforços temporários para uma lacuna numa tarefa', async () => {
+  it('o Chief pode criar espontaneamente reforços temporários para uma lacuna numa tarefa', async () => {
     const { service, workspace, propose, names } = setup()
-    const approval = vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
-    expect(names()).toContain('propose_boos')
-    await propose('propose_boos', { purpose: 'task', agents: [
+    expect(names()).toContain('agent_create')
+    await propose('agent_create', { purpose: 'task', agents: [
       { description: 'Testes e qualidade', instructions: 'Valide os testes.' },
       { description: 'Documentação técnica', instructions: 'Documente a API.' },
     ] })
     const extras = service.store.agents().filter(item => item.role !== 'chief')
     expect(extras).toHaveLength(2)
     expect(extras.every(item => item.temporary && item.temporaryStatus === 'available' && item.temporaryWorkspaceId === workspace.id)).toBe(true)
-    expect(approval).toHaveBeenCalledTimes(1)
-    const proposal = JSON.parse((approval.mock.calls[0][2] as { proposal: string }).proposal)
-    expect(proposal.purpose).toBe('task')
+    expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
   })
 
   it('rejeita finalidade inválida', async () => {
     const { propose } = setup()
-    await expect(propose('propose_boos', { purpose: 'unknown', agents: [{ instructions: 'Pesquise' }] })).rejects.toThrow(/Finalidade inválida/)
-  })
-
-  it.each(['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const)('não cria Boos com proposta negada em qualquer motor: %s', async runtime => {
-    const { service, propose } = setup(runtime)
-    vi.spyOn(service as any, 'requestApproval').mockResolvedValue(false)
-    const reply = await propose('propose_boos', { agents: [{ instructions: 'Pesquise.' }] })
-    expect(String(reply)).toMatch(/negada/)
-    expect(service.store.agents().filter(item => item.role !== 'chief')).toHaveLength(0)
+    await expect(propose('agent_create', { purpose: 'unknown', agents: [{ instructions: 'Pesquise' }] })).rejects.toThrow(/Finalidade inválida/)
   })
 
   it('aposenta Boo temporário após delegação sem apagar registro e histórico de identidade', async () => {
     const { service, chief, workspace, propose } = setup()
     vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
-    await propose('propose_boos', { purpose: 'task', agents: [{ name: 'Thoth', instructions: 'Pesquise.' }] })
+    await propose('agent_create', { purpose: 'task', agents: [{ name: 'Thoth', instructions: 'Pesquise.' }] })
     const boo = service.store.agents().find(item => item.name === 'Thoth')!
     const conversation = service.store.saveConversation({ name: 'Chief', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
     vi.spyOn(service as any, 'delegate').mockResolvedValue('Pesquisa concluída.')

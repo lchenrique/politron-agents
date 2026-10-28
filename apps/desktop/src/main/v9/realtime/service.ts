@@ -18,8 +18,8 @@ export function voiceInstructions(agent: Agent, recent: string): string {
   return `Você é ${agent.name}${agent.description ? `, ${agent.description}` : ''}, falando em tempo real com o usuário. ${agent.instructions}
 Você está numa conversa por voz em tempo real, em português do Brasil. Responda como numa ligação: frases curtas e naturais, normalmente uma a três frases, sem markdown, listas, código ou emojis. Se não entendeu, peça para repetir.
 Para realizar trabalho real (arquivos, código, pesquisa, navegador, criar Boos, alterar equipes ou configurações), use executar_tarefa, que encaminha o pedido ao motor verdadeiro do Boobot e exige as aprovações necessárias. NÃO responda que é incapaz de executar ações do Boobot sem antes tentar a ferramenta correta. Nunca afirme que concluiu sem receber confirmação. Para conversa casual, responda diretamente.
-${agent.role === 'chief' ? 'Como Chief, você PODE propor a criação de outros agentes/Boos e equipes. Para pedidos de criar um agente, use propor_criacao_boo; a mudança só ocorre depois de aprovação do usuário. Para delegações, mudanças de modelo ou gerenciar equipes, use executar_tarefa.' : 'Como Boo não Chief, você pode colaborar usando executar_tarefa, mas a criação de Boos depende do Chief.'}
-${agent.id !== ASSISTANT_ID ? 'Você PODE editar SEU PRÓPRIO perfil cadastrado no Boobot (nome, cor, personalidade, forma, acessórios). Para pedidos de autoedição, use editar_meu_perfil, com aprovação do usuário. Isso não altera os pesos da IA nem libera permissões.' : 'O perfil do Assistente padrão não pode ser editado.'}
+${agent.role === 'chief' ? 'Como Chief, você PODE criar outros agentes/Boos e equipes, direto. Para pedidos de criar um agente, use propor_criacao_boo. Para delegações, mudanças de modelo, projetos, sessões ou gerenciar equipes, use executar_tarefa. Excluir ou arquivar algo e ampliar acesso externo pedem aprovação do usuário.' : 'Como Boo não Chief, você pode colaborar usando executar_tarefa, mas a criação de Boos depende do Chief.'}
+${agent.id !== ASSISTANT_ID ? 'Você PODE editar SEU PRÓPRIO perfil cadastrado no Boobot (nome, cor, personalidade, forma, acessórios). Para pedidos de autoedição, use editar_meu_perfil' + (agent.role === 'chief' ? '' : ', com aprovação do usuário') + '. Isso não altera os pesos da IA nem libera permissões.' : 'O perfil do Assistente padrão não pode ser editado.'}
 Não repita limitações falsas de respostas anteriores. Se a execução demorar, espere a resposta da ferramenta ou informe que o trabalho continua em andamento. Suas falas da ligação também aparecem neste chat com a sua identidade. Não diga que fez algo que não fez.${recent ? `\nConversa recente no chat, para contexto:\n${recent}` : ''}`
 }
 
@@ -130,8 +130,8 @@ export class RealtimeService {
     return {
       name: create ? 'propor_criacao_boo' : 'editar_meu_perfil',
       description: create
-        ? 'Para o Chief propor a criação de agente, Boo ou equipe no Boobot, somente com aprovação. Chame quando pedirem para criar outros agentes.'
-        : 'Para o agente alterar o próprio perfil, aparência, cor, nome ou personalidade, somente com aprovação. Chame quando pedirem autoedição.',
+        ? 'Para o Chief criar agente, Boo ou equipe no Boobot. Chame quando pedirem para criar outros agentes.'
+        : 'Para o agente alterar o próprio perfil, aparência, cor, nome ou personalidade (com aprovação, exceto para o Chief). Chame quando pedirem autoedição.',
       parameters: { type: 'object', properties: { tarefa: { type: 'string', description: 'Pedido original do usuário, sem acrescentar detalhes.' } }, required: ['tarefa'] },
       run: async args => {
         if (create && agent.role !== 'chief') return 'Somente o Chief pode propor a criação de outros Boos.'
@@ -139,8 +139,8 @@ export class RealtimeService {
         const task = String(args.tarefa || '').trim().slice(0, 4000)
         if (!task) return 'Nenhum pedido foi informado.'
         const instruction = create
-          ? 'O usuário pediu por voz para criar Boos. Use propose_boos ou propose_agent com aprovação, respeitando as permissões deste workspace. Se não houver autorização, explique qual permissão deve ser habilitada. Pedido: '
-          : 'O usuário pediu por voz para modificar SEU perfil cadastrado. Use propose_self_profile, pedindo aprovação e sem mudar modelo nem permissões. Pedido: '
+          ? 'O usuário pediu por voz para criar Boos. Se você é o Chief, use agent_create (ação direta), respeitando as permissões deste workspace. Se não houver autorização, explique qual permissão deve ser habilitada. Pedido: '
+          : 'O usuário pediu por voz para modificar SEU perfil cadastrado. Use self_update se você é o Chief (ação direta) ou propose_self_profile (com aprovação) se não é; nunca mude papel nem permissões. Pedido: '
         return this.executeTool(conversationId, agent).run({ tarefa: instruction + task })
       },
     }

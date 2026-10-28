@@ -38,7 +38,7 @@ describe('autonomia do Chief e acesso à pasta', () => {
     const { service, workspace, context, broker, root } = setup()
     // Qualquer pedido indevido de confirmação deve falhar imediatamente, sem travar o teste.
     service.on('workspace-event', event => { if (event.type === 'approval' && event.approval.status === 'pending') void service.respondApproval(event.approval.id, false) })
-    const reply = await broker.callTool(context, 'propose_boos', { purpose: 'team', agents: [{ name: 'Hermes', instructions: 'Implemente o frontend.' }] })
+    const reply = await broker.callTool(context, 'agent_create', { purpose: 'team', agents: [{ name: 'Hermes', instructions: 'Implemente o frontend.' }] })
     const worker = service.store.agents().find(agent => agent.name === 'Hermes')!
     expect(reply).toContain('Hermes')
     expect(worker).toMatchObject({ canWrite: true, approvalMode: 'bypass', computerUse: false, temporary: false })
@@ -58,8 +58,7 @@ describe('autonomia do Chief e acesso à pasta', () => {
   it('adiciona Boos existentes à conversa atual ao formar a equipe e mantém o Chief como líder', async () => {
     const { service, context, broker } = setup()
     const worker = service.saveAgent({ name: 'Brigid', instructions: 'Cuide do design.' })
-    vi.spyOn(broker, 'requestApproval').mockResolvedValue(true)
-    await broker.callTool(context, 'propose_team', { agents: [worker.alias] })
+    await broker.callTool(context, 'team_set', { conversation_id: context.conversation.id, agents: [worker.alias] })
     expect(service.store.conversation(context.conversation.id)).toMatchObject({ agentIds: [context.agent.id, worker.id], kind: 'group', leaderAgentId: context.agent.id })
   })
 
@@ -84,7 +83,7 @@ describe('autonomia do Chief e acesso à pasta', () => {
     const { service, context, workspace, broker } = setup()
     service.store.saveWorkspace({ id: workspace.id, permissions: { ...workspace.permissions!, filesWrite: 'deny', chiefCreateAgents: false } })
     await expect(broker.callTool(context, 'workspace_write', { path: 'x', content: 'x' })).rejects.toThrow(/bloqueia/)
-    await expect(broker.callTool(context, 'propose_boos', { agents: [{ instructions: 'Implemente.' }] })).rejects.toThrow(/não pode criar/)
+    await expect(broker.callTool(context, 'agent_create', { agents: [{ instructions: 'Implemente.' }] })).rejects.toThrow(/não pode criar/)
     const aborted = { ...context, signal: AbortSignal.abort() }
     await expect(broker.requestApproval(aborted, 'command', { command: 'echo teste' }, true)).resolves.toBe(false)
   })
@@ -93,7 +92,7 @@ describe('autonomia do Chief e acesso à pasta', () => {
     const { service, context, broker, workspace } = setup()
     const workers = Array.from({ length: 9 }, (_, index) => service.saveAgent({ name: `Membro ${index}`, instructions: 'Revise.' }))
     context.conversation = service.saveConversation({ id: context.conversation.id, agentIds: [context.agent.id, ...workers.map(agent => agent.id)], kind: 'group' })
-    await expect(broker.callTool(context, 'propose_boos', { agents: [{ name: 'Excedente', instructions: 'Implemente.' }] })).rejects.toThrow(/dez participantes/)
+    await expect(broker.callTool(context, 'agent_create', { agents: [{ name: 'Excedente', instructions: 'Implemente.' }] })).rejects.toThrow(/dez participantes/)
     expect(service.store.agents().some(agent => agent.name === 'Excedente')).toBe(false)
     expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
     expect(service.store.conversation(context.conversation.id).agentIds).toHaveLength(10)
