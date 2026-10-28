@@ -3,6 +3,7 @@ import { ipcMain, shell, WebContentsView, type BrowserWindow, type IpcMainInvoke
 import { safeWebUrl, type PlatformBrowserBounds, type PlatformBrowserOwner, type PlatformBrowserState } from '../../shared/platform-browser'
 
 const sameOwner = (a: PlatformBrowserOwner | null, b: PlatformBrowserOwner | null) => !!a && !!b && a.workspaceId === b.workspaceId && a.conversationId === b.conversationId && a.agentId === b.agentId
+const ownerKey = (owner: PlatformBrowserOwner) => `${owner.conversationId}:${owner.agentId}`
 const validOwner = (owner: unknown): owner is PlatformBrowserOwner => !!owner && typeof owner === 'object' && ['workspaceId', 'conversationId', 'agentId'].every(key => typeof (owner as Record<string, unknown>)[key] === 'string' && ((owner as Record<string, string>)[key]).length > 0 && ((owner as Record<string, string>)[key]).length <= 200)
 function normalizeAction(operation: string, args: Record<string, unknown>): Record<string, unknown> {
   if (operation === 'click') {
@@ -115,6 +116,9 @@ export class PlatformBrowser {
   private sharing: PlatformBrowserOwner | null = null
   private generation = 0
   private documentEpoch = 0
+  private blocked = new Set<string>()
+  private waiters = new Set<() => void>()
+  private stopWaiters = new Set<() => void>()
   constructor(private readonly host: () => Host | null, private readonly createView: () => View = createPlatformBrowserView,
     private readonly openExternalUrl: (url: string) => Promise<void> = url => shell.openExternal(url),
     private readonly authorizeOwner: (owner: PlatformBrowserOwner) => boolean = () => false) {}
@@ -145,6 +149,7 @@ export class PlatformBrowser {
     this.visible = visible && width > 0 && height > 0
     this.view.setVisible(this.visible)
     if (!this.visible) this.revokeSharing()
+    else for (const wake of [...this.waiters]) wake()
   }
   setSharingContext(owner: PlatformBrowserOwner | null): void {
     if (owner !== null && !validOwner(owner)) throw new Error('Contexto inválido.')
@@ -153,10 +158,36 @@ export class PlatformBrowser {
   }
   sharingState(): PlatformBrowserOwner | null { return this.sharing ? { ...this.sharing } : null }
   grantSharing(owner: PlatformBrowserOwner): void {
+    this.blocked.delete(ownerKey(owner))
     if (!validOwner(owner) || !sameOwner(owner, this.context) || !this.visible || !this.view || !safeWebUrl(this.view.webContents.getURL()) || !this.authorizeOwner(owner)) throw new Error('Não é possível compartilhar este navegador neste contexto.')
     this.generation++; this.sharing = { ...owner }; this.publish()
   }
-  revokeSharing(): void {
+  /** O agente abre/mostra a aba e assume o compartilhamento sem clique, salvo bloqueio por revogação do usuário. */
+  async acquireForAgent(owner: PlatformBrowserOwner, url?: string, timeoutMs = 5000): Promise<void> {
+    if (this.blocked.has(ownerKey(owner))) throw new Error('Compartilhamento do navegador bloqueado pelo usuário nesta conversa.')
+    if (!url && sameOwner(owner, this.sharing) && this.visible) return
+    const view = this.ensure()
+    this.context = { ...owner }
+    this.host()?.webContents.send('platformBrowser:reveal', owner)
+    // Espera um evento (ou o prazo); resolve false se expirou.
+    const until = (ready: () => boolean, register: (wake: () => void) => () => void) => new Promise<boolean>(resolve => {
+      if (ready()) return resolve(true)
+      const done = (ok: boolean) => { clearTimeout(timer); unregister(); resolve(ok) }
+      const timer = setTimeout(() => done(false), timeoutMs)
+      const unregister = register(() => { if (ready()) done(true) })
+    })
+    const watch = (set: Set<() => void>) => (wake: () => void) => { set.add(wake); return () => { set.delete(wake) } }
+    if (!await until(() => this.visible, watch(this.waiters))) throw new Error('A aba Navegador não pôde ser aberta.')
+    if (url) {
+      let stopped = false
+      this.navigate(url)
+      await until(() => stopped, wake => watch(this.stopWaiters)(() => { stopped = true; wake() })) // expirar aqui não é erro: segue com a página atual
+    }
+    if (!safeWebUrl(view.webContents.getURL())) throw new Error('Nenhuma página aberta: use browser_open primeiro.')
+    this.generation++; this.sharing = { ...owner }; this.publish()
+  }
+  revokeSharing(byUser = false): void {
+    if (byUser && this.sharing) this.blocked.add(ownerKey(this.sharing))
     this.generation++
     if (this.sharing) { this.sharing = null; this.publish() }
   }
@@ -242,7 +273,7 @@ export class PlatformBrowser {
     // Pop-ups permanecem na mesma aba; nada é entregue ao sistema sem gesto do usuário.
     contents.setWindowOpenHandler(({ url }) => { const safe = safeWebUrl(url); if (safe) { this.documentEpoch++; void contents.loadURL(safe).catch(() => undefined) } return { action: 'deny' } })
     contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) { this.error = description || 'Falha ao carregar a página.'; this.publish() } })
-    for (const name of ['did-start-loading', 'did-stop-loading', 'did-navigate', 'did-navigate-in-page', 'page-title-updated'] as const) contents.on(name as 'did-stop-loading', () => { if (name === 'did-start-loading' || name === 'did-navigate' || name === 'did-navigate-in-page') this.documentEpoch++; this.publish() })
+    for (const name of ['did-start-loading', 'did-stop-loading', 'did-navigate', 'did-navigate-in-page', 'page-title-updated'] as const) contents.on(name as 'did-stop-loading', () => { if (name === 'did-start-loading' || name === 'did-navigate' || name === 'did-navigate-in-page') this.documentEpoch++; if (name === 'did-stop-loading') for (const wake of [...this.stopWaiters]) wake(); this.publish() })
     view.setVisible(false)
     host.contentView.addChildView(view as WebContentsView)
     this.view = view
@@ -267,5 +298,5 @@ export function registerPlatformBrowserIpc(browser: PlatformBrowser, isMainSende
   handle('close', () => browser.close())
   handle('setSharingContext', owner => browser.setSharingContext(owner as PlatformBrowserOwner | null))
   handle('grantSharing', owner => browser.grantSharing(owner as PlatformBrowserOwner))
-  handle('revokeSharing', () => browser.revokeSharing())
+  handle('revokeSharing', () => browser.revokeSharing(true))
 }

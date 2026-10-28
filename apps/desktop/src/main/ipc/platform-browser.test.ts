@@ -160,4 +160,40 @@ describe('navegador da plataforma', () => {
     expect(fake.view.webContents.close).toHaveBeenCalled()
     expect(browser.state()).toBeNull()
   })
+  describe('acquireForAgent', () => {
+    const owner = { workspaceId: 'w', conversationId: 'c', agentId: 'a' }
+    const bounds = { x: 0, y: 0, width: 100, height: 100 }
+    it('envia reveal, espera visível e compartilha', async () => {
+      const { fake, host, browser } = setup()
+      const pending = browser.acquireForAgent(owner, 'https://example.com/')
+      expect(host.webContents.send).toHaveBeenCalledWith('platformBrowser:reveal', owner)
+      browser.setBounds(bounds, true)
+      await Promise.resolve(); await Promise.resolve()
+      ;(fake.listeners.get('did-stop-loading') as () => void)()
+      await pending
+      expect(browser.sharingState()).toEqual(owner)
+    })
+    it('sem página lança orientação', async () => {
+      const { browser } = setup()
+      const pending = browser.acquireForAgent(owner)
+      browser.setBounds(bounds, true)
+      await expect(pending).rejects.toThrow(/use browser_open primeiro/)
+    })
+    it('revogação pelo usuário bloqueia acquire até novo grantSharing', async () => {
+      const { fake, browser } = setup()
+      browser.navigate('https://example.com/')
+      const first = browser.acquireForAgent(owner); browser.setBounds(bounds, true); await first
+      browser.revokeSharing(true)
+      await expect(browser.acquireForAgent(owner)).rejects.toThrow(/bloqueado pelo usuário/)
+      browser.setSharingContext(owner); browser.grantSharing(owner)
+      browser.revokeSharing()
+      await browser.acquireForAgent(owner)
+      expect(browser.sharingState()).toEqual(owner)
+      expect(fake.view.webContents.loaded).toHaveLength(1)
+    })
+    it('timeout quando a aba não aparece', async () => {
+      const { browser } = setup()
+      await expect(browser.acquireForAgent(owner, 'https://example.com/', 50)).rejects.toThrow(/não pôde ser aberta/)
+    })
+  })
 })
