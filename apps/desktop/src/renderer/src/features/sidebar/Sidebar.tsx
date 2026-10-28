@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Archive, CalendarClock, ChevronDown, ChevronRight, CirclePlus, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Users } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Archive, ArrowLeft, CalendarClock, ChevronDown, ChevronRight, CirclePlus, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
@@ -15,8 +15,10 @@ import type { EditorKind } from '../editors/Editor'
 import { HostSelector } from '../hosts/HostSelector'
 import { useProjectGroups } from './projectGroups'
 
-/** Quantas sessoes cada projeto mostra antes de exigir "ver mais". Limita o DOM do sidebar sem esconder o trabalho recente. */
+/** Quantas sessoes o projeto aberto mostra antes de exigir "ver mais". Limita o DOM do sidebar sem esconder o trabalho recente. */
 const SESSION_LIMIT = 10
+const TAB_LIST = 'ds-segmented mx-2.5 flex h-auto rounded-[calc(var(--radius)+1px)] bg-[var(--segmented-track)] p-0.5'
+const TAB_TRIGGER = 'h-[26px] flex-1 rounded-[calc(var(--radius)-1px)] px-2.5 py-0 text-xs text-muted-foreground shadow-none ring-offset-0 hover:text-foreground focus-visible:ring-offset-0 data-[state=active]:bg-[var(--segmented-thumb)] data-[state=active]:text-foreground data-[state=active]:shadow-[var(--shadow-xs),0_0_0_1px_var(--border)]'
 
 function readSet(key: string): Set<string> {
   try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []) } catch { return new Set() }
@@ -52,6 +54,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const setSection = onSectionChange ?? setStoredSection
   useEffect(() => { localStorage.setItem('politron.sidebar.section', section) }, [section])
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readSet('politron.sidebar.collapsed-workspaces'))
+  // Projeto aberto na parte de baixo da barra; null mostra a lista de projetos.
+  const [enteredId, setEnteredId] = useState<string | null>(() => { try { return localStorage.getItem('politron.sidebar.project') } catch { return null } })
+  useEffect(() => { try { if (enteredId) localStorage.setItem('politron.sidebar.project', enteredId); else localStorage.removeItem('politron.sidebar.project') } catch { /* preferência opcional */ } }, [enteredId])
+  const [projectTab, setProjectTab] = useState<'sessions' | 'team'>('sessions')
   const [favorites, setFavorites] = useState<Set<string>>(() => readSet('politron.sidebar.favorites'))
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null)
   const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null)
@@ -79,8 +85,24 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const toggleFavorite = (key: string) => setFavorites(current => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next })
   const isFavorite = (type: 'workspace' | 'conversation' | 'agent', id: string) => favorites.has(favoriteKey(type, id))
   // Indices derivados do snapshot: a barra lateral nao pode varrer o snapshot inteiro por projeto.
-  const { workspacesById, legacyConversations, rootWorkspaces, childWorkspaces, conversationsOf, needsAttention } = useSidebarIndex(snapshot)
-  const workspaceOf = (id: string) => workspacesById.get(id)
+  const { workspacesById, agentsById, legacyConversations, rootWorkspaces, childWorkspaces, conversationsOf, needsAttention } = useSidebarIndex(snapshot)
+  const enteredProject = enteredId ? workspacesById.get(enteredId) : undefined
+  // Projeto apagado ou arquivado volta para a lista. O id fica guardado: no início o snapshot ainda chega vazio.
+  const project = enteredProject && !enteredProject.archived && enteredProject.name ? enteredProject : undefined
+  const enterProject = (id: string | null) => { setEnteredId(id); setProjectTab('sessions') }
+  // Abrir uma conversa ou projeto por fora (central, busca, links, notificações) leva a barra para o projeto dele.
+  // A primeira conversa vista é a restaurada na inicialização: não sobrepõe o projeto lembrado.
+  const navigationTarget = activeWorkspaceId || (selected && (workspacesById.get(selected.workspaceId)?.name ? selected.workspaceId : rootWorkspaces.find(item => item.name === 'Livre' && item.kind === 'free')?.id)) || null
+  const navigationKey = activeWorkspaceId ? 'workspace:' + activeWorkspaceId : selected ? 'conversation:' + selected.id : ''
+  const firstNavigation = useRef(true)
+  useEffect(() => {
+    if (!navigationKey) return
+    const first = firstNavigation.current
+    firstNavigation.current = false
+    if (first && !activeWorkspaceId) return
+    if (navigationTarget) enterProject(navigationTarget)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reage só à navegação, não a cada snapshot
+  }, [navigationKey])
   const workspaceNeedsAttention = (workspaceId: string) => conversationsOf(workspaceId).some(conversation => (unreadCounts[conversation.id] || 0) > 0 || needsAttention(conversation.id))
   const archiveWorkspace = async (workspace: Workspace) => {
     const preserve = workspace.changes > 0
@@ -160,55 +182,86 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </DropdownMenu>
     </div>
 
-  const workspaceNode = (workspace: Workspace, depth = 0) => {
-    const isCollapsed = collapsed.has(workspace.id)
+  const workspaceMenu = (workspace: Workspace, triggerClassName: string) =>
+    <DropdownMenu open={openWorkspaceMenuId === workspace.id} onOpenChange={open => setOpenWorkspaceMenuId(open ? workspace.id : null)}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className={'size-6 shrink-0 ' + triggerClassName} aria-label={`Ações de ${workspace.name}`}><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+      <DropdownMenuItem disabled={!canChat} onSelect={() => void onStartConversation(workspace.id)}><Plus className="mr-2 size-4" />Nova conversa</DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => toggleFavorite(favoriteKey('workspace', workspace.id))}><Star className="mr-2 size-4" />{isFavorite('workspace', workspace.id) ? 'Remover dos favoritos' : 'Favoritar projeto'}</DropdownMenuItem>
+      {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'workspace', initial: workspace })}><Settings2 className="mr-2 size-4" />Editar projeto</DropdownMenuItem>}
+      {!browserMode && workspace.kind !== 'worktree' && workspace.kind !== 'free' && <DropdownMenuItem onSelect={() => { const branch = window.prompt('Nome da branch do novo worktree:'); if (!branch?.trim()) return; void window.appAPI.createWorktree({ sourceWorkspaceId: workspace.id, branch: branch.trim() }).catch(error => onNotice(errorText(error))) }}><GitBranch className="mr-2 size-4" />Novo worktree</DropdownMenuItem>}
+      {!browserMode && workspace.kind === 'worktree' && <DropdownMenuItem onSelect={() => void archiveWorkspace(workspace)}><Archive className="mr-2 size-4" />Arquivar worktree</DropdownMenuItem>}
+      {!browserMode && <DropdownMenuSub>
+        <DropdownMenuSubTrigger><FolderPlus className="mr-2 size-4" />Mover para pasta</DropdownMenuSubTrigger>
+        <DropdownMenuSubContent>
+          <DropdownMenuRadioGroup value={workspaceGroup[workspace.id] || 'none'} onValueChange={value => moveWorkspaceToGroup(workspace.id, value === 'none' ? null : value)}>
+            <DropdownMenuRadioItem value="none">Sem pasta</DropdownMenuRadioItem>
+            {groups.map(group => <DropdownMenuRadioItem key={group} value={group}>{group}</DropdownMenuRadioItem>)}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => openGroupDialog('create', { workspaceId: workspace.id })}>Nova pasta…</DropdownMenuItem>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>}
+      {!browserMode && <DropdownMenuItem onSelect={() => removeWorkspace(workspace)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 size-4" />Excluir projeto</DropdownMenuItem>}
+    </DropdownMenuContent></DropdownMenu>
+
+  const workspaceLabel = (workspace: Workspace) => workspace.kind === 'worktree' ? workspace.branch || workspace.name : workspace.name
+
+  /** Uma linha por projeto: clicar entra no projeto, sem renderizar as sessões dele. */
+  const projectRow = (workspace: Workspace) => {
+    const sessions = conversationsOf(workspace.id).length
+    return <div key={workspace.id} className="ds-nav-item group flex items-center gap-0.5 px-0.5" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
+      <Button variant="ghost" size={null} onClick={() => enterProject(workspace.id)} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1.5 text-left text-[12.5px] font-medium text-foreground/90 hover:bg-transparent hover:text-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
+        {workspace.kind === 'worktree' ? <GitBranch className="size-3.5 shrink-0 text-muted-foreground" /> : <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />}
+        <span className="min-w-0 flex-1 truncate">{workspaceLabel(workspace)}</span>
+        {isFavorite('workspace', workspace.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
+        {workspaceNeedsAttention(workspace.id) && <span aria-label="Workspace precisa de atenção" className="size-1.5 shrink-0 rounded-full bg-warning" />}
+        {workspace.kind === 'worktree' && !!workspace.changes && <span className="text-[10px] font-normal text-warning">{workspace.changes} alter.</span>}
+        <span className="text-[10px] font-normal tabular-nums text-faint-foreground" title={`${sessions} sessões`}>{sessions}</span>
+      </Button>
+      {workspaceMenu(workspace, 'mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100')}
+    </div>
+  }
+
+  /** Projeto aberto: cabeçalho com voltar e abas Projeto/Boos. Só a aba ativa é montada (Radix desmonta a inativa). */
+  const projectView = (workspace: Workspace) => {
     const allConversations = conversationsOf(workspace.id)
     const showAllSessions = expandedSessions.has(workspace.id)
     const conversations = showAllSessions ? allConversations : allConversations.slice(0, SESSION_LIMIT)
     const hiddenSessions = allConversations.length - conversations.length
     const children = childWorkspaces(workspace.id)
-    return <div key={workspace.id} className={depth ? 'ml-4 border-l border-border/40 pl-2' : ''}>
-      <div data-active={activeWorkspaceId === workspace.id} className="ds-nav-item group flex items-center gap-0.5 px-0.5" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
-        <Button variant="ghost" size="icon" className="flex size-6 shrink-0 rounded text-faint-foreground hover:bg-transparent hover:text-foreground" aria-label={isCollapsed ? `Expandir ${workspace.name}` : `Recolher ${workspace.name}`} onClick={() => toggle(workspace.id)}>{isCollapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}</Button>
-        <Button variant="ghost" size={null} onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1 text-left text-[12.5px] font-medium text-foreground/90 hover:bg-transparent hover:text-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
-          {workspace.kind === 'worktree' ? <GitBranch className="size-3.5 shrink-0 text-muted-foreground" /> : workspace.defaultAgentIds.length > 1 ? <Users className="size-3.5 shrink-0 text-muted-foreground" /> : <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />}
-          <span className="min-w-0 flex-1 truncate">{workspace.kind === 'worktree' ? workspace.branch || workspace.name : workspace.name}</span>
-          {workspaceNeedsAttention(workspace.id) && <span aria-label="Workspace precisa de atenção" className="size-1.5 shrink-0 rounded-full bg-warning" />}
-          {workspace.defaultAgentIds.length > 1 && <span className="text-[10px] font-normal text-faint-foreground">{workspace.defaultAgentIds.length} bots</span>}
-          {workspace.kind === 'worktree' && !!workspace.changes && <span className="text-[10px] font-normal text-warning">{workspace.changes} alter.</span>}
+    // Time: equipe padrão do projeto mais quem participa das conversas dele, como na elegibilidade de delegação.
+    const team = new Set(workspace.defaultAgentIds)
+    if (projectTab === 'team') for (const conversation of allConversations) for (const id of conversation.agentIds) team.add(id)
+    const teamAgents = [...team].map(id => agentsById.get(id)).filter((agent): agent is Agent => !!agent && agent.temporaryStatus !== 'retired')
+    return <Tabs value={projectTab} onValueChange={value => setProjectTab(value as 'sessions' | 'team')} className="flex min-h-0 flex-1 flex-col">
+      <div className="mx-2.5 mt-2 flex items-center gap-0.5">
+        <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Voltar aos projetos" title="Voltar aos projetos" onClick={() => enterProject(null)}><ArrowLeft className="size-4" /></Button>
+        <Button variant="ghost" size={null} onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1.5 text-left text-[13px] font-semibold">
+          <span className="min-w-0 flex-1 truncate">{workspaceLabel(workspace)}</span>
+          {isFavorite('workspace', workspace.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
         </Button>
-        <Button variant="ghost" size="icon" disabled={!canChat} className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Nova conversa em ${workspace.name}`} title="Nova conversa neste projeto" onClick={() => void onStartConversation(workspace.id)}><Plus className="size-3.5" /></Button>
-        <Button variant="ghost" size="icon" className={`size-6 shrink-0 ${isFavorite('workspace', workspace.id) ? 'text-warning' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`} aria-label={isFavorite('workspace', workspace.id) ? `Remover ${workspace.name} dos favoritos` : `Favoritar ${workspace.name}`} title={isFavorite('workspace', workspace.id) ? 'Remover dos favoritos' : 'Favoritar projeto'} onClick={() => toggleFavorite(favoriteKey('workspace', workspace.id))}><Star className="size-3.5" fill={isFavorite('workspace', workspace.id) ? 'currentColor' : 'none'} /></Button>
-        <DropdownMenu open={openWorkspaceMenuId === workspace.id} onOpenChange={open => setOpenWorkspaceMenuId(open ? workspace.id : null)}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Ações de ${workspace.name}`}><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-          {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'workspace', initial: workspace })}><Settings2 className="mr-2 size-4" />Editar projeto</DropdownMenuItem>}
-          {!browserMode && workspace.kind !== 'worktree' && workspace.kind !== 'free' && <DropdownMenuItem onSelect={() => { const branch = window.prompt('Nome da branch do novo worktree:'); if (!branch?.trim()) return; void window.appAPI.createWorktree({ sourceWorkspaceId: workspace.id, branch: branch.trim() }).catch(error => onNotice(errorText(error))) }}><GitBranch className="mr-2 size-4" />Novo worktree</DropdownMenuItem>}
-          {!browserMode && workspace.kind === 'worktree' && <DropdownMenuItem onSelect={() => void archiveWorkspace(workspace)}><Archive className="mr-2 size-4" />Arquivar worktree</DropdownMenuItem>}
-          {!browserMode && <DropdownMenuSub>
-            <DropdownMenuSubTrigger><FolderPlus className="mr-2 size-4" />Mover para pasta</DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuRadioGroup value={workspaceGroup[workspace.id] || 'none'} onValueChange={value => moveWorkspaceToGroup(workspace.id, value === 'none' ? null : value)}>
-                <DropdownMenuRadioItem value="none">Sem pasta</DropdownMenuRadioItem>
-                {groups.map(group => <DropdownMenuRadioItem key={group} value={group}>{group}</DropdownMenuRadioItem>)}
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => openGroupDialog('create', { workspaceId: workspace.id })}>Nova pasta…</DropdownMenuItem>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>}
-          {!browserMode && <DropdownMenuItem onSelect={() => removeWorkspace(workspace)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 size-4" />Excluir projeto</DropdownMenuItem>}
-        </DropdownMenuContent></DropdownMenu>
+        {workspaceMenu(workspace, '')}
       </div>
-      {!isCollapsed && <div className="ml-6 space-y-0.5">
-        {children.map(child => workspaceNode(child, depth + 1))}
+      <TabsList className={TAB_LIST + ' mt-1.5'}>
+        <TabsTrigger value="sessions" className={TAB_TRIGGER}>Projeto</TabsTrigger>
+        <TabsTrigger value="team" className={TAB_TRIGGER}>Boos</TabsTrigger>
+      </TabsList>
+      <TabsContent value="sessions" className="mt-0 min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3 pt-1">
+        <Button variant="ghost" size={null} disabled={!canChat} onClick={() => void onStartConversation(workspace.id)} className="flex h-7 w-full justify-start gap-1.5 rounded-md px-1.5 text-[12px] font-normal text-muted-foreground hover:text-foreground"><Plus className="size-3.5" />Nova sessão no projeto</Button>
+        {children.map(projectRow)}
         {conversations.map(conversationButton)}
         {!!hiddenSessions && <Button type="button" variant="ghost" size={null} onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="flex h-auto w-full justify-start gap-1 rounded px-2 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent/40 hover:text-foreground">Ver mais {hiddenSessions} sessões</Button>}
         {!conversations.length && !children.length && <p className="px-2 py-1 text-[10px] text-muted-foreground">Nenhuma conversa ainda.</p>}
-      </div>}
-    </div>
+      </TabsContent>
+      <TabsContent value="team" className="mt-0 min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3 pt-1">
+        {teamAgents.map(agent => agentRow(agent, agent.role === 'chief'))}
+        {!teamAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Este projeto ainda não tem time.</p>}
+      </TabsContent>
+    </Tabs>
   }
 
   const groupSection = (name: string | null, items: Workspace[], editable = true) => {
-    if (!name) return <div className="space-y-0.5">{items.map(workspace => workspaceNode(workspace))}</div>
-    return <ProjectGroupSection key={name} name={name} items={items} collapsed={collapsedGroups.has(name)} editable={editable} onToggle={() => toggleGroup(name)} onRename={() => openGroupDialog('rename', { name })} onRemove={() => removeGroup(name)} renderWorkspace={workspace => workspaceNode(workspace)} />
+    if (!name) return <div className="space-y-0.5">{items.map(projectRow)}</div>
+    return <ProjectGroupSection key={name} name={name} items={items} collapsed={collapsedGroups.has(name)} editable={editable} onToggle={() => toggleGroup(name)} onRename={() => openGroupDialog('rename', { name })} onRemove={() => removeGroup(name)} renderWorkspace={projectRow} />
   }
 
   const visibleAgents = useMemo(() => regularAgents.sort((a, b) =>
@@ -265,10 +318,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     </nav>}
     {!browserMode && !onOpenHome && <div className="px-2.5 py-1.5"><HostSelector /></div>}
     {!onOpenHome && showChief && chiefAgent && <section aria-label="Chief" className="px-3 py-2">{agentRow(chiefAgent, true)}</section>}
-    <Tabs value={section} onValueChange={value => setSection(value as 'projects' | 'agents')} className="flex min-h-0 flex-1 flex-col">
-      <TabsList className="ds-segmented mx-2.5 mt-2 flex h-auto rounded-[calc(var(--radius)+1px)] bg-[var(--segmented-track)] p-0.5">
-        <TabsTrigger value="projects" className="h-[26px] flex-1 rounded-[calc(var(--radius)-1px)] px-2.5 py-0 text-xs text-muted-foreground shadow-none ring-offset-0 hover:text-foreground focus-visible:ring-offset-0 data-[state=active]:bg-[var(--segmented-thumb)] data-[state=active]:text-foreground data-[state=active]:shadow-[var(--shadow-xs),0_0_0_1px_var(--border)]">Projetos</TabsTrigger>
-        <TabsTrigger value="agents" className="h-[26px] flex-1 rounded-[calc(var(--radius)-1px)] px-2.5 py-0 text-xs text-muted-foreground shadow-none ring-offset-0 hover:text-foreground focus-visible:ring-offset-0 data-[state=active]:bg-[var(--segmented-thumb)] data-[state=active]:text-foreground data-[state=active]:shadow-[var(--shadow-xs),0_0_0_1px_var(--border)]">Boos</TabsTrigger>
+    {project ? projectView(project) : <Tabs value={section} onValueChange={value => setSection(value as 'projects' | 'agents')} className="flex min-h-0 flex-1 flex-col">
+      <TabsList className={TAB_LIST + ' mt-2'}>
+        <TabsTrigger value="projects" className={TAB_TRIGGER}>Projetos</TabsTrigger>
+        <TabsTrigger value="agents" className={TAB_TRIGGER}>Boos</TabsTrigger>
       </TabsList>
       <TabsContent value="projects" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
         {!!favorites.size && <section aria-label="Favoritos" className="space-y-0.5">
@@ -277,7 +330,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             const [type, id] = key.split(':', 2)
             if (type === 'workspace') {
               const workspace = snapshot.workspaces.find(item => item.id === id && !item.archived)
-              return workspace ? <Button key={key} variant="ghost" onClick={() => onSelectWorkspace?.(id)} className="h-8 w-full justify-start gap-2 px-3 text-xs"><FolderOpen className="size-3.5 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-left">{workspace.name}</span><Star className="size-3 fill-warning text-warning" /></Button> : null
+              return workspace ? <Button key={key} variant="ghost" onClick={() => enterProject(id)} className="h-8 w-full justify-start gap-2 px-3 text-xs"><FolderOpen className="size-3.5 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-left">{workspace.name}</span><Star className="size-3 fill-warning text-warning" /></Button> : null
             }
             if (type === 'conversation') {
               const conversation = snapshot.conversations.find(item => item.id === id && !item.archived)
@@ -304,7 +357,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
           {!visibleAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">{chiefAgent ? 'Nenhum outro agente cadastrado. Use o botão + para criar.' : 'Crie um Boo pelo botão + para começar.'}</p>}
         </section>
       </TabsContent>
-    </Tabs>
+    </Tabs>}
     {!browserMode && <footer className="flex items-center gap-1 border-t border-sidebar-border px-2 py-1.5">
       <Button variant="ghost" disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} title={selected?.workspaceId ? 'Abrir a pasta do projeto desta conversa' : 'Abra uma conversa de projeto para acessar a pasta'} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><FolderOpen className="size-3.5" />Abrir pasta</Button>
       <Button variant="ghost" onClick={onOpenSettings} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><Settings2 className="size-3.5" />Configurações</Button>

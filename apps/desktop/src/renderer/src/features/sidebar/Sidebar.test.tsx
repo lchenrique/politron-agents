@@ -34,6 +34,11 @@ describe('hierarquia visual do sidebar', () => {
   })
 })
 
+/** Entra no projeto clicando na sua linha da lista. */
+function enter(name: string) {
+  fireEvent.click(screen.getByRole('button', { name: new RegExp('^' + name) }))
+}
+
 function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
   return render(<Sidebar snapshot={snapshot} selected={undefined} unreadCounts={{}} agentStates={{}} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} onOpenSettings={vi.fn()} onDeleteWorkspace={vi.fn()} onDeleteConversation={vi.fn()} onDeleteAgent={vi.fn()} onSetChief={vi.fn()} onNotice={vi.fn()} {...overrides} />)
 }
@@ -98,7 +103,8 @@ describe('contatos de agentes na barra lateral', () => {
   it('inicia uma conversa no workspace pelo atalho da árvore', () => {
     const onStartConversation = vi.fn()
     renderSidebar({ onStartConversation })
-    fireEvent.click(screen.getByRole('button', { name: `Nova conversa em ${workspace.name}` }))
+    enter(workspace.name)
+    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão no projeto' }))
     expect(onStartConversation).toHaveBeenCalledWith(workspace.id)
   })
 
@@ -146,26 +152,73 @@ describe('contatos de agentes na barra lateral', () => {
     const conversation: Conversation = { id: 'conversation-1', kind: 'direct', name: 'Revisão', agentIds: [agent.id], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
     const withApproval: Snapshot = { ...snapshot, conversations: [conversation], approvals: [{ id: 'approval-1', runId: 'run-1', conversationId: conversation.id, agentId: agent.id, kind: 'write', details: { path: 'notes.txt', after: 'texto' }, status: 'pending', createdAt: '', resolvedAt: null }] }
     renderSidebar({ snapshot: withApproval })
-    expect(screen.getByLabelText('Aguardando aprovação')).toBeInTheDocument()
     expect(screen.getByLabelText('Workspace precisa de atenção')).toBeInTheDocument()
+    enter(workspace.name)
+    expect(screen.getByLabelText('Aguardando aprovação')).toBeInTheDocument()
   })
 })
 
 describe('colapso e exclusão da barra lateral', () => {
-  it('recolhe e expande conversas do workspace', () => {
+  it('mostra só projetos na raiz e as sessões ao entrar, com voltar', () => {
     const conversation: Conversation = { id: 'thread-1', kind: 'direct', name: 'Conversa no workspace', agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
     renderSidebar({ snapshot: { ...snapshot, conversations: [conversation] } })
-    expect(screen.getByText('Conversa no workspace')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: `Recolher ${workspace.name}` }))
     expect(screen.queryByText('Conversa no workspace')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: `Expandir ${workspace.name}` }))
+    expect(screen.getByRole('button', { name: /^Instruções de Paz/ })).toHaveTextContent('1')
+    enter(workspace.name)
     expect(screen.getByText('Conversa no workspace')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Projeto' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Projetos' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar aos projetos' }))
+    expect(screen.queryByText('Conversa no workspace')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
+  })
+
+  it('mostra o time do projeto na aba Boos, ou aviso quando não há', () => {
+    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Sem time' }
+    const conversation: Conversation = { id: 'thread-team', kind: 'direct', name: 'Com Lyra', agentIds: [agent.id], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [workspace, other], conversations: [conversation] } })
+    enter(workspace.name)
+    expect(screen.queryByRole('button', { name: /Lyra @lyra/ })).not.toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Boos' }), { button: 0 })
+    expect(screen.getByRole('button', { name: /Lyra @lyra/ })).toBeInTheDocument()
+    expect(screen.queryByText('Com Lyra')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar aos projetos' }))
+    enter('Sem time')
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Boos' }), { button: 0 })
+    expect(screen.getByText('Este projeto ainda não tem time.')).toBeInTheDocument()
+  })
+
+  it('entra no projeto da conversa aberta por fora da barra', () => {
+    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Outro projeto' }
+    const first: Conversation = { id: 'c-1', kind: 'direct', name: 'Primeira', agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
+    const second: Conversation = { ...first, id: 'c-2', name: 'Segunda', workspaceId: other.id }
+    const data = { ...snapshot, workspaces: [workspace, other], conversations: [first, second] }
+    const props = { snapshot: data, unreadCounts: {}, agentStates: {}, onSelectConversation: vi.fn(), onStartConversation: vi.fn(), onOpenAgent: vi.fn(), onOpenEditor: vi.fn(), onOpenSettings: vi.fn(), onDeleteWorkspace: vi.fn(), onDeleteConversation: vi.fn(), onDeleteAgent: vi.fn(), onSetChief: vi.fn(), onNotice: vi.fn() }
+    const view = render(<Sidebar {...props} selected={first} />)
+    // A conversa restaurada na abertura não tira a barra da raiz.
+    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
+    view.rerender(<Sidebar {...props} selected={second} />)
+    expect(screen.getByText('Segunda')).toBeInTheDocument()
+    expect(screen.queryByText('Primeira')).not.toBeInTheDocument()
+    view.rerender(<Sidebar {...props} selected={first} />)
+    expect(screen.getByText('Primeira')).toBeInTheDocument()
+  })
+
+  it('lembra o projeto aberto e volta à raiz quando ele some', () => {
+    localStorage.setItem('politron.sidebar.project', workspace.id)
+    const first = renderSidebar()
+    expect(screen.getByRole('button', { name: 'Voltar aos projetos' })).toBeInTheDocument()
+    first.unmount()
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [{ ...workspace, archived: true }] } })
+    expect(screen.queryByRole('button', { name: 'Voltar aos projetos' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
   })
   it('usa modal para cancelar ou confirmar exclusão sem chamar window.confirm', async () => {
     const conversation: Conversation = { id: 'thread-delete', kind: 'direct', name: 'Apagar teste', agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
     const onDeleteConversation = vi.fn()
     const confirm = vi.spyOn(window, 'confirm')
     renderSidebar({ snapshot: { ...snapshot, conversations: [conversation] }, onDeleteConversation })
+    enter(workspace.name)
     const actions = screen.getByRole('button', { name: 'Ações da conversa Apagar teste' })
     fireEvent.contextMenu(actions.parentElement!)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir conversa' }))
@@ -184,14 +237,16 @@ describe('colapso e exclusão da barra lateral', () => {
 })
 
 describe('navegação orientada a workspaces', () => {
-  it('abrir o workspace não cria sessão: apenas o botão + cria', () => {
+  it('abrir o workspace não cria sessão: apenas o botão de nova sessão cria', () => {
     const onSelectWorkspace = vi.fn()
     const onStartConversation = vi.fn()
     renderSidebar({ onSelectWorkspace, onStartConversation })
     fireEvent.click(screen.getByTitle('Workspace livre'))
+    expect(onSelectWorkspace).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTitle('Workspace livre'))
     expect(onSelectWorkspace).toHaveBeenCalledExactlyOnceWith(workspace.id)
     expect(onStartConversation).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: `Nova conversa em ${workspace.name}` }))
+    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão no projeto' }))
     expect(onStartConversation).toHaveBeenCalledExactlyOnceWith(workspace.id)
   })
 
@@ -200,10 +255,10 @@ describe('navegação orientada a workspaces', () => {
     const free: Workspace = { ...workspace, id: 'free', name: 'Livre' }
     const conversation: Conversation = { id: 'legacy-session', kind: 'direct', name: 'Sessão preservada', agentIds: [], workspaceId: legacy.id, titleAuto: false, revision: 1, archived: false, createdAt: '' }
     renderSidebar({ snapshot: { ...snapshot, workspaces: [legacy, free], conversations: [conversation] } })
-    expect(screen.getByText('Sessão preservada')).toBeInTheDocument()
-    expect(screen.queryByText('Sessões antigas')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Recolher Livre' }))
     expect(screen.queryByText('Sessão preservada')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sessões antigas')).not.toBeInTheDocument()
+    enter('Livre')
+    expect(screen.getByText('Sessão preservada')).toBeInTheDocument()
   })
 
   it('usa as abas para alternar agentes e projetos, sem cabeçalhos repetidos', () => {
@@ -214,6 +269,6 @@ describe('navegação orientada a workspaces', () => {
     expect(screen.getByRole('button', { name: /Lyra @lyra/ })).toBeInTheDocument()
     expect(screen.queryByText('Meus Polis')).not.toBeInTheDocument()
     fireEvent.mouseDown(screen.getByRole('tab', { name: /Projetos/ }), { button: 0 })
-    expect(screen.getByRole('button', { name: `Recolher ${workspace.name}` })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Instruções de Paz/ })).toBeInTheDocument()
   })
 })
