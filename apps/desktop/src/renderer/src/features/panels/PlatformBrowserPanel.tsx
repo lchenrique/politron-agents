@@ -28,6 +28,10 @@ export function PlatformBrowserPanel({ onNotice, workspaceId, conversationId, ag
   const isEligible = eligible.some(agent => agent.id === agentId)
   const owner = useMemo(() => workspaceId && conversationId && agentId && isEligible ? { workspaceId, conversationId, agentId } : null, [workspaceId, conversationId, agentId, isEligible])
   useEffect(() => { setAgentId('') }, [workspaceId, conversationId])
+  const sharing = state?.sharing
+  const ownSharing = !!sharing && sharing.workspaceId === workspaceId && sharing.conversationId === conversationId
+  // Agente que adquiriu o navegador sozinho: reflete o compartilhamento em vez de escondê-lo.
+  useEffect(() => { if (sharing && ownSharing) setAgentId(sharing.agentId) }, [sharing, ownSharing, workspaceId, conversationId])
   useEffect(() => {
     setExternal(null)
     if (!api || !owner) return
@@ -37,6 +41,8 @@ export function PlatformBrowserPanel({ onNotice, workspaceId, conversationId, ag
   }, [api, owner])
   useEffect(() => {
     if (!api) return
+    // Sem escolha do usuário não toca no contexto: pode ser o de um agente que adquiriu o navegador.
+    if (!owner) return
     void api.setSharingContext(owner).catch(() => undefined)
     return () => { void api.setSharingContext(null).catch(() => undefined) }
   }, [api, owner])
@@ -97,7 +103,7 @@ export function PlatformBrowserPanel({ onNotice, workspaceId, conversationId, ag
       </select>
       {state?.sharing ? <Button type="button" size="sm" variant="outline" onClick={() => void api.revokeSharing().catch(error => onNotice(String(error)))}>Revogar compartilhamento</Button>
         : <Button type="button" size="sm" variant="outline" disabled={!current || !workspaceId || !conversationId || !agentId} onClick={() => { if (workspaceId && conversationId && agentId) void api.grantSharing({ workspaceId, conversationId, agentId }).catch(error => onNotice(error instanceof Error ? error.message : 'Não foi possível compartilhar.')) }}>Compartilhar com agente</Button>}
-      <span className="text-muted-foreground">{state?.sharing ? 'Agente pode ler e operar a página visível. Ações já enviadas podem concluir após revogar.' : 'Compartilhamento desativado.'}</span>
+      <span className="text-muted-foreground">{sharing && !ownSharing ? `Compartilhado com ${agents.find(agent => agent.id === sharing.agentId)?.name || 'um agente'} em outra conversa` : state?.sharing ? 'Agente pode ler e operar a página visível. Ações já enviadas podem concluir após revogar.' : 'Compartilhamento desativado.'}</span>
     </div>
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-2 py-1.5 text-xs">
       {external?.granted ? <Button type="button" size="sm" variant="outline" onClick={() => { if (owner) void api.setExternalGrant(owner, false).then(setExternal).catch(error => onNotice(error instanceof Error ? error.message : 'Não foi possível revogar.')) }}>Revogar navegador externo</Button>

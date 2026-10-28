@@ -12,6 +12,7 @@ function install() {
     setSharingContext: vi.fn(async () => undefined), grantSharing: vi.fn(async () => undefined), revokeSharing: vi.fn(async () => undefined),
     externalStatus: vi.fn(async () => ({ granted: false, problems: [] })), setExternalGrant: vi.fn(async () => ({ granted: false, problems: [] })),
     onState: vi.fn(callback => { listener = callback; return () => { listener = null } }),
+    onReveal: vi.fn(() => () => undefined),
   }
   window.platformBrowserAPI = api
   return { api, emit: (state: PlatformBrowserState | null) => listener?.(state) }
@@ -76,6 +77,23 @@ describe('PlatformBrowserPanel', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Revogar navegador externo' })) })
     expect(api.setExternalGrant).toHaveBeenLastCalledWith(owner, false)
     expect(screen.getByText(/navegador externo desativado/i)).toBeInTheDocument()
+  })
+  const page = { url: 'https://example.com/', title: 'Ex', loading: false, canGoBack: false, canGoForward: false, error: null }
+  it('reflete o agente que adquiriu o navegador nesta conversa', async () => {
+    const { emit } = install()
+    render(<PlatformBrowserPanel onNotice={vi.fn()} workspaceId="work" conversationId="chat" agents={[{ id: 'agent-a', name: 'Boo', computerUse: true } as never]} />)
+    await act(async () => emit({ ...page, sharing: { workspaceId: 'work', conversationId: 'chat', agentId: 'agent-a' } }))
+    expect(screen.getByRole('combobox', { name: 'Agente para compartilhar' })).toHaveValue('agent-a')
+    expect(screen.getByRole('button', { name: 'Revogar compartilhamento' })).toBeInTheDocument()
+  })
+  it('compartilhamento de outra conversa é mostrado sem ser derrubado', async () => {
+    const { api, emit } = install()
+    const { unmount } = render(<PlatformBrowserPanel onNotice={vi.fn()} workspaceId="work" conversationId="chat" agents={[{ id: 'agent-a', name: 'Boo', computerUse: true } as never]} />)
+    await act(async () => emit({ ...page, sharing: { workspaceId: 'work', conversationId: 'outra', agentId: 'agent-a' } }))
+    expect(screen.getByText('Compartilhado com Boo em outra conversa')).toBeInTheDocument()
+    expect(api.setSharingContext).not.toHaveBeenCalled()
+    unmount()
+    expect(api.setSharingContext).not.toHaveBeenCalled()
   })
   it('esconde a view nativa ao desmontar', () => {
     const { api } = install()

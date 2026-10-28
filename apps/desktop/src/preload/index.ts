@@ -203,5 +203,6 @@ const platformBrowserAPI: import('../shared/platform-browser').PlatformBrowserAP
   externalStatus: owner => ipcRenderer.invoke('v9:externalBrowserStatus', owner),
   setExternalGrant: (owner, enabled) => ipcRenderer.invoke('v9:setExternalBrowserGrant', owner, enabled),
   onState: callback => onChannel('platformBrowser:state', callback),
+  onReveal: callback => onChannel('platformBrowser:reveal', callback),
 }
 contextBridge.exposeInMainWorld('platformBrowserAPI', platformBrowserAPI)

@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 
-const { exposed, invoke } = vi.hoisted(() => ({
+const { exposed, invoke, on } = vi.hoisted(() => ({
+  on: vi.fn(),
   exposed: {} as Record<string, Record<string, unknown>>,
   invoke: vi.fn(async (..._args: unknown[]) => undefined),
 }))
 
 vi.mock('electron', () => ({
   contextBridge: { exposeInMainWorld: (name: string, value: Record<string, unknown>) => { exposed[name] = value } },
-  ipcRenderer: { invoke, send: vi.fn(), on: vi.fn(), removeListener: vi.fn() },
+  ipcRenderer: { invoke, send: vi.fn(), on, removeListener: vi.fn() },
 }))
 
 import '../../../preload/index'
@@ -30,5 +31,12 @@ describe('ponte exposta ao renderer', () => {
     expect(platform).toBeTruthy()
     await (platform.navigate as (url: string) => unknown)('https://example.com/')
     expect(invoke).toHaveBeenCalledWith('platformBrowser:navigate', 'https://example.com/')
+  })
+
+  it('assina o pedido do main para revelar o navegador', () => {
+    const callback = vi.fn()
+    const stop = (exposed.platformBrowserAPI.onReveal as (cb: unknown) => () => void)(callback)
+    expect(on).toHaveBeenCalledWith('platformBrowser:reveal', expect.any(Function))
+    expect(typeof stop).toBe('function')
   })
 })

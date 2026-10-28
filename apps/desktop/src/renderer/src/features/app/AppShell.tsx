@@ -42,6 +42,7 @@ export default function AppShell() {
   const canReadFiles = !browserMode || pwaCapabilities.includes('files:read') || pwaCapabilities.includes('files:write')
   const canWriteFiles = !browserMode || pwaCapabilities.includes('files:write')
   useEffect(() => onPwaCapabilitiesChanged(setPwaCapabilities), [])
+  useEffect(() => browserMode ? undefined : window.platformBrowserAPI?.onReveal(() => dockRef.current?.revealTool('web')), [browserMode])
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot)
   const [models, setModels] = useState<Model[]>([])
   const [providerInventory, setProviderInventory] = useState<ProviderSnapshot | null>(null)

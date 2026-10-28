@@ -20,6 +20,8 @@ export interface PlatformBrowserAPI {
   externalStatus(owner: PlatformBrowserOwner): Promise<ExternalBrowserStatus>
   setExternalGrant(owner: PlatformBrowserOwner, enabled: boolean): Promise<ExternalBrowserStatus>
   onState(callback: (state: PlatformBrowserState | null) => void): () => void
+  /** O main pede para revelar a aba Navegador (agente adquiriu o navegador). */
+  onReveal(callback: (owner: PlatformBrowserOwner) => void): () => void
 }
 
 /** Aceita apenas HTTP/HTTPS sem credenciais embutidas. Usado no renderer e revalidado no main. */
