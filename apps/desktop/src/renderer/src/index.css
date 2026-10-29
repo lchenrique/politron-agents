@@ -22,7 +22,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   color-scheme: light;
 
   /* Superfícies: chrome (janela + navegação) < canvas (trabalho) < card/popover (elevados). */
-  --chrome: #f3f3f6;
+  --chrome: #f9fafb;
   --background: #fcfcfd;
   --foreground: #17171c;
   --card: #ffffff;
@@ -68,7 +68,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   --chart-4: #1c8656;
   --chart-5: #a8670a;
 
-  --sidebar: #f3f3f6;
+  --sidebar: #f9fafb;
   --sidebar-foreground: #2a2a31;
   --sidebar-primary: #5a4bd6;
   --sidebar-primary-foreground: #ffffff;
@@ -119,7 +119,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
 .dark[data-theme="boobot"] {
   color-scheme: dark;
 
-  --chrome: #0f1013;
+  --chrome: #1b1b1c;
   --background: #16171b;
   --foreground: #ececf1;
   --card: #1b1c21;
@@ -163,7 +163,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   --chart-4: #43c38a;
   --chart-5: #e8a840;
 
-  --sidebar: #0f1013;
+  --sidebar: #1b1b1c;
   --sidebar-foreground: #d6d6de;
   --sidebar-primary: #a197ff;
   --sidebar-primary-foreground: #15122e;

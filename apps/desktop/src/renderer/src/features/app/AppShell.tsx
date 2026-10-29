@@ -386,10 +386,10 @@ export default function AppShell() {
         canChat={canChat}
       />
       </ResizablePanel>
-      {/* O vão entre navegação e canvas é a própria alça: sem linha extra, realçada ao passar o mouse. */}
-      <ResizableHandle aria-label="Redimensionar barra lateral" className="w-1.5 bg-transparent transition-colors hover:bg-ring/25 focus-visible:bg-ring/35" />
+      {/* Alça invisível de 8px centrada na borda, como no DSH: o canvas encosta na barra lateral. */}
+      <ResizableHandle aria-label="Redimensionar barra lateral" className="z-10 w-0 bg-transparent after:w-2 hover:bg-transparent" />
       </>}
-      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 pb-1.5 pr-1.5 ' + (sidebarCollapsed ? 'pl-1.5 ' : '') + (browserMode ? 'boobot-web-main-panel' : '')}>
+      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 ' + (browserMode ? 'pb-1.5 pr-1.5 boobot-web-main-panel ' + (sidebarCollapsed ? 'pl-1.5' : '') : '')}>
       <div className="boobot-canvas ds-canvas flex h-full min-h-0 min-w-0">
       <DockWorkspace ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}
         chatHeader={conversationChrome && <ChatHeader {...conversationChrome} />}

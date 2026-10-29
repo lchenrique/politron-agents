@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, CalendarClock, ChevronDown, ChevronRight, CirclePlus, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Users } from 'lucide-react'
+import { Archive, ArrowLeft, CalendarClock, ChevronRight, CirclePlus, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
@@ -18,11 +18,10 @@ import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableArea, SortableGroup, SortableRow, type SortableData } from './SortableRows'
 import { applyOrder, mergeSubset, moveTo, placeProject } from './sidebarOrder'
 import { conversationDisplayName } from '../../../../shared/delegation-title'
+import './sidebar-dsh.css'
 
 /** Quantas sessoes o projeto aberto mostra antes de exigir "ver mais". Limita o DOM do sidebar sem esconder o trabalho recente. */
 const SESSION_LIMIT = 10
-const TAB_LIST = 'ds-segmented mx-2.5 flex h-auto rounded-[calc(var(--radius)+1px)] bg-[var(--segmented-track)] p-0.5'
-const TAB_TRIGGER = 'h-[26px] flex-1 rounded-[calc(var(--radius)-1px)] px-2.5 py-0 text-xs text-muted-foreground shadow-none ring-offset-0 hover:text-foreground focus-visible:ring-offset-0 data-[state=active]:bg-[var(--segmented-thumb)] data-[state=active]:text-foreground data-[state=active]:shadow-[var(--shadow-xs),0_0_0_1px_var(--border)]'
 
 function readSet(key: string): Set<string> {
   try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []) } catch { return new Set() }
@@ -149,20 +148,18 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
 
   const agentRow = (agent: Agent, pinnedChief = false) => <div
     key={agent.id}
-    className={'ds-nav-item group flex items-center gap-1 ' + (pinnedChief ? 'bg-warning-soft/60' : '')}
+    className="dsh-row dsh-session group"
     onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}
   >
-    <Button variant="ghost" size={null} onClick={() => void onOpenAgent(agent)} className="flex h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal rounded-md px-2 py-1 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <Avatar agent={agent} size="xs" state={agentStates[agent.id] || 'idle'} />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-center gap-1 truncate text-xs font-semibold">{agent.name}{agent.temporary && <span className="rounded bg-muted px-1 text-[9px] font-normal text-muted-foreground" title={agent.temporaryStatus === 'working' ? 'Boo temporário em execução' : 'Boo temporário'}>Temp</span>}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 fill-warning/20 text-warning" />}</span>
-        <span className="truncate text-[10px] text-muted-foreground">{pinnedChief ? 'Chief · Coordenação' : agent.description || '@' + agent.alias}</span>
-      </span>
+    <Button variant="ghost" size={null} onClick={() => void onOpenAgent(agent)} title={pinnedChief ? 'Chief · Coordenação' : agent.description || '@' + agent.alias} className="dsh-row-main">
+      <span className="dsh-slot"><span className="dsh-glyph"><Avatar agent={agent} size="xxs" state={agentStates[agent.id] || 'idle'} /></span></span>
+      <span className="dsh-title flex items-center gap-1">{agent.name}{agent.temporary && <span className="dsh-meta" title={agent.temporaryStatus === 'working' ? 'Boo temporário em execução' : 'Boo temporário'}>Temp</span>}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 text-warning" />}</span>
+      <span className="dsh-sub">{pinnedChief ? 'Chief · Coordenação' : agent.description || '@' + agent.alias}</span>
       <AgentPresence state={agentStates[agent.id] || 'idle'} />
-      {isFavorite('agent', agent.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
+      {isFavorite('agent', agent.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
     </Button>
     <DropdownMenu open={openAgentMenuId === agent.id} onOpenChange={open => setOpenAgentMenuId(open ? agent.id : null)}>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-6 shrink-0 text-muted-foreground opacity-70 hover:opacity-100" aria-label={'Ações de ' + agent.name}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild><Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações de ' + agent.name}><MoreHorizontal /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem disabled={!canChat} onSelect={() => void onOpenAgent(agent, true)}><MessageSquarePlus className="mr-2 size-4" />Nova conversa</DropdownMenuItem>
         {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'agent', initial: agent })}><Pencil className="mr-2 size-4" />Editar perfil</DropdownMenuItem>}
@@ -189,23 +186,22 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     if (!delegated.length) return row
     return <div key={conversation.id}>
       {row}
-      <Button variant="ghost" size={null} aria-expanded={open} onClick={() => toggleDelegations(conversation.id)} className="ml-6 flex h-6 justify-start gap-1 rounded px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground">
-        <ChevronRight className={'size-3 transition-transform' + (open ? ' rotate-90' : '')} />{delegated.length} {delegated.length === 1 ? 'delegação' : 'delegações'}
+      <Button variant="ghost" size={null} aria-expanded={open} onClick={() => toggleDelegations(conversation.id)} className="dsh-overflow">
+        <ChevronRight className={open ? 'rotate-90' : undefined} />{delegated.length} {delegated.length === 1 ? 'delegação' : 'delegações'}
       </Button>
-      {open && <div className="ml-5 border-l border-border/50 pl-1">{delegated.map(conversationButton)}</div>}
+      {open && <div className="dsh-indent dsh-rows">{delegated.map(conversationButton)}</div>}
     </div>
   }
   const conversationRow = (conversation: Conversation, attention: boolean, unread: number) =>
-    <div key={conversation.id} data-active={conversation.id === selected?.id} className="ds-nav-item group flex items-center gap-1" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
-      <Button variant="ghost" size={null} onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded-md px-1.5 text-left font-normal text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
-        <span className="flex size-5 shrink-0 items-center justify-center text-faint-foreground">{conversation.agentIds.length > 1 ? <Users className="size-3.5" /> : <MessageSquarePlus className="size-3.5" />}</span>
-        <span className="min-w-0 flex-1 truncate text-[12px]" title={conversation.name}>{conversationDisplayName(conversation.name)}</span>
-        {isFavorite('conversation', conversation.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
-        {attention && <span aria-label="Aguardando aprovação" className="size-2 shrink-0 rounded-full bg-warning" />}
+    <div key={conversation.id} data-active={conversation.id === selected?.id} className="dsh-row dsh-session group" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
+      <Button variant="ghost" size={null} onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="dsh-row-main">
+        <span className="dsh-slot">{attention ? <span aria-label="Aguardando aprovação" className="dsh-dot" /> : conversation.agentIds.length > 1 ? <Users /> : <MessageSquarePlus />}</span>
+        <span className="dsh-title" title={conversation.name}>{conversationDisplayName(conversation.name)}</span>
+        {isFavorite('conversation', conversation.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
         {!!unread && <span aria-label={unread + ' não lidas'} className="ds-count" data-tone="primary">{unread > 9 ? '9+' : unread}</span>}
       </Button>
       <DropdownMenu open={openConversationMenuId === conversation.id} onOpenChange={open => setOpenConversationMenuId(open ? conversation.id : null)}>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="mr-1 size-6 shrink-0 text-muted-foreground opacity-60 hover:opacity-100" aria-label={'Ações da conversa ' + conversation.name}><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações da conversa ' + conversation.name}><MoreHorizontal /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'conversation', initial: conversation })}><Pencil className="mr-2 size-4" />Renomear ou editar</DropdownMenuItem>}
           <DropdownMenuItem onSelect={() => toggleFavorite(favoriteKey('conversation', conversation.id))}><Star className="mr-2 size-4" />{isFavorite('conversation', conversation.id) ? 'Remover dos favoritos' : 'Favoritar sessão'}</DropdownMenuItem>
@@ -215,7 +211,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     </div>
 
   const workspaceMenu = (workspace: Workspace, triggerClassName: string) =>
-    <DropdownMenu open={openWorkspaceMenuId === workspace.id} onOpenChange={open => setOpenWorkspaceMenuId(open ? workspace.id : null)}><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className={'size-6 shrink-0 ' + triggerClassName} aria-label={`Ações de ${workspace.name}`}><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+    <DropdownMenu open={openWorkspaceMenuId === workspace.id} onOpenChange={open => setOpenWorkspaceMenuId(open ? workspace.id : null)}><DropdownMenuTrigger asChild><Button variant="ghost" size={null} className={triggerClassName} aria-label={`Ações de ${workspace.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
       <DropdownMenuItem disabled={!canChat} onSelect={() => void onStartConversation(workspace.id)}><Plus className="mr-2 size-4" />Nova conversa</DropdownMenuItem>
       <DropdownMenuItem onSelect={() => toggleFavorite(favoriteKey('workspace', workspace.id))}><Star className="mr-2 size-4" />{isFavorite('workspace', workspace.id) ? 'Remover dos favoritos' : 'Favoritar projeto'}</DropdownMenuItem>
       {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'workspace', initial: workspace })}><Settings2 className="mr-2 size-4" />Editar projeto</DropdownMenuItem>}
@@ -240,16 +236,16 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   /** Uma linha por projeto: clicar entra no projeto, sem renderizar as sessões dele. */
   const projectRow = (workspace: Workspace) => {
     const sessions = conversationsOf(workspace.id).filter(isTopLevel).length
-    return <div key={workspace.id} className="ds-nav-item group flex items-center gap-0.5 px-0.5" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
-      <Button variant="ghost" size={null} onClick={() => enterProject(workspace.id)} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1.5 text-left text-[12.5px] font-medium text-foreground/90 hover:bg-transparent hover:text-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
-        {workspace.kind === 'worktree' ? <GitBranch className="size-3.5 shrink-0 text-muted-foreground" /> : <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />}
-        <span className="min-w-0 flex-1 truncate">{workspaceLabel(workspace)}</span>
-        {isFavorite('workspace', workspace.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
-        {workspaceNeedsAttention(workspace.id) && <span aria-label="Workspace precisa de atenção" className="size-1.5 shrink-0 rounded-full bg-warning" />}
-        {workspace.kind === 'worktree' && !!workspace.changes && <span className="text-[10px] font-normal text-warning">{workspace.changes} alter.</span>}
-        <span className="text-[10px] font-normal tabular-nums text-faint-foreground" title={`${sessions} sessões`}>{sessions}</span>
+    return <div key={workspace.id} className="dsh-row group" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
+      <Button variant="ghost" size={null} onClick={() => enterProject(workspace.id)} className="dsh-row-main" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
+        <span className="dsh-slot">{workspace.kind === 'worktree' ? <GitBranch /> : <FolderOpen />}</span>
+        <span className="dsh-title">{workspaceLabel(workspace)}</span>
+        {isFavorite('workspace', workspace.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
+        {workspaceNeedsAttention(workspace.id) && <span aria-label="Workspace precisa de atenção" className="dsh-dot" />}
+        {workspace.kind === 'worktree' && !!workspace.changes && <span className="dsh-meta dsh-resting text-warning">{workspace.changes} alter.</span>}
+        <span className="dsh-meta dsh-resting" title={`${sessions} sessões`}>{sessions}</span>
       </Button>
-      {workspaceMenu(workspace, 'mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100')}
+      {workspaceMenu(workspace, 'dsh-row-action')}
     </div>
   }
 
@@ -274,30 +270,33 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     if (projectTab === 'team') for (const conversation of allConversations) for (const id of conversation.agentIds) team.add(id)
     const teamAgents = applyOrder([...team].map(id => agentsById.get(id)).filter((agent): agent is Agent => !!agent && agent.temporaryStatus !== 'retired'), layout.agentOrder, agent => agent.id)
     return <Tabs value={projectTab} onValueChange={value => setProjectTab(value as 'sessions' | 'team')} className="flex min-h-0 flex-1 flex-col">
-      <div className="mx-2.5 mt-2 flex items-center gap-0.5">
-        <Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label="Voltar aos projetos" title="Voltar aos projetos" onClick={() => enterProject(null)}><ArrowLeft className="size-4" /></Button>
-        <Button variant="ghost" size={null} onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path} className="flex h-7 min-w-0 flex-1 justify-start gap-1.5 rounded px-1.5 text-left text-[13px] font-semibold">
-          <span className="min-w-0 flex-1 truncate">{workspaceLabel(workspace)}</span>
-          {isFavorite('workspace', workspace.id) && <Star className="size-3 shrink-0 fill-warning text-warning" aria-label="Favorito" />}
-        </Button>
-        {workspaceMenu(workspace, '')}
+      <div className="dsh-project-head">
+        <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Voltar aos projetos" title="Voltar aos projetos" onClick={() => enterProject(null)}><ArrowLeft /></Button>
+        <div data-active={activeWorkspaceId === workspace.id} className="dsh-row group">
+          <Button variant="ghost" size={null} onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path} className="dsh-row-main">
+            <span className="dsh-slot dsh-folder-active">{workspace.kind === 'worktree' ? <GitBranch /> : <FolderOpen />}</span>
+            <span className="dsh-title">{workspaceLabel(workspace)}</span>
+            {isFavorite('workspace', workspace.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
+          </Button>
+          {workspaceMenu(workspace, 'dsh-row-action')}
+        </div>
       </div>
-      <TabsList className={TAB_LIST + ' mt-1.5'}>
-        <TabsTrigger value="sessions" className={TAB_TRIGGER}>Projeto</TabsTrigger>
-        <TabsTrigger value="team" className={TAB_TRIGGER}>Boos</TabsTrigger>
+      <TabsList className="dsh-tabs">
+        <TabsTrigger value="sessions" className="dsh-tab">Projeto</TabsTrigger>
+        <TabsTrigger value="team" className="dsh-tab">Boos</TabsTrigger>
       </TabsList>
-      <TabsContent value="sessions" className="mt-0 min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3 pt-1">
-        <Button variant="ghost" size={null} disabled={!canChat} onClick={() => void onStartConversation(workspace.id)} className="flex h-7 w-full justify-start gap-1.5 rounded-md px-1.5 text-[12px] font-normal text-muted-foreground hover:text-foreground"><Plus className="size-3.5" />Nova sessão no projeto</Button>
+      <TabsContent value="sessions" className="dsh-list dsh-rows mt-0">
+        <div className="dsh-row dsh-session"><Button variant="ghost" size={null} disabled={!canChat} onClick={() => void onStartConversation(workspace.id)} className="dsh-row-main text-[var(--dsh-label-tertiary)]"><span className="dsh-slot"><Plus /></span><span className="dsh-title">Nova sessão no projeto</span></Button></div>
         {children.map(projectRow)}
         <SortableArea onDragEnd={listDragEnd(sessionIds, moveSession)}><SortableGroup ids={sessionIds}>
           {conversations.map(conversation => <SortableRow key={conversation.id} id={conversation.id} data={{ type: 'session' }} onMove={delta => moveSession(conversation.id, sessionIds.indexOf(conversation.id) + delta)}>{conversationButton(conversation)}</SortableRow>)}
         </SortableGroup></SortableArea>
-        {!!hiddenSessions && <Button type="button" variant="ghost" size={null} onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="flex h-auto w-full justify-start gap-1 rounded px-2 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent/40 hover:text-foreground">Ver mais {hiddenSessions} sessões</Button>}
-        {!conversations.length && !children.length && <p className="px-2 py-1 text-[10px] text-muted-foreground">Nenhuma conversa ainda.</p>}
+        {!!hiddenSessions && <Button type="button" variant="ghost" size={null} onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="dsh-overflow">Ver mais {hiddenSessions} sessões</Button>}
+        {!conversations.length && !children.length && <p className="dsh-empty">Nenhuma conversa ainda.</p>}
       </TabsContent>
-      <TabsContent value="team" className="mt-0 min-h-0 flex-1 space-y-0.5 overflow-auto px-2 pb-3 pt-1">
+      <TabsContent value="team" className="dsh-list dsh-rows mt-0">
         {sortableAgents(teamAgents, agent => agentRow(agent, agent.role === 'chief'))}
-        {!teamAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Este projeto ainda não tem time.</p>}
+        {!teamAgents.length && <p className="dsh-empty">Este projeto ainda não tem time.</p>}
       </TabsContent>
     </Tabs>
   }
@@ -310,7 +309,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   }}>{projectRow(workspace)}</SortableRow>
 
   const groupSection = (name: string | null, items: Workspace[], editable = true) => {
-    if (!name) return <div className="space-y-0.5"><SortableGroup ids={items.map(item => item.id)}>{items.map(rootProject)}</SortableGroup></div>
+    if (!name) return <div className="dsh-rows"><SortableGroup ids={items.map(item => item.id)}>{items.map(rootProject)}</SortableGroup></div>
     return <ProjectGroupSection key={name} name={name} items={items} collapsed={collapsedGroups.has(name)} editable={editable} onToggle={() => toggleGroup(name)} onRename={() => openGroupDialog('rename', { name })} onRemove={() => removeGroup(name)} onMove={editable ? delta => moveGroup(name, groups.indexOf(name) + delta) : undefined} renderWorkspace={rootProject} />
   }
 
@@ -375,8 +374,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   }
 
   // A navegação faz parte do chrome da janela: mesma superfície da barra superior, sem bordas internas.
-  return <aside className="boobot-sidebar flex h-full min-w-0 flex-col bg-chrome text-sidebar-foreground" aria-label="Barra lateral do Boobot">
-    <header className="space-y-2 px-2.5 pb-1.5 pt-1">
+  return <aside className="boobot-sidebar flex h-full min-w-0 flex-col" aria-label="Barra lateral do Boobot">
+    <header className="space-y-2">
       {browserMode && <>
         <div className="flex h-7 items-center justify-between px-1">
           <h2 className="text-xs font-semibold tracking-tight">Espaço de trabalho</h2>
@@ -385,10 +384,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         </div>
         <WorkspaceSearch snapshot={snapshot} canChat={canChat} browserMode onSelectWorkspace={onSelectWorkspace} onSelectConversation={onSelectConversation} onStartConversation={onStartConversation} onOpenAgent={onOpenAgent} onOpenEditor={onOpenEditor} onSectionChange={setSection} />
       </>}
-      {!browserMode && <div className="flex items-center gap-1">
-        <Button variant="outline" disabled={!canChat} onClick={() => void onStartConversation()} className="h-8 min-w-0 flex-1 justify-start gap-2 px-2.5 text-[12.5px] font-medium"><CirclePlus className="size-4 text-primary" />Nova sessão</Button>
+      {!browserMode && <div className="dsh-new-row">
+        <Button variant="outline" size={null} disabled={!canChat} onClick={() => void onStartConversation()} className="dsh-new-session"><CirclePlus />Nova sessão</Button>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="outline" size="icon" className="size-8 shrink-0" aria-label="Criar novo" title="Criar novo"><Plus className="size-4" /></Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button variant="outline" size={null} className="dsh-new-session dsh-square" aria-label="Criar novo" title="Criar novo"><Plus /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'workspace' })}><FolderPlus className="mr-2 size-4" />Novo projeto</DropdownMenuItem>}
             {!browserMode && <DropdownMenuItem onSelect={() => openGroupDialog('create')}><Folder className="mr-2 size-4" />Nova pasta de projetos</DropdownMenuItem>}
@@ -397,66 +396,66 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         </DropdownMenu>
       </div>}
     </header>
-    {onOpenHome && <nav aria-label="Trabalho" className="space-y-px px-2.5 py-1.5">
-      <Button type="button" variant={null} size={null} aria-current={view === 'home' ? 'page' : undefined} onClick={() => onOpenHome('home')} className="ds-nav-item flex h-9 w-full items-center justify-start gap-2 rounded-[calc(var(--radius)-1px)] px-2 text-left text-[12.5px] font-medium focus-visible:ring-0">
-        {chiefAgent ? <Avatar agent={chiefAgent} size="xs" state={agentStates[chiefAgent.id] || 'idle'} /> : <span className="flex size-[30px] items-center justify-center"><LayoutDashboard className="size-4" /></span>}
+    {onOpenHome && <nav aria-label="Trabalho" className="dsh-panel-list">
+      <Button type="button" variant={null} size={null} aria-current={view === 'home' ? 'page' : undefined} onClick={() => onOpenHome('home')} className="dsh-panel-row">
+        <span className="dsh-glyph">{chiefAgent ? <Avatar agent={chiefAgent} size="xxs" state={agentStates[chiefAgent.id] || 'idle'} /> : <LayoutDashboard />}</span>
         <span className="min-w-0 flex-1 truncate">Central {chiefAgent ? `do ${chiefAgent.name}` : 'do Chief'}</span>
         {attentionCount > 0 && <span aria-label={`${attentionCount} pendências`} className="ds-count" data-tone="attention">{attentionCount > 9 ? '9+' : attentionCount}</span>}
       </Button>
-      {!browserMode && <Button type="button" variant={null} size={null} aria-current={view === 'routines' ? 'page' : undefined} onClick={() => onOpenHome('routines')} className="ds-nav-item flex h-9 w-full items-center justify-start gap-2 rounded-[calc(var(--radius)-1px)] px-2 text-left text-[12.5px] font-medium focus-visible:ring-0">
-        <span className="flex size-[30px] items-center justify-center"><CalendarClock className="size-4" /></span>
+      {!browserMode && <Button type="button" variant={null} size={null} aria-current={view === 'routines' ? 'page' : undefined} onClick={() => onOpenHome('routines')} className="dsh-panel-row">
+        <span className="dsh-glyph"><CalendarClock /></span>
         <span className="min-w-0 flex-1 truncate">Rotinas</span>
         {!!snapshot.routines?.filter(item => item.enabled).length && <span className="ds-count">{snapshot.routines.filter(item => item.enabled).length}</span>}
       </Button>}
-      {!browserMode && <div className="mt-0.5"><HostSelector /></div>}
+      {!browserMode && <HostSelector />}
     </nav>}
-    {!browserMode && !onOpenHome && <div className="px-2.5 py-1.5"><HostSelector /></div>}
-    {!onOpenHome && showChief && chiefAgent && <section aria-label="Chief" className="px-3 py-2">{agentRow(chiefAgent, true)}</section>}
+    {!browserMode && !onOpenHome && <div className="dsh-panel-list"><HostSelector /></div>}
+    {!onOpenHome && showChief && chiefAgent && <section aria-label="Chief" className="dsh-panel-list">{agentRow(chiefAgent, true)}</section>}
     {project ? projectView(project) : <Tabs value={section} onValueChange={value => setSection(value as 'projects' | 'agents')} className="flex min-h-0 flex-1 flex-col">
-      <TabsList className={TAB_LIST + ' mt-2'}>
-        <TabsTrigger value="projects" className={TAB_TRIGGER}>Projetos</TabsTrigger>
-        <TabsTrigger value="agents" className={TAB_TRIGGER}>Boos</TabsTrigger>
+      <TabsList className="dsh-tabs">
+        <TabsTrigger value="projects" className="dsh-tab">Projetos</TabsTrigger>
+        <TabsTrigger value="agents" className="dsh-tab">Boos</TabsTrigger>
       </TabsList>
-      <TabsContent value="projects" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
-        {!!favorites.size && <section aria-label="Favoritos" className="space-y-0.5">
-          <p className="ds-eyebrow px-2.5 pb-1 pt-2">Favoritos</p>
+      <TabsContent value="projects" className="dsh-list mt-0">
+        {!!favorites.size && <section aria-label="Favoritos" className="dsh-rows">
+          <div className="dsh-section-header"><p className="dsh-section-label">Favoritos</p></div>
           {[...favorites].map(key => {
             const [type, id] = key.split(':', 2)
             if (type === 'workspace') {
               const workspace = snapshot.workspaces.find(item => item.id === id && !item.archived)
-              return workspace ? <Button key={key} variant="ghost" onClick={() => enterProject(id)} className="h-8 w-full justify-start gap-2 px-3 text-xs"><FolderOpen className="size-3.5 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-left">{workspace.name}</span><Star className="size-3 fill-warning text-warning" /></Button> : null
+              return workspace ? <div key={key} className="dsh-row"><Button variant="ghost" size={null} onClick={() => enterProject(id)} className="dsh-row-main"><span className="dsh-slot"><FolderOpen /></span><span className="dsh-title">{workspace.name}</span><Star className="dsh-star fill-warning text-warning" /></Button></div> : null
             }
             if (type === 'conversation') {
               const conversation = snapshot.conversations.find(item => item.id === id && !item.archived)
-              return conversation ? <Button key={key} variant="ghost" onClick={() => onSelectConversation(id)} className="h-8 w-full justify-start gap-2 px-3 text-xs"><MessageSquarePlus className="size-3.5 text-muted-foreground" /><span className="min-w-0 flex-1 truncate text-left">{conversation.name}</span><Star className="size-3 fill-warning text-warning" /></Button> : null
+              return conversation ? <div key={key} className="dsh-row dsh-session"><Button variant="ghost" size={null} onClick={() => onSelectConversation(id)} className="dsh-row-main"><span className="dsh-slot"><MessageSquarePlus /></span><span className="dsh-title">{conversation.name}</span><Star className="dsh-star fill-warning text-warning" /></Button></div> : null
             }
             return null
           })}
         </section>}
-        <section aria-label="Projetos" className="space-y-0.5">
-          <div className="flex items-center gap-1 px-1 pt-1">
-            <h2 className="ds-eyebrow flex-1 px-1.5 py-1">Projetos</h2>
-            <Button variant="ghost" size="icon" className="size-6" aria-label="Nova pasta de projetos" title="Criar pasta de projetos" onClick={() => openGroupDialog('create')}><FolderPlus className="size-3.5" /></Button>
+        <section aria-label="Projetos">
+          <div className="dsh-section-header">
+            <h2 className="dsh-section-label">Projetos</h2>
+            <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Nova pasta de projetos" title="Criar pasta de projetos" onClick={() => openGroupDialog('create')}><FolderPlus /></Button>
           </div>
           <SortableArea onDragEnd={rootDragEnd}>
             <SortableGroup ids={groups.map(group => 'group:' + group)}>{projectContainers.groups.map(group => groupSection(group.name, group.items))}</SortableGroup>
             {groupSection(groups.length ? 'Outros' : null, projectContainers.ungrouped, false)}
           </SortableArea>
-          {!rootWorkspaces.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">Crie um projeto pelo botão + para organizar suas sessões.</p>}
-          {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="mt-2"><Button variant="ghost" className="h-8 w-full justify-start gap-1.5 px-2 text-xs" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}>{collapsed.has('legacy') ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}<FolderOpen className="size-3.5" />Sessões antigas<span className="ml-auto text-[10px]">{legacyConversations.length}</span></Button>{!collapsed.has('legacy') && <div className="ml-5 border-l border-border/50 pl-1">{legacyConversations.filter(isTopLevel).map(conversationButton)}</div>}</div>}
+          {!rootWorkspaces.length && <p className="dsh-empty">Crie um projeto pelo botão + para organizar suas sessões.</p>}
+          {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="dsh-rows mt-1"><div className="dsh-row dsh-folder"><Button variant="ghost" size={null} className="dsh-row-main" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}><span className="dsh-slot"><Triangle className="dsh-arrow rotate-90 fill-current" data-open={!collapsed.has('legacy')} /><FolderOpen className="dsh-folder-icon" /></span><span className="dsh-title">Sessões antigas</span><span className="dsh-meta">{legacyConversations.length}</span></Button></div>{!collapsed.has('legacy') && <div className="dsh-indent dsh-rows">{legacyConversations.filter(isTopLevel).map(conversationButton)}</div>}</div>}
         </section>
       </TabsContent>
-      <TabsContent value="agents" className="mt-0 min-h-0 flex-1 space-y-2 overflow-auto px-2 pb-3 pt-1">
-        <section aria-label="Catálogo de agentes" className="space-y-0.5">
+      <TabsContent value="agents" className="dsh-list mt-0">
+        <section aria-label="Catálogo de agentes" className="dsh-rows">
           {onOpenHome && chiefAgent && agentRow(chiefAgent, true)}
           {sortableAgents(visibleAgents, agent => agentRow(agent))}
-          {!visibleAgents.length && <p className="px-3 py-3 text-xs leading-5 text-muted-foreground">{chiefAgent ? 'Nenhum outro agente cadastrado. Use o botão + para criar.' : 'Crie um Boo pelo botão + para começar.'}</p>}
+          {!visibleAgents.length && <p className="dsh-empty">{chiefAgent ? 'Nenhum outro agente cadastrado. Use o botão + para criar.' : 'Crie um Boo pelo botão + para começar.'}</p>}
         </section>
       </TabsContent>
     </Tabs>}
-    {!browserMode && <footer className="flex items-center gap-1 border-t border-sidebar-border px-2 py-1.5">
-      <Button variant="ghost" disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} title={selected?.workspaceId ? 'Abrir a pasta do projeto desta conversa' : 'Abra uma conversa de projeto para acessar a pasta'} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><FolderOpen className="size-3.5" />Abrir pasta</Button>
-      <Button variant="ghost" onClick={onOpenSettings} className="h-8 min-w-0 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground"><Settings2 className="size-3.5" />Configurações</Button>
+    {!browserMode && <footer className="dsh-foot">
+      <Button variant="ghost" size={null} disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} title={selected?.workspaceId ? 'Abrir a pasta do projeto desta conversa' : 'Abra uma conversa de projeto para acessar a pasta'} className="dsh-panel-row"><FolderOpen />Abrir pasta</Button>
+      <Button variant="ghost" size={null} onClick={onOpenSettings} className="dsh-panel-row"><Settings2 />Configurações</Button>
     </footer>}
     <div aria-live="polite" role="status" aria-label="Ordem do sidebar" className="sr-only">{announcement}</div>
     <GroupDialog draft={groupDialog} onChange={value => setGroupDialog(current => current ? { ...current, value } : current)} onCancel={() => setGroupDialog(null)} onConfirm={confirmGroupDialog} />

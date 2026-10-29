@@ -29,7 +29,7 @@ const tools = [
 ] as const
 
 // Botões do chrome: mesma medida e estados em toda a barra, sobre a superfície contínua da janela.
-const chromeButton = 'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0'
+const chromeButton = 'dsh-chrome-button flex shrink-0 items-center justify-center'
 
 function OpenToolsMenu({ onOpenTool, onDevelopmentLayout, browserMode = false, browserCanReadFiles = false }: Pick<TitleBarProps, 'onOpenTool' | 'onDevelopmentLayout' | 'browserMode' | 'browserCanReadFiles'>) {
   const availableTools = browserMode ? tools.filter(tool => tool.kind === 'diff' || tool.kind === 'chat' || tool.kind === 'files' && browserCanReadFiles) : tools

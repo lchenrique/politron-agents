@@ -1,0 +1,363 @@
+/*
+ * Aparência baseada no DeepSeek Harness (MIT): barra lateral, faixa da janela e canto do canvas.
+ * Valores medidos no DSH em execução (claro e escuro) e em ui-sidebar/ui-workspace/ui-layout.
+ * Fora de @layer de propósito: vence as utilidades do Tailwind dos componentes shadcn reaproveitados.
+ */
+:root {
+  --dsh-fill: rgb(249 250 251);
+  --dsh-bg-base: rgb(255 255 255);
+  --dsh-label-primary: rgb(15 17 21);
+  --dsh-label-secondary: rgb(97 102 107);
+  --dsh-label-tertiary: rgb(129 133 140);
+  --dsh-label-caption: rgb(173 178 184);
+  --dsh-hover: rgb(38 49 72 / 0.06);
+  --dsh-border-l3: rgb(0 0 0 / 0.12);
+  --dsh-elevated: rgb(255 255 255);
+  --dsh-floating-hover: rgb(241 243 245);
+  --dsh-blue: rgb(65 118 230);
+  --dsh-amber: rgb(245 158 11);
+  --dsh-scroll-thumb: rgb(0 0 0 / 0.1);
+  --dsh-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dsh-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+:root.dark {
+  --dsh-fill: rgb(27 27 28);
+  --dsh-bg-base: rgb(21 21 23);
+  --dsh-label-primary: rgb(249 250 251);
+  --dsh-label-secondary: rgb(207 211 214);
+  --dsh-label-tertiary: rgb(173 178 184);
+  --dsh-label-caption: rgb(129 133 140);
+  --dsh-hover: rgb(255 255 255 / 0.08);
+  --dsh-border-l3: rgb(255 255 255 / 0.16);
+  --dsh-elevated: rgb(67 69 74);
+  --dsh-floating-hover: rgb(53 54 56);
+  --dsh-blue: rgb(122 170 255);
+  --dsh-scroll-thumb: rgb(255 255 255 / 0.14);
+}
+
+/* Moldura: canvas encostado à direita e embaixo, só o canto superior esquerdo arredondado. */
+[data-sidebar-collapsed]:not([data-pwa-shell]) .boobot-canvas.ds-canvas {
+  border: 0;
+  border-radius: 16px 0 0 0;
+  box-shadow: none;
+  background: var(--dsh-bg-base);
+}
+
+/* Botões da faixa da janela: 28×28, raio 8, tinta secundária. */
+.dsh-chrome-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--dsh-label-secondary);
+  background: transparent;
+  transition: none;
+}
+.dsh-chrome-button:hover { background: var(--dsh-hover); color: var(--dsh-label-secondary); }
+.dsh-chrome-button:focus-visible { outline: 2px solid var(--dsh-blue); outline-offset: -2px; box-shadow: none; }
+
+/* Coluna. */
+.boobot-sidebar {
+  padding: 6px 12px;
+  background: var(--dsh-fill);
+  color: var(--dsh-label-primary);
+  font-family: var(--dsh-font);
+  font-size: 14px;
+  font-feature-settings: normal;
+  animation: dsh-wide-in 200ms var(--dsh-ease);
+}
+/* Traço fino em pixels de tela, como os glifos do DSH (1px; 1,15px na Nova sessão). */
+.boobot-sidebar svg.lucide { stroke-width: 1; }
+.boobot-sidebar svg.lucide * { vector-effect: non-scaling-stroke; }
+.boobot-sidebar :focus-visible { outline: 2px solid var(--dsh-blue); outline-offset: -2px; box-shadow: none; }
+@keyframes dsh-wide-in { from { opacity: 0; } }
+
+/* Nova sessão: barra de 38px com contorno de 0,5px. */
+.dsh-new-row { display: flex; gap: 8px; margin: 8px 2px 12px 0; }
+.dsh-new-session {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 0.5px solid var(--dsh-border-l3);
+  border-radius: 12px;
+  background: var(--dsh-elevated);
+  color: var(--dsh-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  box-shadow: none;
+  transition: none;
+}
+.dsh-new-session.dsh-square { flex: none; width: 38px; padding: 0; }
+.dsh-new-session:hover { background: var(--dsh-floating-hover); color: var(--dsh-label-primary); }
+.dsh-new-session svg { width: 14px; height: 14px; color: currentColor; }
+.boobot-sidebar .dsh-new-session svg.lucide { stroke-width: 1.15; }
+
+/* Painéis globais: Central, Rotinas, Remoto. */
+.dsh-panel-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.dsh-panel-row {
+  display: flex;
+  width: auto;
+  min-height: 36px;
+  height: auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 0 2px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--dsh-label-primary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  text-align: left;
+  box-shadow: none;
+  transition: none;
+}
+.dsh-panel-row:hover,
+.dsh-panel-row[aria-current="page"],
+.dsh-panel-row[aria-expanded="true"] { background: var(--dsh-hover); color: var(--dsh-label-primary); }
+.dsh-panel-row svg.lucide { width: 16px; height: 16px; flex: none; }
+.dsh-panel-row .dsh-meta { margin-left: auto; }
+.dsh-glyph { display: inline-flex; flex: none; width: 16px; height: 16px; align-items: center; justify-content: center; }
+/* Avatar de 20px centrado no espaço de 16px do ícone: o texto alinha com as outras linhas. */
+.dsh-glyph > [data-slot="avatar"] { margin: 0 -2px; }
+
+/* Abas de texto (Chat/Trajectory do DSH): azul e barra de 2px na ativa. */
+.dsh-tabs {
+  display: flex;
+  height: auto;
+  min-height: 25px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 32px;
+  margin: 10px 0 8px;
+  padding: 0 0 0 12px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dsh-label-tertiary);
+}
+.dsh-tab {
+  position: relative;
+  flex: none;
+  min-height: 35px;
+  margin: -10px -10px 0;
+  padding: 10px 10px 9px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dsh-label-tertiary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  box-shadow: none;
+  transition: none;
+}
+.dsh-tab::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: transparent;
+}
+.dsh-tab[data-state="active"] { background: transparent; color: var(--dsh-blue); box-shadow: none; }
+.dsh-tab[data-state="active"]::after { background: var(--dsh-blue); }
+
+/* Lista rolável: barra de 5px só com o ponteiro dentro, degradê de 24px no pé. */
+.dsh-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0 -10px 0 0;
+  padding: 0 5px 16px 0;
+  overflow-y: auto;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  scrollbar-gutter: stable;
+}
+.dsh-list::-webkit-scrollbar { width: 5px; }
+.dsh-list::-webkit-scrollbar-thumb { background: transparent; border: 0; border-radius: 5px; }
+.boobot-sidebar:hover .dsh-list::-webkit-scrollbar-thumb { background: var(--dsh-scroll-thumb); }
+.dsh-list::after {
+  content: '';
+  position: sticky;
+  bottom: -16px;
+  display: block;
+  height: 24px;
+  margin-top: -8px;
+  background: linear-gradient(to bottom, transparent, var(--dsh-fill));
+  pointer-events: none;
+}
+
+/* Cabeçalho de seção ("Projetos", "Favoritos"). */
+.dsh-section-header {
+  display: flex;
+  height: 36px;
+  align-items: center;
+  gap: 4px;
+  margin: 2px -4px 4px 0;
+  padding: 0 1px 0 12px;
+  color: var(--dsh-label-tertiary);
+}
+.dsh-section-label { flex: 1; min-width: 0; margin: 0; padding: 0; overflow: hidden; white-space: nowrap; font-size: 14px; font-weight: 400; line-height: 20px; letter-spacing: 0; text-transform: none; color: var(--dsh-label-tertiary); }
+.dsh-icon-button {
+  display: inline-flex;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsh-label-secondary);
+  box-shadow: none;
+  transition: none;
+}
+.dsh-icon-button:hover { background: var(--dsh-hover); color: var(--dsh-label-secondary); }
+.dsh-icon-button svg.lucide { width: 16px; height: 16px; }
+
+/* Linhas de projeto, pasta e sessão: 3px de recuo pintado, raio 12, sem transição de hover. */
+.dsh-row {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 9px;
+  border-inline: 3px solid transparent;
+  border-radius: 12px;
+  background-clip: padding-box;
+  color: var(--dsh-label-primary);
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+  animation: dsh-row-in 100ms ease-out;
+}
+.dsh-row.dsh-session { height: 32px; }
+.dsh-row:hover,
+.dsh-row[data-active="true"],
+.dsh-row:has([data-state="open"]) { background-color: var(--dsh-hover); }
+@keyframes dsh-row-in { from { opacity: 0; } }
+.dsh-row + .dsh-row, .dsh-rows > * + * { margin-top: 2px; }
+/* O botão principal ocupa a linha; o fundo é da linha. */
+.dsh-row-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  text-align: left;
+  box-shadow: none;
+  transition: none;
+}
+.dsh-row-main:hover { background: transparent; color: inherit; }
+.dsh-session .dsh-row-main { gap: 0; }
+.dsh-row-main:focus-visible { outline-offset: 0; border-radius: 9px; }
+.dsh-slot { display: inline-flex; flex: none; width: 16px; height: 20px; align-items: center; justify-content: center; color: var(--dsh-label-tertiary); }
+.dsh-slot svg.lucide { width: 16px; height: 16px; }
+.dsh-folder-active { color: var(--dsh-blue); }
+.dsh-session .dsh-slot svg.lucide { width: 14px; height: 14px; color: var(--dsh-label-caption); }
+.dsh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; }
+.dsh-session .dsh-title { margin: 0 6px 0 4px; }
+.dsh-meta { flex: none; font-size: 10px; line-height: 16px; color: var(--dsh-label-tertiary); font-variant-numeric: tabular-nums; }
+.dsh-sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.dsh-star { width: 12px; height: 12px; flex: none; }
+
+/* Ponto de estado: caixa de 10px, núcleo de 6px. */
+.dsh-dot { display: inline-flex; flex: none; width: 10px; height: 10px; align-items: center; justify-content: center; }
+.dsh-dot::before { content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--dsh-amber); }
+
+/* Contagem de não lidas no tom azul do foco. */
+.boobot-sidebar .ds-count { height: 16px; min-width: 16px; padding: 0 4px; font-size: 10px; font-weight: 500; }
+.boobot-sidebar .ds-count[data-tone="primary"] { background: var(--dsh-blue); color: rgb(255 255 255); }
+
+/* Ações da linha: escondidas em repouso, 24px, raio 4, terciária → primária. */
+.dsh-row-action {
+  display: inline-flex;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  margin: -4px -4px -4px 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsh-label-tertiary);
+  box-shadow: none;
+  opacity: 0;
+  transition: none;
+}
+.dsh-row-action:hover { background: transparent; color: var(--dsh-label-primary); }
+.dsh-row-action svg.lucide { width: 16px; height: 16px; }
+.dsh-row:hover .dsh-row-action,
+.dsh-row:focus-within .dsh-row-action,
+.dsh-row-action[data-state="open"] { opacity: 1; }
+.dsh-row:hover .dsh-resting,
+.dsh-row:has(.dsh-row-action[data-state="open"]) .dsh-resting { display: none; }
+@media (hover: none) { .dsh-row-action { opacity: 1; } }
+
+/* Pasta: ícone vira triângulo no hover e gira 90° em 150ms ao abrir. */
+.dsh-folder .dsh-slot .dsh-arrow { display: none; width: 8px; height: 8px; color: var(--dsh-label-caption); transition: transform 150ms var(--dsh-ease); }
+.dsh-folder .dsh-slot .dsh-arrow[data-open="true"] { transform: rotate(90deg); }
+.dsh-folder:hover .dsh-slot .dsh-arrow { display: inline-flex; }
+.dsh-folder:hover .dsh-folder-icon { display: none; }
+.dsh-indent { padding-left: 16px; }
+
+/* "Ver mais", delegações e vazios: botão de 28px recuado até o título. */
+.dsh-overflow {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 0 12px 0 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsh-label-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+  box-shadow: none;
+  transition: none;
+}
+.dsh-overflow:hover { background: transparent; color: var(--dsh-label-secondary); }
+.dsh-overflow svg { width: 12px; height: 12px; transition: rotate 150ms var(--dsh-ease); }
+.dsh-empty { padding: 16px 12px; color: var(--dsh-label-tertiary); font-size: 13px; line-height: 20px; }
+
+/* Projeto aberto: voltar + nome no estilo de linha. */
+.dsh-project-head { display: flex; align-items: center; gap: 4px; margin: 0 2px; }
+.dsh-project-head .dsh-row { flex: 1; min-width: 0; font-weight: 500; }
+
+/* Rodapé: linhas de 32px sem divisória. */
+.dsh-foot { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.dsh-foot .dsh-panel-row { min-height: 32px; margin: 0 -2px; padding: 6px 2px 6px 6px; line-height: 20px; }
+.dsh-foot .dsh-panel-row:disabled { opacity: 1; color: var(--dsh-label-caption); }
+
+@media (prefers-reduced-motion: reduce) {
+  .boobot-sidebar, .dsh-row { animation: none; }
+  .dsh-folder .dsh-slot .dsh-arrow, .dsh-overflow svg { transition: none; }
+}

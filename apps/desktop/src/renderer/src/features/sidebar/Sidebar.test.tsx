@@ -113,7 +113,7 @@ describe('contatos de agentes na barra lateral', () => {
     renderSidebar({ snapshot: { ...snapshot, agents: [chief] } })
     const card = screen.getByRole('region', { name: 'Chief' })
     expect(card).toHaveTextContent('Chief · Coordenação')
-    expect(card.querySelector('[style*="width: 30px"]')).not.toBeNull()
+    expect(card.querySelector('[style*="width: 20px"]')).not.toBeNull()
     expect(card.querySelector('[style*="width: 42px"]')).toBeNull()
     expect(screen.getByRole('tab', { name: 'Boos' })).toBeInTheDocument()
     expect(card.querySelectorAll('[aria-label="Chief"]')).toHaveLength(1)
