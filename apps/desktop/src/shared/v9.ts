@@ -95,9 +95,10 @@ export interface CommandEvidence extends CommandResult {
   id: string; runId: string; toolCallId: string; agentId: string; conversationId: string; workspaceId: string
   command: string; cwd: string; createdAt: string; finishedAt: string
 }
+export type PlanReviewDecision = 'approve' | 'reject' | 'request_changes'
 export interface Approval {
   id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser' | 'command' | 'delegation' | 'agent-change' | 'question' | 'plan'
-  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; answer?: string; planTitle?: string; planSteps?: string[]; desktopOnly?: boolean }
+  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; answer?: string; planTitle?: string; planSteps?: string[]; planReviewDecision?: PlanReviewDecision; planReviewFeedback?: string; desktopOnly?: boolean }
   status: 'pending' | 'approved' | 'denied' | 'interrupted'; createdAt: string; resolvedAt: string | null
 }
 export interface Run {
@@ -197,6 +198,7 @@ export interface AppAPI {
   readProjectFile(workspaceId: string, filePath: string): Promise<ProjectFileContent>
   writeProjectFile(workspaceId: string, filePath: string, content: string, expectedHash: string): Promise<{ path: string; hash: string }>
   respondApproval(approvalId: string, approved: boolean): Promise<void>
+  reviewPlan(approvalId: string, decision: PlanReviewDecision, feedback?: string): Promise<void>
   answerQuestion(approvalId: string, answer: string): Promise<void>
   setVisibleConversation(conversationId: string | null): Promise<void>
   getVisibleConversation(): Promise<string | null>

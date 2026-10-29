@@ -67,6 +67,7 @@ const appAPI: AppAPI = {
   readProjectFile: (id, filePath) => ipcRenderer.invoke('v9:readProjectFile', id, filePath),
   writeProjectFile: (id, filePath, content, hash) => ipcRenderer.invoke('v9:writeProjectFile', id, filePath, content, hash),
   respondApproval: (id, approved) => ipcRenderer.invoke('v9:respondApproval', id, approved),
+  reviewPlan: (id, decision, feedback) => ipcRenderer.invoke('v9:reviewPlan', id, decision, feedback),
   answerQuestion: (id, answer) => ipcRenderer.invoke('v9:answerQuestion', id, answer),
   setVisibleConversation: (id) => ipcRenderer.invoke('v9:setVisibleConversation', id),
   getVisibleConversation: () => ipcRenderer.invoke('v9:getVisibleConversation'),

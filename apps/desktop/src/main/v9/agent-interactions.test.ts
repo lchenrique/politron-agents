@@ -24,14 +24,17 @@ async function setup(planMode = false) {
     permissions: { chiefCreateAgents: false, chiefEditAgents: false, chiefManageTeam: false,
       chiefCreateSessions: false, filesWrite: 'inherit', computerUse: 'inherit' } })
   const conversation = service.saveConversation({ name: 'QA', workspaceId: workspace.id, agentIds: [agent.id] })
-  const context = { run: { id: 'run-test', workspaceId: workspace.id, workspacePath: root, planMode },
-    agent, conversation, signal: new AbortController().signal,
+  const abortController = new AbortController()
+  const context = { run: { id: 'run-test', conversationId: conversation.id, agentId: agent.id, rootId: '', parentId: null,
+    ancestry: [agent.id], status: 'running', threadId: null, turnId: null, messageId: 'message-test', input: 'Planeje',
+    planMode, inputMessageId: undefined, agent, workspaceId: workspace.id, workspacePath: root, createdAt: new Date().toISOString() },
+    agent, conversation, signal: abortController.signal,
     message: { id: 'message-test', conversationId: conversation.id, text: '', status: 'running', role: 'assistant', author: agent.name, agentId: agent.id, runId: 'run-test', createdAt: '' } }
   const broker = service as unknown as {
     tools(context: unknown): { name: string }[]
     callTool(context: unknown, name: string, args: Record<string, unknown>): Promise<unknown>
   }
-  return { service, broker, context }
+  return { service, broker, context, abortController }
 }
 describe('Ferramentas de pergunta, plano e autonomia', () => {
   it('apresenta perguntas mesmo no bypass, retorna a resposta escolhida e registra a decisão', async () => {
@@ -54,8 +57,56 @@ describe('Ferramentas de pergunta, plano e autonomia', () => {
     expect(tools).not.toContain('workspace_write')
     expect(tools).not.toContain('workspace_run_command')
     await expect(broker.callTool(context, 'workspace_write', { path: 'x', content: 'y' })).rejects.toThrow(/Modo plano/)
-    await expect(broker.callTool(context, 'propose_plan', { title: 'Plano', steps: ['Revisar', 'Testar'] })).resolves.toContain('Plano apresentado')
-    expect(service.store.approvals().find(item => item.kind === 'plan')?.details.planSteps).toEqual(['Revisar','Testar'])
+    const planTask = broker.callTool(context, 'propose_plan', { title: 'Plano', steps: ['Revisar', 'Testar'] })
+    await vi.waitFor(() => expect(service.store.approvals().find(item => item.kind === 'plan')?.status).toBe('pending'))
+    const approval = service.store.approvals().find(item => item.kind === 'plan')!
+    expect(approval.details.planSteps).toEqual(['Revisar','Testar'])
+    await expect(service.reviewPlan(approval.id, 'approve', 'comentário fora do pedido de mudanças')).rejects.toThrow(/só pode acompanhar/i)
+    await expect(service.reviewPlan(approval.id, 'invalid' as never)).rejects.toThrow(/decisão.*inválida/i)
+    expect(service.store.approval(approval.id)?.status).toBe('pending')
+    await service.reviewPlan(approval.id, 'approve')
+    await expect(planTask).resolves.toContain('Plano aprovado')
+    expect(service.store.approval(approval.id)?.details.planReviewDecision).toBe('approve')
+  })
+  it('devolve comentários de mudança ao mesmo agente e persiste a revisão solicitada', async () => {
+    const { service, broker, context } = await setup(true)
+    const planTask = broker.callTool(context, 'propose_plan', { title: 'Plano', steps: ['Implementar'] })
+    await vi.waitFor(() => expect(service.store.approvals().find(item => item.kind === 'plan')?.status).toBe('pending'))
+    const approval = service.store.approvals().find(item => item.kind === 'plan')!
+    await expect(service.reviewPlan(approval.id, 'request_changes', '   ')).rejects.toThrow(/mudar/i)
+    expect(service.store.approval(approval.id)?.status).toBe('pending')
+    await service.reviewPlan(approval.id, 'request_changes', 'Inclua cobertura de testes.')
+    await expect(planTask).resolves.toContain('Inclua cobertura de testes.')
+    expect(service.store.approval(approval.id)?.status).toBe('denied')
+    expect(service.store.approval(approval.id)?.details.planReviewDecision).toBe('request_changes')
+    expect(service.store.approval(approval.id)?.details.planReviewFeedback).toBe('Inclua cobertura de testes.')
+    await expect(service.reviewPlan(approval.id, 'approve')).rejects.toThrow(/não está mais pendente/i)
+    const revisedTask = broker.callTool(context, 'propose_plan', { title: 'Plano revisado', steps: ['Implementar', 'Testar'] })
+    await vi.waitFor(() => expect(service.store.approvals().filter(item => item.kind === 'plan' && item.status === 'pending')).toHaveLength(1))
+    const revised = service.store.approvals().find(item => item.kind === 'plan' && item.status === 'pending')!
+    expect(revised.runId).toBe(approval.runId)
+    await service.reviewPlan(revised.id, 'approve')
+    await expect(revisedTask).resolves.toContain('Plano aprovado')
+  })
+  it('recusa a proposta sem confundir recusa com pedido de mudanças', async () => {
+    const { service, broker, context } = await setup(true)
+    const planTask = broker.callTool(context, 'propose_plan', { title: 'Plano', steps: ['Implementar'] })
+    await vi.waitFor(() => expect(service.store.approvals().find(item => item.kind === 'plan')?.status).toBe('pending'))
+    const approval = service.store.approvals().find(item => item.kind === 'plan')!
+    await service.reviewPlan(approval.id, 'reject')
+    await expect(planTask).resolves.toContain('recusou')
+    expect(service.store.approval(approval.id)?.details.planReviewDecision).toBe('reject')
+    expect(service.store.approval(approval.id)?.details.planReviewFeedback).toBeUndefined()
+  })
+  it('interrompe a aprovação pendente quando a execução é cancelada', async () => {
+    const { service, broker, context, abortController } = await setup(true)
+    const planTask = broker.callTool(context, 'propose_plan', { title: 'Plano', steps: ['Implementar'] })
+    await vi.waitFor(() => expect(service.store.approvals().find(item => item.kind === 'plan')?.status).toBe('pending'))
+    const approval = service.store.approvals().find(item => item.kind === 'plan')!
+    abortController.abort()
+    await expect(planTask).rejects.toThrow(/interrompida/i)
+    expect(service.store.approval(approval.id)?.status).toBe('interrupted')
+    await expect(service.reviewPlan(approval.id, 'approve')).rejects.toThrow(/não está mais pendente/i)
   })
   it('usa apenas a view compartilhada e respeita a permissão atual do agente', async () => {
     const { service, broker, context } = await setup()

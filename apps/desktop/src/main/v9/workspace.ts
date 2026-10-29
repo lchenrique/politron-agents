@@ -12,7 +12,7 @@ import { delegationEligibility } from './delegation-eligibility'
 import { createCommandEvidence, formatCommandEvidence } from './command-evidence'
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
-import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
+import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
 import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
@@ -183,6 +183,7 @@ export class AppService extends EventEmitter {
   private readonly groupRounds = new Map<string, Promise<void>>()
   private readonly groupRoundSignals = new Map<string, Set<AbortController>>()
   private readonly approvalWaiters = new Map<string, (approved: boolean) => void>()
+  private readonly planReviewWaiters = new Map<string, (result: { decision: PlanReviewDecision; feedback?: string }) => void>()
   private readonly questionWaiters = new Map<string, (answer: string) => void>()
   private visibleConversationId: string | null = null
   private cachedModels: ((runtime: Agent['runtime']) => Promise<Model[]>) | null = null
@@ -396,6 +397,7 @@ export class AppService extends EventEmitter {
   async respondApproval(approvalId: string, approved: boolean, remote = false) {
     const approval = this.store.approval(approvalId)
     if (!approval || approval.status !== 'pending') throw new Error('Esta aprovação não está mais pendente.')
+    if (approval.kind === 'plan') throw new Error('Use a revisão interativa para decidir este plano.')
     if (remote && approval.details.desktopOnly) throw new Error('A autorização do navegador real só pode ser respondida na janela do Boobot neste computador.')
     if (typeof approved !== 'boolean') throw new Error('Decisão de aprovação inválida.')
     const resolveApproval = this.approvalWaiters.get(approvalId)
@@ -408,6 +410,31 @@ export class AppService extends EventEmitter {
       this.updateMessage(context.message, 'running', context.message.text)
     }
     this.approvalWaiters.delete(approvalId); resolveApproval(approved)
+  }
+  async reviewPlan(approvalId: string, decision: PlanReviewDecision, feedback?: string, remote = false): Promise<void> {
+    const approval = this.store.approval(approvalId)
+    if (!approval || approval.kind !== 'plan' || approval.status !== 'pending') throw new Error('Este plano não está mais pendente de revisão.')
+    if (remote && approval.details.desktopOnly) throw new Error('Este plano só pode ser revisado na janela do Boobot neste computador.')
+    if (!['approve', 'reject', 'request_changes'].includes(decision)) throw new Error('Decisão de revisão de plano inválida.')
+    if (decision !== 'request_changes' && feedback !== undefined) throw new Error('O comentário só pode acompanhar um pedido de mudanças.')
+    const note = feedback === undefined ? undefined : text(feedback, 2000).trim()
+    if (decision === 'request_changes' && !note) throw new Error('Descreva o que deve mudar no plano.')
+    const resolveReview = this.planReviewWaiters.get(approvalId)
+    if (!resolveReview) throw new Error('A revisão deste plano não está ativa.')
+    const updated: Approval = {
+      ...approval,
+      status: decision === 'approve' ? 'approved' : 'denied',
+      details: { ...approval.details, planReviewDecision: decision, ...(note ? { planReviewFeedback: note } : {}) },
+      resolvedAt: new Date().toISOString(),
+    }
+    this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
+    const context = this.contexts.get(approval.runId)
+    if (context) {
+      context.run.status = 'running'; this.store.putRun(context.run)
+      this.updateMessage(context.message, 'running', context.message.text)
+    }
+    this.planReviewWaiters.delete(approvalId)
+    resolveReview({ decision, ...(note ? { feedback: note } : {}) })
   }
   async answerQuestion(approvalId: string, answer: string): Promise<void> {
     const approval = this.store.approval(approvalId)
@@ -451,6 +478,35 @@ export class AppService extends EventEmitter {
       context.signal?.addEventListener('abort', abort, { once: true })
       this.emitEvent({ type: 'approval', approval })
       this.notifyWhenAway(context.conversation.id, 'Pergunta do Boo', question.slice(0, 140))
+    })
+  }
+  private requestPlanReview(context: RunContext, title: string, steps: string[]): Promise<{ decision: PlanReviewDecision; feedback?: string }> {
+    const signal = context.signal
+    if (signal?.aborted) return Promise.reject(new Error('Revisão do plano interrompida.'))
+    const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id,
+      agentId: context.agent.id, kind: 'plan', details: { planTitle: title, planSteps: steps },
+      status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
+    this.store.putApproval(approval)
+    context.run.status = 'waiting'; this.store.putRun(context.run)
+    this.updateMessage(context.message, 'waiting', context.message.text)
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        this.planReviewWaiters.delete(approval.id)
+        const current = this.store.approval(approval.id)
+        if (current?.status === 'pending') {
+          const updated = { ...current, status: 'interrupted' as const, resolvedAt: new Date().toISOString() }
+          this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
+        }
+        reject(new Error('Revisão do plano interrompida.'))
+      }
+      this.planReviewWaiters.set(approval.id, result => {
+        signal?.removeEventListener('abort', abort)
+        resolve(result)
+      })
+      signal?.addEventListener('abort', abort, { once: true })
+      if (signal?.aborted) { abort(); return }
+      this.emitEvent({ type: 'approval', approval })
+      if (this.store.approval(approval.id)?.status === 'pending') this.notifyWhenAway(context.conversation.id, 'Plano aguardando revisão', `${context.agent.name} apresentou: ${title}`)
     })
   }
   private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false, alwaysAsk = false): Promise<boolean> {
@@ -1207,6 +1263,12 @@ export class AppService extends EventEmitter {
       if (!title || !Array.isArray(raw) || raw.length < 1 || raw.length > 15 ||
         !raw.every(value => typeof value === 'string' && value.trim().length > 0 && value.length <= 300))
         throw new Error('Título ou etapas do plano inválidos.')
+      if (context.run.planMode) {
+        const review = await this.requestPlanReview(context, title, raw as string[])
+        if (review.decision === 'approve') return 'Plano aprovado pelo usuário. Como o modo plano está ativo, aguarde uma nova solicitação fora do modo plano; não execute alterações neste turno.'
+        if (review.decision === 'reject') return 'O usuário recusou o plano. Não execute alterações.'
+        return `O usuário pediu mudanças no plano: ${review.feedback}. Reapresente uma versão revisada com propose_plan antes de continuar.`
+      }
       const record: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id,
         agentId: context.agent.id, kind: 'plan', details: { planTitle: title, planSteps: raw as string[] },
         status: 'approved', createdAt: new Date().toISOString(), resolvedAt: new Date().toISOString() }

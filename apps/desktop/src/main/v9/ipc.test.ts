@@ -52,4 +52,19 @@ describe('superfície IPC da V9', () => {
     expect(respondApproval).toHaveBeenLastCalledWith('id', true)
     dispose()
   })
+  it('reviewPlan também identifica a origem remota sem mudar o IPC local', async () => {
+    const reviewPlan = vi.fn(async () => undefined)
+    const service = { on: vi.fn(), off: vi.fn(), reviewPlan } as unknown as AppService
+    const remote = new Map<string, (...args: unknown[]) => unknown>()
+    const routing = { remote: false, register: (method: string, handler: (...args: unknown[]) => unknown) => { remote.set(method, handler) }, invoke: (_m: string, _a: unknown[], local: () => unknown) => local(), publish: () => true }
+    const dispose = registerV9Ipc(service, routing as never)
+    await remote.get('v9:reviewPlan')!('id', 'request_changes', 'Inclua testes.')
+    expect(reviewPlan).toHaveBeenLastCalledWith('id', 'request_changes', 'Inclua testes.', true)
+    const sender = {}
+    const { BrowserWindow } = await import('electron')
+    vi.spyOn(BrowserWindow, 'fromWebContents' as never).mockReturnValue({ isDestroyed: () => false } as never)
+    await (handlers.get('v9:reviewPlan') as (...args: unknown[]) => unknown)({ sender }, 'id', 'approve')
+    expect(reviewPlan).toHaveBeenLastCalledWith('id', 'approve', undefined)
+    dispose()
+  })
 })

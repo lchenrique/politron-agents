@@ -9,6 +9,8 @@ describe('capacidades explícitas do gateway PWA', () => {
     expect(() => assertPwaRpcAuthorized('v9:historyPage', ['conv', null], PWA_READ_ONLY)).not.toThrow()
     expect(() => assertPwaRpcAuthorized('v9:send', ['conv', 'oi'], PWA_READ_ONLY)).toThrow(/Permissão/)
     expect(() => assertPwaRpcAuthorized('v9:respondApproval', ['id', true], PWA_READ_ONLY)).toThrow(/Permissão/)
+    expect(() => assertPwaRpcAuthorized('v9:reviewPlan', ['id', 'approve'], PWA_READ_ONLY)).toThrow(/Permissão/)
+    expect(() => assertPwaRpcAuthorized('v9:reviewPlan', ['id', 'approve'], ['approvals'])).not.toThrow()
     expect(() => assertPwaRpcAuthorized('v9:readProjectFile', ['.env'], PWA_READ_ONLY)).toThrow(/Permissão/)
     expect(() => assertPwaRpcAuthorized('v9:writeProjectFile', ['file', 'code'], PWA_READ_ONLY)).toThrow(/Permissão/)
   })
@@ -21,6 +23,7 @@ describe('capacidades explícitas do gateway PWA', () => {
   it('não expõe mais o navegador individual do agente no host remoto', () => {
     const rpc = new HostRpc()
     expect(rpc.supports('v9:snapshot')).toBe(true)
+    expect(rpc.supports('v9:reviewPlan')).toBe(true)
     for (const method of ['v9:browserFrames', 'v9:browserControl', 'v9:browserAction', 'v9:externalBrowserStatus', 'v9:setExternalBrowserGrant']) {
       expect(rpc.supports(method)).toBe(false)
       expect(() => rpc.dispatch(method, [])).toThrow(/não está disponível/)

@@ -29,6 +29,7 @@ export const PWA_METHOD_CAPABILITIES = {
   'v9:voiceTranscribe': 'chat',
 
   'v9:respondApproval': 'approvals',
+  'v9:reviewPlan': 'approvals',
   'v9:answerQuestion': 'approvals',
 
   'v9:readProjectFile': 'files:read',
