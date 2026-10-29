@@ -1,14 +1,15 @@
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
-import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, X } from 'lucide-react'
+import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Menu, type MenuEntry } from '@/components/dsh'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import type { Agent } from '../../../../shared/v9'
+import type { Agent, Conversation, Message, Run } from '../../../../shared/v9'
 import { ProjectExplorer } from './ProjectExplorer'
 import { FilePreview, type FileDraft, type FileDraftChange } from './FilePreview'
 import { PoliAvatar } from '../app/PoliAvatar'
 import { MascotStatusBubble } from '../app/MascotStatusBubble'
+import { DelegationOverview } from './DelegationOverview'
 import { useVoicePreferences } from '../realtime/preferences'
 import type { RealtimeMode, RealtimePhase } from '../../../../shared/realtime'
 import type { AgentAvatarState } from '../app/Avatar'
@@ -26,9 +27,9 @@ export interface DockWorkspaceHandle {
   revealTool: (kind: DockTool) => void
   useDevelopmentLayout: () => void
 }
-const labels: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
-const icons = { chat: MessageSquare, files: Files, terminal: Terminal, web: Globe, mascot: UserRound, diff: FileDiff, file: Code2 }
-const toolKinds: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff']
+const labels: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações', agents: 'Agentes' }
+const icons = { chat: MessageSquare, files: Files, terminal: Terminal, web: Globe, mascot: UserRound, diff: FileDiff, agents: Users, file: Code2 }
+const toolKinds: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff', 'agents']
 /** Ferramentas que dependem do Electron local; a PWA nunca as monta. */
 const desktopOnly = (kind: DockTab['kind']) => kind === 'terminal' || kind === 'web' || kind === 'mascot'
 const positions = [
@@ -48,7 +49,7 @@ function loadLayout(): DockLayoutState {
 
 function DockAddMenu({ groupId, onOpen, label = 'Nova aba', browserMode = false, canReadFiles = true }: { groupId: string; onOpen: (kind: DockTool, groupId: string) => void; label?: string; browserMode?: boolean; canReadFiles?: boolean }) {
   const [open, setOpen] = useState(false)
-  const available = browserMode ? toolKinds.filter(kind => kind === 'chat' || kind === 'diff' || kind === 'files' && canReadFiles) : toolKinds
+  const available = browserMode ? toolKinds.filter(kind => kind === 'chat' || kind === 'diff' || kind === 'agents' || kind === 'files' && canReadFiles) : toolKinds
   return <Menu open={open} onClose={() => setOpen(false)} align="end" portal autoFocus
     anchor={<Button size="icon" variant="ghost" className="size-7 shrink-0" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
       onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpen(value => !value) } }} onClick={() => setOpen(value => !value)}><Plus className="size-4" /></Button>}
@@ -97,6 +98,10 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   chatHeader?: ReactNode
   workspaceId?: string | null
   conversationId?: string
+  delegationMessages?: Message[]
+  conversations?: Conversation[]
+  runs?: Run[]
+  onOpenRelatedConversation?: (conversationId: string) => void
   voiceAgentId?: string
   assistant?: Agent
   agents: Agent[]
@@ -107,7 +112,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   browserMode?: boolean
   canReadFiles?: boolean
   canWriteFiles?: boolean
-}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
+}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, delegationMessages = [], conversations = [], runs = [], onOpenRelatedConversation, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
   const [layout, setLayout] = useState<DockLayoutState>(loadLayout)
   const [openOrganizeMenuId, setOpenOrganizeMenuId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, FileDraft>>({})
@@ -234,6 +239,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     if (browserMode && (desktopOnly(tab.kind) || (tab.kind === 'files' || tab.kind === 'file') && !canReadFiles)) return null
     switch (tab.kind) {
       case 'chat': return children
+      case 'agents': return <DelegationOverview conversationId={conversationId} messages={delegationMessages} conversations={conversations} runs={runs} agents={agents} onOpenConversation={onOpenRelatedConversation} />
       case 'files': return <ProjectExplorer workspaceId={workspaceId} onOpenFile={(id, path) => openFile(id, path)} />
       case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} readOnly={browserMode && !canWriteFiles} /> : null
       case 'terminal': return <Suspense fallback={null}><TerminalPanel workspaceId={workspaceId} conversationId={conversationId} showLogs={false} /></Suspense>

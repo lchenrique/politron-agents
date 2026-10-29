@@ -1,4 +1,4 @@
-export type DockTool = 'chat' | 'files' | 'terminal' | 'web' | 'mascot' | 'diff'
+export type DockTool = 'chat' | 'files' | 'terminal' | 'web' | 'mascot' | 'diff' | 'agents'
 export type DockZone = 'main' | 'side'
 export type DockEdge = 'left' | 'right' | 'top' | 'bottom'
 export type DockTab = { id: string; kind: DockTool | 'file'; label: string; workspaceId?: string; path?: string }
@@ -7,8 +7,8 @@ export type DockSplit = { type: 'split'; id: string; axis: 'horizontal' | 'verti
 export type DockNode = DockGroup | DockSplit
 export interface DockLayoutState { root: DockNode; activeGroup: string }
 
-const tools: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff']
-const names: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações' }
+const tools: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff', 'agents']
+const names: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações', agents: 'Agentes' }
 /** Layouts salvos antes do navegador único guardam a aba 'browser' do agente; ela vira a aba do navegador da plataforma. */
 const legacyTool: Record<string, DockTool> = { browser: 'web' }
 let counter = 0

@@ -63,6 +63,16 @@ describe('árvore de docking com múltiplos painéis', () => {
     expect(state.root.type === 'split' && state.root.ratio).toBe(37)
   })
 
+  it('persiste a visão opcional de agentes sem adicioná-la ao layout inicial', () => {
+    const initial = initialDockLayout()
+    expect(groupWithTab(initial.root, 'agents')).toBeUndefined()
+    const group = groups(initial.root)[0]
+    const withAgents = placeTab(initial, toolTab('agents'), group.id)
+    const restored = deserializeDockLayout(JSON.parse(JSON.stringify(withAgents)))
+    expect(groupWithTab(restored.root, 'agents')?.tabs.find(tab => tab.id === 'agents')).toMatchObject({ kind: 'agents', label: 'Agentes' })
+    expect(groupWithTab(restored.root, 'chat')).toBeDefined()
+  })
+
   it('monta layout pronto de quatro painéis, preservando abas de arquivos e ferramentas', () => {
     let before = initialDockLayout()
     before = placeTab(before, fileTab('ws', 'src/App.tsx'), groups(before.root)[0].id)
