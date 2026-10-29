@@ -51,7 +51,7 @@
 
 ### Task 3: Verificação transversal
 
-- [ ] Rodar `npm run typecheck`, `npm run lint` e os testes afetados.
-- [ ] Conferir visualmente claro/escuro, janela estreita, camadas e movimento reduzido em perfil de desenvolvimento isolado.
-- [ ] Atualizar `ESTRATEGIA_POLITRON.md` com comandos, resultados e limitações reais.
-- [ ] Commit: `docs: record DSH modal and menu evidence`.
+- [x] Rodar `npm run typecheck`, `npm run lint` e os testes afetados. `npm run typecheck` passou; 107 testes em 11 arquivos passaram; ESLint dos arquivos alterados teve 0 erros e 11 avisos. `npm run lint` global segue com 185 erros e 117 avisos em arquivos fora desta fase.
+- [x] Conferir visualmente claro/escuro, janela de largura mínima observada de 900 px, estado vazio, camadas dos menus e popovers, foco e Escape em perfil isolado. As regras `prefers-reduced-motion`, `motion-reduce` e `MotionConfig reducedMotion="user"` foram conferidas no código; o modo do sistema não foi forçado durante a sessão.
+- [x] Atualizar `ESTRATEGIA_POLITRON.md` com comandos, resultados e limitações reais.
+- [x] Commit: `docs: record DSH modal and menu evidence`.
