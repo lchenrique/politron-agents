@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Archive, ArrowLeft, CalendarClock, ChevronRight, CirclePlus, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Modal } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
 import { ProjectGroupSection } from './ProjectGroupSection'
 import { useSidebarIndex } from './sidebarIndex'
@@ -465,10 +465,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     </footer>}
     <div aria-live="polite" role="status" aria-label="Ordem do sidebar" className="sr-only">{announcement}</div>
     <GroupDialog draft={groupDialog} onChange={value => setGroupDialog(current => current ? { ...current, value } : current)} onCancel={() => setGroupDialog(null)} onConfirm={confirmGroupDialog} />
-    <Dialog open={!!deleteRequest} onOpenChange={open => { if (!open) setDeleteRequest(null) }}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{deleteRequest?.title}</DialogTitle><DialogDescription>{deleteRequest?.description}</DialogDescription></DialogHeader>
-        <div className="flex justify-end gap-2">
+    <Modal open={!!deleteRequest} onClose={() => setDeleteRequest(null)} title={deleteRequest?.title || 'Confirmar exclusão'} description={deleteRequest?.description} closeLabel="Fechar"
+      footer={<div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setDeleteRequest(null)}>Cancelar</Button>
           <Button variant="destructive" onClick={() => {
             const request = deleteRequest
@@ -478,8 +476,6 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             else if (request.kind === 'conversation') void onDeleteConversation(request.id)
             else void onDeleteAgent(request.id)
           }}>Excluir</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>} />
   </aside>
 }

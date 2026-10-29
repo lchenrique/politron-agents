@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import { AudioLines, Download, FolderPlus, GraduationCap, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench } from 'lucide-react'
+import { AudioLines, Download, FolderPlus, GraduationCap, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench, X } from 'lucide-react'
 import type { Agent, DecisionModel, OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { SkillInfo } from '../../../../shared/skills'
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { Modal } from '@/components/dsh'
 import { ThemeSelector } from '@/components/ide/ThemeSelector'
 import { errorText } from './appShellShared'
 import { setRivePreview, useRivePreview } from './booRendererPreference'
@@ -222,11 +222,13 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
 
   const current = SECTIONS.find(item => item.id === section) || SECTIONS[0]
 
-  return <Dialog open={open} onOpenChange={onOpenChange}>
+  return <Modal open={open} onClose={() => onOpenChange(false)} title="Configurações" headless backdropBlur={false}
+    className="flex h-[min(44rem,calc(100dvh-2rem))] w-[min(64rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:grid sm:grid-cols-[13rem_minmax(0,1fr)]">
     {/* Em janelas estreitas a navegação vira uma faixa rolável acima do conteúdo; o X do diálogo fica fora das duas áreas de rolagem. */}
-    <DialogContent overlayClassName="!backdrop-blur-none bg-black/55" className="flex h-[min(44rem,calc(100dvh-2rem))] w-[min(64rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:grid sm:grid-cols-[13rem_minmax(0,1fr)]">
-      <DialogTitle className="sr-only">Configurações</DialogTitle>
-      <DialogDescription className="sr-only">Preferências do Boobot</DialogDescription>
+      <button type="button" aria-label="Fechar" onClick={() => onOpenChange(false)}
+        className="absolute right-3 top-3 z-20 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <X className="size-4" aria-hidden="true" />
+      </button>
       <nav aria-label="Seções de configurações" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-chrome p-2 pr-12 sm:flex-col sm:gap-px sm:overflow-y-auto sm:overflow-x-hidden sm:border-b-0 sm:border-r sm:p-2.5">
         <p className="ds-eyebrow hidden px-2 pb-2 pt-1.5 sm:block">Configurações</p>
         {SECTIONS.map(item => <Button key={item.id} type="button" variant={null} size={null} onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined}
@@ -301,6 +303,5 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         </div>
         </div>
       </div>
-    </DialogContent>
-  </Dialog>
+  </Modal>
 }

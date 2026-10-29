@@ -25,6 +25,7 @@ describe('Modal (DSH)', () => {
     fireEvent.click(trigger)
     const dialog = screen.getByRole('dialog', { name: 'Novo projeto' })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveAttribute('data-dsh-modal', 'true')
     expect(screen.getByRole('heading', { name: 'Novo projeto' })).toBeInTheDocument()
     expect(document.activeElement).toBe(screen.getByLabelText('Nome'))
     fireEvent.keyDown(document, { key: 'Escape' })
@@ -51,6 +52,19 @@ describe('Modal (DSH)', () => {
     expect(document.activeElement).toBe(last)
     fireEvent.click(close)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('fecha ao clicar fora do cartão e devolve o foco ao acionador', () => {
+    render(<ModalHarness />)
+    const trigger = screen.getByRole('button', { name: 'abrir' })
+    trigger.focus()
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Novo projeto' })
+    const mask = dialog.parentElement?.querySelector('[aria-hidden="true"]')
+    expect(mask).not.toBeNull()
+    fireEvent.click(mask as HTMLElement)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(trigger)
   })
 })
 

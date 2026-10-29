@@ -23,6 +23,7 @@ describe('MissionControls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
 
     const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveAttribute('data-dsh-modal', 'true')
     expect(dialog).toHaveTextContent('Analisar a API')
     expect(nativeConfirm).not.toHaveBeenCalled()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar' }))

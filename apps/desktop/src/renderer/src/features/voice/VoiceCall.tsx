@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { MicOff, PhoneOff, Play, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Modal } from '@/components/dsh'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Agent, Message, VoiceStatus, PitVoicesInfo, PitVoiceId, PocketVoicesInfo } from '../../../../shared/v9'
 import { PoliAvatar } from '../app/PoliAvatar'
@@ -227,9 +227,8 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
     speaking: agent ? 'Gerando voz do ' + agent.name + '…' : 'Gerando voz…',
     paused: 'Chamada pausada',
   }
-  return <Dialog open={open} onOpenChange={value => { if (!value) hangup() }}>
-    <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
-      <DialogHeader><DialogTitle>Chamada com o Boo</DialogTitle><DialogDescription>Microfone com Whisper local. Vozes dos Boos aprovadas, gratuitas e fixas por agente.</DialogDescription></DialogHeader>
+  return <Modal open={open} onClose={hangup} title="Chamada com o Boo" description="Microfone com Whisper local. Vozes dos Boos aprovadas, gratuitas e fixas por agente." closeLabel="Fechar chamada"
+    className="max-h-full max-w-md" contentClassName="max-h-full overflow-y-auto">
       <div className="flex flex-col items-center gap-4 pb-2">
         {agents.length > 1 && <Select value={agent?.id || ''} onValueChange={setAgentId}>
           <SelectTrigger aria-label="Agente da chamada" className="w-56"><SelectValue /></SelectTrigger>
@@ -334,6 +333,5 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
         </div>
         <p className="text-center text-[11px] text-muted-foreground">Na chamada, a voz lê um trecho curto para responder mais rápido; a resposta completa permanece no chat. O Fish Audio gratuito depende de cota e conexão.</p>
       </div>
-    </DialogContent>
-  </Dialog>
+  </Modal>
 }

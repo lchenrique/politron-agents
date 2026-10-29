@@ -246,6 +246,7 @@ describe('colapso e exclusão da barra lateral', () => {
     const actions = screen.getByRole('button', { name: 'Ações da conversa Apagar teste' })
     fireEvent.contextMenu(actions.parentElement!)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir conversa' }))
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-dsh-modal', 'true')
     expect(screen.getByRole('dialog')).toHaveTextContent('Excluir a conversa “Apagar teste”?')
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
     expect(onDeleteConversation).not.toHaveBeenCalled()

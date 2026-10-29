@@ -58,7 +58,7 @@ describe('carregamento leve das configurações', () => {
     vi.clearAllMocks()
     vi.stubGlobal('appAPI', appAPI)
     render(<SettingsPage open onOpenChange={vi.fn()} />)
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-dsh-modal', 'true')
     expect(screen.getByText('Aparência')).toBeInTheDocument()
     expect(appAPI.snapshot).not.toHaveBeenCalled()
     expect(appAPI.settingsPreferences).not.toHaveBeenCalled()

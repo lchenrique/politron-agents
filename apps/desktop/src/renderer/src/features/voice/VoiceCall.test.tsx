@@ -41,6 +41,7 @@ describe('ligação local com os Pits', () => {
       voiceTranscribe: vi.fn(),
     })
     render(<VoiceCall open agents={[agent]} messages={[]} onSend={vi.fn()} onClose={vi.fn()} />)
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-dsh-modal', 'true')
     const field = await screen.findByLabelText('Chave OpenRouter para voz')
     fireEvent.change(field, { target: { value: 'sk-or-v1-test-12345678901234567890' } })
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))

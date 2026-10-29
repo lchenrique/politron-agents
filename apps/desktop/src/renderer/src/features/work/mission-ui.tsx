@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Check, CircleDashed, CircleSlash, Loader2, Pause, Play, Send, Square, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Modal } from '@/components/dsh'
 import { cn } from '@/lib/utils'
 import type { Approval, Mission, MissionAction, MissionStep, Run } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
@@ -96,18 +96,11 @@ export function MissionControls({ mission, onNotice, compact = false }: { missio
       {(mission.status === 'paused' || mission.status === 'failed') && <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'resume')}><Play className="size-3.5" />Retomar</Button>}
       {open && <Button size={size} variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={!!busy} onClick={() => setCancelOpen(true)}><Square className="size-3.5" />Cancelar</Button>}
     </div>
-    <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Cancelar missão?</DialogTitle>
-          <DialogDescription>Cancelar a missão “{mission.title}”? O trabalho já feito é preservado.</DialogDescription>
-        </DialogHeader>
-        <div className="flex justify-end gap-2">
+    <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title="Cancelar missão?" description={`Cancelar a missão “${mission.title}”? O trabalho já feito é preservado.`} closeLabel="Fechar"
+      footer={<div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setCancelOpen(false)}>Voltar</Button>
           <Button variant="destructive" disabled={!!busy} onClick={() => { setCancelOpen(false); void run(mission, 'cancel') }}>Cancelar missão</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>} />
   </>
 }
 

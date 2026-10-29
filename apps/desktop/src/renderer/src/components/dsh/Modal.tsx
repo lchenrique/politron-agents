@@ -60,6 +60,7 @@ export function Modal({
       <div
         ref={dialog}
         tabIndex={-1}
+        data-dsh-modal="true"
         data-shortcut-modal={shortcutModal}
         className={clsx(css.dialog, className)}
         role="dialog"
