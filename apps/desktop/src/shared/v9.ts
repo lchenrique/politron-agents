@@ -59,6 +59,27 @@ export interface Message {
   runId: string | null; delegationId?: string; relatedConversationId?: string; attachments?: MessageAttachment[]; createdAt: string
   /** Texto integral do pedido, na mensagem de origem de uma delegação. */
   delegationTask?: string
+  /** Atividade de ferramenta do Boobot com dados estruturados (mensagens antigas só têm o texto "Categoria · detalhe"). */
+  tool?: ActivityTool
+  /** Quando a resposta terminou; só na última resposta de um run concluído/falho/interrompido. */
+  finishedAt?: string
+}
+/**
+ * Chamada de ferramenta registrada numa mensagem de atividade. Argumentos e saída já chegam redigidos
+ * (URLs sem query, segredos removidos) e truncados no processo principal. `name: 'reasoning'` guarda o
+ * resumo de raciocínio do motor em `output`.
+ */
+export interface ActivityTool {
+  name: string
+  /** Argumentos em JSON, redigidos e truncados (~4 KB). */
+  args?: string
+  /** Resultado ou erro, redigido e truncado (~8 KB). */
+  output?: string
+  status: 'running' | 'completed' | 'failed'
+  startedAt: string
+  finishedAt?: string
+  exitCode?: number | null
+  path?: string
 }
 export interface MessagePage { messages: Message[]; hasMore: boolean; beforeCursor: number | null }
 export interface MessageSearchHit { message: Message; cursor: number; snippet: string }

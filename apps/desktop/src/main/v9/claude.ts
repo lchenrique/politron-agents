@@ -178,6 +178,9 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
       }
       const threadId = context.sessionId || context.id
       if (message.type === 'assistant') {
+        // Pensamento estendido vira item de raciocínio, no mesmo formato do Codex (summary).
+        const thinking = message.message.content.flatMap(item => item.type === 'thinking' && item.thinking.trim() ? [item.thinking] : [])
+        if (thinking.length) this.emit('event', { method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'reasoning', summary: thinking } } })
         const value = message.message.content.filter((item): item is Extract<typeof item, { type: 'text' }> => item.type === 'text').map(item => item.text).join('')
         if (value) this.emit('event', { method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, delta: value } })
       }

@@ -12,7 +12,7 @@ import { delegationEligibility } from './delegation-eligibility'
 import { createCommandEvidence, formatCommandEvidence } from './command-evidence'
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
-import { ASSISTANT_ID, type Agent, type Approval, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
+import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
 import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
@@ -36,6 +36,7 @@ import { SkillsService } from './skills/service'
 import { reflectionPrompt, shouldReflect, skillsPromptBlock } from './skills/learning'
 import { MissionEngine } from './missions'
 import { toolActivityText } from '../../shared/activity'
+import { clipText, finishedTool, reasoningText, redactSecrets, startedTool, TOOL_OUTPUT_MAX } from './tool-activity'
 import { delegatedConversationName } from '../../shared/delegation-title'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
@@ -501,8 +502,8 @@ export class AppService extends EventEmitter {
   searchHistory(id: string, query: string, limit?: number) { this.store.conversation(id); return this.store.searchHistory(id, text(query, 200), limit) }
   historyAround(id: string, cursor: number, limit?: number) { this.store.conversation(id); return this.store.historyAround(id, cursor, limit) }
   private emitEvent(event: WorkspaceEvent) { this.emit('workspace-event', event) }
-  private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null, details: { id?: string; attachments?: MessageAttachment[] } = {}) {
-    const message: Message = { id: details.id || randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, ...(details.attachments?.length ? { attachments: details.attachments } : {}), createdAt: new Date().toISOString() }
+  private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null, details: { id?: string; attachments?: MessageAttachment[]; tool?: ActivityTool } = {}) {
+    const message: Message = { id: details.id || randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, ...(details.attachments?.length ? { attachments: details.attachments } : {}), ...(details.tool ? { tool: details.tool } : {}), createdAt: new Date().toISOString() }
     this.store.putMessage(message); this.emitEvent({ type: 'message', message })
     // Texto que chegar depois de uma atividade vira mensagem nova, abaixo dela (ver replyFor).
     if (role === 'activity' && runId) { const context = this.contexts.get(runId); if (context) context.activitySince = true }
@@ -990,7 +991,7 @@ export class AppService extends EventEmitter {
   private async finish(context: RunContext, status: Run['status'], value: string) {
     if (['completed', 'interrupted', 'failed'].includes(context.run.status)) return
     if (context.flushTimer) clearTimeout(context.flushTimer)
-    context.run.status = status; this.store.putRun(context.run); this.updateMessage(context.message, status, value || (status === 'completed' ? '(Sem resposta em texto.)' : ''))
+    context.run.status = status; this.store.putRun(context.run); context.message.finishedAt = new Date().toISOString(); this.updateMessage(context.message, status, value || (status === 'completed' ? '(Sem resposta em texto.)' : ''))
     // Encerra também as esperas de aprovação: uma decisão tardia não pode executar
     // uma ferramenta depois de timeout, falha de protocolo ou interrupção do motor.
     if (status === 'failed' || status === 'interrupted') this.active.get(context.run.id)?.abort()
@@ -1107,14 +1108,22 @@ export class AppService extends EventEmitter {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (!context) { runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: 'Execução não encontrada.' }] }); return }
       const activity = typeof params.tool === 'string' ? toolActivityText(params.tool, params.arguments || {}) : null
-      if (activity && !context.reflecting) this.addMessage(context.conversation.id, context.agent, 'activity', redactApprovalUrls(activity), 'completed', context.run.id)
+      // A mensagem de atividade nasce "running" no registro estruturado e é atualizada com saída e estado ao terminar.
+      const recorded = activity && !context.reflecting ? this.addMessage(context.conversation.id, context.agent, 'activity', redactApprovalUrls(activity), 'completed', context.run.id, { tool: startedTool(params.tool, params.arguments || {}, redactApprovalUrls) }) : null
+      const settle = (status: 'completed' | 'failed', result: unknown) => {
+        if (!recorded?.tool) return
+        const next = { ...recorded, tool: finishedTool(recorded.tool, status, result, redactApprovalUrls) }
+        this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
+      }
       const counts = !context.reflecting && !SKILL_TOOLS.has(params.tool)
       try {
         const result = await this.callTool(context, params.tool, params.arguments || {}, String(event.id ?? params.toolCallId ?? ''))
         runtime.respond(event.id, { success: true, contentItems: [{ type: 'inputText', text: typeof result === 'string' ? result : JSON.stringify(result) }] })
+        settle('completed', result)
         if (counts) { context.toolCalls = (context.toolCalls || 0) + 1; if (context.toolFailed) context.recovered = true }
       } catch (error) {
         runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: error instanceof Error ? error.message : 'A ferramenta falhou.' }] })
+        settle('failed', error instanceof Error ? error.message : 'A ferramenta falhou.')
         if (counts) { context.toolCalls = (context.toolCalls || 0) + 1; context.toolFailed = true }
       }
       return
@@ -1133,6 +1142,14 @@ export class AppService extends EventEmitter {
           // Coalesce later deltas at display-frame cadence to avoid saturating IPC.
           context.flushTimer = setTimeout(() => { context.flushTimer = undefined; this.updateMessage(context.message, 'running', context.message.text) }, 16)
         }
+      }
+    }
+    if (event.method === 'item/completed' && params.item?.type === 'reasoning') {
+      const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
+      const summary = context && !context.reflecting ? reasoningText(params.item) : ''
+      if (context && summary) {
+        const now = new Date().toISOString()
+        this.addMessage(context.conversation.id, context.agent, 'activity', 'Raciocínio', 'completed', context.run.id, { tool: { name: 'reasoning', output: clipText(redactSecrets(summary), TOOL_OUTPUT_MAX), status: 'completed', startedAt: now, finishedAt: now } })
       }
     }
     if (event.method === 'item/completed' && params.item?.type === 'agentMessage') {
