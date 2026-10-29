@@ -50,6 +50,8 @@ export interface Conversation {
   revision: number; archived: boolean; createdAt: string
   /** Só no snapshot: conversa que delegou o pedido para esta conversa privada (derivado de v9_delegations). */
   parentConversationId?: string
+  /** Só no snapshot: criação da última mensagem (derivado de v9_messages); ausente sem mensagens. */
+  updatedAt?: string
 }
 export interface Message {
   id: string; conversationId: string; agentId: string | null; author: string

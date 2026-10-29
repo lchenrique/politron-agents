@@ -18,6 +18,7 @@ import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableArea, SortableGroup, SortableRow, type SortableData } from './SortableRows'
 import { applyOrder, mergeSubset, moveTo, placeProject } from './sidebarOrder'
 import { conversationDisplayName } from '../../../../shared/delegation-title'
+import { relativeTime } from './relativeTime'
 import './sidebar-dsh.css'
 
 /** Quantas sessoes o projeto aberto mostra antes de exigir "ver mais". Limita o DOM do sidebar sem esconder o trabalho recente. */
@@ -68,6 +69,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   // Projetos com muitas sessoes mostram so as mais recentes; o resto fica sob demanda.
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(() => new Set())
   const [expandedDelegations, setExpandedDelegations] = useState<Set<string>>(() => new Set())
+  // Relógio das linhas de sessão: o tempo relativo avança a cada minuto.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(timer) }, [])
+  const runningConversations = useMemo(() => new Set(snapshot.runs.filter(run => run.status === 'running' || run.status === 'queued').map(run => run.conversationId)), [snapshot.runs])
   const [deleteRequest, setDeleteRequest] = useState<{ kind: 'workspace' | 'conversation' | 'agent'; id: string; title: string; description: string } | null>(null)
   useEffect(() => { localStorage.setItem('politron.sidebar.collapsed-workspaces', JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { localStorage.setItem('politron.sidebar.favorites', JSON.stringify([...favorites])) }, [favorites])
@@ -182,7 +187,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const delegated = delegatedConversations(conversation.id)
     const open = expandedDelegations.has(conversation.id)
     const hidden = open ? [] : delegatedSubtree(conversation.id)
-    const row = conversationRow(conversation, needsAttention(conversation.id) || hidden.some(item => needsAttention(item.id)), hidden.reduce((total, item) => total + (unreadCounts[item.id] || 0), unreadCounts[conversation.id] || 0))
+    const row = conversationRow(conversation, needsAttention(conversation.id) || hidden.some(item => needsAttention(item.id)), hidden.reduce((total, item) => total + (unreadCounts[item.id] || 0), unreadCounts[conversation.id] || 0), [conversation, ...hidden].some(item => runningConversations.has(item.id)))
     if (!delegated.length) return row
     return <div key={conversation.id}>
       {row}
@@ -192,13 +197,14 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       {open && <div className="dsh-indent dsh-rows">{delegated.map(conversationButton)}</div>}
     </div>
   }
-  const conversationRow = (conversation: Conversation, attention: boolean, unread: number) =>
+  /** Como no DSH: o espaço inicial só mostra estado (aprovação > execução > não lida); à direita, o tempo dá lugar ao menu no hover. */
+  const conversationRow = (conversation: Conversation, attention: boolean, unread: number, running: boolean) =>
     <div key={conversation.id} data-active={conversation.id === selected?.id} className="dsh-row dsh-session group" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
       <Button variant="ghost" size={null} onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="dsh-row-main">
-        <span className="dsh-slot">{attention ? <span aria-label="Aguardando aprovação" className="dsh-dot" /> : conversation.agentIds.length > 1 ? <Users /> : <MessageSquarePlus />}</span>
+        <span className="dsh-slot">{attention ? <span aria-label="Aguardando aprovação" className="dsh-dot" /> : running ? <svg role="img" aria-label="Em execução" className="dsh-spinner" viewBox="0 0 24 24" width="14" height="14"><g><circle cx="12" cy="12" r="9.5" /><circle cx="12" cy="12" r="9.5" /></g></svg> : unread ? <span aria-label={unread + ' não lidas'} className="dsh-dot" data-state="done" /> : null}</span>
         <span className="dsh-title" title={conversation.name}>{conversationDisplayName(conversation.name)}</span>
         {isFavorite('conversation', conversation.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
-        {!!unread && <span aria-label={unread + ' não lidas'} className="ds-count" data-tone="primary">{unread > 9 ? '9+' : unread}</span>}
+        <span className="dsh-meta dsh-resting">{attention ? 'Aprovação' : relativeTime(conversation.updatedAt || conversation.createdAt, now)}</span>
       </Button>
       <DropdownMenu open={openConversationMenuId === conversation.id} onOpenChange={open => setOpenConversationMenuId(open ? conversation.id : null)}>
         <DropdownMenuTrigger asChild><Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações da conversa ' + conversation.name}><MoreHorizontal /></Button></DropdownMenuTrigger>
@@ -427,7 +433,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             }
             if (type === 'conversation') {
               const conversation = snapshot.conversations.find(item => item.id === id && !item.archived)
-              return conversation ? <div key={key} className="dsh-row dsh-session"><Button variant="ghost" size={null} onClick={() => onSelectConversation(id)} className="dsh-row-main"><span className="dsh-slot"><MessageSquarePlus /></span><span className="dsh-title">{conversation.name}</span><Star className="dsh-star fill-warning text-warning" /></Button></div> : null
+              return conversation ? <div key={key} className="dsh-row dsh-session"><Button variant="ghost" size={null} onClick={() => onSelectConversation(id)} className="dsh-row-main"><span className="dsh-slot" /><span className="dsh-title">{conversation.name}</span><Star className="dsh-star fill-warning text-warning" /></Button></div> : null
             }
             return null
           })}

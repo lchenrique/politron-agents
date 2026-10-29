@@ -72,7 +72,8 @@ export default function AppShell() {
   })
   const [sidebarSection, setSidebarSection] = useState<'projects' | 'agents'>(() => { try { return localStorage.getItem('politron.sidebar.section') === 'agents' ? 'agents' : 'projects' } catch { return 'projects' } })
   useEffect(() => { try { localStorage.setItem('politron.sidebar.section', sidebarSection) } catch { /* preferência opcional */ } }, [sidebarSection])
-  const [sidebarSize, setSidebarSize] = useState(() => { try { const value = Number(localStorage.getItem('politron.sidebar.size')); return Number.isFinite(value) && value >= 17 && value <= 34 ? value : 32 } catch { return 32 } })
+  // Sem preferência salva, abre com 280px (largura padrão do DSH) convertidos para a porcentagem que o layout aceita.
+  const [sidebarSize, setSidebarSize] = useState(() => { const fallback = Math.min(34, Math.max(10, 28_000 / (window.innerWidth || 1280))); try { const value = Number(localStorage.getItem('politron.sidebar.size')); return Number.isFinite(value) && value >= 10 && value <= 34 ? value : fallback } catch { return fallback } })
   const dockRef = useRef<DockWorkspaceHandle>(null)
   useEffect(() => { try { localStorage.setItem('politron.sidebar.collapsed', String(sidebarCollapsed)) } catch { /* preferência opcional */ } }, [sidebarCollapsed])
   useEffect(() => {
@@ -353,7 +354,7 @@ export default function AppShell() {
       {browserMode && isMobile && !sidebarCollapsed && <Button type="button" variant="ghost" size={null} className="boobot-web-sidebar-backdrop h-auto rounded-none p-0" aria-label="Fechar navegação" onClick={() => setSidebarCollapsed(true)} />}
       <ResizablePanelGroup key={browserMode && isMobile ? 'web-mobile-layout' : sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
         defaultLayout={sidebarCollapsed ? { main: 100 } : { sidebar: sidebarSize, main: 100 - sidebarSize }}
-        onLayoutChanged={(layout, meta) => { if (!meta.isUserInteraction || typeof layout.sidebar !== 'number') return; const next = Math.min(34, Math.max(17, layout.sidebar)); setSidebarSize(next); try { localStorage.setItem('politron.sidebar.size', String(next)) } catch { /* preferência opcional */ } }}
+        onLayoutChanged={(layout, meta) => { if (!meta.isUserInteraction || typeof layout.sidebar !== 'number') return; const next = Math.min(34, Math.max(10, layout.sidebar)); setSidebarSize(next); try { localStorage.setItem('politron.sidebar.size', String(next)) } catch { /* preferência opcional */ } }}
         className="boobot-web-layout min-h-0 min-w-0">
       {!sidebarCollapsed && <>
       <ResizablePanel id="sidebar" defaultSize={`${sidebarSize}%`} minSize="240px" maxSize="400px" className={'min-w-0 ' + (browserMode ? 'boobot-web-sidebar-panel' : '')}>

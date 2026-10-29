@@ -281,12 +281,23 @@
 .dsh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; }
 .dsh-session .dsh-title { margin: 0 6px 0 4px; }
 .dsh-meta { flex: none; font-size: 10px; line-height: 16px; color: var(--dsh-label-tertiary); font-variant-numeric: tabular-nums; }
+.dsh-session .dsh-meta { margin-inline-end: -1px; }
 .dsh-sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .dsh-star { width: 12px; height: 12px; flex: none; }
 
 /* Ponto de estado: caixa de 10px, núcleo de 6px. */
 .dsh-dot { display: inline-flex; flex: none; width: 10px; height: 10px; align-items: center; justify-content: center; }
 .dsh-dot::before { content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--dsh-amber); }
+.dsh-dot[data-state="done"]::before { background: rgb(34 197 94); }
+
+/* Em execução: anel a 25% e arco que respira enquanto gira, ambos em 1,5s. */
+.dsh-spinner { flex: none; width: 14px; height: 14px; color: var(--dsh-label-tertiary); }
+.dsh-spinner g { transform-origin: center; animation: dsh-spin 1.5s linear infinite; }
+.dsh-spinner circle { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.dsh-spinner circle:first-child { opacity: 0.25; }
+.dsh-spinner circle:last-child { stroke-dasharray: 12 150; animation: dsh-dash 1.5s ease-in-out infinite; }
+@keyframes dsh-spin { to { transform: rotate(360deg); } }
+@keyframes dsh-dash { 50% { stroke-dasharray: 24 150; stroke-dashoffset: -6; } }
 
 /* Contagem de não lidas no tom azul do foco. */
 .boobot-sidebar .ds-count { height: 16px; min-width: 16px; padding: 0 4px; font-size: 10px; font-weight: 500; }
@@ -307,17 +318,19 @@
   background: transparent;
   color: var(--dsh-label-tertiary);
   box-shadow: none;
-  opacity: 0;
   transition: none;
 }
+/* Fora do hover a ação sai do fluxo, como no DSH: o tempo/contagem encosta na borda direita. */
+.dsh-row .dsh-row-action { display: none; }
 .dsh-row-action:hover { background: transparent; color: var(--dsh-label-primary); }
 .dsh-row-action svg.lucide { width: 16px; height: 16px; }
 .dsh-row:hover .dsh-row-action,
 .dsh-row:focus-within .dsh-row-action,
-.dsh-row-action[data-state="open"] { opacity: 1; }
+.dsh-row .dsh-row-action[data-state="open"] { display: inline-flex; }
 .dsh-row:hover .dsh-resting,
+.dsh-row:focus-within .dsh-resting,
 .dsh-row:has(.dsh-row-action[data-state="open"]) .dsh-resting { display: none; }
-@media (hover: none) { .dsh-row-action { opacity: 1; } }
+@media (hover: none) { .dsh-row .dsh-row-action { display: inline-flex; } }
 
 /* Pasta: ícone vira triângulo no hover e gira 90° em 150ms ao abrir. */
 .dsh-folder .dsh-slot .dsh-arrow { display: none; width: 8px; height: 8px; color: var(--dsh-label-caption); transition: transform 150ms var(--dsh-ease); }
@@ -358,6 +371,6 @@
 .dsh-foot .dsh-panel-row:disabled { opacity: 1; color: var(--dsh-label-caption); }
 
 @media (prefers-reduced-motion: reduce) {
-  .boobot-sidebar, .dsh-row { animation: none; }
+  .boobot-sidebar, .dsh-row, .dsh-spinner g, .dsh-spinner circle { animation: none; }
   .dsh-folder .dsh-slot .dsh-arrow, .dsh-overflow svg { transition: none; }
 }

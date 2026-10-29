@@ -333,7 +333,7 @@ describe('reordenação do sidebar', () => {
     return api
   }
   afterEach(() => { delete (window as { appAPI?: unknown }).appAPI })
-  const rowNames = (pattern: RegExp) => screen.getAllByRole('button').map(item => item.textContent || '').filter(text => pattern.test(text))
+  const rowNames = (pattern: RegExp) => screen.getAllByRole('button').map(item => (item.closest('.dsh-session') ? item.querySelector('.dsh-title')?.textContent : item.textContent) ?? '').filter(text => pattern.test(text))
 
   it('migra uma vez as pastas antigas do localStorage para o banco', async () => {
     localStorage.setItem('politron.sidebar.groups', JSON.stringify(['Clientes']))

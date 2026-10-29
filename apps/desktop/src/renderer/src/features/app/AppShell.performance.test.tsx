@@ -26,13 +26,13 @@ import AppShell from './AppShell'
 
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); observed.snapshots.length = 0; observed.sidebarSizes.length = 0 })
 
-it('usa 32% como largura inicial sem preferência salva', async () => {
+it('usa 280px como largura inicial sem preferência salva', async () => {
   localStorage.clear()
   let event!: (event: WorkspaceEvent) => void
   vi.stubGlobal('appAPI', { snapshot: async () => emptySnapshot, onEvent: (listener: typeof event) => { event = listener; return () => undefined }, setVisibleConversation: async () => undefined })
   vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
   await act(async () => { render(<AppShell />) })
-  expect(observed.sidebarSizes.at(-1)).toBe(32)
+  expect(observed.sidebarSizes.at(-1)).toBeCloseTo(28_000 / window.innerWidth)
 })
 
 it('abre a área de trabalho num canvas elevado sobre o chrome da janela', async () => {
