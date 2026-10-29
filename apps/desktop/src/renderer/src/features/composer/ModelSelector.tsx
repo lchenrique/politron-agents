@@ -48,33 +48,38 @@ export function ModelSelector({ models, providers, value, onValueChange, disable
   const name = value === INHERIT_MODEL_NAME ? INHERIT_MODEL_NAME : selected?.name || 'Padrão do motor'
   const close = (restoreFocus = false) => {
     setOpen(false); setProviderId(null); setSearch(''); setActiveItem('')
-    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus())
+    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }))
   }
   const openSelector = () => { setProviderId(null); setSearch(''); setActiveItem(''); setOpen(true) }
   const navigate = (next: string | null) => {
     setActiveItem(next ? '' : `provider:${providerId}`)
     setProviderId(next); setSearch('')
-    requestAnimationFrame(() => searchRef.current?.focus())
+    requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true }))
   }
   const choose = (next: string) => { onValueChange(next); close(true) }
   useDismissOnOutsidePointer(rootRef, open, next => { if (!next) close() }, panelRef)
   useEffect(() => {
     if (!open) return
-    const focusSearch = requestAnimationFrame(() => searchRef.current?.focus())
+    const focusSearch = requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true }))
     return () => cancelAnimationFrame(focusSearch)
   }, [open])
   useEffect(() => { setOpen(false); setProviderId(null); setSearch(''); setActiveItem('') }, [value, disabled])
   return <div ref={rootRef} className="relative inline-flex">
       <Button ref={triggerRef} type="button" variant={variant} size="sm" aria-label={label} title={selected?.provider ? `${name} · ${selected.provider}` : name} disabled={disabled}
         aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panelId : undefined}
-        onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); open ? close() : openSelector() } }} onClick={() => open ? close() : openSelector()} className="max-w-72 gap-1.5">
+        onKeyDown={event => {
+          if (!['ArrowDown', 'Enter', ' '].includes(event.key)) return
+          event.preventDefault()
+          if (open) close()
+          else openSelector()
+        }} onClick={() => open ? close() : openSelector()} className="max-w-72 gap-1.5">
         <span className="min-w-0 truncate">{name}</span>
         {selected?.provider && <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{selected.provider}</span>}
         <ChevronDown data-icon="inline-end" />
       </Button>
     {open && createPortal(<MenuSurface ref={panelRef} id={panelId} role="dialog" aria-label="Modelos disponíveis"
       className="fixed z-[1100] w-80 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
-      style={position || { left: -9999, top: -9999, visibility: 'hidden' }}
+      style={{ position: 'fixed', zIndex: 1100, ...(position || { left: -9999, top: -9999, visibility: 'hidden' }) }}
       onKeyDownCapture={event => {
         if (event.key !== 'Escape') return
         event.preventDefault(); event.stopPropagation()

@@ -61,6 +61,41 @@ describe('cabeçalho da conversa', () => {
     expect(onOpenSearchHit).toHaveBeenCalledWith(hit)
   })
 
+  it('mantém a busca ancorada ao cabeçalho sem rolar a viewport estreita', () => {
+    const windowWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth')
+    const windowHeight = Object.getOwnPropertyDescriptor(window, 'innerHeight')
+    const rect = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'getBoundingClientRect')
+    const offsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')
+    const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 240 })
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', { configurable: true, value() {
+      return this.getAttribute('aria-label') === 'Buscar no histórico desta conversa'
+        ? new DOMRect(280, 20, 28, 28)
+        : new DOMRect(0, 0, 0, 0)
+    } })
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get() {
+      return this.getAttribute('aria-label') === 'Busca no histórico' ? 288 : 0
+    } })
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get() {
+      return this.getAttribute('aria-label') === 'Busca no histórico' ? 56 : 0
+    } })
+    try {
+      render(<ChatHeader selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' }))
+      const panel = screen.getByRole('dialog', { name: 'Busca no histórico' })
+      expect(panel).toHaveStyle({ position: 'fixed', left: '20px', top: '52px' })
+    } finally {
+      if (windowWidth) Object.defineProperty(window, 'innerWidth', windowWidth)
+      if (windowHeight) Object.defineProperty(window, 'innerHeight', windowHeight)
+      if (rect) Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', rect)
+      if (offsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidth)
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth
+      if (offsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offsetHeight)
+      else delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight
+    }
+  })
+
   it('abre as ações da conversa em uma superfície de menu DSH', () => {
     render(<ChatHeader selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Ações da conversa' }))

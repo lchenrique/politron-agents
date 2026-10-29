@@ -25,7 +25,6 @@ export const MenuSurface = forwardRef<HTMLDivElement, MenuSurfaceProps>(function
   useLayoutEffect(() => {
     // Nested React portals can insert the backing before its anchor. CSS anchor
     // positioning requires the anchor to precede the positioned element.
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- The portal ref is attached before layout effects run.
     document.body.appendChild(backingRef.current!)
   }, [])
   const anchorStyle: CSSProperties & { '--dsh-menu-anchor': string } = {

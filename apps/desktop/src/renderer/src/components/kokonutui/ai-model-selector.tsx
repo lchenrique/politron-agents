@@ -240,7 +240,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
     setProviderId(next)
     setActiveItem('')
     setSearch('')
-    requestAnimationFrame(() => searchRef.current?.focus())
+    requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true }))
   }
   const chooseModel = (key: string) => {
     if (key === INHERIT_MODEL_NAME) {
@@ -259,7 +259,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
     }
     onChange({ model: key, effort: nextTrack.efforts.length ? effort : undefined })
     close()
-    triggerRef.current?.focus()
+    triggerRef.current?.focus({ preventScroll: true })
   }
 
   useDismissOnOutsidePointer(rootRef, open, next => { if (!next) close() }, panelRef)
@@ -271,7 +271,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (providerId) { event.preventDefault(); navigate(null) }
-      else { close(); triggerRef.current?.focus() }
+      else { close(); triggerRef.current?.focus({ preventScroll: true }) }
     }
     document.addEventListener('keydown', onKey, true)
     return () => {
@@ -284,8 +284,8 @@ export default function AIModelSelector({ models, providers, value, onChange, di
       <button ref={triggerRef} type="button" disabled={disabled}
         aria-label="Selecionar modelo" aria-expanded={open} aria-controls={panelId} aria-haspopup="dialog"
         title={selected ? selected.name + (selected.provider ? ' · ' + selected.provider : '') : INHERIT_MODEL_NAME}
-        onKeyDown={event => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setOpen(true); requestAnimationFrame(() => searchRef.current?.focus()) } }}
-        onClick={() => { if (open) close(); else { setOpen(true); requestAnimationFrame(() => searchRef.current?.focus()) } }}
+        onKeyDown={event => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
+        onClick={() => { if (open) close(); else { setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
         className={cn('flex h-8 max-w-[min(16rem,100%)] items-center gap-1.5 rounded-lg border border-transparent px-2 text-xs text-foreground',
           'outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
           open && 'bg-accent')}>
@@ -298,7 +298,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
       </button>
       {open && createPortal(<MenuSurface ref={panelRef} id={panelId} role="dialog" aria-label="Modelos disponíveis"
           className="fixed z-[1100] w-[430px] max-w-[calc(100vw-2rem)] overflow-y-auto border border-[var(--dsw-alias-border-l1)] shadow-[var(--dsw-elevation-prominent)]"
-          style={panelPosition ? { ...panelPosition, maxHeight: 'calc(100dvh - max(24px, var(--dsh-frame-overlay-top, 24px)) - 24px)' } : { left: -9999, top: -9999, visibility: 'hidden' }}>
+          style={{ position: 'fixed', zIndex: 1100, ...(panelPosition ? { ...panelPosition, maxHeight: 'calc(100dvh - max(24px, var(--dsh-frame-overlay-top, 24px)) - 24px)' } : { left: -9999, top: -9999, visibility: 'hidden' }) }}>
         <motion.div initial={{ opacity: 0, scale: 0.97, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: 4 }}
           transition={{ duration: 0.16, ease: EASE_OUT }} className="origin-bottom-left overflow-hidden text-popover-foreground">
           {!currentProvider && <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">

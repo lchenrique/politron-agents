@@ -83,13 +83,13 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
   useDismissOnOutsidePointer(rootRef, searchOpen, setSearchOpen, searchPanelRef)
   useEffect(() => {
     if (!searchOpen) return
-    const focusInput = requestAnimationFrame(() => searchInputRef.current?.focus())
+    const focusInput = requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }))
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
       event.stopPropagation()
       setSearchOpen(false)
-      searchTriggerRef.current?.focus()
+      searchTriggerRef.current?.focus({ preventScroll: true })
     }
     document.addEventListener('keydown', closeOnEscape, true)
     return () => { cancelAnimationFrame(focusInput); document.removeEventListener('keydown', closeOnEscape, true) }
@@ -120,7 +120,7 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
     </Button>
     {searchOpen && createPortal(<MenuSurface ref={searchPanelRef} id={searchPanelId} role="dialog" aria-label="Busca no histórico"
       className="fixed z-[1100] w-[min(22rem,calc(100vw-2rem))] rounded-xl p-3 shadow-xl"
-      style={searchPosition || { left: -9999, top: -9999, visibility: 'hidden' }}>
+      style={{ position: 'fixed', zIndex: 1100, ...(searchPosition || { left: -9999, top: -9999, visibility: 'hidden' }) }}>
         <form onSubmit={event => void submitSearch(event)} className="flex gap-2">
           <Input ref={searchInputRef} aria-label="Buscar no histórico desta conversa" value={query} onChange={event => { setQuery(event.target.value); setSearched(false); setSearchError('') }} placeholder="Buscar mensagens…" className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-none outline-none focus-visible:border-input focus-visible:ring-2 focus-visible:ring-primary/40" />
           <Button type="submit" size="sm" disabled={searching || !query.trim()}>{searching ? 'Buscando…' : 'Buscar'}</Button>
