@@ -116,7 +116,7 @@ export default function AppShell() {
   const visibleFileChanges = visibleRunEvidence.fileChanges
   const visibleApprovals = visibleRunEvidence.approvals
   const composerTakeoverApproval = canApprove
-    ? visibleApprovals.find(approval => approval.status === 'pending' && approval.kind !== 'plan')
+    ? visibleApprovals.find(approval => approval.status === 'pending')
     : undefined
   const transcriptApprovals = composerTakeoverApproval
     ? visibleApprovals.filter(approval => approval.id !== composerTakeoverApproval.id)

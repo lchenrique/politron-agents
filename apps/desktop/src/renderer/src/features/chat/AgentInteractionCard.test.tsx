@@ -28,6 +28,15 @@ it('apresenta plano visual sem botões falsos de executar ou editar', () => {
     details: { planTitle: 'Migrar app', planSteps: ['Analisar arquivos', 'Executar testes'] } }} onNotice={vi.fn()} />)
   expect(screen.getByText('Migrar app')).toBeInTheDocument()
   expect(screen.getByText('Analisar arquivos')).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('Plano registrado')
   expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+})
+
+it('registra resultado de aprovação e feedback de mudanças na transcrição', () => {
+  render(<AgentInteractionCard approval={{ ...base, kind: 'plan', status: 'denied',
+    details: { planTitle: 'Migrar app', planSteps: ['Analisar arquivos'], planReviewDecision: 'request_changes', planReviewFeedback: 'Inclua testes.' } }} onNotice={vi.fn()} />)
+  expect(screen.getByRole('status')).toHaveTextContent('Alterações solicitadas')
+  expect(screen.getByText('Pedido de mudanças: Inclua testes.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Aprovar' })).not.toBeInTheDocument()
 })

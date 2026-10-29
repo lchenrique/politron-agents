@@ -16,7 +16,7 @@ const queue: Message[] = [1, 2].map(index => ({
   status: 'queued', runId: null, createdAt: new Date(Date.now() + index * 1000).toISOString(),
 }))
 
-const approvals: Record<'approval' | 'question', Approval> = {
+const approvals: Record<'approval' | 'question' | 'plan', Approval> = {
   approval: {
     id: 'gallery-approval', runId: 'gallery-run', conversationId: 'gallery-chat', agentId: agent.id,
     kind: 'command', details: { command: 'npm run typecheck', cwd: 'D:/projetos pessoais/politron' },
@@ -27,21 +27,26 @@ const approvals: Record<'approval' | 'question', Approval> = {
     kind: 'question', details: { question: 'Qual comportamento devo manter nesta atualização?', options: ['Preservar o fluxo atual', 'Adicionar uma opção configurável'] },
     status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null,
   },
+  plan: {
+    id: 'gallery-plan', runId: 'gallery-run', conversationId: 'gallery-chat', agentId: agent.id,
+    kind: 'plan', details: { planTitle: 'Revisar o fluxo de mensagens', planSteps: ['Mapear o comportamento atual e os pontos de integração.', 'Implementar o ajuste mantendo fila e steering.', 'Validar os fluxos e registrar as mudanças.'] },
+    status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null,
+  },
 }
 
-type PreviewMode = 'composer' | 'busy' | 'approval' | 'question'
+type PreviewMode = 'composer' | 'busy' | 'approval' | 'question' | 'plan'
 
 export default function ComposerGallery() {
   const [mode, setMode] = useState<PreviewMode>('busy')
   const [dark, setDark] = useState(true)
   const [notice, setNotice] = useState('')
-  const takeover = mode === 'approval' ? approvals.approval : mode === 'question' ? approvals.question : undefined
+  const takeover = mode === 'approval' ? approvals.approval : mode === 'question' ? approvals.question : mode === 'plan' ? approvals.plan : undefined
 
   return <div className={dark ? 'dsh-dark' : 'dsh-light'} style={{ display: 'flex', flexDirection: 'column', height: '100vh', minHeight: 0, background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' }} data-composer-gallery>
     <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, flex: 'none', padding: '10px 16px', borderBottom: '1px solid var(--dsw-alias-border-l2)' }}>
       <strong style={{ marginRight: 8 }}>Prévia do composer</strong>
-      {(['composer', 'busy', 'approval', 'question'] as const).map(item => <Button key={item} size="sm" variant={mode === item ? 'secondary' : 'ghost'} onClick={() => setMode(item)}>
-        {{ composer: 'Livre', busy: 'Com fila', approval: 'Aprovação', question: 'Pergunta' }[item]}
+      {(['composer', 'busy', 'approval', 'question', 'plan'] as const).map(item => <Button key={item} size="sm" variant={mode === item ? 'secondary' : 'ghost'} onClick={() => setMode(item)}>
+        {{ composer: 'Livre', busy: 'Com fila', approval: 'Aprovação', question: 'Pergunta', plan: 'Revisão do plano' }[item]}
       </Button>)}
       <Button className="ml-auto" size="sm" variant="outline" onClick={() => setDark(value => !value)}>{dark ? 'Tema claro' : 'Tema escuro'}</Button>
     </header>

@@ -12,9 +12,17 @@ export function AgentInteractionCard({ approval, onNotice, takeover = false }: {
   const [busy, setBusy] = useState(false)
   const locked = useRef(false)
   if (approval.kind === 'plan') {
-    return <PlanApprovalCard title={approval.details.planTitle || 'Plano de implementação'}
-      steps={(approval.details.planSteps || []).map((label, index) => ({ id: String(index), label }))}
-      className="w-full max-w-xl border border-border/60 shadow-none" />
+    const reviewStatus = approval.details.planReviewDecision === 'request_changes' ? 'Alterações solicitadas'
+      : approval.details.planReviewDecision === 'reject' ? 'Plano recusado'
+        : approval.details.planReviewDecision === 'approve' ? 'Plano aprovado'
+          : approval.status === 'pending' ? 'Aguardando revisão' : approval.status === 'approved' ? 'Plano registrado' : 'Revisão interrompida'
+    return <div className="max-w-xl rounded-xl border border-border/60 bg-card p-3">
+      <PlanApprovalCard title={approval.details.planTitle || 'Plano de implementação'}
+        steps={(approval.details.planSteps || []).map((label, index) => ({ id: String(index), label }))}
+        className="w-full max-w-xl border border-border/60 shadow-none" />
+      <p role="status" className="mt-2 text-xs text-muted-foreground">{reviewStatus}</p>
+      {approval.details.planReviewFeedback && <p className="mt-1 text-sm text-muted-foreground">Pedido de mudanças: {approval.details.planReviewFeedback}</p>}
+    </div>
   }
   if (approval.kind !== 'question') return null
   const pending = approval.status === 'pending'
