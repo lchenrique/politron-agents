@@ -4,6 +4,7 @@ import type { Agent, Conversation, MessageSearchHit } from '../../../../shared/v
 import { ChatHeader, ConversationAvatar, ConversationTools } from './ChatHeader'
 
 const agent: Agent = { id: 'a1', name: 'Lyra', alias: 'lyra', description: '', instructions: '', runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-16T12:00:00.000Z' }
+const teammate: Agent = { ...agent, id: 'a2', name: 'Atlas', alias: 'atlas', color: '#4098eb' }
 const conversation: Conversation = { id: 'c1', kind: 'direct', name: 'Planejamento', agentIds: ['a1'], workspaceId: 'ws1', titleAuto: false, revision: 1, archived: false, createdAt: '2026-10-16T12:00:00.000Z' }
 
 describe('cabeçalho da conversa', () => {
@@ -27,6 +28,18 @@ describe('cabeçalho da conversa', () => {
     expect(screen.getByText('Planejamento')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ver detalhes de Lyra' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' })).toBeInTheDocument()
+  })
+
+  it('identifica uma conversa em grupo pelo título e mantém as ações de participantes', () => {
+    const onEditConversation = vi.fn()
+    const group: Conversation = { ...conversation, kind: 'group', name: 'Equipe de marketing', agentIds: ['a1', 'a2'] }
+    render(<ChatHeader selected={group} agents={[agent, teammate]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={onEditConversation} />)
+    expect(screen.getByRole('heading', { name: 'Equipe de marketing' })).toBeInTheDocument()
+    expect(screen.getByText('2 participantes')).toBeInTheDocument()
+    const participants = screen.getByRole('button', { name: 'Ver participantes do grupo' })
+    expect(participants).toHaveAttribute('title', 'Lyra, Atlas')
+    fireEvent.click(participants)
+    expect(onEditConversation).toHaveBeenCalledOnce()
   })
 
   it('na PWA sem leitura de arquivos não oferece um menu de ações vazio', () => {

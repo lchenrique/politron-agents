@@ -402,9 +402,25 @@
   margin: 18vh auto 0;
   max-width: 36rem;
   text-align: center;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 18px;
+}
+
+.emptyTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 26px;
   font-weight: 500;
+  line-height: 32px;
+}
+
+.emptyWorkspace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .older {

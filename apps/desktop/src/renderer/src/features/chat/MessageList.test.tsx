@@ -170,11 +170,23 @@ describe('scroll automático da conversa', () => {
 })
 
 describe('estado vazio da conversa', () => {
-  it('mantém o estado vazio sem duplicar o avatar que já aparece no cabeçalho', () => {
-    render(<MessageList messages={[]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(screen.getByRole('heading', { name: 'Como posso ajudar?' })).toBeInTheDocument()
+  const emptyList = (workspaceName?: string) => <MessageList messages={[]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} workspaceName={workspaceName} />
+
+  it('mostra o título e o workspace da conversa sem duplicar o avatar do cabeçalho', () => {
+    render(emptyList('Politron'))
+    const hero = screen.getByTestId('chat-empty-state')
+    expect(within(hero).getByRole('heading', { name: 'Como posso ajudar?' })).toBeInTheDocument()
+    expect(within(hero).getByText('Politron')).toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
+    expect(within(hero).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('explicita quando a conversa não pertence a um workspace e não sugere prompts', () => {
+    render(emptyList())
+    const hero = screen.getByTestId('chat-empty-state')
+    expect(within(hero).getByText('Sem projeto')).toBeInTheDocument()
+    expect(within(hero).queryByText(/sugestão|exemplo/i)).not.toBeInTheDocument()
   })
 })
 

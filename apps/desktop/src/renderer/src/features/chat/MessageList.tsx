@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ChevronDown } from 'lucide-react'
+import { ArrowDown, ChevronDown, FolderOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
@@ -23,7 +23,7 @@ const STICK_TO_BOTTOM_PX = 96
 const ESTIMATED_TURN_HEIGHT = 220
 const OVERSCAN_PX = 900
 
-export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true, canCancelQueued = false }: {
+export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true, canCancelQueued = false, workspaceName }: {
   messages: Message[]
   fileChanges: FileChange[]
   /** Run cuja revisão já aparece acima do composer; não é repetido no histórico. */
@@ -42,6 +42,8 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
   canSpeak?: boolean
   canApprove?: boolean
   canCancelQueued?: boolean
+  /** Nome do workspace da conversa; a ausência é apresentada sem oferecer uma ação falsa de seleção. */
+  workspaceName?: string
 }) {
   const turns = useMemo(() => buildTurns(sourceMessages), [sourceMessages])
   const messagesById = useMemo(() => new Map(sourceMessages.map(message => [message.id, message])), [sourceMessages])
@@ -328,7 +330,14 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
       </section>
     })}
       {endIndex < turns.length && <div aria-hidden="true" style={{ height: Math.max(0, offsets[turns.length] - offsets[endIndex]) }} />}
-      {!turns.length && <div className={css.empty}><h2>Como posso ajudar?</h2></div>}
+      {!turns.length && <div className={css.empty} data-testid="chat-empty-state">
+        <h2 className={css.emptyTitle}>Como posso ajudar?</h2>
+        <div className={css.emptyWorkspace} data-testid="chat-empty-workspace">
+          <FolderOpen aria-hidden="true" size={15} strokeWidth={1.7} />
+          <span>{workspaceName || 'Sem projeto'}</span>
+          {workspaceName && <ChevronDown aria-hidden="true" size={14} strokeWidth={1.7} />}
+        </div>
+      </div>}
     </div>
   </div>
 }

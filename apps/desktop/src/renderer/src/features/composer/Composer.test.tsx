@@ -26,6 +26,14 @@ function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
 }
 
 describe('Composer compacto e elástico', () => {
+  it('continua pronto para a primeira mensagem quando a conversa está vazia', async () => {
+    const { textarea, onSubmit } = setup()
+    expect(textarea).toBeVisible()
+    fireEvent.change(textarea, { target: { value: 'Olá, equipe' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Olá, equipe', 'Modelo real', expect.any(Object)))
+  })
+
   it('aplica planejamento a um envio e permite executar no próximo pedido', async () => {
     const { textarea, onSubmit } = setup()
     fireEvent.click(screen.getByRole('button', { name: 'Modo planejamento' }))

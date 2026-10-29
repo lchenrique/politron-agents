@@ -423,6 +423,7 @@ export default function AppShell() {
               conversations={snapshot.conversations}
               agentOf={agentOf}
               selectedAgents={selectedAgents}
+              workspaceName={selectedWorkspace?.name}
               onOpenRelatedConversation={selectConversation}
               onNotice={setNotice}
               canSpeak={!browserMode || canChat}

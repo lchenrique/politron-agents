@@ -27,6 +27,20 @@ it.each(['win32', 'darwin'])('coloca logo, toggle e busca na barra da janela em 
   expect(onToggleSidebar).toHaveBeenCalledOnce()
 })
 
+it('mantém a faixa Windows de 40 px e controles de janela acessíveis', () => {
+  const windowControls = { minimize: vi.fn(), maximize: vi.fn(), close: vi.fn() }
+  vi.stubGlobal('vibeAPI', { platform: 'win32', windowControls })
+  render(<TitleBar onOpenTool={vi.fn()} sidebarCollapsed={false} onToggleSidebar={vi.fn()} onOpenHome={vi.fn()} />)
+  const toolbar = screen.getByRole('toolbar', { name: 'Barra da janela' })
+  expect(toolbar).toHaveClass('h-10')
+  fireEvent.click(within(toolbar).getByRole('button', { name: 'Minimizar' }))
+  fireEvent.click(within(toolbar).getByRole('button', { name: 'Maximizar' }))
+  fireEvent.click(within(toolbar).getByRole('button', { name: 'Ocultar Boobot na bandeja' }))
+  expect(windowControls.minimize).toHaveBeenCalledOnce()
+  expect(windowControls.maximize).toHaveBeenCalledOnce()
+  expect(windowControls.close).toHaveBeenCalledOnce()
+})
+
 it('mantém a busca e Ctrl+K disponíveis depois de recolher a lateral', () => {
   vi.stubGlobal('vibeAPI', { platform: 'win32' })
   const onSelectWorkspace = vi.fn()
