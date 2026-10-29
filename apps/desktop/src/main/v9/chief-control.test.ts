@@ -9,7 +9,7 @@ vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { ge
 
 import { AppService } from './workspace'
 import { projectFolderName } from './chief-control'
-import type { Agent, Message, Run } from '../../shared/v9'
+import type { Agent, Message, Mission, Run, StartMissionInput, WorkspaceEvent } from '../../shared/v9'
 
 class FakeRuntime extends EventEmitter {
   async models() { return [] }
@@ -82,6 +82,85 @@ describe('Chief vê tudo (só leitura)', () => {
     const callTool = broker(service).callTool.bind(service)
     expect(JSON.parse(await callTool(planning, 'project_list', {})).projects.length).toBeGreaterThan(0)
     await expect(callTool(planning, 'project_create', { name: 'X' })).rejects.toThrow(/Modo plano/)
+  })
+})
+
+describe('tarefas do board pelo Chief', () => {
+  it('exige aprovação antes de criar o cartão ou iniciar a missão; aprovação cria um cartão ligado à execução e ao revisor', async () => {
+    const { service, call, conversation } = setup('bypass')
+    vi.spyOn(service.missions, 'start').mockImplementation((input: StartMissionInput, missionId?: string) => {
+      const conversation = service.store.conversation(input.conversationId!)
+      const now = new Date().toISOString()
+      const mission: Mission = { id: missionId || 'mission-test', title: input.title || 'Board test', goal: input.goal, workspaceId: conversation.workspaceId, conversationId: conversation.id, ownerAgentId: input.agentId!, routineId: null, model: null, status: 'active', steps: [], updates: [], question: null, options: [], result: null, turns: 0, maxTurns: 8, idleTurns: 0, failures: 0, lastProgressAt: null, createdAt: now, updatedAt: now, completedAt: null }
+      service.store.putMission(mission)
+      return mission
+    })
+    const worker = service.saveAgent({ name: 'Nina', alias: 'nina', instructions: 'Execute tarefas.' })
+    const reviewer = service.saveAgent({ name: 'Bia', alias: 'bia', instructions: 'Revise tarefas.' })
+    const team = service.saveBoardTeam({ name: 'Engenharia', agentIds: [worker.id, reviewer.id] })
+    const resolveApproval = (approved: boolean) => {
+      const handler = (event: WorkspaceEvent) => {
+      if (event.type === 'approval' && event.approval.status === 'pending') void service.respondApproval(event.approval.id, approved)
+      }
+      service.on('workspace-event', handler)
+      return () => service.off('workspace-event', handler)
+    }
+    const input = { title: 'Validar login', description: 'Verifique o fluxo de autenticação.', acceptance_criteria: 'Login inválido retorna 401.', kind: 'general', team_id: team.id, assignee: worker.id, reviewer: reviewer.id }
+    const deniedListener = resolveApproval(false)
+    await expect(call('board_task_create', input)).resolves.toContain('não aprovou')
+    deniedListener(); expect(service.boardSnapshot().tasks).toHaveLength(0); expect(service.boardSnapshot().missions).toHaveLength(0)
+
+    const approvedListener = resolveApproval(true)
+    const created = JSON.parse(await call('board_task_create', input))
+    approvedListener()
+    expect(created).toMatchObject({ title: 'Validar login', status: 'doing', worker: 'Nina', reviewer: 'Bia' })
+    const saved = service.boardSnapshot()
+    expect(saved.tasks).toHaveLength(1)
+    expect(saved.tasks[0]).toMatchObject({ id: created.taskId, source: 'chief', originConversationId: conversation.id, status: 'doing', assigneeAgentId: worker.id, reviewerAgentId: reviewer.id })
+    expect(saved.missions.map(link => link.role)).toEqual(['worker'])
+
+    const workerMission = service.store.mission(created.missionId)!
+    const completedWorker: Mission = { ...workerMission, status: 'completed', result: 'Implementação pronta.' }
+    service.store.putMission(completedWorker)
+    await service.board.onMissionUpdated(completedWorker)
+    const reviewerId = service.boardSnapshot().missions.find(link => link.taskId === created.taskId && link.role === 'reviewer')!.missionId
+    const reviewerMission = service.store.mission(reviewerId)!
+    const completedReview: Mission = { ...reviewerMission, status: 'completed', result: 'Critérios atendidos.' }
+    service.store.putMission(completedReview)
+    await service.board.onMissionUpdated(completedReview)
+    service.board.approveReview(created.taskId)
+    expect(service.store.history(conversation.id).some(item => item.role === 'activity' && item.text.includes('foi aprovada e concluída'))).toBe(true)
+  })
+
+  it('mantém a conversa do revisor somente para leitura, inclusive no broker', async () => {
+    const { service, context, home } = setup()
+    vi.spyOn(service.missions, 'start').mockImplementation((input: StartMissionInput, missionId?: string) => {
+      const conversation = service.store.conversation(input.conversationId!)
+      const now = new Date().toISOString()
+      const mission: Mission = { id: missionId || 'mission-test', title: input.title || 'Board test', goal: input.goal, workspaceId: conversation.workspaceId, conversationId: conversation.id, ownerAgentId: input.agentId!, routineId: null, model: null, status: 'active', steps: [], updates: [], question: null, options: [], result: null, turns: 0, maxTurns: 8, idleTurns: 0, failures: 0, lastProgressAt: null, createdAt: now, updatedAt: now, completedAt: null }
+      service.store.putMission(mission)
+      return mission
+    })
+    const worker = service.saveAgent({ name: 'Nina', alias: 'nina', instructions: 'Execute tarefas.' })
+    const reviewer = service.saveAgent({ name: 'Bia', alias: 'bia', instructions: 'Revise tarefas.' })
+    const team = service.saveBoardTeam({ name: 'Engenharia', agentIds: [worker.id, reviewer.id] })
+    const task = service.createBoardTask({ title: 'Validar login', description: 'Revise o código.', acceptanceCriteria: 'Login inválido retorna 401.', kind: 'general', teamId: team.id })
+    await service.assignBoardTask(task.id, worker.id, reviewer.id)
+
+    const workerLink = service.boardSnapshot().missions.find(link => link.taskId === task.id && link.role === 'worker')!
+    const completed = { ...service.store.mission(workerLink.missionId)!, status: 'completed' as const, result: 'Implementação concluída.' }
+    service.store.putMission(completed)
+    await service.board.onMissionUpdated(completed)
+
+    const reviewerLink = service.boardSnapshot().missions.find(link => link.taskId === task.id && link.role === 'reviewer')!
+    const reviewerMission = service.store.mission(reviewerLink.missionId)!
+    const reviewerConversation = service.store.conversation(reviewerMission.conversationId)
+    const reviewerContext = { ...context, agent: reviewer, conversation: reviewerConversation, run: { ...context.run, workspaceId: reviewerMission.workspaceId, workspacePath: home.path, conversationId: reviewerConversation.id } }
+    const app = service as unknown as { tools: (context: unknown) => { name: string }[] }
+    const names = app.tools(reviewerContext).map(item => item.name)
+    expect(names).toContain('workspace_read')
+    expect(names).not.toEqual(expect.arrayContaining(['workspace_write', 'workspace_run_command', 'ask_agent', 'board_task_create']))
+    await expect(broker(service).callTool(reviewerContext, 'workspace_write', { path: 'README.md', content: 'change' })).rejects.toThrow(/revisão do board é somente leitura/)
   })
 })
 

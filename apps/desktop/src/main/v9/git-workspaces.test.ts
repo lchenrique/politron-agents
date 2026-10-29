@@ -28,7 +28,7 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map(async directory => {
     for (let attempt = 0; attempt < 4; attempt++) {
       try { await rm(directory, { recursive: true, force: true, maxRetries: 2, retryDelay: 200 }); return }
-      catch (error: any) { if (error?.code !== 'EBUSY' || attempt === 3) throw error; await new Promise(resolve => setTimeout(resolve, 250)) }
+      catch (error: unknown) { const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined; if (code !== 'EBUSY' || attempt === 3) throw error; await new Promise(resolve => setTimeout(resolve, 250)) }
     }
   }))
 })
@@ -52,6 +52,16 @@ describe('GitWorkspaceService', () => {
     expect(await service.inspect(created.path)).toEqual({ branch: 'feature/fase-2', changes: 0 })
     await service.removeWorktree(created.path)
     await expect(readFile(created.path)).rejects.toThrow()
+  }, 30000)
+
+  it('reuses only the matching registered worktree when recovery is explicitly enabled', async () => {
+    const { sourcePath, worktreeRoot } = await makeRepository()
+    const service = new GitWorkspaceService(worktreeRoot)
+    const input = { sourcePath, workspaceName: 'Project', workspaceId: 'source-1', branch: 'board/task-1' }
+    const created = await service.createWorktree(input)
+    const recovered = await service.createWorktree({ ...input, reuseExisting: true })
+    expect(recovered).toEqual(created)
+    await expect(service.createWorktree(input)).rejects.toThrow('Já existe uma pasta')
   }, 30000)
 
   it('rejects invalid branch names and unregistered removal paths', async () => {

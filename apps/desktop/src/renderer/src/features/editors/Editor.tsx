@@ -9,6 +9,7 @@ import { randomPitColor, type Agent, type Conversation, type Model, type Workspa
 import { Avatar } from '../app/Avatar'
 import { PoliCustomizer } from '../app/PoliCustomizer'
 import { ModelSelector } from '../composer/ModelSelector'
+import { ApprovalGrantList } from './ApprovalGrantList'
 import { EFFORT_LABELS, EFFORT_LEVELS, aliasFor, errorText } from '../app/appShellShared'
 
 export type EditorKind = 'agent' | 'conversation' | 'workspace'
@@ -74,6 +75,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
   const [canWrite, setCanWrite] = useState((initial as Agent | undefined)?.canWrite ?? true)
   const [computerUse, setComputerUse] = useState((initial as Agent | undefined)?.computerUse || false)
   const [approvalMode, setApprovalMode] = useState((initial as Agent | undefined)?.approvalMode || 'automatic')
+  const [runtimePermissionMode, setRuntimePermissionMode] = useState((initial as Agent | undefined)?.runtimePermissionMode || 'managed')
   const originalConversation = kind === 'conversation' ? initial as Conversation | undefined : undefined
   const originalWorkspace = kind === 'workspace' ? initial as Workspace | undefined : undefined
   const [selectedAgents, setSelectedAgents] = useState<string[]>(originalConversation?.agentIds || originalWorkspace?.defaultAgentIds || defaultAgentIds || [])
@@ -121,7 +123,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
     setSaving(true); setProblem('')
     try {
       if (kind === 'agent' && !instructions.trim()) { setAgentSection('identity'); throw new Error('Escreva as instruções de trabalho do agente para continuar.') }
-      if (kind === 'agent') await onSave({ ...(initial ? { id: initial.id } : {}), name, alias: alias || aliasFor(name), description, instructions, model, effort: selectedEffort, role, color, avatar, pitsShape, ...pits, temporary, canWrite, computerUse, approvalMode, runtime })
+      if (kind === 'agent') await onSave({ ...(initial ? { id: initial.id } : {}), name, alias: alias || aliasFor(name), description, instructions, model, effort: selectedEffort, role, color, avatar, pitsShape, ...pits, temporary, canWrite, computerUse, approvalMode, runtimePermissionMode, runtime })
       else if (kind === 'workspace') {
         let path: string | null = directory || null
         if (creatingProject && origin === 'free') path = null
@@ -157,8 +159,8 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
     return next
   })
   // Especialidade e instruções não mudam nada no rosto do Pit: fora dos deps, digitar nesses campos não força o Boo Studio (SVG, 3 cópias na tela) a recalcular a cada tecla.
-  const previewAgent: Agent = useMemo(() => ({ id: (initial as Agent | undefined)?.id || '', name, alias, description: '', instructions: '', model, runtime, role, color, avatar, pitsShape, ...pits, canWrite, computerUse, approvalMode, revision: 0, createdAt: '' }),
-    [initial, name, alias, model, runtime, role, color, avatar, pitsShape, pits, canWrite, computerUse, approvalMode])
+  const previewAgent: Agent = useMemo(() => ({ id: (initial as Agent | undefined)?.id || '', name, alias, description: '', instructions: '', model, runtime, role, color, avatar, pitsShape, ...pits, canWrite, computerUse, approvalMode, runtimePermissionMode, revision: 0, createdAt: '' }),
+    [initial, name, alias, model, runtime, role, color, avatar, pitsShape, pits, canWrite, computerUse, approvalMode, runtimePermissionMode])
   const onCustomizePoli = useCallback((patch: Partial<Agent>) => { if (patch.color) setColor(patch.color); if (patch.pitsShape) setPitsShape(patch.pitsShape); setPits(current => ({ ...current, ...patch })) }, [])
   return <div className={`fixed inset-0 z-50 flex bg-black/45 ${kind === 'agent' ? 'justify-end' : 'items-center justify-center p-4'}`} onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose() }}>
     <section role="dialog" aria-modal="true" aria-labelledby="workspace-editor-title" className={`flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl ${kind === 'agent' ? 'h-full max-h-screen max-w-[840px] rounded-l-2xl border-y-0 border-r-0' : 'max-w-lg rounded-2xl'}`}>
@@ -211,6 +213,11 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
             <div className="space-y-2">
             <label className="block space-y-1.5 text-sm">Modo de aprovação deste agente<Select value={approvalMode} onValueChange={value => setApprovalMode(value as Agent['approvalMode'])}><SelectTrigger aria-label="Modo de aprovação"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de cada ação</SelectItem><SelectItem value="automatic">Automático · pede só ações sensíveis (recomendado)</SelectItem><SelectItem value="bypass">Bypass · autonomia total</SelectItem></SelectContent></Select></label>
             <p data-testid="approval-mode-note" data-tone={approvalMode === 'bypass' ? 'warning' : undefined} className="flex gap-2 rounded-lg text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">{approvalMode === 'bypass' && <TriangleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />}<span>{approvalMode === 'bypass' ? 'Bypass permite comandos de terminal sem confirmação para este agente. O terminal não é isolado e pode afetar todo o computador. No Chief, também permite criação de equipes e delegações dentro das permissões do workspace.' : approvalMode === 'automatic' ? 'O agente trabalha sozinho dentro das permissões: arquivos, navegador, comandos rotineiros, equipe e delegações. Pede aprovação só para ações sensíveis, como apagar arquivos em massa, push, publicação ou deploy.' : 'Este agente pede aprovação antes das ações que exigem confirmação. O modo do Assistente padrão é configurado separadamente.'}</span></p>
+            {(runtime === 'codex' || runtime === 'claude') && <>
+              <label className="block space-y-1.5 text-sm">Permissões do {runtime === 'claude' ? 'Claude Code' : 'Codex'}<Select value={runtimePermissionMode} onValueChange={value => setRuntimePermissionMode(value as NonNullable<Agent['runtimePermissionMode']>)}><SelectTrigger aria-label={`Permissões do ${runtime === 'claude' ? 'Claude Code' : 'Codex'}`}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="managed">Gerenciado · recomendado</SelectItem><SelectItem value="bypass">{runtime === 'claude' ? 'Bypass do Claude Code' : 'Acesso total do Codex'}</SelectItem></SelectContent></Select></label>
+              <p data-tone={runtimePermissionMode === 'bypass' ? 'warning' : undefined} className="rounded-lg text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">{runtimePermissionMode === 'bypass' ? runtime === 'claude' ? 'Ativa bypassPermissions no Claude Code. Ferramentas nativas de edição e shell continuam bloqueadas; chamadas às ferramentas do Politron ainda seguem o modo de aprovação e os limites do workspace.' : 'Ativa danger-full-access e approvalPolicy never no Codex. As ferramentas nativas de edição e shell continuam bloqueadas; chamadas às ferramentas do Politron ainda seguem o modo de aprovação e os limites do workspace.' : 'O motor usa as permissões gerenciadas pelo Politron. Ferramentas do agente continuam limitadas ao workspace e ao modo de aprovação.'}</p>
+            </>}
+            {editing && (initial as Agent | undefined)?.id && <ApprovalGrantList agentId={(initial as Agent).id} />}
             </div>
             </EditorGroup>
           </>}

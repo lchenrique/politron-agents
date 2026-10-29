@@ -1,5 +1,5 @@
 import type { EventEmitter } from 'node:events'
-import type { Agent, Model } from '../../shared/v9'
+import type { Agent, Model, ModelRuntimeOptions } from '../../shared/v9'
 import type { DynamicTool } from './codex'
 
 export interface AgentInput { text: string; images: Array<{ path: string; mimeType: string }> }
@@ -14,7 +14,7 @@ export interface AgentRuntime extends Pick<EventEmitter, 'on' | 'off' | 'emit'> 
   readonly supportsImages?: boolean
   models(binaryPath?: string): Promise<Model[]>
   thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string, externalBrowser?: ExternalBrowserRegistration): Promise<RuntimeThread>
-  send(threadId: string, input: string | AgentInput, model?: string, timeout?: number): Promise<RuntimeSendResult>
+  send(threadId: string, input: string | AgentInput, model?: string, timeout?: number, options?: ModelRuntimeOptions & { effort?: Agent['effort'] }): Promise<RuntimeSendResult>
   steer?(threadId: string, turnId: string, input: string): Promise<void>
   respond(id: number | string, result: unknown): void
   interrupt(threadId: string, turnId: string): Promise<void>

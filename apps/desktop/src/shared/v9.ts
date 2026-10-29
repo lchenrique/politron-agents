@@ -7,6 +7,7 @@ export interface SendOptions {
   delivery: 'queue' | 'now'
   attachments?: MessageAttachment[]
   returnAfterAcceptance?: boolean
+  modelOptions?: ModelRuntimeOptions
 }
 /** Mesma paleta do Poli Studio (PoliCustomizer); usada também para sortear a cor de um Pit novo, criado pelo usuário ou pelo Chief. */
 export const PIT_COLOR_PALETTE = ['#786bea', '#4098eb', '#32b6a0', '#f0a05b', '#ef79ac', '#393f56', '#e05e70']
@@ -30,7 +31,7 @@ export interface Agent {
   pitsEyeSize?: number; pitsEyeSpacing?: number; pitsSpeed?: number; pitsAmplitude?: number
   pitsBodyWidth?: number; pitsBodyHeight?: number
   pitsMouthSize?: number; pitsBlushStrength?: number
-  canWrite: boolean; computerUse: boolean; approvalMode: 'ask' | 'automatic' | 'bypass'; revision: number; createdAt: string
+  canWrite: boolean; computerUse: boolean; approvalMode: 'ask' | 'automatic' | 'bypass'; runtimePermissionMode?: 'managed' | 'bypass'; revision: number; createdAt: string
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 export const ASSISTANT_ID = 'app-assistant'
@@ -96,15 +97,16 @@ export interface CommandEvidence extends CommandResult {
   command: string; cwd: string; createdAt: string; finishedAt: string
 }
 export type PlanReviewDecision = 'approve' | 'reject' | 'request_changes'
+export interface ApprovalGrant { id: string; agentId: string; workspaceId: string; workspaceName?: string; kind: 'write' | 'browser' | 'command'; scopeKey: string; summary: string; createdAt: string }
 export interface Approval {
   id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser' | 'command' | 'delegation' | 'agent-change' | 'question' | 'plan'
-  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; answer?: string; planTitle?: string; planSteps?: string[]; planReviewDecision?: PlanReviewDecision; planReviewFeedback?: string; desktopOnly?: boolean }
+  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; recommendedOption?: string; answer?: string; planTitle?: string; planSteps?: string[]; planReviewDecision?: PlanReviewDecision; planReviewFeedback?: string; desktopOnly?: boolean; alwaysAllowed?: boolean }
   status: 'pending' | 'approved' | 'denied' | 'interrupted'; createdAt: string; resolvedAt: string | null
 }
 export interface Run {
   id: string; conversationId: string; agentId: string; rootId: string; parentId: string | null
   ancestry: string[]; status: RunStatus; threadId: string | null; turnId: string | null
-  messageId: string; input: string; inputMessageId?: string; planMode?: boolean; agent: Agent; workspaceId: string; workspacePath: string; createdAt: string
+  messageId: string; input: string; inputMessageId?: string; planMode?: boolean; agent: Agent; modelOptions?: ModelRuntimeOptions; workspaceId: string; workspacePath: string; createdAt: string
 }
 export interface Delegation {
   id: string; idempotencyKey: string; rootRunId: string; parentRunId: string; childRunId: string
@@ -138,16 +140,42 @@ export interface Routine {
 }
 export interface StartMissionInput { goal: string; title?: string; workspaceId?: string | null; conversationId?: string; agentId?: string; maxTurns?: number; model?: string | null }
 export type MissionAction = 'pause' | 'resume' | 'cancel' | 'reply' | 'extend'
+export type BoardTaskKind = 'general' | 'code'
+export type BoardTaskStatus = 'backlog' | 'ready' | 'queued' | 'doing' | 'review' | 'rework' | 'integration' | 'blocked' | 'done' | 'cancelled'
+export interface BoardTeam { id: string; name: string; description: string; agentIds: string[]; createdAt: string; updatedAt: string }
+export interface BoardTask {
+  id: string; title: string; description: string; acceptanceCriteria: string; kind: BoardTaskKind; teamId: string
+  assigneeAgentId: string | null; reviewerAgentId: string | null; source: 'user' | 'chief'; originConversationId: string | null; status: BoardTaskStatus
+  workspaceId: string | null; executionWorkspaceId: string | null; branch: string | null
+  currentMissionId: string | null; currentReviewMissionId: string | null; reviewRound: number
+  reviewDecision: 'approved' | 'changes' | null; reviewFeedback: string | null; blockedReason: string | null
+  result: string | null; integrationEvidence: string | null
+  createdAt: string; updatedAt: string; startedAt: string | null; completedAt: string | null
+}
+export type BoardEventKind = 'created' | 'updated' | 'assigned' | 'queued' | 'started' | 'progress' | 'submitted_for_review' | 'review_approved' | 'changes_requested' | 'blocked' | 'resumed' | 'reassigned' | 'integrated' | 'completed' | 'cancelled'
+export interface BoardEvent { id: string; taskId: string; actorType: 'user' | 'agent' | 'chief' | 'system'; actorId: string | null; kind: BoardEventKind; fromStatus?: BoardTaskStatus; toStatus?: BoardTaskStatus; note: string; round: number; idempotencyKey?: string; createdAt: string }
+export interface BoardTaskMission { taskId: string; role: 'worker' | 'reviewer'; round: number; missionId: string; conversationId: string; createdAt: string }
+export interface BoardEvidence { id: string; taskId: string; round: number; kind: 'diff' | 'test' | 'command' | 'note' | 'conversation'; label: string; summary: string; reference?: string; createdAt: string }
+export interface BoardTaskInput { title: string; description: string; acceptanceCriteria: string; kind: BoardTaskKind; teamId: string; workspaceId?: string | null }
+export interface BoardSnapshot { teams: BoardTeam[]; tasks: BoardTask[]; events: BoardEvent[]; missions: BoardTaskMission[]; evidence: BoardEvidence[] }
 export type ModelEffort = NonNullable<Agent['effort']>
+export interface ModelOptionChoice { id: string; name: string; description?: string }
+/** Configurações específicas do modelo aplicadas somente ao turno enviado. */
+export interface ModelRuntimeOptions { serviceTier?: string | null; fastMode?: boolean; variant?: string }
 export interface Model {
   id: string; name: string; runtime: 'codex' | 'claude' | 'pi' | 'antigravity' | 'opencode'; isDefault: boolean
   description?: string
   supportedEfforts?: ModelEffort[]
   defaultEffort?: ModelEffort
+  serviceTiers?: ModelOptionChoice[]
+  defaultServiceTier?: string
+  variants?: ModelOptionChoice[]
+  defaultVariant?: string
+  supportsFastMode?: boolean
 }
 /** Ordem manual do sidebar, salva no banco para valer no desktop e na PWA. Ids ausentes entram no topo. */
 export interface SidebarLayout { projectOrder: string[]; groups: { name: string; workspaceIds: string[] }[]; sessionOrder: Record<string, string[]>; agentOrder: string[] }
-export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][]; imageRuntimes?: Agent['runtime'][]; missions?: Mission[]; routines?: Routine[] }
+export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][]; imageRuntimes?: Agent['runtime'][]; missions?: Mission[]; routines?: Routine[]; board?: BoardSnapshot }
 export interface VoiceStatus { transcription: boolean; speech: boolean; provider?: 'realtime' | 'openrouter' | 'local' | 'pits' | 'pocket'; engine: 'piper' | 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }
 export type PitVoiceId = 'f1' | 'f2' | 'f3' | 'f4' | 'm1' | 'm1-young' | 'dora' | 'alex' | 'santa'
 export interface PitVoiceSelection { defaultVoiceId: PitVoiceId; agentVoiceIds: Record<string, PitVoiceId> }
@@ -174,11 +202,13 @@ export type WorkspaceEvent =
   | { type: 'mission'; mission: Mission }
 export interface AppAPI {
   snapshot(): Promise<Snapshot>
-  settingsPreferences(): Promise<{ canWrite: boolean; computerUse: boolean; approvalMode: Agent['approvalMode']; terminalEnabled: boolean; externalBrowserAlways?: boolean }>
+  settingsPreferences(): Promise<{ canWrite: boolean; computerUse: boolean; approvalMode: Agent['approvalMode']; runtimePermissionMode: NonNullable<Agent['runtimePermissionMode']>; terminalEnabled: boolean; externalBrowserAlways?: boolean }>
   /** Somente Desktop: autoriza o navegador real para todas as conversas. */
   saveExternalBrowserAlways?(enabled: boolean): Promise<void>
   saveAgent(input: Partial<Agent>): Promise<Agent>
-  saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>>): Promise<Agent>
+  saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode' | 'runtimePermissionMode'>>): Promise<Agent>
+  approvalGrants(agentId: string): Promise<ApprovalGrant[]>
+  removeApprovalGrant(grantId: string, agentId: string): Promise<void>
   saveTerminalAccess(enabled: boolean): Promise<void>
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }): Promise<Conversation>
   /** null enquanto nada foi salvo: o renderer migra os grupos antigos do localStorage. */
@@ -197,7 +227,7 @@ export interface AppAPI {
   listProjectFiles(workspaceId: string, directory?: string): Promise<ProjectFileEntry[]>
   readProjectFile(workspaceId: string, filePath: string): Promise<ProjectFileContent>
   writeProjectFile(workspaceId: string, filePath: string, content: string, expectedHash: string): Promise<{ path: string; hash: string }>
-  respondApproval(approvalId: string, approved: boolean): Promise<void>
+  respondApproval(approvalId: string, approved: boolean, alwaysAllow?: boolean): Promise<void>
   reviewPlan(approvalId: string, decision: PlanReviewDecision, feedback?: string): Promise<void>
   answerQuestion(approvalId: string, answer: string): Promise<void>
   setVisibleConversation(conversationId: string | null): Promise<void>
@@ -250,5 +280,15 @@ export interface AppAPI {
   saveRoutine(input: Partial<Routine>): Promise<Routine>
   deleteRoutine(routineId: string): Promise<void>
   runRoutine(routineId: string): Promise<Mission>
+  boardSnapshot(): Promise<BoardSnapshot>
+  saveBoardTeam(input: Partial<BoardTeam> & { name: string }): Promise<BoardTeam>
+  deleteBoardTeam(teamId: string): Promise<void>
+  createBoardTask(input: BoardTaskInput): Promise<BoardTask>
+  updateBoardTask(taskId: string, input: BoardTaskInput): Promise<BoardTask>
+  updateBoardTask(taskId: string, input: BoardTaskInput): Promise<BoardTask>
+  assignBoardTask(taskId: string, assigneeAgentId: string, reviewerAgentId: string): Promise<BoardTask>
+  reassignBoardTask(taskId: string, assigneeAgentId: string, reviewerAgentId: string): Promise<BoardTask>
+  boardTaskAction(taskId: string, action: 'start' | 'approve' | 'request_changes' | 'block' | 'resume' | 'cancel' | 'integrate', note?: string): Promise<BoardTask>
+  addBoardEvidence(taskId: string, evidence: Omit<BoardEvidence, 'id' | 'taskId' | 'round' | 'createdAt'>): Promise<BoardEvidence>
   onEvent(callback: (event: WorkspaceEvent) => void): () => void
 }

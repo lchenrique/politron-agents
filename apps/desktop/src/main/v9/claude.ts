@@ -9,6 +9,7 @@ import { SessionUnavailableError, type AgentRuntime, type ExternalBrowserRegistr
 import type { DynamicTool } from './codex'
 import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
 import { buildAgentSystemPrompt } from './agent-prompt'
+import { claudeRuntimePermissions } from './runtime-permissions'
 
 type ClaudeTurn = { id: string; controller: AbortController; terminal: boolean; initialized: Deferred; initializedResolved: boolean; eventGate?: Deferred; query?: Query }
 type ClaudeThread = { id: string; sessionId: string | null; agent: Agent; directory: string; tools: DynamicTool[]; projectInstructions: string; externalBrowser?: ExternalBrowserRegistration; activeTurn?: ClaudeTurn }
@@ -87,6 +88,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         id: model.value, name: model.displayName, description: model.description,
         runtime: 'claude' as const, isDefault: model.value === 'default' || model.value === 'sonnet',
         supportedEfforts: model.supportsEffort ? model.supportedEffortLevels || [] : [],
+        ...(/\bopus[- ]?(?:5(?:[-.]5)?|4[-.]8)(?=\b|[-])/i.test(`${model.value} ${model.displayName}`) ? { supportsFastMode: true } : {}),
       }))
     } finally { clearTimeout(timer); finish(); session.close() }
   }
@@ -97,9 +99,9 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
     return { id, history: threadId ? 'resume-pending' : 'empty' }
   }
 
-  async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<any> {
+  async send(threadId: string, input: string, model?: string, timeout = 600000, options: { effort?: Agent['effort']; fastMode?: boolean } = {}): Promise<any> {
     void timeout
-    return this.request('turn/start', { threadId, input: [{ type: 'text', text: input }], ...(model ? { model } : {}) })
+    return this.request('turn/start', { threadId, input: [{ type: 'text', text: input }], ...(model ? { model } : {}), ...(options.effort ? { effort: options.effort } : {}), ...(options.fastMode ? { fastMode: true } : {}) })
   }
 
   async request(method: string, params: Record<string, unknown> = {}): Promise<any> {
@@ -137,14 +139,15 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         env: safeProcessEnvironment(apiKey),
         pathToClaudeCodeExecutable: this.executable,
         settingSources: [],
-        permissionMode: 'default',
+        ...claudeRuntimePermissions(context.agent),
         tools: [],
         disallowedTools: ['Write', 'Edit', 'Bash', 'NotebookEdit', 'MultiEdit'],
         allowedTools: [...context.tools.map(item => `mcp__politron__${item.name}`), ...(browser?.tools.map(name => `mcp__${EXTERNAL_BROWSER_MCP}__${name}`) || [])],
         mcpServers: { politron: server, ...(browser ? { [EXTERNAL_BROWSER_MCP]: { type: 'http' as const, url: browser.url, headers: { Authorization: `Bearer ${browser.token}` } } } : {}) },
         systemPrompt: { type: 'preset', preset: 'claude_code', append: buildAgentSystemPrompt(context.agent, context.projectInstructions, context.tools) },
       model: typeof params.model === 'string' ? params.model : context.agent.model || undefined,
-      effort: context.agent.effort,
+      effort: typeof params.effort === 'string' ? params.effort as Agent['effort'] : context.agent.effort,
+      ...(params.fastMode === true ? { settings: { fastMode: true } } : {}),
       ...(context.sessionId ? { resume: context.sessionId } : {}),
         abortController: turn.controller
       }

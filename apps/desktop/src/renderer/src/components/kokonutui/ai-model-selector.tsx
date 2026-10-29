@@ -15,11 +15,12 @@ import { cn } from '@/lib/utils'
 import { EFFORT_LABELS, INHERIT_MODEL_NAME } from '@/features/app/appShellShared'
 import { VirtualModelList } from '@/features/composer/VirtualModelList'
 import type { ModelChoice, ModelProviderChoice } from '@/features/composer/model-options'
-import type { ModelEffort } from '../../../../shared/v9'
+import type { ModelEffort, ModelOptionChoice, ModelRuntimeOptions } from '../../../../shared/v9'
+import { ModelCapabilityControls } from './ModelCapabilityControls'
+import { ModelEffortTrack, type EffortLevel } from './ModelEffortTrack'
 
-interface EffortLevel { id: string; label: string; hint?: string }
-interface ModelOption { id: string; name: string; efforts: EffortLevel[]; defaultEffort?: string }
-export interface ModelSelection { model: string; effort?: ModelEffort }
+interface ModelOption { id: string; name: string; efforts: EffortLevel[]; defaultEffort?: string; serviceTiers?: ModelOptionChoice[]; variants?: ModelOptionChoice[]; defaultServiceTier?: string; defaultVariant?: string; supportsFastMode?: boolean }
+export interface ModelSelection extends ModelRuntimeOptions { model: string; effort?: ModelEffort }
 export interface AIModelSelectorProps {
   models: ModelChoice[]
   providers?: ModelProviderChoice[]
@@ -81,110 +82,6 @@ function EffortGlyph({ count, level }: { count: number; level: number }) {
   );
 }
 
-/**
- * A detent track: drag the thumb, click a stop or use the arrow keys. The
- * thumb snaps from stop to stop while dragging, so every position is valid.
- */
-function EffortTrack({
-  levels,
-  value,
-  onChange,
-  labelId,
-}: {
-  levels: EffortLevel[];
-  value: number;
-  onChange: (index: number) => void;
-  labelId: string;
-}) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const count = levels.length;
-
-  const indexAt = (clientX: number) => {
-    const rect = trackRef.current?.getBoundingClientRect();
-    if (!rect) {
-      return value;
-    }
-    const share = (clientX - rect.left) / rect.width;
-    return Math.min(count - 1, Math.max(0, Math.floor(share * count)));
-  };
-
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    const moves: Record<string, number> = {
-      ArrowLeft: value - 1,
-      ArrowDown: value - 1,
-      ArrowRight: value + 1,
-      ArrowUp: value + 1,
-      Home: 0,
-      End: count - 1,
-    };
-    if (event.key in moves) {
-      event.preventDefault();
-      onChange(Math.min(count - 1, Math.max(0, moves[event.key])));
-    }
-  };
-
-  return (
-    <div
-      aria-labelledby={labelId}
-      aria-valuemax={count - 1}
-      aria-valuemin={0}
-      aria-valuenow={value}
-      aria-valuetext={levels[value]?.label}
-      className="h-9 cursor-pointer touch-none select-none rounded-lg bg-muted/75 p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      onKeyDown={onKeyDown}
-      onLostPointerCapture={() => setDragging(false)}
-      onPointerDown={(event) => {
-        event.currentTarget.setPointerCapture(event.pointerId);
-        setDragging(true);
-        onChange(indexAt(event.clientX));
-      }}
-      onPointerMove={(event) => {
-        if (dragging) {
-          const next = indexAt(event.clientX);
-          if (next !== value) {
-            onChange(next);
-          }
-        }
-      }}
-      onPointerUp={() => setDragging(false)}
-      role="slider"
-      tabIndex={0}
-    >
-      <div className="relative flex h-full" ref={trackRef}>
-        {/* The thumb glides between stops, and resizes when a model has more
-          or fewer levels. */}
-        <span
-          aria-hidden="true"
-          className={cn(
-            "absolute inset-y-0 rounded-md bg-white shadow-[0_1px_2px_rgb(0_0_0/0.08)] ring-1 ring-black/5 transition-[left,width] duration-250 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none dark:bg-zinc-700 dark:ring-white/10",
-            dragging && "duration-150"
-          )}
-          style={{
-            left: `${(value / count) * 100}%`,
-            width: `${100 / count}%`,
-          }}
-        />
-        {levels.map((level, index) => (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "relative flex min-w-0 flex-1 items-center justify-center whitespace-nowrap text-[11px] transition-colors duration-150",
-              index === value
-                ? "font-medium text-zinc-900 dark:text-white"
-                : "text-zinc-500 dark:text-zinc-400"
-            )}
-            key={level.id}
-          >
-            {level.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
 const providerKey = (model: ModelChoice) => model.providerId || model.provider || 'models'
 const modelKey = (model: ModelChoice) => model.id || model.name
 const toTrackModel = (model: ModelChoice): ModelOption => ({
@@ -196,6 +93,11 @@ const toTrackModel = (model: ModelChoice): ModelOption => ({
     hint: EFFORT_HINTS[effort],
   })),
   defaultEffort: model.defaultEffort,
+  serviceTiers: model.serviceTiers,
+  variants: model.variants,
+  defaultServiceTier: model.defaultServiceTier,
+  defaultVariant: model.defaultVariant,
+  supportsFastMode: model.supportsFastMode,
 })
 
 export default function AIModelSelector({ models, providers, value, onChange, disabled = false, className }: AIModelSelectorProps) {
@@ -226,6 +128,8 @@ export default function AIModelSelector({ models, providers, value, onChange, di
     trackModel?.efforts.find(level => level.id === selected?.defaultEffort) ||
     trackModel?.efforts[0]
   const effortIndexValue = trackModel && currentEffort ? effortIndex(trackModel, currentEffort.id) : 0
+  const currentServiceTier = trackModel?.serviceTiers?.find(tier => tier.id === value.serviceTier) || trackModel?.serviceTiers?.find(tier => tier.id === selected?.defaultServiceTier)
+  const currentVariant = trackModel?.variants?.find(variant => variant.id === value.variant) || trackModel?.variants?.find(variant => variant.id === selected?.defaultVariant)
   const currentProvider = providerList.find(provider => provider.id === providerId)
   const currentModels = useMemo(() =>
     providerId ? models.filter(model => providerKey(model) === providerId) : [], [models, providerId])
@@ -257,7 +161,9 @@ export default function AIModelSelector({ models, providers, value, onChange, di
     } else if (nextTrack.efforts.length && (!effort || !nextTrack.efforts.some(level => level.id === effort))) {
       effort = nextTrack.efforts[0].id as ModelEffort
     }
-    onChange({ model: key, effort: nextTrack.efforts.length ? effort : undefined })
+    onChange({ model: key, effort: nextTrack.efforts.length ? effort : undefined,
+      ...(next.defaultServiceTier && next.serviceTiers?.some(tier => tier.id === next.defaultServiceTier) ? { serviceTier: next.defaultServiceTier } : {}),
+      ...(next.defaultVariant && next.variants?.some(variant => variant.id === next.defaultVariant) ? { variant: next.defaultVariant } : {}) })
     close()
     triggerRef.current?.focus({ preventScroll: true })
   }
@@ -283,7 +189,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
     <div ref={rootRef} className={cn('relative min-w-0 max-w-full', className)}>
       <button ref={triggerRef} type="button" disabled={disabled}
         aria-label="Selecionar modelo" aria-expanded={open} aria-controls={panelId} aria-haspopup="dialog"
-        title={selected ? selected.name + (selected.provider ? ' · ' + selected.provider : '') : INHERIT_MODEL_NAME}
+        title={selected ? [selected.name, selected.provider, currentEffort?.label, currentServiceTier?.name, currentVariant?.name, value.fastMode ? 'Modo rápido' : ''].filter(Boolean).join(' · ') : INHERIT_MODEL_NAME}
         onKeyDown={event => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
         onClick={() => { if (open) close(); else { setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
         className={cn('flex h-8 max-w-[min(16rem,100%)] items-center gap-1.5 rounded-lg border border-transparent px-2 text-xs text-foreground',
@@ -294,6 +200,9 @@ export default function AIModelSelector({ models, providers, value, onChange, di
           <EffortGlyph count={trackModel.efforts.length} level={effortIndexValue} />
           {currentEffort.label}
         </span>}
+        {currentServiceTier && <span className="hidden max-w-20 truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline" title={currentServiceTier.name}>{currentServiceTier.name}</span>}
+        {currentVariant && <span className="hidden max-w-20 truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline" title={currentVariant.name}>{currentVariant.name}</span>}
+        {value.fastMode && <span className="hidden rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 sm:inline">Fast</span>}
         <ChevronDown aria-hidden className={cn('size-3 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
       {open && createPortal(<MenuSurface ref={panelRef} id={panelId} role="dialog" aria-label="Modelos disponíveis"
@@ -342,10 +251,10 @@ export default function AIModelSelector({ models, providers, value, onChange, di
               <p id={effortLabelId} className="text-xs font-semibold">Esforço de raciocínio</p>
               <p className="text-[11px] text-muted-foreground">Use as setas ← →</p>
             </div>
-            <EffortTrack labelId={effortLabelId} levels={trackModel.efforts} value={effortIndexValue}
+            <ModelEffortTrack labelId={effortLabelId} levels={trackModel.efforts} value={effortIndexValue}
               onChange={index => {
                 const level = trackModel.efforts[index]
-                if (level) onChange({ model: value.model, effort: level.id as ModelEffort })
+                if (level) onChange({ ...value, effort: level.id as ModelEffort })
               }} />
             <div className="relative mt-2 min-h-5">
               <AnimatePresence mode="wait" initial={false}>
@@ -356,6 +265,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
               </AnimatePresence>
             </div>
           </div>}
+          {selected && <ModelCapabilityControls model={selected} selection={value} onChange={next => onChange({ ...value, ...next })} />}
         </motion.div>
       </MenuSurface>, document.body)}
     </div>

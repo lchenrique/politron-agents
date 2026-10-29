@@ -179,7 +179,7 @@ describe('continuidade real de sessão', () => {
 
     const store = new WorkspaceStore(directory)
     try {
-      expect(SCHEMA_VERSION).toBe(9)
+      expect(SCHEMA_VERSION).toBe(11)
       expect(store.sessionBinding('conversation:agent')).toEqual({ key: 'conversation:agent', threadId: 'persisted-thread', runtime: null, contextVersion: 0, deliveredDigests: {} })
       store.putSessionBinding({ key: 'new-binding', threadId: 'thread-2', runtime: 'codex', contextVersion: 1, deliveredDigests: Object.fromEntries(Array.from({ length: 50 }, (_, index) => [`message-${index}`, `hash-${index}`])) })
       expect(Object.keys(store.sessionBinding('new-binding')!.deliveredDigests)).toHaveLength(40)

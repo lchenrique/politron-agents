@@ -12,6 +12,7 @@ interface FollowUpSuggestion {
   id: string
   label: string
   placeholder?: string
+  recommended?: boolean
 }
 
 interface FollowUpSuggestionsProps extends Omit<React.ComponentProps<'section'>, 'onSelect'> {
@@ -159,7 +160,8 @@ function FollowUpSuggestions({
                       {index + 1}
                     </Kbd>
                   )}
-                  <span className="truncate">{item.label}</span>
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.recommended && <span className="shrink-0 rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-primary">Recomendado</span>}
                 </ToggleGroupItem>
               )
             })}

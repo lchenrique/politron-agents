@@ -1,6 +1,6 @@
 # Board da empresa e fluxo de trabalho dos agentes
 
-Data: 29/10/2026. Estado: proposta aguardando aprovação do usuário.
+Data: 29/10/2026. Estado: aprovado para implementação pelo usuário em 29/10/2026, após a conclusão do trabalho pendente do DSH.
 
 ## Intenção
 
@@ -157,4 +157,15 @@ flowchart LR
 
 ## Aprovação
 
-A especificação ainda não foi aprovada para implementação. O usuário confirmou que board é uma camada opcional de organização e não deve mudar como conversa com agentes. O desenho e os defaults propostos dependem da aprovação final do usuário.
+O usuário autorizou iniciar a implementação depois de concluir o DSH: “Depois disso já pode partir pro outro plano”. A aprovação mantém a condição expressa pelo usuário: o board é opcional e não muda a forma de conversar com agentes, conversas, composer, menções, fila ou steering.
+
+## Registro de implementação — 29/10/2026
+
+- Implementado como tela superior independente, com equipes e tarefas persistidas no SQLite, eventos/evidências limitados, filtros por estado/responsável/projeto/tipo e vínculos para as conversas e missões de trabalho.
+- O Chief pode consultar equipes/tarefas e propor uma tarefa atribuída. A autorização existente continua valendo; a tarefa guarda a conversa de origem e devolve atualização de conclusão, bloqueio ou cancelamento nessa conversa.
+- Tarefas de código recebem worktree/branch própria. O revisor trabalha na mesma pasta com ferramentas do broker em modo somente leitura; retrabalho retorna ao responsável na mesma worktree. A conclusão de código depende de evidência de integração informada manualmente; nenhum merge é automático.
+- Recuperação após reinício e repetição de atribuição são idempotentes. O board mostra posição/motivo da fila; a fila existente mantém paralelismo entre caminhos isolados e serialização pelo mesmo caminho.
+- IPC de mutação é exclusivo do desktop. A PWA recebe snapshot somente para leitura. O composer, mensagens, menções, steering, grupos e fila de conversas não foram alterados.
+- Fora do primeiro ciclo permanecem reivindicação automática de cartões livres, colaboração multiusuário, integração com serviços externos e merge automático. A revisão visual do board em Electron e o estado de uma PWA pareada não foram verificados nesta implementação.
+
+Validação final: 10 arquivos focados/107 testes passaram; suíte Vitest completa: 150 arquivos/937 testes passaram, 15 arquivos/21 testes condicionais ignorados; `npm run typecheck`, build e `git diff --check` passaram. ESLint nas unidades do board, permissões, worktree e UI: 0 erros e 1 aviso de limite de linhas em `board.ts`. O ESLint dos arquivos de integração alterados ainda aponta 7 erros `no-explicit-any` existentes em `workspace.ts` e dois avisos de tamanho em `workspace.ts`/`chief-control.ts`; portanto, o critério de lint para esses arquivos não está limpo. O build emitiu avisos existentes do Vite sobre `use client`, sourcemaps, PostCSS e tamanho de chunks. Não houve revisão visual em Electron, sessão PWA pareada ou inferência real. Os detalhes por comando estão em `docs/superpowers/plans/2026-10-29-company-board.md`.

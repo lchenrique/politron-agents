@@ -8,6 +8,7 @@
  */
 export const PWA_METHOD_CAPABILITIES = {
   'v9:snapshot': 'read',
+  'v9:boardSnapshot': 'read',
   'v9:models': 'read',
   'v9:history': 'read',
   'v9:historyPage': 'read',
@@ -30,6 +31,8 @@ export const PWA_METHOD_CAPABILITIES = {
 
   'v9:respondApproval': 'approvals',
   'v9:reviewPlan': 'approvals',
+  'v9:approvalGrants': 'approvals',
+  'v9:removeApprovalGrant': 'approvals',
   'v9:answerQuestion': 'approvals',
 
   'v9:readProjectFile': 'files:read',

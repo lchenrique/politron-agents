@@ -7,6 +7,11 @@ export interface ProviderModel {
   isDefault?: boolean
   supportedEfforts?: import('./v9').ModelEffort[]
   defaultEffort?: import('./v9').ModelEffort
+  serviceTiers?: import('./v9').ModelOptionChoice[]
+  defaultServiceTier?: string
+  variants?: import('./v9').ModelOptionChoice[]
+  defaultVariant?: string
+  supportsFastMode?: boolean
 }
 
 export interface ProviderModelCatalog {

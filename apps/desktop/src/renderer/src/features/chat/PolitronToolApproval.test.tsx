@@ -53,6 +53,25 @@ describe('aprovações reais do Politron', () => {
     expect(notice).not.toHaveBeenCalled()
   })
 
+  it('salva Sempre permitir para a ação específica ao aprovar', async () => {
+    const respondApproval = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('appAPI', { respondApproval })
+    render(<PolitronToolApproval approval={{ ...browserApproval, kind: 'write', details: { path: 'notes.md', after: 'novo' } }} onNotice={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Sempre permitir/ }))
+    await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', true, true))
+  })
+
+  it('exige a confirmação extra também antes de gravar uma permissão permanente sensível', async () => {
+    const respondApproval = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('appAPI', { respondApproval })
+    render(<PolitronToolApproval approval={{ ...browserApproval, kind: 'command', details: { command: 'npm publish', cwd: 'D:/projeto' } }} onNotice={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /^Sempre permitir/ }))
+    expect(respondApproval).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.getByRole('button', { name: /Confirmar e sempre permitir/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar e sempre permitir/ }))
+    await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', true, true))
+  })
+
   it('nega apenas ao clicar em Negar; pressionar Esc não decide', async () => {
     const respondApproval = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('appAPI', { respondApproval })

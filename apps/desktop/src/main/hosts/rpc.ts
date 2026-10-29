@@ -3,9 +3,9 @@ import { assertPwaRpcAuthorized, type PwaCapability } from '../../shared/pwa-hos
 
 // Lista explícita: pareamento não expõe IPC arbitrário nem ações da janela local.
 const METHODS = new Set([
-  'snapshot', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'sidebarLayout', 'saveSidebarLayout', 'saveWorkspace',
+  'snapshot', 'boardSnapshot', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'sidebarLayout', 'saveSidebarLayout', 'saveWorkspace',
   'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff',
-  'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'reviewPlan', 'setVisibleConversation', 'getVisibleConversation',
+  'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'reviewPlan', 'approvalGrants', 'removeApprovalGrant', 'setVisibleConversation', 'getVisibleConversation',
   'respondToAgent', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'cancelQueuedMessage', 'sendQueuedNow', 'stop', 'cancelDelegation', 'models',
   'openRouterDecisionStatus', 'saveOpenRouterDecisionModel',
   // Somente o desktop pareado lista/para PTYs de agentes; a PWA não tem capacidade para estes métodos.

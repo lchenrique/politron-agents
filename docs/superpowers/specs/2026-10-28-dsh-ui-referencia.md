@@ -757,8 +757,8 @@ Como pôr os Boos (avatar + nome) na mesma anatomia sem quebrar o visual:
 45. Erro de ferramenta pinta o resumo de vermelho; interrompida pinta de âmbar; sucesso não tem ícone.
 46. "Pensar" recolhido em uma linha, com prévia da primeira linha; aberto em markdown compacto 13/20 recuado 22 px.
 47. Subagente/delegação aparece como linha de processo e abre a conversa no painel direito como aba "Chat".
-48. Aprovação substitui o composer: contorno âmbar 1 px, faixa âmbar "Aguardando aprovação", botões Rejeitar / Permitir uma vez / Sempre permitir; Enter permite e Esc rejeita.
-49. Pergunta substitui o composer: opções numeradas de 40 px, selo "Recomendado", campo de resposta livre, até `min(60vh, 520px)`.
+48. Aprovação substitui o composer: contorno âmbar 1 px, faixa âmbar "Aguardando aprovação", botões Rejeitar / Permitir uma vez / Sempre permitir; Enter permite e Esc rejeita. **Concluído em 29/10/2026:** “Sempre permitir” cria uma regra persistente para agente + workspace + caminho, comando exato ou ação de navegador exata; painel do agente permite revogar. Bypass é configurável por agente e Assistente: Codex `danger-full-access`/`approvalPolicy: never`, Claude Code `bypassPermissions`; as chamadas de ferramentas continuam no broker do Politron e ferramentas nativas de shell/edição não são expostas.
+49. Pergunta substitui o composer: opções numeradas de 40 px, selo "Recomendado", campo de resposta livre, até `min(60vh, 520px)`. **Concluído em 29/10/2026:** `ask_user` aceita uma recomendação opcional que deve corresponder a uma opção, e a escolha correspondente recebe o selo sem seleção automática.
 50. Plano aparece como cartão de arquivo de 60 px com botão "Abrir" e abre no painel direito.
 51. Erro de turno com ponto vermelho, título vermelho peso 600 e código mono; nova tentativa como `<details>` "(n/max) · s".
 52. Compactação como linha de 24 px "Contexto compactado · Compactou N itens (~T tokens)", expansível.
@@ -766,7 +766,7 @@ Como pôr os Boos (avatar + nome) na mesma anatomia sem quebrar o visual:
 54. Estado vazio com título central 26/32 peso 500, linha de workspace e composer com piso de 2 linhas.
 55. Composer: raio 28, sombra `elevation-soft`, contorno via sombra (sem `border`), altura máxima de texto 336 px.
 56. Botão "+" circular de 28 px à esquerda; enviar circular de 34 px azul com seta branca; parar com quadrado arredondado.
-57. Seletor de modelo como chip 13/20 cinza com nome + esforço e chevron, virando só ícone quando apertado.
+57. Seletor de modelo como chip 13/20 cinza com nome + esforço e chevron, virando só ícone quando apertado. Adaptação Politron: navegação por provedor/modelo no mesmo menu, trilha de esforço e controles que o runtime anunciar para aquele modelo; níveis de serviço do Codex, Fast Mode do Claude compatível, níveis de pensamento do Pi e variantes do OpenCode. Modelo sem capacidade não exibe controle; Antigravity continua apenas consultivo enquanto não tiver execução. Opções seguem junto com a mensagem e são validadas pelo runtime, sem alterar conversas, menções, fila ou steering.
 58. Enter enfileira durante execução; Ctrl+Enter faz steer; fila encaixada acima do composer com cantos inferiores retos.
 59. `/` e `@` abrem menu acima do composer na largura dele, itens de 34 px, um único destaque compartilhado por teclado e mouse.
 60. Referências inline em azul com `@` peso 500; inválidas riscadas em vermelho.

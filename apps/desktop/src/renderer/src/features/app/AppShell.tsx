@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { FolderPlus, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import TitleBar from '@/components/ide/TitleBar'
-import { ASSISTANT_ID, type Agent, type Conversation, type MessageAttachment, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
+import { ASSISTANT_ID, type Agent, type Conversation, type MessageAttachment, type Model, type ModelRuntimeOptions, type Snapshot, type Workspace } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import { Sidebar } from '../sidebar/Sidebar'
 import { WorkspaceSearch } from '../sidebar/WorkspaceSearch'
@@ -29,6 +29,7 @@ import { getPwaCapabilities, onPwaCapabilitiesChanged } from '../../pwa/remote-a
 import { ChiefHome } from '../work/ChiefHome'
 import { RoutinesPage } from '../work/RoutinesPage'
 import { MissionStrip } from '../work/MissionStrip'
+import { BoardPage } from '../board/BoardPage'
 
 const Editor = lazy(() => import('../editors/Editor').then(module => ({ default: module.Editor })))
 const SettingsPage = lazy(() => import('./SettingsPage').then(module => ({ default: module.SettingsPage })))
@@ -56,7 +57,7 @@ export default function AppShell() {
   const setSelectedEffort = useCallback((effort: Agent['effort']) => { setSelectedEffortState(effort); try { localStorage.setItem('politron.composer.effort', effort || 'medium') } catch { /* preferência opcional */ } }, [])
   const [selectedId, setSelectedId] = useState('')
   // A Central do Chief é a tela inicial; conversas e projetos continuam a um clique.
-  const [view, setView] = useState<'home' | 'routines' | null>('home')
+  const [view, setView] = useState<'home' | 'routines' | 'board' | null>('home')
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const activeWorkspaceIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
@@ -288,7 +289,7 @@ export default function AppShell() {
     try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
-  const submitMessage = async (value: string, modelName: string, options: { files: File[]; effort?: Agent['effort']; planMode?: boolean; delivery: 'queue' | 'now'; requestId: string }) => {
+  const submitMessage = async (value: string, modelName: string, options: { files: File[]; effort?: Agent['effort']; modelOptions: ModelRuntimeOptions; planMode?: boolean; delivery: 'queue' | 'now'; requestId: string }) => {
     if (!selected) throw new Error('Escolha uma conversa antes de enviar.')
     let input = value
     const attachments: MessageAttachment[] = []
@@ -313,11 +314,12 @@ export default function AppShell() {
     if (options.effort) setSelectedEffort(options.effort)
     await window.appAPI.send(selected.id, input, selectedModel, options.effort, options.planMode, {
       requestId: options.requestId, delivery: options.delivery, attachments, returnAfterAcceptance: true,
+      ...(Object.keys(options.modelOptions).length ? { modelOptions: options.modelOptions } : {}),
     })
   }
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
-  const openHome = useCallback((next: 'home' | 'routines') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
+  const openHome = useCallback((next: 'home' | 'routines' | 'board') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
   const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
   const conversationRuns = snapshot.runs.filter(run => run.conversationId === selected?.id && !run.parentId && ['queued', 'running', 'waiting'].includes(run.status))
@@ -328,9 +330,10 @@ export default function AppShell() {
   const parentWorkspace = contextWorkspace?.kind === 'worktree' ? snapshot.workspaces.find(item => item.id === contextWorkspace.parentWorkspaceId) : undefined
   const windowLocation = view === 'home' ? { label: `Central do ${chiefName || 'Chief'}` }
     : view === 'routines' ? { label: 'Rotinas' }
+    : view === 'board' ? { label: 'Board da empresa' }
     : contextWorkspace && (parentWorkspace?.name || contextWorkspace.name) ? { label: parentWorkspace?.name || contextWorkspace.name, detail: contextWorkspace.kind === 'worktree' ? contextWorkspace.branch || contextWorkspace.name : undefined }
     : undefined
-  const mainTabLabel = view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : activeWorkspace ? 'Projeto' : undefined
+  const mainTabLabel = view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : activeWorkspace ? 'Projeto' : undefined
   // Mesmos dados para a faixa da conversa (chat sozinho) e para a aba do chat (com outras abas): nunca as duas ao mesmo tempo.
   const conversationChrome: ConversationChromeProps | null = selected ? {
     assistant: snapshot.assistant,
@@ -405,6 +408,7 @@ export default function AppShell() {
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} canChat={canChat} />
         : view === 'routines' ? <RoutinesPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
+        : view === 'board' ? <BoardPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} readOnly={browserMode} />
         : selected ? <>
           {selectedMission && <MissionStrip mission={selectedMission} runs={snapshot.runs} approvals={snapshot.approvals} onNotice={setNotice} />}
           <div className="flex min-h-0 flex-1 flex-col">

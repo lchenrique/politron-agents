@@ -1,5 +1,5 @@
 import type { ProviderId, ProviderInfo } from '../../../../shared/providers'
-import type { ModelEffort } from '../../../../shared/v9'
+import type { ModelEffort, ModelOptionChoice } from '../../../../shared/v9'
 
 export interface ModelChoice {
   id?: string
@@ -10,6 +10,11 @@ export interface ModelChoice {
   description?: string
   efforts?: ModelEffort[]
   defaultEffort?: ModelEffort
+  serviceTiers?: ModelOptionChoice[]
+  defaultServiceTier?: string
+  variants?: ModelOptionChoice[]
+  defaultVariant?: string
+  supportsFastMode?: boolean
 }
 
 export interface ModelProviderChoice {
@@ -55,6 +60,11 @@ export function modelOptions(providers: ProviderInfo[]): { models: ModelChoice[]
       description: model.description,
       efforts: model.supportedEfforts,
       defaultEffort: model.defaultEffort,
+      serviceTiers: model.serviceTiers,
+      defaultServiceTier: model.defaultServiceTier,
+      variants: model.variants,
+      defaultVariant: model.defaultVariant,
+      supportsFastMode: model.supportsFastMode,
     }))),
   }
 }

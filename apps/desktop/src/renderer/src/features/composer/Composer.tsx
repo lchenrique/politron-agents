@@ -3,7 +3,7 @@ import { ClipboardList, LoaderCircle, Mic, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { ModelChoice, ModelProviderChoice } from './model-options'
 import AIModelSelector, { type ModelSelection } from '@/components/kokonutui/ai-model-selector'
-import type { Agent, FileChange, Message, ModelEffort } from '../../../../shared/v9'
+import type { Agent, FileChange, Message, ModelEffort, ModelRuntimeOptions } from '../../../../shared/v9'
 import { QueuedMessages } from './QueuedMessages'
 import { CompletedFileReview } from '../diff/CompletedFileReview'
 import { INHERIT_MODEL_NAME, errorText } from '../app/appShellShared'
@@ -15,6 +15,14 @@ import styles from './Composer.module.css'
 
 export type ComposerModel = ModelChoice
 const INHERIT_OPTION: ComposerModel = { name: INHERIT_MODEL_NAME, description: 'Cada participante usa o modelo configurado no seu perfil' }
+const modelByName = (models: ComposerModel[], name?: string) => models.find(item => item.enabled !== false && ((item.id || item.name) === name || item.name === name))
+const initialModelOptions = (models: ComposerModel[], name?: string): ModelRuntimeOptions => {
+  const model = modelByName(models, name)
+  return {
+    ...(model?.defaultServiceTier && model.serviceTiers?.some(item => item.id === model.defaultServiceTier) ? { serviceTier: model.defaultServiceTier } : {}),
+    ...(model?.defaultVariant && model.variants?.some(item => item.id === model.defaultVariant) ? { variant: model.defaultVariant } : {}),
+  }
+}
 
 export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow }: {
   reviewChanges?: FileChange[]
@@ -32,7 +40,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   defaultModelName?: string
   defaultEffort?: Agent['effort']
   onModelChange: (model: string) => void
-  onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort']; planMode?: boolean; delivery: 'queue' | 'now'; requestId: string }) => Promise<void>
+  onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort']; modelOptions: ModelRuntimeOptions; planMode?: boolean; delivery: 'queue' | 'now'; requestId: string }) => Promise<void>
   onStop: () => void
   onVoiceNotice?: (error: string) => void
 }) {
@@ -48,6 +56,9 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   const [files, setFiles] = useState<File[]>([])
   const [modelName, setModelName] = useState(defaultModelName || INHERIT_MODEL_NAME)
   const [effort, setEffort] = useState<ModelEffort>(defaultEffort || 'medium')
+  const [modelOptions, setModelOptions] = useState<ModelRuntimeOptions>(() => initialModelOptions(models, defaultModelName))
+  const modelsRef = useRef(models)
+  modelsRef.current = models
   const [planMode, setPlanMode] = useState(false)
   const [pendingSends, setPendingSends] = useState(0)
   const pendingCount = useRef(0)
@@ -92,6 +103,11 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   const model = modelName === INHERIT_MODEL_NAME ? INHERIT_OPTION : models.find(item => item.enabled !== false && ((item.id || item.name) === modelName || item.name === modelName)) || INHERIT_OPTION
   const efforts = model === INHERIT_OPTION ? [] : model.efforts || []
   const selectedEffort = efforts.includes(effort) ? effort : model.defaultEffort && efforts.includes(model.defaultEffort) ? model.defaultEffort : efforts[0]
+  const selectedServiceTier = modelOptions.serviceTier === null ? undefined
+    : model.serviceTiers?.some(item => item.id === modelOptions.serviceTier) ? modelOptions.serviceTier
+      : model.defaultServiceTier && model.serviceTiers?.some(item => item.id === model.defaultServiceTier) ? model.defaultServiceTier : undefined
+  const selectedVariant = model.variants?.some(item => item.id === modelOptions.variant) ? modelOptions.variant
+    : model.defaultVariant && model.variants?.some(item => item.id === model.defaultVariant) ? model.defaultVariant : undefined
   const changeModel = (selection: ModelSelection) => {
     const next = selection.model
     const chosen = next === INHERIT_MODEL_NAME ? INHERIT_OPTION : models.find(item => (item.id || item.name) === next)
@@ -104,6 +120,11 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     const nextEffort = selection.effort && supported.includes(selection.effort) ? selection.effort
       : chosen.defaultEffort && supported.includes(chosen.defaultEffort) ? chosen.defaultEffort : supported[0]
     setEffort(nextEffort || 'medium')
+    setModelOptions({
+      ...(selection.serviceTier && chosen.serviceTiers?.some(item => item.id === selection.serviceTier) ? { serviceTier: selection.serviceTier } : {}),
+      ...(selection.variant && chosen.variants?.some(item => item.id === selection.variant) ? { variant: selection.variant } : {}),
+      ...(selection.fastMode === true && chosen.supportsFastMode ? { fastMode: true } : {}),
+    })
   }
 
   useEffect(() => {
@@ -119,6 +140,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   useEffect(() => {
     setModelName(defaultModelName || INHERIT_MODEL_NAME)
     setEffort(defaultEffort || 'medium')
+    setModelOptions(initialModelOptions(modelsRef.current, defaultModelName))
   }, [defaultModelName, defaultEffort])
 
   useEffect(() => {
@@ -164,6 +186,11 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     const submittedFiles = chosenFiles
     const signature = JSON.stringify([submittedConversation, message, delivery, submittedFiles.map(file => [file.name, file.size, file.type, file.lastModified])])
     const requestId = retryRequest.current?.signature === signature ? retryRequest.current.id : crypto.randomUUID()
+    const selectedModelOptions = {
+      ...(selectedServiceTier ? { serviceTier: selectedServiceTier } : {}),
+      ...(selectedVariant ? { variant: selectedVariant } : {}),
+      ...(model.supportsFastMode && modelOptions.fastMode ? { fastMode: true } : {}),
+    }
     retryRequest.current = { signature, id: requestId }
     pendingCount.current++
     setPendingSends(pendingCount.current)
@@ -173,7 +200,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     setPlanMode(false)
     try {
       await onSubmit(message, model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name,
-        { files: submittedFiles, effort: selectedEffort, planMode, delivery, requestId })
+        { files: submittedFiles, effort: selectedEffort, modelOptions: selectedModelOptions, planMode, delivery, requestId })
       if (retryRequest.current?.id === requestId) retryRequest.current = null
     } catch (cause) {
       if (activeConversation.current === submittedConversation) { setValue(current => current || message); setFiles(current => current.length ? current : submittedFiles); setPlanMode(planMode); notify(cause) }
@@ -253,7 +280,7 @@ ${message.text}` : message.text)
             <ClipboardList className="size-4" /><span>Plano</span>
           </Button>
           <AIModelSelector key={conversationId} models={models} providers={modelProviders}
-            value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort }}
+            value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort, ...modelOptions }}
             onChange={changeModel} disabled={busy} />
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={recording ? 'Parar gravação de voz' : 'Gravar áudio'} title={recording ? 'Parar e transcrever' : 'Ditado por voz local'} disabled={transcribing} onClick={() => void toggleRecord()}>
             {transcribing ? <LoaderCircle /> : recording ? <Square /> : <Mic />}

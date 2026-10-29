@@ -153,10 +153,10 @@ describe('autoaprendizado no fim da execução', () => {
       const second = service.send(conversation.id, 'Segunda tarefa')
       void second.catch(() => undefined)
       expect(service.store.runs().find(run => run.input === 'Segunda tarefa')?.status).toBe('queued')
-      await new Promise<void>(resolve => nativeSetTimeout(resolve, 40))
-
-      expect(runtime.inputs.some(input => input.includes('Segunda tarefa'))).toBe(true)
-      expect(runtime.interruptedTurns).toContain('late-reflection')
+      await vi.waitFor(() => {
+        expect(runtime.inputs.some(input => input.includes('Segunda tarefa'))).toBe(true)
+        expect(runtime.interruptedTurns).toContain('late-reflection')
+      }, { timeout: 2000, interval: 20 })
       await Promise.all([first, second])
     } finally { timer.mockRestore() }
   })

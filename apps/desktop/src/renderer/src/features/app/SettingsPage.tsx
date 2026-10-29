@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { AudioLines, Download, FolderPlus, GraduationCap, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench, X } from 'lucide-react'
-import type { Agent, DecisionModel, OpenRouterDecisionStatus } from '../../../../shared/v9'
+import { ASSISTANT_ID, type Agent, type DecisionModel, type OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { SkillInfo } from '../../../../shared/skills'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { setRivePreview, useRivePreview } from './booRendererPreference'
 import { RealtimeSettingsPanel } from '../realtime/RealtimeCall'
 import { HostSettingsPanel } from '../hosts/HostSettingsPanel'
 import { PwaSettingsPanel } from '../hosts/PwaSettingsPanel'
+import { ApprovalGrantList } from '../editors/ApprovalGrantList'
 import { AppUpdatesPanel } from './AppUpdatesPanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
 
@@ -142,7 +143,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   const [feedback, setFeedback] = useState('')
   const [assistantFeedback, setAssistantFeedback] = useState('')
   const [saving, setSaving] = useState(false)
-  const [assistantAccess, setAssistantAccess] = useState({ canWrite: true, computerUse: false, approvalMode: 'ask' as Agent['approvalMode'] })
+  const [assistantAccess, setAssistantAccess] = useState({ canWrite: true, computerUse: false, approvalMode: 'ask' as Agent['approvalMode'], runtimePermissionMode: 'managed' as NonNullable<Agent['runtimePermissionMode']> })
   const [terminalEnabled, setTerminalEnabled] = useState(true)
   const [externalBrowserAlways, setExternalBrowserAlways] = useState(false)
   const [externalBrowserFeedback, setExternalBrowserFeedback] = useState('')
@@ -156,7 +157,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   useEffect(() => { if (!open) { setApiKey(''); setOpenRouterKey('') } }, [open])
   useEffect(() => { if (!open || (section !== 'assistente' && section !== 'ferramentas')) return
     let active = true
-    void window.appAPI.settingsPreferences().then(value => { if (!active) return; setAssistantAccess({ canWrite: value.canWrite ?? true, computerUse: value.computerUse, approvalMode: value.approvalMode }); setTerminalEnabled(value.terminalEnabled); setExternalBrowserAlways(value.externalBrowserAlways === true) }).catch(error => { if (active) setFeedback(String(error)) })
+    void window.appAPI.settingsPreferences().then(value => { if (!active) return; setAssistantAccess({ canWrite: value.canWrite ?? true, computerUse: value.computerUse, approvalMode: value.approvalMode, runtimePermissionMode: value.runtimePermissionMode || 'managed' }); setTerminalEnabled(value.terminalEnabled); setExternalBrowserAlways(value.externalBrowserAlways === true) }).catch(error => { if (active) setFeedback(String(error)) })
     return () => { active = false }
   }, [open, section])
   useEffect(() => { if (!open || section !== 'provedores') return; let active = true
@@ -265,6 +266,9 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
               <label className="block space-y-1.5 text-sm">Modo de aprovação do Assistente<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as Agent['approvalMode'] })}><SelectTrigger aria-label="Modo de aprovação"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de cada ação</SelectItem><SelectItem value="automatic">Automático · pede só ações sensíveis (recomendado)</SelectItem><SelectItem value="bypass">Bypass · autonomia total</SelectItem></SelectContent></Select></label>
               <p data-tone={assistantAccess.approvalMode === 'bypass' ? 'warning' : undefined} className="rounded-lg text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">Esta configuração vale somente para o Assistente padrão. Conversas com um Boo, como Atlas, usam o modo salvo no editor daquele agente. No Bypass, o terminal pode alterar outros caminhos do computador sem pedir confirmação; o Chief em Bypass também pode criar equipes e delegar dentro das permissões do workspace.</p>
             </div>
+            <label className="block space-y-1.5 text-sm">Permissões do Codex<Select value={assistantAccess.runtimePermissionMode} onValueChange={value => void updateAssistant({ ...assistantAccess, runtimePermissionMode: value as NonNullable<Agent['runtimePermissionMode']> })}><SelectTrigger aria-label="Permissões do Codex"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="managed">Gerenciado · recomendado</SelectItem><SelectItem value="bypass">Acesso total do Codex</SelectItem></SelectContent></Select></label>
+            <p data-tone={assistantAccess.runtimePermissionMode === 'bypass' ? 'warning' : undefined} className="rounded-lg text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">{assistantAccess.runtimePermissionMode === 'bypass' ? 'Ativa danger-full-access e approvalPolicy never no Codex. As ferramentas nativas de edição e shell continuam bloqueadas; chamadas às ferramentas do Politron ainda seguem o modo de aprovação e os limites do workspace.' : 'O Codex usa permissões gerenciadas pelo Politron. Ferramentas continuam limitadas ao workspace e ao modo de aprovação.'}</p>
+            <ApprovalGrantList agentId={ASSISTANT_ID} />
             <p role="status" className="text-xs text-muted-foreground empty:hidden">{assistantFeedback}</p>
           </Field>
         </>}

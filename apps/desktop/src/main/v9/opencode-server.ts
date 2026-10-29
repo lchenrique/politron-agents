@@ -17,7 +17,7 @@ import bridgePlugin from './opencode-bridge-plugin.bundle.mjs?raw'
 const execFileAsync = promisify(execFile)
 type Data = Record<string, any>
 type Session = { id: string; cwd: string; agent: Agent; instructions: string; tools: DynamicTool[];
-  turn?: string; model?: string; waiting?: string; text: string; steps: number; parts: Map<string, string>;
+  turn?: string; model?: string; variant?: string; waiting?: string; text: string; steps: number; parts: Map<string, string>;
   timer?: ReturnType<typeof setTimeout>; request?: AbortController; assistantMessages: Set<string> }
 const clean = (error: unknown) => {
   const detail = error instanceof Error ? error.message : String(error)
@@ -232,8 +232,20 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
       const models = (catalog.all || []).flatMap((provider: Data) =>
         Object.entries(provider.models || {}).map(([id, metadata]) => {
           const model = metadata as Data
+          const rawVariants = model.variants
+          const variants = Array.isArray(rawVariants)
+            ? rawVariants.filter((variant: Data) => variant && typeof variant.id === 'string' && variant.id.trim() && variant.disabled !== true).map((variant: Data) => ({
+              id: variant.id as string, name: typeof variant.name === 'string' && variant.name.trim() ? variant.name : variant.id as string,
+              description: typeof variant.description === 'string' ? variant.description : undefined,
+            }))
+            : rawVariants && typeof rawVariants === 'object' ? Object.entries(rawVariants).filter(([, variant]) => !(variant && typeof variant === 'object' && (variant as Data).disabled === true)).map(([variantId, variant]) => ({
+              id: variantId, name: variant && typeof variant === 'object' && typeof (variant as Data).name === 'string' ? (variant as Data).name : variantId,
+              description: variant && typeof variant === 'object' && typeof (variant as Data).description === 'string' ? (variant as Data).description : undefined,
+            }))
+              : []
           return { id: provider.id + '/' + id, name: model.name || id,
-            runtime: 'opencode' as const, isDefault: defaults[provider.id] === id }
+            runtime: 'opencode' as const, isDefault: defaults[provider.id] === id,
+            variants, defaultVariant: typeof model.defaultVariant === 'string' ? model.defaultVariant : undefined }
         }))
       return models
     } catch {
@@ -266,14 +278,14 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     ].join('\n') : 'Sem ferramentas Boobot nesta sessão. Responda normalmente, sem ferramentas nativas.'
     return [buildAgentSystemPrompt(s.agent, s.instructions, s.tools), guide, 'Usuário: ' + message].join('\n\n')
   }
-  async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<Data> {
+  async send(threadId: string, input: string, model?: string, timeout = 600000, options: { variant?: string } = {}): Promise<Data> {
     const state = this.sessions.get(threadId)
     if (!state) throw new SessionUnavailableError()
     if (state.turn) throw new Error('OpenCode ainda está respondendo.')
     const chosen = model || state.agent.model
     openCodeModelRef(chosen)
     const turn = randomUUID()
-    state.turn = turn; state.model = chosen; state.text = ''; state.parts.clear(); state.assistantMessages.clear(); state.steps = 0
+    state.turn = turn; state.model = chosen; state.variant = options.variant; state.text = ''; state.parts.clear(); state.assistantMessages.clear(); state.steps = 0
     state.timer = setTimeout(() => { state.request?.abort(); this.finish(state, 'failed', 'OpenCode excedeu o tempo limite.') }, timeout)
     state.timer.unref?.()
     // Return the turn identity before a response can arrive.
@@ -286,7 +298,7 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     try {
       const result: Data = await this.http('POST', '/session/' + encodeURIComponent(state.id) + '/message',
         state.cwd, { agent: 'politron-safe', model: openCodeModelRef(state.model || state.agent.model),
-          parts: [{ type: 'text', text: message }] }, 600000, request.signal)
+          ...(state.variant ? { variant: state.variant } : {}), parts: [{ type: 'text', text: message }] }, 600000, request.signal)
       if (!state.turn || state.request !== request) return
       if (result?.info?.error) throw new Error(clean(result.info.error?.data?.message || result.info.error?.message || result.info.error))
       const raw = (result?.parts || []).filter((part: Data) => part.type === 'text' && typeof part.text === 'string')

@@ -50,6 +50,21 @@ describe('criação simples de conversa', () => {
   })
 })
 
+describe('permissões do motor no perfil do agente', () => {
+  it.each([
+    ['codex', 'Permissões do Codex', 'Acesso total do Codex'],
+    ['claude', 'Permissões do Claude Code', 'Bypass do Claude Code'],
+  ] as const)('oferece e salva a opção específica do runtime %s', async (runtime, label, option) => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<Editor kind="agent" agents={[]} models={[]} initial={{ ...agent('runtime-agent', 'Agente'), runtime }} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn()} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Modelo e permissões' }))
+    fireEvent.click(screen.getByRole('combobox', { name: label }))
+    fireEvent.click(await screen.findByRole('option', { name: option }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ runtime, runtimePermissionMode: 'bypass' })))
+  })
+})
+
 describe('novo projeto por origem', () => {
   const stubApi = (api: Partial<typeof window.appAPI>) => { Object.assign(window, { appAPI: api }) }
 

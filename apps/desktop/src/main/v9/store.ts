@@ -2,14 +2,14 @@ import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
-import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type SidebarLayout, type Snapshot, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type ApprovalGrant, type BoardEvidence, type BoardEvent, type BoardTask, type BoardTaskMission, type BoardTeam, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type SidebarLayout, type Snapshot, type Workspace } from '../../shared/v9'
 import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 11
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
   instructions: 'Você é o Assistente padrão do Boobot. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
-  runtime: 'codex', model: 'gpt-6-luna', color: '#6366f1', avatar: '', canWrite: true, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-01-01T00:00:00.000Z'
+  runtime: 'codex', model: 'gpt-6-luna', color: '#6366f1', avatar: '', canWrite: true, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed', revision: 1, createdAt: '2026-01-01T00:00:00.000Z'
 }
 
 function normalizeConversation(value: Conversation): Conversation {
@@ -21,10 +21,10 @@ function normalizeWorkspace(value: Workspace): Workspace {
   const defaultAgentIds = Array.isArray(value.defaultAgentIds) ? value.defaultAgentIds.filter((id): id is string => typeof id === 'string') : []
   return { ...value, defaultAgentIds }
 }
-export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode'>
+export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode' | 'runtimePermissionMode'>
 export type SessionBinding = { key: string; threadId: string; runtime: Agent['runtime'] | null; contextVersion: number; deliveredDigests: Record<string, string> }
-const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: true, computerUse: false, approvalMode: 'ask' }
-function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'ghost-wave', approvalMode: value.approvalMode === 'automatic' || value.approvalMode === 'bypass' ? value.approvalMode : 'ask' } }
+const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: true, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed' }
+function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'ghost-wave', approvalMode: value.approvalMode === 'automatic' || value.approvalMode === 'bypass' ? value.approvalMode : 'ask', runtimePermissionMode: value.runtimePermissionMode === 'bypass' ? 'bypass' : 'managed' } }
 
 const EMPTY_SIDEBAR_LAYOUT: SidebarLayout = { projectOrder: [], groups: [], sessionOrder: {}, agentOrder: [] }
 const LAYOUT_ERROR = 'Ordem do sidebar inválida.'
@@ -95,6 +95,8 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS v9_runs (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_file_changes (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, tool_call_id TEXT NOT NULL, workspace_id TEXT NOT NULL, data TEXT NOT NULL, UNIQUE(run_id, tool_call_id));
       CREATE TABLE IF NOT EXISTS v9_approvals (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS v9_approval_grants (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, workspace_id TEXT NOT NULL, kind TEXT NOT NULL, scope_key TEXT NOT NULL, data TEXT NOT NULL, UNIQUE(agent_id, workspace_id, kind, scope_key));
+      CREATE INDEX IF NOT EXISTS v9_approval_grant_scope ON v9_approval_grants(agent_id, workspace_id, kind);
       CREATE TABLE IF NOT EXISTS v9_sessions (key TEXT PRIMARY KEY, thread_id TEXT NOT NULL, runtime TEXT, context_version INTEGER NOT NULL DEFAULT 0, delivered_digests TEXT NOT NULL DEFAULT '{}');
       CREATE TABLE IF NOT EXISTS v9_delegations (id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, source_conversation_id TEXT NOT NULL, target_conversation_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_checkpoints (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, agent_id TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL);
@@ -106,10 +108,22 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS v9_missions (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS v9_mission_conversation ON v9_missions(conversation_id);
       CREATE TABLE IF NOT EXISTS v9_routines (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS v9_board_teams (id TEXT PRIMARY KEY, name_key TEXT NOT NULL UNIQUE, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS v9_board_tasks (id TEXT PRIMARY KEY, team_id TEXT NOT NULL REFERENCES v9_board_teams(id) ON DELETE RESTRICT, status TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS v9_board_task_status ON v9_board_tasks(status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS v9_board_task_team ON v9_board_tasks(team_id, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS v9_board_events (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES v9_board_tasks(id) ON DELETE CASCADE, created_at TEXT NOT NULL, idempotency_key TEXT UNIQUE, data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS v9_board_event_task ON v9_board_events(task_id, created_at, id);
+      CREATE TABLE IF NOT EXISTS v9_board_task_missions (task_id TEXT NOT NULL REFERENCES v9_board_tasks(id) ON DELETE CASCADE, role TEXT NOT NULL, round INTEGER NOT NULL CHECK(round >= 0), mission_id TEXT NOT NULL UNIQUE, conversation_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(task_id, role, round));
+      CREATE INDEX IF NOT EXISTS v9_board_mission_task ON v9_board_task_missions(task_id, round);
+      CREATE TABLE IF NOT EXISTS v9_board_evidence (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES v9_board_tasks(id) ON DELETE CASCADE, round INTEGER NOT NULL CHECK(round >= 0), created_at TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS v9_board_evidence_task ON v9_board_evidence(task_id, round, created_at);
       INSERT OR IGNORE INTO v9_meta VALUES ('schema','${previousSchema ?? SCHEMA_VERSION}');`)
     if (previousSchema !== null && previousSchema < 7) this.migrateWorkspaces(previousSchema)
     if (previousSchema !== null && previousSchema < 8) this.migrateSessionBindings()
     if (previousSchema !== null && previousSchema < 9) this.migrateCommandEvidence()
+    if (previousSchema !== null && previousSchema < 10) this.db.prepare("UPDATE v9_meta SET value='10' WHERE key='schema'").run()
+    if (previousSchema !== null && previousSchema < 11) this.db.prepare("UPDATE v9_meta SET value='11' WHERE key='schema'").run()
     if (previousSchema === null) this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
     // Agrupar sessões livres antigas sem mover seus diretórios originais.
     const existingWorkspaces = this.workspaces()
@@ -274,7 +288,8 @@ export class WorkspaceStore {
     return {
       canWrite: read('canWrite')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.canWrite : read('canWrite')?.value === 'true',
       computerUse: read('computerUse')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.computerUse : read('computerUse')?.value === 'true',
-      approvalMode: read('approvalMode')?.value === 'automatic' || read('approvalMode')?.value === 'bypass' ? read('approvalMode')!.value as Agent['approvalMode'] : 'ask'
+      approvalMode: read('approvalMode')?.value === 'automatic' || read('approvalMode')?.value === 'bypass' ? read('approvalMode')!.value as Agent['approvalMode'] : 'ask',
+      runtimePermissionMode: read('runtimePermissionMode')?.value === 'bypass' ? 'bypass' : 'managed'
     }
   }
   saveAssistantPreferences(input: Partial<AssistantPreferences>): Agent {
@@ -282,11 +297,12 @@ export class WorkspaceStore {
     const value: AssistantPreferences = {
       canWrite: input.canWrite ?? previous.canWrite,
       computerUse: input.computerUse ?? previous.computerUse,
-      approvalMode: input.approvalMode ?? previous.approvalMode
+      approvalMode: input.approvalMode ?? previous.approvalMode,
+      runtimePermissionMode: input.runtimePermissionMode ?? previous.runtimePermissionMode
     }
-    if (typeof value.canWrite !== 'boolean' || typeof value.computerUse !== 'boolean' || !['ask', 'automatic', 'bypass'].includes(value.approvalMode)) throw new Error('Preferências do Assistente inválidas.')
+    if (typeof value.canWrite !== 'boolean' || typeof value.computerUse !== 'boolean' || !['ask', 'automatic', 'bypass'].includes(value.approvalMode) || !['managed', 'bypass'].includes(value.runtimePermissionMode || 'managed')) throw new Error('Preferências do Assistente inválidas.')
     for (const [key, setting] of Object.entries(value)) this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(`assistant_${key}`, String(setting))
-    return { ...ASSISTANT, ...value }
+    return { ...ASSISTANT, ...value, runtimePermissionMode: value.runtimePermissionMode || 'managed' }
   }
   terminalEnabled(): boolean {
     const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get('terminal_enabled') as { value: string } | undefined
@@ -407,6 +423,8 @@ export class WorkspaceStore {
     if (!['codex', 'claude', 'pi', 'opencode', 'antigravity'].includes(runtime)) throw new Error('Motor de agente inválido.')
     const approvalMode = input.approvalMode ?? previous?.approvalMode ?? 'ask'
     if (approvalMode !== 'ask' && approvalMode !== 'automatic' && approvalMode !== 'bypass') throw new Error('Modo de aprovação inválido.')
+    const runtimePermissionMode = input.runtimePermissionMode ?? previous?.runtimePermissionMode ?? 'managed'
+    if (runtimePermissionMode !== 'managed' && runtimePermissionMode !== 'bypass') throw new Error('Permissão do motor inválida.')
     const effort = input.effort ?? previous?.effort ?? 'medium'
     if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço do agente inválido.')
     const role = input.role ?? previous?.role ?? 'agent'
@@ -436,7 +454,7 @@ export class WorkspaceStore {
       pitsAura: input.pitsAura ?? previous?.pitsAura ?? true,
       pitsBlush: input.pitsBlush ?? previous?.pitsBlush ?? true,
       pitsAnimate: input.pitsAnimate ?? previous?.pitsAnimate ?? true,
-      canWrite: input.canWrite ?? previous?.canWrite ?? true, computerUse: input.computerUse ?? previous?.computerUse ?? false, approvalMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
+      canWrite: input.canWrite ?? previous?.canWrite ?? true, computerUse: input.computerUse ?? previous?.computerUse ?? false, approvalMode, runtimePermissionMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_agents', value); return value
   }
   private userAgents(ids: string[]): void {
@@ -570,6 +588,7 @@ export class WorkspaceStore {
     for (const child of children) this.deleteWorkspace(child.id, { cascade: true })
     for (const conversation of this.conversations().filter(item => item.workspaceId === id)) this.deleteConversation(conversation.id)
     this.db.prepare('DELETE FROM v9_file_changes WHERE workspace_id=?').run(id)
+    this.db.prepare('DELETE FROM v9_approval_grants WHERE workspace_id=?').run(id)
     this.db.prepare('DELETE FROM v9_workspaces WHERE id=?').run(id)
   }
   deleteAgent(id: string): void {
@@ -588,6 +607,7 @@ export class WorkspaceStore {
     }
     this.db.prepare('DELETE FROM v9_agents WHERE id=?').run(id)
     this.db.prepare('DELETE FROM v9_checkpoints WHERE agent_id=?').run(id)
+    this.db.prepare('DELETE FROM v9_approval_grants WHERE agent_id=?').run(id)
   }
   autoTitle(conversationId: string, firstMessage: string): Conversation {
     const conversation = this.conversation(conversationId)
@@ -626,6 +646,16 @@ export class WorkspaceStore {
   approval(id: string): Approval | undefined { const row = this.db.prepare('SELECT data FROM v9_approvals WHERE id=?').get(id) as { data: string } | undefined; return row ? JSON.parse(row.data) as Approval : undefined }
   pendingApprovalForRun(runId: string): Approval | undefined { const row = this.db.prepare("SELECT data FROM v9_approvals WHERE run_id=? ORDER BY rowid DESC").all(runId) as { data: string }[]; return row.map(item => JSON.parse(item.data) as Approval).find(item => item.status === 'pending') }
   putApproval(value: Approval): void { this.db.prepare('INSERT INTO v9_approvals(id,run_id,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(value.id, value.runId, JSON.stringify(value)) }
+  approvalGrants(agentId: string): ApprovalGrant[] { return (this.db.prepare('SELECT data FROM v9_approval_grants WHERE agent_id=? ORDER BY rowid DESC').all(agentId) as { data: string }[]).map(row => JSON.parse(row.data)) }
+  approvalGrant(agentId: string, workspaceId: string, kind: ApprovalGrant['kind'], scopeKey: string): ApprovalGrant | undefined {
+    const row = this.db.prepare('SELECT data FROM v9_approval_grants WHERE agent_id=? AND workspace_id=? AND kind=? AND scope_key=?').get(agentId, workspaceId, kind, scopeKey) as { data: string } | undefined
+    return row ? JSON.parse(row.data) as ApprovalGrant : undefined
+  }
+  putApprovalGrant(value: ApprovalGrant): ApprovalGrant {
+    this.db.prepare('INSERT OR IGNORE INTO v9_approval_grants(id,agent_id,workspace_id,kind,scope_key,data) VALUES(?,?,?,?,?,?)').run(value.id, value.agentId, value.workspaceId, value.kind, value.scopeKey, JSON.stringify(value))
+    return this.approvalGrant(value.agentId, value.workspaceId, value.kind, value.scopeKey)!
+  }
+  deleteApprovalGrant(id: string, agentId: string): void { this.db.prepare('DELETE FROM v9_approval_grants WHERE id=? AND agent_id=?').run(id, agentId) }
   putDelegation(value: Delegation): void { this.db.prepare('INSERT INTO v9_delegations(id,idempotency_key,source_conversation_id,target_conversation_id,data) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, source_conversation_id=excluded.source_conversation_id, target_conversation_id=excluded.target_conversation_id').run(value.id, value.idempotencyKey, value.sourceConversationId, value.targetConversationId, JSON.stringify(value)) }
   repairDelegatedMessageLinks(): number {
     const candidates = this.delegations().flatMap(delegation => {
@@ -681,10 +711,90 @@ export class WorkspaceStore {
       .map(row => JSON.parse(row.data) as Mission).find(item => ['active', 'waiting', 'paused'].includes(item.status))
   }
   putMission(value: Mission): void { this.db.prepare('INSERT INTO v9_missions(id,conversation_id,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, conversation_id=excluded.conversation_id').run(value.id, value.conversationId, JSON.stringify(value)) }
+  boardTeams(): BoardTeam[] { return this.all<BoardTeam>('v9_board_teams') }
+  boardTeam(id: string): BoardTeam | undefined { return this.get<BoardTeam>('v9_board_teams', id) }
+  putBoardTeam(value: BoardTeam): BoardTeam {
+    const name = requiredText(value.name, 'Nome da equipe', 100)
+    const description = typeof value.description === 'string' ? value.description.slice(0, 2000) : ''
+    if (!Array.isArray(value.agentIds) || value.agentIds.length > 100 || !value.agentIds.every(id => typeof id === 'string' && id.length > 0 && id.length <= 200)) throw new Error('A lista de agentes da equipe é inválida.')
+    const normalized = { ...value, name, description, agentIds: [...new Set(value.agentIds)] }
+    const nameKey = name.toLocaleLowerCase('pt-BR')
+    const collision = this.db.prepare('SELECT id FROM v9_board_teams WHERE name_key=? AND id<>?').get(nameKey, value.id) as { id: string } | undefined
+    if (collision) throw new Error('Já existe uma equipe do board com esse nome.')
+    this.db.prepare('INSERT INTO v9_board_teams(id,name_key,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name_key=excluded.name_key,data=excluded.data').run(value.id, nameKey, JSON.stringify(normalized))
+    return normalized
+  }
+  deleteBoardTeam(id: string): void {
+    if (this.db.prepare('SELECT 1 FROM v9_board_tasks WHERE team_id=? LIMIT 1').get(id)) throw new Error('A equipe tem tarefas vinculadas e não pode ser excluída.')
+    this.db.prepare('DELETE FROM v9_board_teams WHERE id=?').run(id)
+  }
+  boardTask(id: string): BoardTask | undefined { const task = this.get<BoardTask>('v9_board_tasks', id); return task ? { ...task, originConversationId: task.originConversationId ?? null } : undefined }
+  boardTasks(filters: { teamId?: string; status?: BoardTask['status']; kind?: BoardTask['kind']; search?: string; limit?: number } = {}): BoardTask[] {
+    const clauses: string[] = [], args: (string | number)[] = []
+    if (filters.teamId) { clauses.push('team_id=?'); args.push(filters.teamId) }
+    if (filters.status) { clauses.push('status=?'); args.push(filters.status) }
+    if (filters.kind) { clauses.push("json_extract(data,'$.kind')=?"); args.push(filters.kind) }
+    if (filters.search?.trim()) { clauses.push("(lower(json_extract(data,'$.title')) LIKE ? OR lower(json_extract(data,'$.description')) LIKE ?)"); args.push(`%${filters.search.trim().toLocaleLowerCase('en-US')}%`, `%${filters.search.trim().toLocaleLowerCase('en-US')}%`) }
+    const limit = Math.max(1, Math.min(1000, Math.round(filters.limit ?? 500)))
+    return (this.db.prepare(`SELECT data FROM v9_board_tasks${clauses.length ? ` WHERE ${clauses.join(' AND ')}` : ''} ORDER BY updated_at DESC,id LIMIT ?`).all(...args, limit) as { data: string }[]).map(({ data }) => { const task = JSON.parse(data) as BoardTask; return { ...task, originConversationId: task.originConversationId ?? null } })
+  }
+  putBoardTask(value: BoardTask): BoardTask {
+    requiredText(value.title, 'Título', 160)
+    if (!this.boardTeam(value.teamId)) throw new Error('A equipe da tarefa não existe mais.')
+    if (!['general', 'code'].includes(value.kind) || !['backlog', 'ready', 'queued', 'doing', 'review', 'rework', 'integration', 'blocked', 'done', 'cancelled'].includes(value.status) || !Number.isInteger(value.reviewRound) || value.reviewRound < 0) throw new Error('Os dados da tarefa do board são inválidos.')
+    if (typeof value.description !== 'string' || value.description.length > 20000 || typeof value.acceptanceCriteria !== 'string' || value.acceptanceCriteria.length > 10000) throw new Error('A descrição ou os critérios da tarefa excedem o limite.')
+    this.db.prepare('INSERT INTO v9_board_tasks(id,team_id,status,updated_at,data) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET team_id=excluded.team_id,status=excluded.status,updated_at=excluded.updated_at,data=excluded.data').run(value.id, value.teamId, value.status, value.updatedAt, JSON.stringify(value))
+    return value
+  }
+  appendBoardEvent(value: BoardEvent): BoardEvent {
+    if (!this.boardTask(value.taskId)) throw new Error('A tarefa do evento não existe mais.')
+    if (!Number.isInteger(value.round) || value.round < 0 || typeof value.note !== 'string' || value.note.length > 2000) throw new Error('A atividade do board excede o limite permitido.')
+    if (value.idempotencyKey) {
+      const row = this.db.prepare('SELECT data FROM v9_board_events WHERE idempotency_key=?').get(value.idempotencyKey) as { data: string } | undefined
+      if (row) {
+        const existing = JSON.parse(row.data) as BoardEvent
+        if (existing.taskId !== value.taskId) throw new Error('A chave idempotente já pertence a outra tarefa.')
+        return existing
+      }
+    }
+    this.db.prepare('INSERT INTO v9_board_events(id,task_id,created_at,idempotency_key,data) VALUES(?,?,?,?,?)').run(value.id, value.taskId, value.createdAt, value.idempotencyKey ?? null, JSON.stringify(value))
+    return value
+  }
+  boardEvents(taskId: string, requestedLimit = 100): BoardEvent[] {
+    const limit = Math.max(1, Math.min(100, Math.round(requestedLimit)))
+    return (this.db.prepare('SELECT data FROM v9_board_events WHERE task_id=? ORDER BY created_at DESC,rowid DESC LIMIT ?').all(taskId, limit) as { data: string }[]).map(row => JSON.parse(row.data) as BoardEvent).reverse()
+  }
+  putBoardTaskMission(value: BoardTaskMission): BoardTaskMission {
+    if (!this.boardTask(value.taskId) || !['worker', 'reviewer'].includes(value.role) || !Number.isInteger(value.round) || value.round < 0) throw new Error('O vínculo de missão da tarefa é inválido.')
+    this.db.prepare('INSERT OR IGNORE INTO v9_board_task_missions(task_id,role,round,mission_id,conversation_id,created_at) VALUES(?,?,?,?,?,?)').run(value.taskId, value.role, value.round, value.missionId, value.conversationId, value.createdAt)
+    const row = this.db.prepare('SELECT task_id AS taskId,role,round,mission_id AS missionId,conversation_id AS conversationId,created_at AS createdAt FROM v9_board_task_missions WHERE task_id=? AND role=? AND round=?').get(value.taskId, value.role, value.round) as BoardTaskMission | undefined
+    if (!row) throw new Error('Não foi possível registrar o vínculo de missão.')
+    if (row.missionId !== value.missionId || row.conversationId !== value.conversationId) throw new Error('Esta tarefa já possui uma missão para essa função e rodada.')
+    return row
+  }
+  boardTaskMissions(taskId: string): BoardTaskMission[] { return this.db.prepare('SELECT task_id AS taskId,role,round,mission_id AS missionId,conversation_id AS conversationId,created_at AS createdAt FROM v9_board_task_missions WHERE task_id=? ORDER BY round,role').all(taskId) as unknown as BoardTaskMission[] }
+  putBoardEvidence(value: BoardEvidence): BoardEvidence {
+    if (!this.boardTask(value.taskId) || !Number.isInteger(value.round) || value.round < 0 || typeof value.label !== 'string' || !value.label.trim() || value.label.length > 160 || typeof value.summary !== 'string' || value.summary.length > 20000 || (value.reference !== undefined && (typeof value.reference !== 'string' || value.reference.length > 1000))) throw new Error('A evidência do board excede o limite permitido ou não é válida.')
+    if (Number((this.db.prepare('SELECT COUNT(*) AS count FROM v9_board_evidence WHERE task_id=?').get(value.taskId) as { count: number }).count) >= 200) throw new Error('Esta tarefa atingiu o limite de evidências.')
+    this.db.prepare('INSERT INTO v9_board_evidence(id,task_id,round,created_at,data) VALUES(?,?,?,?,?)').run(value.id, value.taskId, value.round, value.createdAt, JSON.stringify(value))
+    return value
+  }
+  boardEvidence(taskId: string): BoardEvidence[] { return (this.db.prepare('SELECT data FROM v9_board_evidence WHERE task_id=? ORDER BY round,created_at,id').all(taskId) as { data: string }[]).map(row => JSON.parse(row.data) as BoardEvidence) }
   routines(): Routine[] { return this.all<Routine>('v9_routines') }
   routine(id: string): Routine { const value = this.get<Routine>('v9_routines', id); if (!value) throw new Error('Rotina não encontrada.'); return value }
   putRoutine(value: Routine): void { this.put('v9_routines', value) }
   deleteRoutine(id: string): void { this.db.prepare('DELETE FROM v9_routines WHERE id=?').run(id) }
+  transaction<T>(operation: () => T): T {
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      const result = operation()
+      this.db.exec('COMMIT')
+      return result
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
   /** Uma vez por banco: agentes em "perguntar" passam ao modo automático com guarda-corpos, e o Chief passa a existir. */
   applyAutonomyDefaults(): void {
     if (this.db.prepare("SELECT 1 FROM v9_meta WHERE key='autonomy_defaults_v1'").get()) return

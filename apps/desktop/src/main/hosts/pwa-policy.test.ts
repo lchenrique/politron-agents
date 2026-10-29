@@ -6,11 +6,18 @@ import { HostRpc } from './rpc'
 describe('capacidades explícitas do gateway PWA', () => {
   it('permite apenas leituras ao perfil inicial da PWA', () => {
     expect(() => assertPwaRpcAuthorized('v9:snapshot', [], PWA_READ_ONLY)).not.toThrow()
+    expect(() => assertPwaRpcAuthorized('v9:boardSnapshot', [], PWA_READ_ONLY)).not.toThrow()
+    expect(() => assertPwaRpcAuthorized('v9:saveBoardTeam', [{ name: 'Marketing' }], PWA_READ_ONLY)).toThrow(/não está disponível/)
+    expect(() => assertPwaRpcAuthorized('v9:reassignBoardTask', ['task', 'worker', 'reviewer'], PWA_READ_ONLY)).toThrow(/não está disponível/)
+    expect(() => assertPwaRpcAuthorized('v9:updateBoardTask', ['task', {}], PWA_READ_ONLY)).toThrow(/não está disponível/)
     expect(() => assertPwaRpcAuthorized('v9:historyPage', ['conv', null], PWA_READ_ONLY)).not.toThrow()
     expect(() => assertPwaRpcAuthorized('v9:send', ['conv', 'oi'], PWA_READ_ONLY)).toThrow(/Permissão/)
     expect(() => assertPwaRpcAuthorized('v9:respondApproval', ['id', true], PWA_READ_ONLY)).toThrow(/Permissão/)
     expect(() => assertPwaRpcAuthorized('v9:reviewPlan', ['id', 'approve'], PWA_READ_ONLY)).toThrow(/Permissão/)
     expect(() => assertPwaRpcAuthorized('v9:reviewPlan', ['id', 'approve'], ['approvals'])).not.toThrow()
+    expect(() => assertPwaRpcAuthorized('v9:approvalGrants', ['agent'], PWA_READ_ONLY)).toThrow(/Permissão/)
+    expect(() => assertPwaRpcAuthorized('v9:approvalGrants', ['agent'], ['approvals'])).not.toThrow()
+    expect(() => assertPwaRpcAuthorized('v9:removeApprovalGrant', ['grant', 'agent'], ['approvals'])).not.toThrow()
     expect(() => assertPwaRpcAuthorized('v9:readProjectFile', ['.env'], PWA_READ_ONLY)).toThrow(/Permissão/)
     expect(() => assertPwaRpcAuthorized('v9:writeProjectFile', ['file', 'code'], PWA_READ_ONLY)).toThrow(/Permissão/)
   })
@@ -23,7 +30,10 @@ describe('capacidades explícitas do gateway PWA', () => {
   it('não expõe mais o navegador individual do agente no host remoto', () => {
     const rpc = new HostRpc()
     expect(rpc.supports('v9:snapshot')).toBe(true)
+    expect(rpc.supports('v9:boardSnapshot')).toBe(true)
     expect(rpc.supports('v9:reviewPlan')).toBe(true)
+    expect(rpc.supports('v9:approvalGrants')).toBe(true)
+    expect(rpc.supports('v9:removeApprovalGrant')).toBe(true)
     for (const method of ['v9:browserFrames', 'v9:browserControl', 'v9:browserAction', 'v9:externalBrowserStatus', 'v9:setExternalBrowserGrant']) {
       expect(rpc.supports(method)).toBe(false)
       expect(() => rpc.dispatch(method, [])).toThrow(/não está disponível/)

@@ -27,7 +27,7 @@ export function AgentInteractionCard({ approval, onNotice, takeover = false }: {
   if (approval.kind !== 'question') return null
   const pending = approval.status === 'pending'
   const options = (approval.details.options || []).map((label, index) => ({
-    id: String(index), label,
+    id: String(index), label, recommended: label === approval.details.recommendedOption,
   }))
   const answer = async (value: string) => {
     if (!pending || locked.current) return

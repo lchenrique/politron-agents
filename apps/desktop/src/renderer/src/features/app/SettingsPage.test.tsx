@@ -4,7 +4,7 @@ import { SettingsPage } from './SettingsPage'
 
 const appAPI = {
   snapshot: vi.fn().mockResolvedValue({ assistant: { computerUse: false, approvalMode: 'ask' }, terminalEnabled: true }),
-  settingsPreferences: vi.fn().mockResolvedValue({ canWrite: true, computerUse: false, approvalMode: 'ask', terminalEnabled: true }),
+  settingsPreferences: vi.fn().mockResolvedValue({ canWrite: true, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed', terminalEnabled: true }),
   hasClaudeCredential: vi.fn().mockResolvedValue(false),
   openRouterDecisionStatus: vi.fn().mockResolvedValue({ configured: false, modelId: 'typesafe/jev-1.13' }),
   saveAssistantPreferences: vi.fn().mockResolvedValue(undefined),
@@ -44,14 +44,24 @@ describe('carregamento leve das configurações', () => {
   })
   it('expõe a restrição do Assistente e salva a liberação de escrita', async () => {
     vi.clearAllMocks()
-    appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: false, computerUse: false, approvalMode: 'ask', terminalEnabled: true })
+    appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: false, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed', terminalEnabled: true })
     vi.stubGlobal('appAPI', appAPI)
     render(<SettingsPage open onOpenChange={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: /^Assistente$/ }))
     const writing = await screen.findByRole('checkbox', { name: 'Permitir edição de arquivos do workspace' })
     await waitFor(() => expect(writing).not.toBeChecked())
     fireEvent.click(writing)
-    await waitFor(() => expect(appAPI.saveAssistantPreferences).toHaveBeenCalledWith({ canWrite: true, computerUse: false, approvalMode: 'ask' }))
+    await waitFor(() => expect(appAPI.saveAssistantPreferences).toHaveBeenCalledWith({ canWrite: true, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed' }))
+  })
+
+  it('oferece acesso total do Codex para o Assistente padrão', async () => {
+    vi.clearAllMocks()
+    vi.stubGlobal('appAPI', appAPI)
+    render(<SettingsPage open onOpenChange={vi.fn()} initialSection="assistente" />)
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Permissões do Codex' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Acesso total do Codex' }))
+    await waitFor(() => expect(appAPI.saveAssistantPreferences).toHaveBeenCalledWith(expect.objectContaining({ runtimePermissionMode: 'bypass' })))
+    expect(screen.getByText(/danger-full-access/)).toBeInTheDocument()
   })
 
   it('ao abrir Geral não pede snapshot completo nem consulta chaves desnecessárias', async () => {
@@ -197,7 +207,7 @@ describe('hierarquia das seções', () => {
 
   it('destaca o aviso de Bypass ao lado do modo de aprovação do Assistente', async () => {
     vi.clearAllMocks()
-    appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: true, computerUse: false, approvalMode: 'bypass', terminalEnabled: true })
+    appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: true, computerUse: false, approvalMode: 'bypass', runtimePermissionMode: 'managed', terminalEnabled: true })
     vi.stubGlobal('appAPI', appAPI)
     render(<SettingsPage open onOpenChange={vi.fn()} initialSection="assistente" />)
     const warning = await screen.findByText(/No Bypass, o terminal pode alterar outros caminhos/)

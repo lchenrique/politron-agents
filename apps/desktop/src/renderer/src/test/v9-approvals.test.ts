@@ -47,6 +47,17 @@ function setup() {
 const write = (service: AppService, context: unknown, content = 'proposta', toolCallId = 'tool-1') => (service as any).callTool(context, 'workspace_write', { path: 'nota.txt', content }, toolCallId) as Promise<string>
 
 describe('aprovações inline V9', () => {
+  it('persiste o modo de permissões do runtime por agente e no Assistente padrão', () => {
+    const { service, context } = setup()
+    expect(context.agent.runtimePermissionMode || 'managed').toBe('managed')
+    service.saveAgent({ ...context.agent, runtimePermissionMode: 'bypass' })
+    service.saveAssistantPreferences({ runtimePermissionMode: 'bypass' })
+    const reopened = new WorkspaceStore(service.store.dataDirectory)
+    expect(reopened.agent(context.agent.id).runtimePermissionMode).toBe('bypass')
+    expect(reopened.agent(ASSISTANT_ID).runtimePermissionMode).toBe('bypass')
+    reopened.close()
+  })
+
   it('persiste permissões e modo de aprovação do Assistente, exigindo confirmação antes de escrever', async () => {
     const data = directory(), workspacePath = directory(), service = open(data)
     const assistant = service.saveAssistantPreferences({ canWrite: true, computerUse: true, approvalMode: 'ask' })
@@ -81,6 +92,33 @@ describe('aprovações inline V9', () => {
     expect(readFileSync(join(workspacePath, 'nota.txt'), 'utf8')).toBe('proposta')
     expect(service.store.approval(approval.id)?.status).toBe('approved')
     expect(service.store.fileChangesForRun(run.id)[0]).toMatchObject({ status: 'applied', after: 'proposta' })
+  })
+
+  it('salva Sempre permitir para o mesmo arquivo, agente e workspace e deixa revogar', async () => {
+    const { service, context, workspacePath } = setup()
+    const first = write(service, context, 'primeira versão', 'grant-write-1')
+    await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
+    const approval = service.store.approvals()[0]
+    await service.respondApproval(approval.id, true, false, true)
+    await expect(first).resolves.toContain('Arquivo salvo')
+    expect(service.store.approval(approval.id)?.details.alwaysAllowed).toBe(true)
+    expect(service.approvalGrants(context.agent.id)).toMatchObject([{ agentId: context.agent.id, workspaceId: context.run.workspaceId, kind: 'write', summary: 'Arquivo nota.txt' }])
+    const reopened = new WorkspaceStore(service.store.dataDirectory)
+    expect(reopened.approvalGrants(context.agent.id)).toHaveLength(1)
+    reopened.close()
+
+    const repeated = write(service, context, 'segunda versão', 'grant-write-2')
+    await expect(repeated).resolves.toContain('Arquivo salvo')
+    expect(service.store.approvals()).toHaveLength(1)
+    expect(readFileSync(join(workspacePath, 'nota.txt'), 'utf8')).toBe('segunda versão')
+
+    const grant = service.approvalGrants(context.agent.id)[0]
+    service.removeApprovalGrant(grant.id, context.agent.id)
+    expect(service.approvalGrants(context.agent.id)).toEqual([])
+    const afterRevoke = write(service, context, 'terceira versão', 'grant-write-3')
+    await vi.waitFor(() => expect(service.store.approvals()).toHaveLength(2))
+    await service.respondApproval(service.store.approvals()[1].id, false)
+    await expect(afterRevoke).resolves.toContain('negada')
   })
 
   it('nega escrita e permite cancelar uma espera sem executar a ferramenta', async () => {

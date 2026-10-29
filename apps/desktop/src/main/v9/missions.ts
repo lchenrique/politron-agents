@@ -42,7 +42,7 @@ export class MissionEngine {
     return this.store.agents().find(agent => agent.role === 'chief' && agent.temporaryStatus !== 'retired') || this.store.agent(ASSISTANT_ID)
   }
 
-  start(input: StartMissionInput & { routineId?: string | null }): Mission {
+  start(input: StartMissionInput & { routineId?: string | null }, missionId?: string): Mission {
     const goal = text(input.goal, 'Objetivo', 20000)
     const owner = this.ownerOf(input.agentId)
     let conversation = input.conversationId ? this.store.conversation(input.conversationId) : undefined
@@ -55,7 +55,7 @@ export class MissionEngine {
     if (owner.id !== ASSISTANT_ID && !conversation.agentIds.includes(owner.id)) throw new Error(`${owner.name} não participa desta conversa.`)
     const maxTurns = Math.max(1, Math.min(100, Math.round(input.maxTurns ?? DEFAULT_MISSION_TURNS)))
     const now = new Date().toISOString()
-    const mission = this.save({ id: randomUUID(), title, goal, workspaceId: conversation.workspaceId, conversationId: conversation.id, ownerAgentId: owner.id,
+    const mission = this.save({ id: missionId || randomUUID(), title, goal, workspaceId: conversation.workspaceId, conversationId: conversation.id, ownerAgentId: owner.id,
       routineId: input.routineId ?? null, model: input.model || null, status: 'active', steps: [], updates: [{ at: now, agentId: null, kind: 'system', text: `Missão atribuída a ${owner.name}.` }],
       question: null, options: [], result: null, turns: 0, maxTurns, idleTurns: 0, failures: 0, lastProgressAt: null, createdAt: now, updatedAt: now, completedAt: null })
     this.host.emit({ type: 'changed' })

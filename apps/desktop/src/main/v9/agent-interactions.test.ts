@@ -39,14 +39,19 @@ async function setup(planMode = false) {
 describe('Ferramentas de pergunta, plano e autonomia', () => {
   it('apresenta perguntas mesmo no bypass, retorna a resposta escolhida e registra a decisão', async () => {
     const { service, broker, context } = await setup()
-    const task = broker.callTool(context, 'ask_user', { question: 'Qual framework?', options: ['React', 'Vue'] })
+    const task = broker.callTool(context, 'ask_user', { question: 'Qual framework?', options: ['React', 'Vue'], recommended: 'React' })
     const question = service.store.approvals().find(item => item.kind === 'question')
     expect(question?.status).toBe('pending')
     expect(question?.details.options).toEqual(['React', 'Vue'])
+    expect(question?.details.recommendedOption).toBe('React')
     await service.answerQuestion(question!.id, 'React')
     await expect(task).resolves.toBe('Resposta do usuário: React')
     expect(service.store.approval(question!.id)?.details.answer).toBe('React')
     await expect(service.answerQuestion(question!.id, 'Vue')).rejects.toThrow(/não está pendente/)
+  })
+  it('recusa recomendação que não corresponde a uma opção da pergunta', async () => {
+    const { broker, context } = await setup()
+    await expect(broker.callTool(context, 'ask_user', { question: 'Qual framework?', options: ['React', 'Vue'], recommended: 'Svelte' })).rejects.toThrow(/opção recomendada/)
   })
   it('em modo plano não publica ferramentas de escrita/terminal e recusa chamadas forçadas', async () => {
     const { broker, context, service } = await setup(true)

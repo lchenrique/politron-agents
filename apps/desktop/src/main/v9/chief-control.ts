@@ -1,6 +1,6 @@
 import { promises as fs, realpathSync } from 'node:fs'
 import { basename, isAbsolute, join, relative } from 'node:path'
-import { ASSISTANT_ID, type Agent, type Conversation, type Mission, type MissionAction, type Routine, type StartMissionInput, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, type Agent, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type Mission, type MissionAction, type Routine, type StartMissionInput, type Workspace } from '../../shared/v9'
 import { describeTrigger, validateTrigger, ACTIVE_MISSION } from '../../shared/missions'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
 import { validProjectFolderName } from './git-workspaces'
@@ -11,9 +11,9 @@ import type { DynamicTool } from './codex'
  * Controle total do Chief (Parte 3 da spec Chief 2.0): ver tudo, agir direto dentro do Boobot e pedir confirmação
  * (sempre, mesmo no Bypass) só no que apaga, arquiva ou amplia acesso externo.
  */
-export const CHIEF_READ_TOOLS = new Set(['project_list', 'project_overview', 'session_history', 'mission_list', 'routine_list'])
+export const CHIEF_READ_TOOLS = new Set(['project_list', 'project_overview', 'session_history', 'mission_list', 'routine_list', 'board_team_list', 'board_task_list'])
 const CHIEF_ACTION_TOOLS = ['project_create', 'project_update', 'session_create', 'session_update', 'session_send', 'team_set', 'agent_update', 'self_update',
-  'routine_create', 'routine_update', 'mission_create', 'mission_control', 'sidebar_update']
+  'routine_create', 'routine_update', 'mission_create', 'mission_control', 'sidebar_update', 'board_team_create', 'board_task_create']
 const CHIEF_CONFIRM_TOOLS = ['project_archive', 'project_delete', 'session_delete', 'agent_delete', 'routine_delete', 'mission_cancel', 'settings_update']
 export const CHIEF_TOOLS = new Set([...CHIEF_READ_TOOLS, ...CHIEF_ACTION_TOOLS, ...CHIEF_CONFIRM_TOOLS])
 
@@ -31,6 +31,11 @@ export interface ChiefHost {
   saveRoutine(input: Partial<Routine>): Routine
   deleteRoutine(routineId: string): void
   startMission(input: StartMissionInput): Mission
+  boardSnapshot(): BoardSnapshot
+  saveBoardTeam(input: Partial<BoardTeam> & { name: string }): BoardTeam
+  validateBoardTask(input: BoardTaskInput, assigneeAgentId: string, reviewerAgentId: string): void
+  createBoardTask(input: BoardTaskInput, source: 'chief', originConversationId?: string | null): BoardTask
+  assignBoardTask(taskId: string, assigneeAgentId: string, reviewerAgentId: string): Promise<BoardTask>
   missionAction(missionId: string, action: MissionAction, value?: string): Promise<Mission>
   saveSidebarLayout(input: unknown): unknown
   saveTerminalAccess(enabled: boolean): void
@@ -108,6 +113,8 @@ export function chiefToolDefinitions(tool: (name: string, description: string, p
     tool('session_history', 'Lê as mensagens recentes de qualquer sessão de qualquer projeto. Só leitura.', { conversation_id: sessionId, limit: { type: 'number', description: 'Quantidade de mensagens (padrão 30, máximo 100).' } }, ['conversation_id']),
     tool('mission_list', 'Lista as missões de todos os projetos (ou de um projeto), com estado e sessão. Só leitura.', { project_id: projectId }, []),
     tool('routine_list', 'Lista as rotinas de todos os projetos, seus gatilhos e últimas execuções. Só leitura.', {}, []),
+    tool('board_team_list', 'Lista equipes e os agentes disponíveis para o board da empresa. Só leitura.', {}, []),
+    tool('board_task_list', 'Lista cartões do board, responsáveis, revisores, estado e missões vinculadas. Só leitura.', { team_id: { type: 'string' }, status: { type: 'string' }, limit: { type: 'number' } }, []),
   ]
   if (planning) return read
   return [...read,
@@ -124,6 +131,8 @@ export function chiefToolDefinitions(tool: (name: string, description: string, p
     tool('mission_create', 'Abre uma missão em uma sessão nova de qualquer projeto, com um responsável (padrão: você), e começa a executar. Ação direta.', { goal: { type: 'string' }, title: { type: 'string' }, project_id: projectId, agent: { type: 'string' }, max_turns: { type: 'number' } }, ['goal']),
     tool('mission_control', 'Pausa, retoma, responde ou estende uma missão de outra sessão. Cancelar é mission_cancel. Ação direta.', { mission_id: { type: 'string' }, action: { type: 'string', enum: ['pause', 'resume', 'reply', 'extend'] }, text: { type: 'string', description: 'Resposta, para reply.' } }, ['mission_id', 'action']),
     tool('sidebar_update', 'Muda a ordem e as pastas do sidebar. Envie só as chaves que mudam: projectOrder (IDs de projetos), groups ([{name, workspaceIds}]), sessionOrder ({projectId: [IDs de sessões]}), agentOrder (IDs de Boos). Ação direta.', { layout: { type: 'object' } }, ['layout']),
+    tool('board_team_create', 'Cria uma equipe opcional no board da empresa. Explique o nome e os membros; sempre pede aprovação explícita antes de salvar.', { name: { type: 'string' }, description: { type: 'string' }, agents }, ['name', 'agents']),
+    tool('board_task_create', 'Cria um cartão explícito no board, atribui um responsável e um revisor diferente e inicia a missão após aprovação do usuário. Mensagens comuns não viram cartão. Para código, informe project_id e revise os critérios de aceite antes de confirmar.', { title: { type: 'string' }, description: { type: 'string' }, acceptance_criteria: { type: 'string' }, kind: { type: 'string', enum: ['general', 'code'] }, team_id: { type: 'string' }, project_id: projectId, assignee: { type: 'string' }, reviewer: { type: 'string' } }, ['title', 'description', 'acceptance_criteria', 'kind', 'team_id', 'assignee', 'reviewer']),
     tool('project_archive', 'Arquiva um projeto (a pasta no disco é mantida). Pede confirmação ao usuário.', { project_id: projectId }, ['project_id']),
     tool('project_delete', 'Exclui um projeto e todas as sessões e históricos dele no Boobot. Pede confirmação ao usuário.', { project_id: projectId }, ['project_id']),
     tool('session_delete', 'Exclui uma sessão e o histórico dela. Pede confirmação ao usuário.', { conversation_id: sessionId }, ['conversation_id']),
@@ -185,6 +194,50 @@ export async function runChiefTool(host: ChiefHost, call: ChiefCall, name: strin
     return json(store.missions(200).filter(item => !workspaceId || item.workspaceId === workspaceId).map(item => ({ id: item.id, title: item.title, status: item.status, projectId: item.workspaceId, sessionId: item.conversationId, owner: agentName(store, item.ownerAgentId), turns: item.turns, maxTurns: item.maxTurns })))
   }
   if (name === 'routine_list') return json(store.routines().map(routine => ({ id: routine.id, name: routine.name, enabled: routine.enabled, trigger: describeTrigger(routine.trigger), agentId: routine.agentId, agent: agentName(store, routine.agentId), workspaceId: routine.workspaceId, lastRunAt: routine.lastRunAt, nextRunAt: routine.nextRunAt })))
+
+  if (name === 'board_team_list') {
+    const board = host.boardSnapshot()
+    return json({ teams: board.teams.map(team => ({ id: team.id, name: team.name, description: team.description, agents: team.agentIds.map(agentId => agentName(store, agentId)) })), availableAgents: store.agents().filter(agent => agent.temporaryStatus !== 'retired').map(agent => ({ id: agent.id, name: agent.name, role: agent.role })) })
+  }
+  if (name === 'board_task_list') {
+    const limit = args.limit === undefined ? 100 : Number(args.limit)
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('Use limit entre 1 e 200.')
+    const teamId = args.team_id === undefined ? undefined : id(args.team_id, 'Equipe')
+    if (teamId) store.boardTeam(teamId)
+    const allowedStatuses = ['backlog', 'ready', 'queued', 'doing', 'review', 'rework', 'integration', 'blocked', 'done', 'cancelled']
+    const status = args.status === undefined ? undefined : str(args.status, 30, 'Status')
+    if (status && !allowedStatuses.includes(status)) throw new Error('Status de tarefa inválido.')
+    return json(host.boardSnapshot().tasks.filter(task => (!teamId || task.teamId === teamId) && (!status || task.status === status)).slice(-limit).map(task => ({ id: task.id, title: task.title, status: task.status, kind: task.kind, team: store.boardTeam(task.teamId)?.name, assignee: task.assigneeAgentId ? agentName(store, task.assigneeAgentId) : null, reviewer: task.reviewerAgentId ? agentName(store, task.reviewerAgentId) : null, round: task.reviewRound, missionId: task.currentMissionId, reviewMissionId: task.currentReviewMissionId, result: clip(task.result, 800), blockedReason: task.blockedReason })))
+  }
+  if (name === 'board_team_create') {
+    const teamName = str(args.name, 80, 'Nome da equipe').trim()
+    const description = optional(args.description, 500, 'Descrição') || ''
+    if (!teamName) throw new Error('Informe o nome da equipe.')
+    const agentIds = agentList(store, args.agents)
+    const team = { name: teamName, description, agentIds }
+    const people = agentIds.map(agentId => agentName(store, agentId)).join(', ')
+    if (!await confirmOrCancel(`Criar a equipe ${teamName}`, `A equipe do board terá estes agentes: ${people}.`)) return 'O usuário não aprovou; nenhuma equipe foi criada.'
+    const saved = host.saveBoardTeam(team)
+    call.record(`Criou a equipe do board ${saved.name}`)
+    return json({ id: saved.id, name: saved.name, agents: saved.agentIds.map(agentId => agentName(store, agentId)) })
+  }
+  if (name === 'board_task_create') {
+    const kind = str(args.kind, 20, 'Tipo da tarefa')
+    if (kind !== 'general' && kind !== 'code') throw new Error('Tipo de tarefa inválido.')
+    const input: BoardTaskInput = { title: str(args.title, 160, 'Título').trim(), description: str(args.description, 20_000, 'Descrição').trim(), acceptanceCriteria: str(args.acceptance_criteria, 4000, 'Critérios de aceite').trim(), kind,
+      teamId: id(args.team_id, 'Equipe'), ...(args.project_id === undefined ? {} : { workspaceId: activeWorkspace(store, args.project_id).id }) }
+    const worker = findAgent(store, args.assignee), reviewer = findAgent(store, args.reviewer)
+    host.validateBoardTask(input, worker.id, reviewer.id)
+    const teamName = store.boardTeam(input.teamId)?.name || input.teamId
+    const projectNameValue = input.workspaceId ? projectName(store.workspace(input.workspaceId)) : 'sem projeto'
+    const summary = `${input.title}\nEquipe: ${teamName}\nResponsável: ${worker.name}\nRevisor: ${reviewer.name}\nTipo: ${kind === 'code' ? 'código' : 'geral'} · Projeto: ${projectNameValue}\nCritérios: ${input.acceptanceCriteria}`
+    if (!await confirmOrCancel(`Criar e atribuir tarefa no board`, summary)) return 'O usuário não aprovou; nenhum cartão nem missão foi criado.'
+    const task = host.createBoardTask(input, 'chief', call.conversationId)
+    const assigned = await host.assignBoardTask(task.id, worker.id, reviewer.id)
+    call.record(`Criou a tarefa ${task.title} no board para ${worker.name}, com revisão de ${reviewer.name}`)
+    const workerLink = store.boardTaskMissions(task.id).find(link => link.role === 'worker' && link.round === assigned.reviewRound)
+    return json({ taskId: task.id, title: task.title, status: assigned.status, worker: worker.name, reviewer: reviewer.name, missionId: assigned.currentMissionId, conversationId: workerLink?.conversationId, workspaceId: assigned.executionWorkspaceId || assigned.workspaceId, branch: assigned.branch })
+  }
 
   if (name === 'project_create') {
     const projectTitle = str(args.name, 100, 'Nome do projeto').trim()

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, CalendarClock, Check, ChevronRight, CirclePlus, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
+import { Archive, ArrowLeft, CalendarClock, Check, ChevronRight, CirclePlus, ClipboardList, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Menu, Modal, type MenuEntry, type MenuItem } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
@@ -44,8 +44,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   onDeleteAgent: (id: string) => void | Promise<void>
   onSetChief: (agent: Agent, chief: boolean) => void | Promise<void>
   onNotice: (value: string) => void
-  view?: 'home' | 'routines' | null
-  onOpenHome?: (view: 'home' | 'routines') => void
+  view?: 'home' | 'routines' | 'board' | null
+  onOpenHome?: (view: 'home' | 'routines' | 'board') => void
   section?: 'projects' | 'agents'
   onSectionChange?: (section: 'projects' | 'agents') => void
   attentionCount?: number
@@ -442,6 +442,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         <span className="dsh-glyph">{chiefAgent ? <Avatar agent={chiefAgent} size="xxs" state={agentStates[chiefAgent.id] || 'idle'} /> : <LayoutDashboard />}</span>
         <span className="min-w-0 flex-1 truncate">Central {chiefAgent ? `do ${chiefAgent.name}` : 'do Chief'}</span>
         {attentionCount > 0 && <span aria-label={`${attentionCount} pendências`} className="ds-count" data-tone="attention">{attentionCount > 9 ? '9+' : attentionCount}</span>}
+      </Button>
+      <Button type="button" variant={null} size={null} aria-current={view === 'board' ? 'page' : undefined} onClick={() => onOpenHome('board')} className="dsh-panel-row">
+        <span className="dsh-glyph"><ClipboardList /></span>
+        <span className="min-w-0 flex-1 truncate">Board da empresa</span>
+        {!!snapshot.board?.tasks.filter(item => !['done', 'cancelled'].includes(item.status)).length && <span className="ds-count">{snapshot.board.tasks.filter(item => !['done', 'cancelled'].includes(item.status)).length}</span>}
       </Button>
       {!browserMode && <Button type="button" variant={null} size={null} aria-current={view === 'routines' ? 'page' : undefined} onClick={() => onOpenHome('routines')} className="dsh-panel-row">
         <span className="dsh-glyph"><CalendarClock /></span>

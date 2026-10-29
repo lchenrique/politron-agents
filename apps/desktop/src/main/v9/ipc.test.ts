@@ -29,11 +29,15 @@ describe('superfície IPC da V9', () => {
     const channels = [...handlers.keys()]
     expect(channels.filter(channel => channel.startsWith('v9:browser'))).toEqual([])
     expect(channels).toContain('v9:snapshot')
+    expect(channels).toContain('v9:boardSnapshot')
+    for (const channel of ['v9:saveBoardTeam', 'v9:createBoardTask', 'v9:updateBoardTask', 'v9:assignBoardTask', 'v9:reassignBoardTask', 'v9:boardTaskAction']) expect(channels).toContain(channel)
     expect(channels).toContain('v9:openFolder')
     expect(channels).toContain('v9:externalBrowserStatus')
     expect(channels).toContain('v9:setExternalBrowserGrant')
     dispose()
     expect(handlers.has('v9:snapshot')).toBe(false)
+    expect(handlers.has('v9:reassignBoardTask')).toBe(false)
+    expect(handlers.has('v9:updateBoardTask')).toBe(false)
     expect(handlers.has('v9:externalBrowserStatus')).toBe(false)
     expect(handlers.has('v9:setExternalBrowserGrant')).toBe(false)
   })
@@ -44,12 +48,12 @@ describe('superfície IPC da V9', () => {
     const routing = { remote: false, register: (method: string, handler: (...args: unknown[]) => unknown) => { remote.set(method, handler) }, invoke: (_m: string, _a: unknown[], local: () => unknown) => local(), publish: () => true }
     const dispose = registerV9Ipc(service, routing as never)
     await remote.get('v9:respondApproval')!('id', true)
-    expect(respondApproval).toHaveBeenLastCalledWith('id', true, true)
+    expect(respondApproval).toHaveBeenLastCalledWith('id', true, true, false)
     const sender = {}
     const { BrowserWindow } = await import('electron')
     vi.spyOn(BrowserWindow, 'fromWebContents' as never).mockReturnValue({ isDestroyed: () => false } as never)
     await (handlers.get('v9:respondApproval') as (...args: unknown[]) => unknown)({ sender }, 'id', true)
-    expect(respondApproval).toHaveBeenLastCalledWith('id', true)
+    expect(respondApproval).toHaveBeenLastCalledWith('id', true, false, false)
     dispose()
   })
   it('reviewPlan também identifica a origem remota sem mudar o IPC local', async () => {

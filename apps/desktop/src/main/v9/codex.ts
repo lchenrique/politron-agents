@@ -9,6 +9,7 @@ import { SessionUnavailableError, type AgentRuntime, type ExternalBrowserRegistr
 import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { spawnCli } from './cli-launch'
+import { codexRuntimePermissions } from './runtime-permissions'
 
 type RpcMessage = { id?: number | string; method?: string; params?: Record<string, any>; result?: any; error?: { code?: number | string; message: string } }
 export interface DynamicTool { type: 'function'; name: string; description: string; inputSchema: Record<string, unknown> }
@@ -97,11 +98,22 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
         const supportedEfforts = Array.isArray(value.supportedReasoningEfforts)
           ? value.supportedReasoningEfforts.map(item => isRecord(item) ? item.reasoningEffort : item).filter(validEffort)
           : []
+        const serviceTiers = Array.isArray(value.serviceTiers)
+          ? value.serviceTiers.filter(isRecord).filter(tier => typeof tier.id === 'string' && tier.id.trim()).map(tier => ({
+            id: tier.id as string,
+            name: typeof tier.name === 'string' && tier.name.trim() ? tier.name : tier.id as string,
+            description: typeof tier.description === 'string' ? tier.description : undefined,
+          }))
+          : Array.isArray(value.additionalSpeedTiers)
+            ? value.additionalSpeedTiers.filter((tier): tier is string => typeof tier === 'string' && !!tier.trim()).map(id => ({ id, name: id }))
+            : []
         models.set(value.id, {
           id: value.id, name: typeof value.displayName === 'string' ? value.displayName : typeof value.model === 'string' ? value.model : value.id,
           runtime: 'codex', isDefault: value.isDefault === true,
           description: typeof value.description === 'string' ? value.description : undefined,
           supportedEfforts, defaultEffort: validEffort(value.defaultReasoningEffort) ? value.defaultReasoningEffort : undefined,
+          serviceTiers,
+          defaultServiceTier: typeof value.defaultServiceTier === 'string' ? value.defaultServiceTier : undefined,
         })
       }
       if (typeof result.nextCursor !== 'string' || !result.nextCursor || seenCursors.has(result.nextCursor)) break
@@ -130,17 +142,21 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       for (const key of Object.keys(config)) if (key.startsWith(`mcp_servers.${EXTERNAL_BROWSER_MCP}.`)) delete config[key]
       config[`mcp_servers.${EXTERNAL_BROWSER_MCP}`] = { url: externalBrowser.url, http_headers: { Authorization: `Bearer ${externalBrowser.token}` }, enabled_tools: externalBrowser.tools, default_tools_approval_mode: 'approve', tool_timeout_sec: 600 }
     }
-    const params = { cwd: directory, model: agent.model || null, ...(agent.effort ? { reasoningEffort: agent.effort } : {}), sandbox: 'read-only', approvalPolicy: 'on-request', config, developerInstructions: buildAgentSystemPrompt(agent, projectInstructions, tools) }
+    const runtimePermissions = codexRuntimePermissions(agent)
+    // A escolha de acesso do Codex controla o sandbox do runtime. As ferramentas nativas de
+    // execução continuam desabilitadas: arquivos e terminal passam pelo broker do Politron,
+    // que preserva aprovações, limites do workspace e diffs auditáveis.
+    const params = { cwd: directory, model: agent.model || null, ...(agent.effort ? { reasoningEffort: agent.effort } : {}), ...runtimePermissions, config, developerInstructions: buildAgentSystemPrompt(agent, projectInstructions, tools) }
     const result = threadId
       ? await this.request('thread/resume', { ...params, threadId })
       : await this.request('thread/start', { ...params, dynamicTools: tools })
     if (typeof result?.thread?.id !== 'string' || !result.thread.id) throw new Error('O Codex não confirmou a sessão solicitada.')
     return { id: result.thread.id, history: threadId ? 'retained' : 'empty' }
   }
-  async send(threadId: string, input: string | { text: string; images: Array<{ path: string; mimeType: string }> }, model?: string, timeout = 600000): Promise<any> {
+  async send(threadId: string, input: string | { text: string; images: Array<{ path: string; mimeType: string }> }, model?: string, timeout = 600000, options: { effort?: Agent['effort']; serviceTier?: string } = {}): Promise<any> {
     const text = typeof input === 'string' ? input : input.text
     const images = typeof input === 'string' ? [] : input.images
-    return this.request('turn/start', { threadId, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'localImage', path: image.path }))], ...(model ? { model } : {}) }, timeout)
+    return this.request('turn/start', { threadId, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'localImage', path: image.path }))], ...(model ? { model } : {}), ...(options.effort ? { effort: options.effort } : {}), ...(options.serviceTier ? { serviceTierForTurn: options.serviceTier } : {}) }, timeout)
   }
   async interrupt(threadId: string, turnId: string): Promise<void> { await this.request('turn/interrupt', { threadId, turnId }) }
   async steer(threadId: string, turnId: string, input: string): Promise<void> {

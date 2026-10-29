@@ -327,7 +327,7 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
         {status && (!status.transcription || (status.engine === 'chatterbox-pt-br' && !status.localSpeechInstalled)) && <Button variant="secondary" className="w-full" disabled={installing} onClick={() => void download()}>{installing ? 'Instalando modelos locais…' : status.engine === 'openrouter' ? 'Instalar Whisper para o microfone' : 'Instalar Chatterbox PT-BR (mais de 3 GB)'}</Button>}
         <div className="flex justify-center gap-3">
           {phase === 'listening' && <Button size="lg" variant="secondary" onClick={() => recorder.current?.stop()}><MicOff className="mr-2 size-4" />Enviar fala</Button>}
-          {['idle', 'paused'].includes(phase) && <Button size="lg" onClick={begin} disabled={installing}><Play className="mr-2 size-4" />{phase === 'paused' ? 'Retomar' : 'Ligar'}</Button>}
+          {['idle', 'paused'].includes(phase) && <Button size="lg" onClick={begin} disabled={installing || !status}><Play className="mr-2 size-4" />{phase === 'paused' ? 'Retomar' : 'Ligar'}</Button>}
           {['waiting', 'speaking', 'transcribing'].includes(phase) && <Button variant="secondary" size="lg" onClick={pause}>Pausar</Button>}
           <Button variant="destructive" size="lg" onClick={hangup}><PhoneOff className="mr-2 size-4" />Desligar</Button>
         </div>

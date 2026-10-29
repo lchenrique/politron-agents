@@ -12,7 +12,7 @@ import { delegationEligibility } from './delegation-eligibility'
 import { createCommandEvidence, formatCommandEvidence } from './command-evidence'
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
-import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
+import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type BoardEvidence, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
 import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
@@ -35,6 +35,7 @@ import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from '.
 import { SkillsService } from './skills/service'
 import { reflectionPrompt, shouldReflect, skillsPromptBlock } from './skills/learning'
 import { MissionEngine } from './missions'
+import { BoardService } from './board'
 import { toolActivityText } from '../../shared/activity'
 import { clipText, finishedTool, reasoningText, redactSecrets, startedTool, TOOL_OUTPUT_MAX } from './tool-activity'
 import { delegatedConversationName } from '../../shared/delegation-title'
@@ -47,6 +48,17 @@ type RunContext = { run: Run; message: Message; conversation: Conversation; agen
 const SKILL_TOOLS = new Set(['list_skills', 'read_skill', 'save_skill'])
 const REFLECTION_TIMEOUT_MS = 60_000
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
+function approvalScope(kind: Approval['kind'], details: Approval['details']): { kind: 'write' | 'browser' | 'command'; scopeKey: string; summary: string } | undefined {
+  if (kind === 'write' && details.path) return { kind, scopeKey: approvalScopeKey(`write\0${details.path.replace(/\\/g, '/')}`), summary: `Arquivo ${details.path}` }
+  if (kind === 'command' && details.command && details.cwd) {
+    const cwd = details.cwd.replace(/\\/g, '/')
+    return { kind, scopeKey: approvalScopeKey(`command\0${process.platform === 'win32' ? cwd.toLocaleLowerCase('en-US') : cwd}\0${details.command}`), summary: 'Comando exato neste workspace' }
+  }
+  if (kind === 'browser' && details.action && !details.desktopOnly) return { kind, scopeKey: approvalScopeKey(`browser\0${details.action}`), summary: 'Ação idêntica no navegador' }
+  return undefined
+}
+const approvalScopeKey = (value: string) => createHash('sha256').update(value).digest('hex')
+const browserApprovalScope = (action: string): NonNullable<ReturnType<typeof approvalScope>> => ({ kind: 'browser', scopeKey: approvalScopeKey(`browser\0${action}`), summary: 'Ação idêntica no navegador' })
 const approvalUrl = (value: string) => { const safe = safeWebUrl(value); if (!safe) return '[endereço inválido]'; const url = new URL(safe); url.search = ''; url.hash = ''; return url.href }
 const redactApprovalUrls = (value: string) => value.replace(/https?:\/\/[^\s"'\\<>]+/gi, approvalUrl)
 const terminalOwner = (context: RunContext) => ({ workspaceId: context.run.workspaceId, conversationId: context.conversation.id, runId: context.run.id, agentId: context.agent.id, agentName: context.agent.name })
@@ -175,6 +187,8 @@ export class AppService extends EventEmitter {
   // Mesma pasta de dados do app; tools de skill (list_skills/read_skill/save_skill) usam esta instância direto, sem passar por IPC.
   private readonly skills: SkillsService
   readonly missions: MissionEngine
+  readonly board: BoardService
+  private readonly boardReviewerConversations = new Set<string>()
   private readonly queue = new WorkspaceQueue()
   private readonly active = new Map<string, AbortController>()
   private readonly contexts = new Map<string, RunContext>()
@@ -182,7 +196,7 @@ export class AppService extends EventEmitter {
   private readonly delegationTasks = new Map<string, Promise<string>>()
   private readonly groupRounds = new Map<string, Promise<void>>()
   private readonly groupRoundSignals = new Map<string, Set<AbortController>>()
-  private readonly approvalWaiters = new Map<string, (approved: boolean) => void>()
+  private readonly approvalWaiters = new Map<string, { resolve: (approved: boolean) => void; scope?: ReturnType<typeof approvalScope> }>()
   private readonly planReviewWaiters = new Map<string, (result: { decision: PlanReviewDecision; feedback?: string }) => void>()
   private readonly questionWaiters = new Map<string, (answer: string) => void>()
   private visibleConversationId: string | null = null
@@ -213,8 +227,20 @@ export class AppService extends EventEmitter {
       send: (conversationId, input, model, agentId) => this.send(conversationId, input, model, undefined, agentId, false, false),
       stop: conversationId => this.stop(conversationId),
       post: (conversationId, role, agentId, value) => { this.addMessage(conversationId, agentId ? this.store.agent(agentId) : null, role, value, 'completed', null) },
-      emit: event => this.emitEvent(event),
+      emit: event => {
+        this.emitEvent(event)
+        if (event.type === 'mission') void this.board?.onMissionUpdated(event.mission)
+      },
       notify: (conversationId, title, body) => this.notifyWhenAway(conversationId, title, body),
+    })
+    this.board = new BoardService({
+      store: this.store,
+      createWorktree: async (sourceWorkspaceId, branch, reuseExisting) => this.createWorktree({ sourceWorkspaceId, branch, reuseExisting }),
+      startMission: (input, missionId) => this.missions.start(input, missionId),
+      setReviewerConversation: (conversationId, enabled) => { if (enabled) this.boardReviewerConversations.add(conversationId); else this.boardReviewerConversations.delete(conversationId) },
+      stopMission: async conversationId => { const mission = this.store.openMission(conversationId); if (mission) await this.missions.action(mission.id, 'cancel') },
+      reportChief: (conversationId, text) => { const conversation = this.store.conversation(conversationId); const chief = conversation.agentIds.map(id => this.store.agent(id)).find(agent => agent.role === 'chief') || null; this.addMessage(conversationId, chief, 'activity', `Sistema · ${text}`, 'completed', null) },
+      emitChanged: () => this.emitEvent({ type: 'changed' }),
     })
     this.statusTimer = setInterval(() => void this.refreshWorkspaceStatuses(), 5000)
     this.statusTimer.unref?.()
@@ -234,8 +260,27 @@ export class AppService extends EventEmitter {
         }
       })
     }
+    this.board.restore()
   }
-  snapshot() { return { ...this.store.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function'), imageRuntimes: (['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const).filter(name => this.runtimeFor(name).supportsImages === true) } }
+  snapshot() { return { ...this.store.snapshot(), board: this.board.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function'), imageRuntimes: (['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const).filter(name => this.runtimeFor(name).supportsImages === true) } }
+  boardSnapshot(): BoardSnapshot { return this.board.snapshot() }
+  saveBoardTeam(input: Partial<BoardTeam> & { name: string }) { return this.board.saveTeam(input) }
+  deleteBoardTeam(teamId: string) { this.board.deleteTeam(teamId) }
+  validateBoardTask(input: BoardTaskInput, assigneeAgentId: string, reviewerAgentId: string) { this.board.validateTask(input, assigneeAgentId, reviewerAgentId) }
+  createBoardTask(input: BoardTaskInput, source: 'user' | 'chief' = 'user', originConversationId?: string | null) { return this.board.createTask(input, source, originConversationId) }
+  updateBoardTask(taskId: string, input: BoardTaskInput) { return this.board.updateTask(taskId, input) }
+  assignBoardTask(taskId: string, assigneeAgentId: string, reviewerAgentId: string) { return this.board.assignTask(taskId, assigneeAgentId, reviewerAgentId) }
+  reassignBoardTask(taskId: string, assigneeAgentId: string, reviewerAgentId: string) { return this.board.reassignTask(taskId, assigneeAgentId, reviewerAgentId) }
+  boardTaskAction(taskId: string, action: 'start' | 'approve' | 'request_changes' | 'block' | 'resume' | 'cancel' | 'integrate', note = ''): Promise<BoardTask> | BoardTask {
+    if (action === 'start') return this.board.startTask(taskId)
+    if (action === 'approve') return this.board.approveReview(taskId)
+    if (action === 'request_changes') return this.board.requestChanges(taskId, note)
+    if (action === 'block') return this.board.block(taskId, note)
+    if (action === 'resume') return this.board.resume(taskId)
+    if (action === 'cancel') return this.board.cancel(taskId, note || undefined)
+    return this.board.integrate(taskId, note)
+  }
+  addBoardEvidence(taskId: string, evidence: Omit<BoardEvidence, 'id' | 'taskId' | 'round' | 'createdAt'>) { return this.board.addEvidence(taskId, evidence) }
   async uploadAttachment(conversationId: string, name: string, mimeType: string, bytes: Uint8Array) {
     this.store.conversation(conversationId)
     if (!(bytes instanceof Uint8Array)) throw new Error('Conteúdo de imagem inválido.')
@@ -246,7 +291,7 @@ export class AppService extends EventEmitter {
     return { mimeType: file.mimeType, bytes: new Uint8Array(await fs.readFile(file.path)) }
   }
   // Small read for Settings; avoid materializing conversations, runs and file changes.
-  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, terminalEnabled: this.store.terminalEnabled(), externalBrowserAlways: this.store.externalBrowserAlways() } }
+  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, runtimePermissionMode: assistant.runtimePermissionMode || 'managed', terminalEnabled: this.store.terminalEnabled(), externalBrowserAlways: this.store.externalBrowserAlways() } }
   saveExternalBrowserAlways(enabled: boolean) { this.store.saveExternalBrowserAlways(enabled); this.emitEvent({ type: 'changed' }) }
   private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : name === 'antigravity' ? this.antigravityRuntime : this.runtime }
   /** Usa o inventário validado na inicialização ou atualizado manualmente; envio não varre CLI. */
@@ -277,6 +322,14 @@ export class AppService extends EventEmitter {
   }
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return agent }
   saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return assistant }
+  approvalGrants(agentId: string) { this.store.agent(agentId); return this.store.approvalGrants(agentId).map(grant => ({ ...grant, workspaceName: this.store.workspace(grant.workspaceId).name || basename(this.store.workspace(grant.workspaceId).path) })) }
+  removeApprovalGrant(grantId: string, agentId: string) {
+    this.store.agent(agentId)
+    const grant = this.store.approvalGrants(agentId).find(item => item.id === grantId)
+    if (!grant) throw new Error('A permissão permanente não existe mais.')
+    this.store.deleteApprovalGrant(grantId, agentId)
+    this.emitEvent({ type: 'changed' })
+  }
   saveTerminalAccess(enabled: boolean) { this.store.saveTerminalAccess(enabled); this.emitEvent({ type: 'changed' }) }
   sidebarLayout() { return this.store.sidebarLayout() }
   // Sem evento 'changed': a ordem não muda o snapshot e cada tela lê o layout ao abrir.
@@ -316,10 +369,15 @@ export class AppService extends EventEmitter {
     try { return await cloneGithubRepository(input, abort.signal) } finally { this.cloneAbort = null }
   }
   cancelClone() { this.cloneAbort?.abort() }
-  async createWorktree(input: { sourceWorkspaceId: string; branch: string; baseBranch?: string }) {
+  async createWorktree(input: { sourceWorkspaceId: string; branch: string; baseBranch?: string; reuseExisting?: boolean }) {
     const source = this.store.workspace(input.sourceWorkspaceId)
     if (source.archived) throw new Error('Escolha um workspace ativo como origem.')
-    const created = await this.gitWorkspaces.createWorktree({ sourcePath: source.path, workspaceName: source.name, workspaceId: source.id, branch: input.branch, baseBranch: input.baseBranch || source.branch || undefined })
+    const existing = input.reuseExisting ? this.store.workspaces().find(item => item.parentWorkspaceId === source.id && item.kind === 'worktree' && item.branch === input.branch) : undefined
+    if (existing) {
+      if (existing.archived) throw new Error('O worktree existente está arquivado.')
+      return existing
+    }
+    const created = await this.gitWorkspaces.createWorktree({ sourcePath: source.path, workspaceName: source.name, workspaceId: source.id, branch: input.branch, baseBranch: input.baseBranch || source.branch || undefined, reuseExisting: input.reuseExisting })
     const workspace = this.store.saveWorkspace({ name: input.branch, parentWorkspaceId: source.id, kind: 'worktree', path: created.path, branch: created.branch, baseBranch: created.baseBranch, instructions: source.instructions, defaultAgentIds: source.defaultAgentIds, permissions: source.permissions, changes: 0, archived: false })
     this.emitEvent({ type: 'changed' }); return workspace
   }
@@ -394,22 +452,29 @@ export class AppService extends EventEmitter {
     const focusedConversation = this.visibleConversationId === conversationId && BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.isFocused())
     if (!focusedConversation && Notification.isSupported()) new Notification({ title, body }).show()
   }
-  async respondApproval(approvalId: string, approved: boolean, remote = false) {
+  async respondApproval(approvalId: string, approved: boolean, remote = false, alwaysAllow = false) {
     const approval = this.store.approval(approvalId)
     if (!approval || approval.status !== 'pending') throw new Error('Esta aprovação não está mais pendente.')
     if (approval.kind === 'plan') throw new Error('Use a revisão interativa para decidir este plano.')
     if (remote && approval.details.desktopOnly) throw new Error('A autorização do navegador real só pode ser respondida na janela do Boobot neste computador.')
     if (typeof approved !== 'boolean') throw new Error('Decisão de aprovação inválida.')
-    const resolveApproval = this.approvalWaiters.get(approvalId)
-    if (!resolveApproval) throw new Error('A execução desta aprovação não está ativa. Ela não será repetida automaticamente.')
-    const updated = { ...approval, status: approved ? 'approved' as const : 'denied' as const, resolvedAt: new Date().toISOString() }
-    this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
+    if (typeof alwaysAllow !== 'boolean' || alwaysAllow && (!approved || approval.details.desktopOnly || !approvalScope(approval.kind, approval.details))) throw new Error('Esta ação não pode receber uma permissão permanente.')
+    const waiter = this.approvalWaiters.get(approvalId)
+    if (!waiter) throw new Error('A execução desta aprovação não está ativa. Ela não será repetida automaticamente.')
     const context = this.contexts.get(approval.runId)
+    if (alwaysAllow) {
+      if (!context) throw new Error('A execução desta aprovação não está ativa.')
+      const scope = waiter.scope || approvalScope(approval.kind, approval.details)
+      if (!scope) throw new Error('Esta ação não pode receber uma permissão permanente.')
+      this.store.putApprovalGrant({ id: randomUUID(), agentId: approval.agentId, workspaceId: context.run.workspaceId, kind: scope.kind, scopeKey: scope.scopeKey, summary: scope.summary, createdAt: new Date().toISOString() })
+    }
+    const updated = { ...approval, status: approved ? 'approved' as const : 'denied' as const, details: { ...approval.details, ...(alwaysAllow ? { alwaysAllowed: true } : {}) }, resolvedAt: new Date().toISOString() }
+    this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
     if (context) {
       context.run.status = 'running'; this.store.putRun(context.run)
       this.updateMessage(context.message, 'running', context.message.text)
     }
-    this.approvalWaiters.delete(approvalId); resolveApproval(approved)
+    this.approvalWaiters.delete(approvalId); waiter.resolve(approved)
   }
   async reviewPlan(approvalId: string, decision: PlanReviewDecision, feedback?: string, remote = false): Promise<void> {
     const approval = this.store.approval(approvalId)
@@ -453,11 +518,11 @@ export class AppService extends EventEmitter {
     }
     submit(response)
   }
-  private askUser(context: RunContext, question: string, options: string[]): Promise<string> {
+  private askUser(context: RunContext, question: string, options: string[], recommendedOption?: string): Promise<string> {
     if (context.signal?.aborted) return Promise.reject(new Error('Execução interrompida.'))
     const approval: Approval = { id: randomUUID(), runId: context.run.id,
       conversationId: context.conversation.id, agentId: context.agent.id, kind: 'question',
-      details: { question, options }, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
+      details: { question, options, ...(recommendedOption ? { recommendedOption } : {}) }, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
     this.store.putApproval(approval)
     context.run.status = 'waiting'; this.store.putRun(context.run)
     this.updateMessage(context.message, 'waiting', context.message.text)
@@ -509,9 +574,11 @@ export class AppService extends EventEmitter {
       if (this.store.approval(approval.id)?.status === 'pending') this.notifyWhenAway(context.conversation.id, 'Plano aguardando revisão', `${context.agent.name} apresentou: ${title}`)
     })
   }
-  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false, alwaysAsk = false): Promise<boolean> {
+  private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false, alwaysAsk = false, scopeOverride?: ReturnType<typeof approvalScope>): Promise<boolean> {
     const signals = [context.signal].filter((signal): signal is AbortSignal => !!signal)
     if (signals.some(signal => signal.aborted)) return false
+    const scope = scopeOverride || approvalScope(kind, details)
+    if (!alwaysAsk && scope && this.store.approvalGrant(context.agent.id, context.run.workspaceId, scope.kind, scope.scopeKey)) return true
     if (!alwaysAsk && shouldAutoApprove(context.agent.approvalMode, kind, sensitive)) return true
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id, agentId: context.agent.id, kind, details, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
     this.store.putApproval(approval)
@@ -542,10 +609,10 @@ export class AppService extends EventEmitter {
         }
         this.approvalWaiters.delete(approval.id); resolveApproval(false)
       }
-      this.approvalWaiters.set(approval.id, approved => {
+      this.approvalWaiters.set(approval.id, { resolve: approved => {
         for (const signal of signals) signal.removeEventListener('abort', abort)
         resolveApproval(approved)
-      })
+      }, ...(scope ? { scope } : {}) })
       for (const signal of signals) signal.addEventListener('abort', abort, { once: true })
       // O consumidor pode decidir no próprio callback do evento. A espera precisa
       // existir antes da publicação, inclusive para clientes locais muito rápidos.
@@ -627,6 +694,11 @@ export class AppService extends EventEmitter {
     }
     if (effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço selecionado inválido.')
     if (effort && selectedCatalog?.supportedEfforts && !selectedCatalog.supportedEfforts.includes(effort)) throw new Error('O modelo selecionado não aceita esse nível de esforço.')
+    const modelOptions = options?.modelOptions || {}
+    if (modelOptions.fastMode !== undefined && typeof modelOptions.fastMode !== 'boolean') throw new Error('Modo rápido inválido.')
+    if (modelOptions.fastMode === true && !selectedCatalog?.supportsFastMode) throw new Error('O modelo selecionado não oferece modo rápido.')
+    if (modelOptions.serviceTier && !selectedCatalog?.serviceTiers?.some(tier => tier.id === modelOptions.serviceTier)) throw new Error('A velocidade selecionada não está disponível para este modelo.')
+    if (modelOptions.variant && !selectedCatalog?.variants?.some(variant => variant.id === modelOptions.variant)) throw new Error('A variante selecionada não está disponível para este modelo.')
     const mode = conversation.responseMode || 'leader'
     const mentioned = preferredAgentId ? undefined : mentionedRecipients(input, agents)
     let selected = preferredAgentId ? agents : mentioned || recipients(input, agents, mode, conversation.leaderAgentId)
@@ -706,7 +778,7 @@ export class AppService extends EventEmitter {
       const runInput = mode === 'discussion' && (roundTranscript.length || corrections)
         ? `${inputForAgents}${corrections ? `\n\nNovas mensagens humanas durante a rodada:\n${corrections}` : ''}${roundTranscript.length ? `\n\nRespostas anteriores desta rodada, em ordem${previousRoundRaw.length > 9000 ? ' (trecho final; início omitido)' : ''}:\n${previousRoundText}` : ''}`
         : inputForAgents
-      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: planMode ? '[MODO PLANO ATIVO] Analise a tarefa, consulte apenas ferramentas de leitura e use propose_plan para apresentar um plano em etapas. NÃO modifique arquivos, execute comandos ou realize alterações até o usuário enviar outra tarefa fora do modo plano.\n\n' + runInput : runInput, planMode, inputMessageId: recordInput ? userMessage.id : undefined, agent: runAgent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
+      const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: planMode ? '[MODO PLANO ATIVO] Analise a tarefa, consulte apenas ferramentas de leitura e use propose_plan para apresentar um plano em etapas. NÃO modifique arquivos, execute comandos ou realize alterações até o usuário enviar outra tarefa fora do modo plano.\n\n' + runInput : runInput, planMode, inputMessageId: recordInput ? userMessage.id : undefined, agent: runAgent, ...(Object.keys(modelOptions).length ? { modelOptions } : {}), workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
       // Mensagem na fila do usuário: a resposta só nasce quando a vez chegar, abaixo do que já foi dito.
       let message = userMessage.status === 'queued' && recordInput ? undefined : this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
@@ -984,15 +1056,16 @@ export class AppService extends EventEmitter {
       let threadId = thread.id
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
+      const runtimeOptions = { ...(agent.effort ? { effort: agent.effort } : {}), ...(run.modelOptions || {}) }
       let result
-      try { result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000) }
+      try { result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000, runtimeOptions) }
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || didRetryUnavailable || !binding?.threadId || thread.history !== 'resume-pending') throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
         thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions, externalBrowser)
         threadId = thread.id; run.threadId = threadId; this.store.putRun(run)
         turnContext = makeTurnContext()
-        result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000)
+        result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000, runtimeOptions)
       }
       if (result.thread?.id) { run.threadId = result.thread.id; this.store.putRun(run) }
       const turn = result.turn
@@ -1105,13 +1178,15 @@ export class AppService extends EventEmitter {
   private tools(context: RunContext): DynamicTool[] {
     const tool = (name: string, description: string, properties: Record<string, unknown>, required: string[]): DynamicTool => ({ type: 'function', name, description, inputSchema: { type: 'object', properties, required, additionalProperties: false } })
     const permissions = this.store.workspace(context.run.workspaceId).permissions
-    const canWrite = context.agent.canWrite && permissions?.filesWrite !== 'deny'
-    const canUseComputer = context.agent.computerUse && permissions?.computerUse !== 'deny'
+    const boardReview = Boolean(context.conversation && this.boardReviewerConversations.has(context.conversation.id))
+    const canWrite = !boardReview && context.agent.canWrite && permissions?.filesWrite !== 'deny'
+    const canUseComputer = !boardReview && context.agent.computerUse && permissions?.computerUse !== 'deny'
     const planning = context.run.planMode === true
-    return [
+    const available: DynamicTool[] = [
       tool('ask_user', 'Faça uma pergunta objetiva ao usuário somente quando uma decisão bloquear o trabalho. Mostre opções claras e aguarde a resposta. Nunca use para pedir permissão de executar ferramentas.', {
         question: { type: 'string', description: 'Pergunta direta.' },
         options: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 6 },
+        recommended: { type: 'string', description: 'Uma das opções, idêntica ao texto exibido. Informe somente quando a evidência do contexto favorecer claramente essa escolha; caso contrário, omita.' },
       }, ['question', 'options']),
       tool('propose_plan', 'Registre um plano visual, em etapas verificáveis, para o usuário acompanhar. No modo plano, NÃO execute mudanças.', {
         title: { type: 'string' },
@@ -1155,6 +1230,7 @@ export class AppService extends EventEmitter {
       tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
     ]
+    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill'].includes(item.name)) : available
   }
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
     const params = event?.params || {}
@@ -1231,6 +1307,8 @@ export class AppService extends EventEmitter {
     }
   }
   private async callTool(context: RunContext, name: string, args: Record<string, unknown>, callId = ''): Promise<unknown> {
+    if (context.conversation && this.boardReviewerConversations.has(context.conversation.id) && (CHIEF_TOOLS.has(name) || name.startsWith('browser_') || name.startsWith('external_browser_') || ['workspace_write', 'workspace_run_command', 'workspace_start_process', 'workspace_stop_process', 'ask_agent', 'agent_create', 'self_update', 'propose_self_profile', 'save_skill'].includes(name)))
+      throw new Error('A revisão do board é somente leitura; não é possível alterar arquivos, executar comandos ou delegar alterações.')
     if (context.reflecting && !SKILL_TOOLS.has(name)) throw new Error('Na revisão de aprendizado só as ferramentas de skill estão disponíveis.')
     const root = context.run.workspacePath
     const inside = (input: unknown) => {
@@ -1255,7 +1333,9 @@ export class AppService extends EventEmitter {
       if (!question || !Array.isArray(raw) || raw.length < 2 || raw.length > 6 ||
         !raw.every(value => typeof value === 'string' && value.trim().length > 0 && value.length <= 100))
         throw new Error('Pergunta ou opções inválidas.')
-      return 'Resposta do usuário: ' + await this.askUser(context, question, raw as string[])
+      const recommended = args.recommended === undefined ? undefined : text(args.recommended, 100).trim()
+      if (args.recommended !== undefined && (!recommended || !raw.includes(recommended))) throw new Error('A opção recomendada deve corresponder a uma das opções apresentadas.')
+      return 'Resposta do usuário: ' + await this.askUser(context, question, raw as string[], recommended)
     }
     if (name === 'propose_plan') {
       const title = text(args.title, 140).trim()
@@ -1502,13 +1582,16 @@ export class AppService extends EventEmitter {
       if (busy) throw new Error(`Aguarde: navegador em uso por ${busy.agent} em ${busy.conversation}.`)
       const operation = name === 'browser_open' || name === 'browser_observe' ? '' : name.replace('browser_', '')
       // Abrir: a aprovação vem antes de o acquire navegar.
-      if (name === 'browser_open' && !await this.requestApproval(context, 'browser', { action: `Abrir ${approvalUrl(text(args.url, 2000))}` })) return 'Ação de navegador negada pelo usuário.'
+      if (name === 'browser_open') {
+        const rawUrl = text(args.url, 2000)
+        if (!await this.requestApproval(context, 'browser', { action: `Abrir ${approvalUrl(rawUrl)}` }, false, false, browserApprovalScope(`browser_open\0${rawUrl}`))) return 'Ação de navegador negada pelo usuário.'
+      }
       await check().acquireForAgent(owner, name === 'browser_open' ? text(args.url, 2000) : undefined)
       const token = await check().captureDocument(owner, operation, args)
       check().assertSharing(owner, token)
       if (name !== 'browser_observe' && name !== 'browser_open') {
         const action = `${operation}: ${redactApprovalUrls(JSON.stringify(args)).slice(0, 1000)}`
-        if (!await this.requestApproval(context, 'browser', { action })) return 'Ação de navegador negada pelo usuário.'
+        if (!await this.requestApproval(context, 'browser', { action }, false, false, browserApprovalScope(`${name}\0${JSON.stringify(args)}`))) return 'Ação de navegador negada pelo usuário.'
       }
       const browser = check()
       browser.assertSharing(owner, token)
@@ -1730,6 +1813,7 @@ export class AppService extends EventEmitter {
   dispose() {
     if (this.statusSignal.signal.aborted) return
     this.agentTerminals.terminateAll()
+    this.board.dispose(); this.boardReviewerConversations.clear()
     clearInterval(this.statusTimer)
     this.missions.dispose()
     this.statusSignal.abort()

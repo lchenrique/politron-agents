@@ -32,7 +32,27 @@ beforeEach(() => {
   })
 })
 
+async function startCall() {
+  const button = await screen.findByRole('button', { name: 'Ligar' })
+  await waitFor(() => expect(button).toBeEnabled())
+  fireEvent.click(button)
+}
+
 describe('ligação local com os Pits', () => {
+  it('aguarda o carregamento do status antes de permitir iniciar o microfone', async () => {
+    const status = { speech: true, transcription: true, engine: 'sherpa-onnx' as const, language: 'pt-BR' as const }
+    let resolveStatus!: (value: typeof status) => void
+    const voiceStatus = vi.fn(() => new Promise<typeof status>(resolve => { resolveStatus = resolve }))
+    vi.stubGlobal('appAPI', { voiceStatus, voiceTranscribe: vi.fn() })
+    render(<VoiceCall open agents={[agent]} messages={[]} onSend={vi.fn()} onClose={vi.fn()} />)
+    const start = screen.getByRole('button', { name: 'Ligar' })
+    expect(start).toBeDisabled()
+    fireEvent.click(start)
+    expect(recordMock).not.toHaveBeenCalled()
+    await act(async () => { resolveStatus(status) })
+    await waitFor(() => expect(start).toBeEnabled())
+  })
+
   it('configura o Fish Audio gratuito sem expor a chave fora da ação de salvar', async () => {
     const save = vi.fn().mockResolvedValue({ transcription: true, speech: true, engine: 'openrouter', language: 'pt-BR', voiceKeyConfigured: true, localSpeechInstalled: false })
     vi.stubGlobal('appAPI', {
@@ -76,7 +96,7 @@ describe('ligação local com os Pits', () => {
   it('transcreve localmente e envia ao agente selecionado', async () => {
     const send = vi.fn().mockResolvedValue(undefined)
     render(<VoiceCall open agents={[agent]} messages={[]} onSend={send} onClose={vi.fn()} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Ligar' }))
+    await startCall()
     await waitFor(() => expect(send).toHaveBeenCalledExactlyOnceWith('Abra o terminal'))
     expect(screen.getByText('Abra o terminal')).toBeInTheDocument()
     expect(window.appAPI.voiceTranscribe).toHaveBeenCalledOnce()
@@ -85,7 +105,7 @@ describe('ligação local com os Pits', () => {
   it('reproduz uma resposta nova, ignorando respostas antigas', async () => {
     const send = vi.fn().mockResolvedValue(undefined)
     const { rerender } = render(<VoiceCall open agents={[agent]} messages={[{ ...input, id: 'reply-old' }]} onSend={send} onClose={vi.fn()} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Ligar' }))
+    await startCall()
     await waitFor(() => expect(send).toHaveBeenCalledOnce())
     expect(speakVoice).not.toHaveBeenCalled()
     rerender(<VoiceCall open agents={[agent]} messages={[{ ...input, id: 'reply-old' }, input]} onSend={send} onClose={vi.fn()} />)
@@ -108,7 +128,7 @@ describe('ligação local com os Pits', () => {
     const transcribe = vi.fn().mockResolvedValue('texto atrasado')
     vi.stubGlobal('appAPI', { ...window.appAPI, voiceTranscribe: transcribe })
     const { unmount } = render(<VoiceCall open agents={[agent]} messages={[]} onSend={send} onClose={vi.fn()} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Ligar' }))
+    await startCall()
     await waitFor(() => expect(recordMock).toHaveBeenCalledOnce())
     unmount()
     expect(cancelMock).toHaveBeenCalledOnce()

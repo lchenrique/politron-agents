@@ -112,7 +112,7 @@ export class GitWorkspaceService {
     return [tracked, ...additions].filter(Boolean).join('\n')
   }
 
-  async createWorktree(input: { sourcePath: string; workspaceName: string; workspaceId?: string; branch: string; baseBranch?: string }): Promise<CreatedGitWorktree> {
+  async createWorktree(input: { sourcePath: string; workspaceName: string; workspaceId?: string; branch: string; baseBranch?: string; reuseExisting?: boolean }): Promise<CreatedGitWorktree> {
     const source = resolve(input.sourcePath)
     const sourceRoot = resolve(await runGit(source, ['rev-parse', '--show-toplevel']))
     const branch = input.branch.trim()
@@ -130,14 +130,25 @@ export class GitWorkspaceService {
     if (!isWithin(realRoot, realProjectRoot) || realProjectRoot === realRoot) throw new Error('O diretório do workspace está fora da pasta permitida.')
     const target = resolve(realProjectRoot, branchPart)
     if (!isWithin(realRoot, target) || target === realRoot) throw new Error('O destino do worktree está fora da pasta permitida.')
+    const baseBranch = input.baseBranch?.trim() || await runGit(sourceRoot, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => 'HEAD')
     try {
       await fs.lstat(target)
+      if (input.reuseExisting) {
+        const realTarget = await fs.realpath(target)
+        const entries = await runGit(sourceRoot, ['worktree', 'list', '--porcelain'])
+        const registered = entries.split(/\r?\n\r?\n/).some(entry => {
+          const path = entry.split(/\r?\n/).find(line => line.startsWith('worktree '))?.slice('worktree '.length)
+          const registeredBranch = entry.split(/\r?\n/).find(line => line.startsWith('branch '))?.slice('branch '.length)
+          return Boolean(path && registeredBranch === `refs/heads/${branch}` && resolve(path) === realTarget)
+        })
+        const worktreeRoot = await runGit(realTarget, ['rev-parse', '--show-toplevel']).then(resolve, () => '')
+        if (registered && worktreeRoot === realTarget) return { path: realTarget, branch, baseBranch }
+      }
       throw new Error('Já existe uma pasta para este worktree.')
-    } catch (error: any) {
-      if (error?.code !== 'ENOENT') throw error
+    } catch (error: unknown) {
+      if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) throw error
     }
 
-    const baseBranch = input.baseBranch?.trim() || await runGit(sourceRoot, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => 'HEAD')
     await runGit(sourceRoot, ['worktree', 'add', '-b', branch, target, baseBranch])
     return { path: target, branch, baseBranch }
   }

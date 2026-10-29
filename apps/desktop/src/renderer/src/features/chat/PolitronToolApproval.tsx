@@ -31,12 +31,13 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true, ta
   const sensitive = approval.kind === 'agent-change' || approval.kind === 'command' || (approval.kind === 'write' && Boolean(details.before))
   const pending = approval.status === 'pending'
 
-  const respond = useCallback(async (approved: boolean) => {
+  const respond = useCallback(async (approved: boolean, alwaysAllow = false) => {
     if (!pending || lock.current) return
     lock.current = true
     setSubmitting(true)
     try {
-      await window.appAPI.respondApproval(approval.id, approved)
+      if (alwaysAllow) await window.appAPI.respondApproval(approval.id, approved, true)
+      else await window.appAPI.respondApproval(approval.id, approved)
       // Não assumir sucesso na interface: o evento do backend confirmará o estado.
     } catch (error) {
       lock.current = false
@@ -53,6 +54,14 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true, ta
     clearTimeout(armTimer.current)
     armTimer.current = setTimeout(() => setArmed(false), ARM_TIMEOUT_MS)
   }, [armed, respond, sensitive])
+  const canAlwaysAllow = ['write', 'browser', 'command'].includes(approval.kind) && !details.desktopOnly
+  const onAlwaysAllow = useCallback(() => {
+    if (lock.current || !canAlwaysAllow) return
+    if (!sensitive || armed) { void respond(true, true); return }
+    setArmed(true)
+    clearTimeout(armTimer.current)
+    armTimer.current = setTimeout(() => setArmed(false), ARM_TIMEOUT_MS)
+  }, [armed, canAlwaysAllow, respond, sensitive])
 
   useEffect(() => {
     if (!takeover || !pending || !canApprove) return
@@ -83,6 +92,7 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true, ta
     : details.action || 'Alteração de configuração solicitada'
   const options = pending ? [
     { label: armed ? 'Aprovar mesmo assim' : sensitive ? takeover ? 'Confirmar e permitir' : 'Confirmar e aprovar' : takeover ? 'Permitir uma vez' : 'Aprovar', value: 'approve', description: armed ? 'Confirmação adicional obrigatória' : undefined },
+    ...(canAlwaysAllow ? [{ label: armed ? 'Confirmar e sempre permitir' : 'Sempre permitir', value: 'always', description: approval.kind === 'write' ? `Alterações em ${details.path}` : approval.kind === 'command' ? 'Este comando exato' : 'Esta ação idêntica' }] : []),
     { label: takeover ? 'Rejeitar' : 'Negar', value: 'deny' },
   ] : []
 
@@ -91,19 +101,20 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true, ta
     <CheckCircle2 aria-hidden className="size-3.5 shrink-0" />
     <span className="shrink-0 font-medium text-foreground">{definition.title}</span>
     <span className="min-w-0 flex-1 truncate" title={description}>{description}</span>
-    <span role="status" className="shrink-0">{statusText}</span>
+    <span role="status" className="shrink-0">{approval.details.alwaysAllowed ? 'Sempre permitida' : statusText}</span>
   </section>
 
   return <div ref={takeover ? keyboardScope : undefined} className={takeover ? 'contents' : undefined}>
   <ApprovalCard aria-label="Aprovação de ferramenta" className={takeover ? styles.approvalCard : 'min-w-0 border border-border/60 !rounded-xl !p-3 shadow-none'} title={definition.title} description={description}
     status={pending ? 'pending' : approval.status === 'approved' ? 'approved' : approval.status === 'denied' ? 'denied' : 'interrupted'}
     disabled={submitting}
-    options={options} onDecision={value => value === 'approve' ? onApprove() : void respond(false)}>
+    options={options} onDecision={value => value === 'approve' ? onApprove() : value === 'always' ? onAlwaysAllow() : void respond(false)}>
     <div aria-live="polite" role="status" className="mt-2 text-xs text-muted-foreground">{statusText}</div>
     {approval.kind === 'command' && <details className="mt-1 text-xs text-muted-foreground">
       <summary className="cursor-pointer">Permissões deste comando</summary>
       <p className="mt-1">O terminal não é isolado do sistema operacional. Comandos podem acessar arquivos fora do workspace.</p>
     </details>}
+    {canAlwaysAllow && pending && <p className="text-xs text-muted-foreground">“Sempre permitir” memoriza esta regra para o agente e workspace atuais. Revogue nas permissões do agente.</p>}
     {details.task && <details className="rounded-md border border-border/60 p-2.5 text-xs">
       <summary className="cursor-pointer font-medium">{approval.kind === 'agent-change' ? 'Ver detalhes' : 'Ver tarefa e instruções propostas'}</summary>
       <p className="mt-2 whitespace-pre-wrap break-words text-muted-foreground">{details.task}</p>

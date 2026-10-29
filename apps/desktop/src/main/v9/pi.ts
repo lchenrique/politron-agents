@@ -145,10 +145,26 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
       if (!record(result) || !Array.isArray(result.models)) throw new Error('O Pi devolveu um catálogo de modelos inválido.')
       const state = await rpc.request('get_state')
       const selected = record(state) && record(state.model) ? state.model : undefined
-      return result.models.filter(record).filter(model => typeof model.provider === 'string' && typeof model.id === 'string' && model.id.length > 0).map(model => ({
-        id: `${model.provider}/${model.id}`, name: typeof model.name === 'string' ? model.name : String(model.id), runtime: 'pi',
-        isDefault: selected?.provider === model.provider && selected?.id === model.id
-      }))
+      const catalog = result.models.filter(record).filter(model => typeof model.provider === 'string' && typeof model.id === 'string' && model.id.length > 0)
+      const models: Model[] = []
+      for (const model of catalog) {
+        const id = `${model.provider}/${model.id}`
+        let supportedEfforts: NonNullable<Model['supportedEfforts']> = []
+        try {
+          await rpc.request('set_model', { provider: model.provider, modelId: model.id })
+          const response = await rpc.request('get_available_thinking_levels')
+          if (record(response) && Array.isArray(response.levels)) {
+            supportedEfforts = response.levels.filter((level): level is NonNullable<Agent['effort']> =>
+              typeof level === 'string' && ['low', 'medium', 'high', 'xhigh', 'max'].includes(level))
+          }
+        } catch { /* Modelos que não aceitam seleção por RPC ficam sem controles de esforço. */ }
+        models.push({
+          id, name: typeof model.name === 'string' ? model.name : String(model.id), runtime: 'pi',
+          isDefault: selected?.provider === model.provider && selected?.id === model.id,
+          supportedEfforts,
+        })
+      }
+      return models
     } finally { rpc.close() }
   }
 
@@ -190,7 +206,7 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
     } catch (error) { this.dispose(context); throw error }
   }
 
-  async send(threadId: string, input: string, model?: string, timeout = 600000): Promise<{ thread: { id: string }; turn: { id: string; status: string } }> {
+  async send(threadId: string, input: string, model?: string, timeout = 600000, options: { effort?: Agent['effort'] } = {}): Promise<{ thread: { id: string }; turn: { id: string; status: string } }> {
     const context = this.threads.get(threadId)
     if (!context) throw new Error('Sessão Pi não encontrada.')
     if (context.turn) throw new Error('A sessão Pi já está executando uma tarefa.')
@@ -200,9 +216,10 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
       if (slash < 1 || slash === selected.length - 1) throw new Error('Selecione um modelo Pi com provedor e identificador.')
       await context.rpc.request('set_model', { provider: selected.slice(0, slash), modelId: selected.slice(slash + 1) })
     }
-    if (context.agent.effort) {
+    const effort = options.effort || context.agent.effort
+    if (effort) {
       const thinking = await context.rpc.request('get_available_thinking_levels')
-      if (record(thinking) && Array.isArray(thinking.levels) && thinking.levels.includes(context.agent.effort)) await context.rpc.request('set_thinking_level', { level: context.agent.effort })
+      if (record(thinking) && Array.isArray(thinking.levels) && thinking.levels.includes(effort)) await context.rpc.request('set_thinking_level', { level: effort })
     }
     const turn: Turn = { id: randomUUID(), gated: true, events: [], text: '', interrupted: false }
     context.turn = turn

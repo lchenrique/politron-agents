@@ -23,6 +23,13 @@ it('apresenta opções, envia escolha única ao backend e mostra resposta persis
   expect(screen.getByText('Resposta: Vue')).toBeInTheDocument()
 })
 
+it('marca a opção recomendada sem remover as outras escolhas', () => {
+  render(<AgentInteractionCard approval={{ ...base, details: { ...base.details, recommendedOption: 'Vue' } }} onNotice={vi.fn()} />)
+  expect(screen.getByText('Recomendado')).toBeInTheDocument()
+  expect(screen.getByText('Vue')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /React/ })).toBeInTheDocument()
+})
+
 it('apresenta plano visual sem botões falsos de executar ou editar', () => {
   render(<AgentInteractionCard approval={{ ...base, kind: 'plan', status: 'approved',
     details: { planTitle: 'Migrar app', planSteps: ['Analisar arquivos', 'Executar testes'] } }} onNotice={vi.fn()} />)
