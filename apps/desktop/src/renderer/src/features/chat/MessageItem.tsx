@@ -3,6 +3,7 @@ import { Check, Copy, Volume2, LoaderCircle, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Message, MessageAttachment } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
+import { Avatar } from '../app/Avatar'
 import { RunProgress } from './RunProgress'
 import { speakVoice, stopVoice } from '../voice/voice-player'
 import { Message as ChatMessage, MessageContent, MessageFooter, MessageHeader } from '@/components/ui/message'
@@ -10,6 +11,8 @@ import { Trace, TraceLine, TraceTitle } from '@/components/ui/trace'
 import { MessageMarkdown } from './MessageMarkdown'
 import { StreamingText } from './StreamingText'
 import { MessageBubble as PastaMessageBubble } from '@/components/ai/message-bubble'
+import { UserMessageBubble } from '@/components/dsh/UserMessageBubble'
+import transcriptCss from './Transcript.module.css'
 
 const COPY_FEEDBACK_MS = 2000
 const COPY_SUCCESS_NOTICE = 'Mensagem copiada.'
@@ -73,7 +76,7 @@ function AttachmentPreview({ conversationId, attachment, onNotice }: { conversat
   </figure>
 }
 
-export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice, canSpeak = true, canCancelQueued = false, quietProgress = false }: {
+export const MessageItem = memo(function MessageItem({ message, agent, relatedConversation, onOpenRelatedConversation, onNotice, canSpeak = true, canCancelQueued = false, quietProgress = false, presentation = 'default', showAgent = true, alwaysShowActions = false }: {
   message: Message
   agent?: Agent
   relatedConversation: Conversation | undefined
@@ -81,6 +84,12 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   onNotice: (value: string) => void
   canSpeak?: boolean
   canCancelQueued?: boolean
+  /** Usa o acabamento do transcript DSH sem alterar outras telas que reutilizam este item. */
+  presentation?: 'default' | 'dsh'
+  /** Mostra nome e avatar do Boo no primeiro bloco da resposta e após uma troca de autor. */
+  showAgent?: boolean
+  /** Mantém as ações visíveis no rodapé da resposta mais recente. */
+  alwaysShowActions?: boolean
   /** O run já mostra a linha de atividade: não repete "está trabalhando". */
   quietProgress?: boolean
 }) {
@@ -108,6 +117,38 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
     {relatedConversation && <Button variant="link" size={null} onClick={() => onOpenRelatedConversation(relatedConversation.id)} className="ml-6 mt-1 h-auto p-0 text-xs font-medium text-primary underline-offset-4 hover:underline">Abrir conversa relacionada: {relatedConversation.name}</Button>}
     {message.delegationId && ['queued', 'running', 'waiting'].includes(message.status) && <Button variant="link" size={null} onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(error => onNotice(errorText(error)))} className="ml-6 mt-1 h-auto p-0 text-xs font-medium text-destructive underline-offset-4 hover:underline">Cancelar pedido</Button>}
   </Trace>
+  if (presentation === 'dsh' && human) return <div className={transcriptCss.userRow} data-actions-reveal={alwaysShowActions ? undefined : 'hover'}>
+    <div className={transcriptCss.userStack}>
+      <UserMessageBubble className="whitespace-pre-wrap">{message.text}</UserMessageBubble>
+      {message.status === 'failed' && <span className={transcriptCss.failedSend}>Falha no envio da instrução.</span>}
+      {message.attachments?.length ? <div className="mt-2 flex max-w-full flex-wrap gap-2">{message.attachments.map(attachment => <AttachmentPreview key={attachment.id} conversationId={message.conversationId} attachment={attachment} onNotice={onNotice} />)}</div> : null}
+      {(canCopy || time || (canCancelQueued && message.status === 'queued')) && <MessageFooter role="group" aria-label="Ações da mensagem" className={`${transcriptCss.actions} ${transcriptCss.userActions}`}>
+        {time && <time dateTime={message.createdAt} title={time.full} className={transcriptCss.timeStart}>{time.short}</time>}
+        {message.status === 'queued' && <span className="text-xs text-muted-foreground">Na fila</span>}
+        {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} className={transcriptCss.action} />}
+        {canCancelQueued && message.status === 'queued' && <Button type="button" size="icon" variant="ghost" className={transcriptCss.action} aria-label="Cancelar mensagem na fila" title="Cancelar mensagem na fila" disabled={cancelingQueued} onClick={() => void cancelQueued()}>{cancelingQueued ? <LoaderCircle className="size-3.5 animate-spin" /> : <X className="size-3.5" />}</Button>}
+      </MessageFooter>}
+    </div>
+  </div>
+  if (presentation === 'dsh') {
+    const statusLabel = message.status === 'waiting' ? 'Aguardando sua aprovação' : message.status === 'failed' ? 'Falhou' : message.status === 'interrupted' ? 'Interrompido' : null
+    const reveal = alwaysShowActions ? undefined : 'hover'
+    return <div className="min-w-0" data-actions-reveal={reveal}>
+      {showAgent && <div className={transcriptCss.boo}>
+        <Avatar agent={agent} size="xxs" state={message.status === 'running' ? 'working' : message.status === 'waiting' ? 'waiting' : 'idle'} />
+        <span title={agent?.name || message.author}>{agent?.name || message.author}</span>
+      </div>}
+      {statusLabel && <div className={transcriptCss.note} role={message.status === 'waiting' ? 'status' : undefined}>{statusLabel}</div>}
+      <div className={transcriptCss.reply}>
+        {message.status === 'running' || message.status === 'waiting' ? <StreamingText text={message.text || ' '} /> : <MessageMarkdown>{message.text}</MessageMarkdown>}
+      </div>
+      {(canCopy || time || (canSpeak && message.status === 'completed' && message.text.trim())) && <div role="group" aria-label="Ações da mensagem" className={transcriptCss.actions}>
+        {time && <time dateTime={message.createdAt} title={time.full} className={transcriptCss.timeStart}>{time.short}</time>}
+        {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} className={transcriptCss.action} />}
+        {canSpeak && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className={transcriptCss.action} aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz configurada no host." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
+      </div>}
+    </div>
+  }
   return <ChatMessage align={human ? 'end' : 'start'} className="mb-6">
     <MessageContent className={human ? 'w-fit max-w-[85%] gap-1' : 'max-w-[90%] gap-1'}>
       {!human && <MessageHeader className="mb-1 flex items-center gap-2 px-0 text-foreground">
@@ -145,6 +186,9 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   && previous.message.agentId === next.message.agentId
   && previous.message.runId === next.message.runId
   && previous.message.delegationId === next.message.delegationId
+  && previous.presentation === next.presentation
+  && previous.showAgent === next.showAgent
+  && previous.alwaysShowActions === next.alwaysShowActions
   && sameAttachments(previous.message.attachments, next.message.attachments)
   && previous.canCancelQueued === next.canCancelQueued
   && previous.quietProgress === next.quietProgress

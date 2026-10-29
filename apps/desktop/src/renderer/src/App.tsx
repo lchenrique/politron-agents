@@ -11,6 +11,8 @@ import AppShell from "@/features/app/AppShell";
 const FloatingMascotPage = lazy(() => import("@/features/panels/FloatingMascotPage"));
 // Galeria dos componentes do DSH: só em desenvolvimento (#/dsh-gallery); some do build de produção.
 const DshGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/DshGallery")) : null;
+// Transcrição de demonstração com dados fictícios, isolada da persistência do aplicativo.
+const TranscriptGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/TranscriptGallery")) : null;
 const RemoteFolderDialog = lazy(() => import("@/features/hosts/RemoteFolderDialog").then(module => ({ default: module.RemoteFolderDialog })));
 
 const queryClient = new QueryClient();
@@ -31,6 +33,7 @@ const App = () => (
               <Route path="/settings" element={<AppShell />} />
               <Route path="/mascot" element={<Suspense fallback={null}><FloatingMascotPage /></Suspense>} />
               {DshGallery && <Route path="/dsh-gallery" element={<Suspense fallback={null}><DshGallery /></Suspense>} />}
+              {TranscriptGallery && <Route path="/transcript-gallery" element={<Suspense fallback={null}><TranscriptGallery /></Suspense>} />}
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

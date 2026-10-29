@@ -1,20 +1,26 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
+import { ToolCallTree } from '@/components/dsh'
 import { MessageItem } from './MessageItem'
-import { ActivitySummary } from './ActivitySummary'
 import { DelegationCard } from './DelegationCard'
-import { chatRows } from './chat-rows'
 import { PolitronToolApproval } from './PolitronToolApproval'
 import { CompletedFileReview } from '../diff/CompletedFileReview'
+import { activityToolCall } from './tool-call'
+import { buildTurns, endsWithReply, finalReply, foldsAway, messagesInTurn, turnFoldable, turnHeaderText, type TurnItem } from './turns'
+import { TurnNavigator } from './TurnNavigator'
+import { useTurnNavigation } from './useTurnNavigation'
+import { DshToolGroup, ReasoningDisclosure, RunningTurnStatus } from './TranscriptBlocks'
+import css from './Transcript.module.css'
 
 const INLINE_REVIEW_LABEL = 'Arquivos modificados nesta resposta'
 
 /** Distância do fim ainda considerada "no final", para decidir se um novo evento deve puxar o scroll junto. */
 const STICK_TO_BOTTOM_PX = 96
 
-const ESTIMATED_MESSAGE_HEIGHT = 180
+const ESTIMATED_TURN_HEIGHT = 220
 const OVERSCAN_PX = 900
 
 export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true, canCancelQueued = false }: {
@@ -37,40 +43,35 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
   canApprove?: boolean
   canCancelQueued?: boolean
 }) {
-  const messages = useMemo(() => chatRows(sourceMessages), [sourceMessages])
-  // Por run: se ainda trabalha, duração aproximada (primeira a última mensagem), última linha (recebe as aprovações) e se tem atividade.
-  const runInfo = useMemo(() => {
-    const result = new Map<string, { active: boolean; start: number; end: number; lastRowId: string; hasActivity: boolean }>()
-    for (const message of messages) {
-      if (!message.runId) continue
-      const time = Date.parse(message.createdAt)
-      const info = result.get(message.runId) || { active: false, start: time, end: time, lastRowId: message.id, hasActivity: false }
-      const last = message.activities?.at(-1) || message
-      info.active ||= message.role === 'assistant' && ['queued', 'running', 'waiting'].includes(message.status)
-      info.start = Math.min(info.start, time); info.end = Math.max(info.end, Date.parse(last.createdAt))
-      info.lastRowId = message.id; info.hasActivity ||= !!message.activities
-      result.set(message.runId, info)
+  const turns = useMemo(() => buildTurns(sourceMessages), [sourceMessages])
+  const messagesById = useMemo(() => new Map(sourceMessages.map(message => [message.id, message])), [sourceMessages])
+  const lastMessageByRun = useMemo(() => {
+    const result = new Map<string, string>()
+    for (const turn of turns) for (const id of turn.messageIds) {
+      const message = messagesById.get(id)
+      if (message?.runId) result.set(message.runId, message.id)
     }
     return result
-  }, [messages])
+  }, [turns, messagesById])
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(800)
   const [measurementVersion, setMeasurementVersion] = useState(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [hasNewMessages, setHasNewMessages] = useState(false)
-  const [enteringMessageId, setEnteringMessageId] = useState<string | null>(null)
+  const [enteringTurnId, setEnteringTurnId] = useState<string | null>(null)
+  const [expandedTurns, setExpandedTurns] = useState<Set<string>>(() => new Set())
   const lastMessageId = useRef<string | null>(null)
   const hasInitializedMessageList = useRef(false)
   const lastFocusedId = useRef<string | null>(null)
   const heights = useRef(new Map<string, number>())
-  const messageNodes = useRef(new Map<string, HTMLDivElement>())
+  const turnNodes = useRef(new Map<string, HTMLDivElement>())
   const pendingAnchor = useRef<{ id: string; offset: number } | null>(null)
   const readingAnchor = useRef<{ id: string; offset: number } | null>(null)
-  const firstMessageId = useRef(messages[0]?.id)
+  const firstTurnId = useRef(turns[0]?.id)
   const viewingOlder = useRef(!!hasNewerMessages)
   const scrollFrame = useRef<number | null>(null)
-  const messageRefs = useRef(new Map<string, (node: HTMLDivElement | null) => void>())
+  const turnRefs = useRef(new Map<string, (node: HTMLDivElement | null) => void>())
   const resizeObserver = useRef<ResizeObserver | null>(null)
   const conversationsById = useMemo(() => new Map(conversations.map(conversation => [conversation.id, conversation])), [conversations])
   const approvalsByRun = useMemo(() => {
@@ -83,7 +84,7 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
   // ao run da mensagem; sem essa coerência nada é atribuído. Arrays estáveis evitam recalcular diffs ao rolar.
   const appliedCache = useRef(new Map<string, FileChange[]>())
   // O streaming troca o array de mensagens a cada fragmento; a associação só muda quando muda o par id→run.
-  const messageRuns = useMemo(() => messages.map(message => `${message.id}\u0000${message.runId || ''}`).join('\u0001'), [messages])
+  const messageRuns = useMemo(() => sourceMessages.map(message => `${message.id}\u0000${message.runId || ''}`).join('\u0001'), [sourceMessages])
   const appliedByMessage = useMemo(() => {
     const runOfMessage = new Map(messageRuns ? messageRuns.split('\u0001').map(entry => entry.split('\u0000') as [string, string]) : [])
     const result = new Map<string, FileChange[]>()
@@ -103,7 +104,11 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
   }, [messageRuns, fileChanges, reviewRunId])
   // Só gruda no final se o usuário já estava lá; rolar pra ler o histórico não é interrompido por uma resposta chegando.
   const stickToBottom = useRef(true)
-  const itemHeights = useMemo(() => messages.map(message => heights.current.get(message.id) || ESTIMATED_MESSAGE_HEIGHT), [messages, measurementVersion])
+  const itemHeights = useMemo(() => {
+    // A versão invalida o memo quando o ResizeObserver altera o mapa mantido em ref.
+    void measurementVersion
+    return turns.map(turn => heights.current.get(turn.id) || ESTIMATED_TURN_HEIGHT)
+  }, [turns, measurementVersion])
   const offsets = useMemo(() => {
     const result = new Array<number>(itemHeights.length + 1)
     result[0] = 0
@@ -112,29 +117,35 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
   }, [itemHeights])
   const offsetsRef = useRef(offsets)
   offsetsRef.current = offsets
-  const messagesRef = useRef(messages)
-  messagesRef.current = messages
+  const turnsRef = useRef(turns)
+  turnsRef.current = turns
   const firstVisible = useMemo(() => {
-    let low = 0, high = messages.length
+    let low = 0, high = turns.length
     while (low < high) { const mid = (low + high) >>> 1; if (offsets[mid + 1] < scrollTop) low = mid + 1; else high = mid }
     return low
-  }, [messages.length, offsets, scrollTop])
-  const startIndex = Math.max(0, firstVisible - Math.ceil(OVERSCAN_PX / ESTIMATED_MESSAGE_HEIGHT))
+  }, [turns.length, offsets, scrollTop])
+  const startIndex = Math.max(0, firstVisible - Math.ceil(OVERSCAN_PX / ESTIMATED_TURN_HEIGHT))
   let endIndex = startIndex
-  while (endIndex < messages.length && offsets[endIndex] < scrollTop + viewportHeight + OVERSCAN_PX) endIndex++
-  const visibleMessages = messages.slice(startIndex, endIndex)
-  const setMessageNode = useCallback((id: string, node: HTMLDivElement | null) => {
-    const previous = messageNodes.current.get(id)
+  while (endIndex < turns.length && offsets[endIndex] < scrollTop + viewportHeight + OVERSCAN_PX) endIndex++
+  const visibleTurns = turns.slice(startIndex, endIndex)
+  const focusedTurnIndex = focusedMessageId ? turns.findIndex(turn => turn.messageIds.includes(focusedMessageId)) : -1
+  const focusedTurnId = focusedTurnIndex >= 0 ? turns[focusedTurnIndex]?.id : undefined
+  const setTurnNode = useCallback((id: string, node: HTMLDivElement | null) => {
+    const previous = turnNodes.current.get(id)
     if (previous && resizeObserver.current) resizeObserver.current.unobserve(previous)
-    if (!node) { messageNodes.current.delete(id); return }
-    messageNodes.current.set(id, node)
+    if (!node) { turnNodes.current.delete(id); return }
+    turnNodes.current.set(id, node)
     resizeObserver.current?.observe(node)
   }, [])
-  const messageRef = (id: string) => {
-    let callback = messageRefs.current.get(id)
-    if (!callback) { callback = node => setMessageNode(id, node); messageRefs.current.set(id, callback) }
+  const turnRef = (id: string) => {
+    let callback = turnRefs.current.get(id)
+    if (!callback) { callback = node => setTurnNode(id, node); turnRefs.current.set(id, callback) }
     return callback
   }
+  useEffect(() => {
+    if (!focusedTurnId) return
+    setExpandedTurns(previous => previous.has(focusedTurnId) ? previous : new Set(previous).add(focusedTurnId))
+  }, [focusedTurnId])
   useLayoutEffect(() => {
     const element = scrollRef.current
     if (!element) return
@@ -147,16 +158,16 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
         let anchorCaptured = false
         for (const entry of entries) {
           if (entry.target === element) { updateViewport(); continue }
-          const id = (entry.target as HTMLElement).dataset.messageId
+          const id = (entry.target as HTMLElement).dataset.turnId
           if (!id) continue
           const height = entry.borderBoxSize?.[0]?.blockSize || entry.contentRect.height
           if (Math.abs((heights.current.get(id) || 0) - height) > 1) {
             if (!changed && !stickToBottom.current) {
               const currentOffsets = offsetsRef.current
-              const currentMessages = messagesRef.current
+              const currentTurns = turnsRef.current
               let index = 0
-              while (index < currentMessages.length - 1 && currentOffsets[index + 1] < element.scrollTop) index++
-              if (currentMessages[index]) pendingAnchor.current = { id: currentMessages[index].id, offset: element.scrollTop - currentOffsets[index] }
+              while (index < currentTurns.length - 1 && currentOffsets[index + 1] < element.scrollTop) index++
+              if (currentTurns[index]) pendingAnchor.current = { id: currentTurns[index].id, offset: element.scrollTop - currentOffsets[index] }
               anchorCaptured = true
             }
             heights.current.set(id, height); changed = true
@@ -165,7 +176,7 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
         if (changed) { if (!anchorCaptured && !stickToBottom.current) pendingAnchor.current = readingAnchor.current; setMeasurementVersion(current => current + 1) }
       })
       resizeObserver.current.observe(element)
-      for (const node of messageNodes.current.values()) resizeObserver.current.observe(node)
+      for (const node of turnNodes.current.values()) resizeObserver.current.observe(node)
     }
     return () => { window.removeEventListener('resize', updateViewport); resizeObserver.current?.disconnect(); resizeObserver.current = null; if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current) }
   }, [])
@@ -178,13 +189,13 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
       readingAnchor.current = null
     }
     viewingOlder.current = !!hasNewerMessages
-    const ids = new Set(messages.map(message => message.id))
-    for (const id of messageRefs.current.keys()) if (!ids.has(id)) { messageRefs.current.delete(id); heights.current.delete(id) }
-    const firstChanged = firstMessageId.current !== messages[0]?.id
-    firstMessageId.current = messages[0]?.id
+    const ids = new Set(turns.map(turn => turn.id))
+    for (const id of turnRefs.current.keys()) if (!ids.has(id)) { turnRefs.current.delete(id); heights.current.delete(id) }
+    const firstChanged = firstTurnId.current !== turns[0]?.id
+    firstTurnId.current = turns[0]?.id
     if (!focusedMessageId) lastFocusedId.current = null
     if (focusedMessageId && focusedMessageId !== lastFocusedId.current) {
-      const index = messages.findIndex(message => message.id === focusedMessageId)
+      const index = focusedTurnIndex
       if (index >= 0) {
         stickToBottom.current = false
         lastFocusedId.current = focusedMessageId
@@ -198,23 +209,24 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
     if (firstChanged && !stickToBottom.current && !pendingAnchor.current) pendingAnchor.current = readingAnchor.current
     if (pendingAnchor.current) {
       const anchor = pendingAnchor.current
-      const index = messages.findIndex(message => message.id === anchor.id)
+      const index = turns.findIndex(turn => turn.id === anchor.id)
       if (index >= 0) { element.scrollTop = offsets[index] + anchor.offset; setScrollTop(element.scrollTop) }
       pendingAnchor.current = null
       return
     }
-    const latestId = messages[messages.length - 1]?.id || null
-    if (hasInitializedMessageList.current && latestId && latestId !== lastMessageId.current) setEnteringMessageId(latestId)
+    const latestId = turns.at(-1)?.messageIds.at(-1) || null
+    const latestTurnId = turns.at(-1)?.id || null
+    if (hasInitializedMessageList.current && latestId && latestId !== lastMessageId.current && latestTurnId) setEnteringTurnId(latestTurnId)
     hasInitializedMessageList.current = true
     if (stickToBottom.current) { element.scrollTop = element.scrollHeight; setScrollTop(element.scrollTop); setHasNewMessages(false) }
     else if (lastMessageId.current && latestId !== lastMessageId.current) setHasNewMessages(true)
     lastMessageId.current = latestId
-  }, [messages, offsets, fileChanges, approvals, focusedMessageId, hasNewerMessages])
+  }, [turns, offsets, fileChanges, approvals, focusedMessageId, focusedTurnIndex, hasNewerMessages])
   const loadOlder = async () => {
     const element = scrollRef.current
     if (!element || !onLoadOlder || loadingOlder || !hasOlderMessages) return
     stickToBottom.current = false
-    const anchor = messages[firstVisible]
+    const anchor = turns[firstVisible]
     if (anchor) pendingAnchor.current = { id: anchor.id, offset: element.scrollTop - offsets[firstVisible] }
     setLoadingOlder(true)
     try { await onLoadOlder() } catch (error) { onNotice(error instanceof Error ? error.message : 'Não foi possível carregar mensagens anteriores.'); pendingAnchor.current = null }
@@ -230,8 +242,8 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
       scrollFrame.current = null
       const top = element.scrollTop
       let index = 0
-      while (index < messages.length - 1 && offsets[index + 1] < top) index++
-      if (messages[index]) readingAnchor.current = { id: messages[index].id, offset: top - offsets[index] }
+      while (index < turns.length - 1 && offsets[index + 1] < top) index++
+      if (turns[index]) readingAnchor.current = { id: turns[index].id, offset: top - offsets[index] }
       setScrollTop(top)
     })
   }
@@ -242,33 +254,81 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
     element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
     setHasNewMessages(false)
   }
-  return <div ref={scrollRef} onScroll={onScroll} style={{ overflowAnchor: 'none' }} className="min-h-0 flex-1 overflow-y-auto px-4 py-7 sm:px-8">
-    {hasNewerMessages && <div className="sticky top-0 z-10 mx-auto mb-3 flex justify-center"><Button type="button" variant="outline" size={null} onClick={onReturnToLatest} className="h-auto rounded-full border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-sm hover:border-primary/30 hover:bg-background/95">Voltar às mensagens recentes</Button></div>}
-    {hasOlderMessages && <div className="mx-auto mb-5 max-w-3xl text-center"><Button type="button" variant="outline" size={null} disabled={loadingOlder} onClick={() => void loadOlder()} className="h-auto rounded-md border-border/70 bg-card/60 px-3 py-1.5 text-xs font-normal text-muted-foreground shadow-none transition-colors hover:border-border/70 hover:bg-accent disabled:opacity-50">{loadingOlder ? 'Carregando…' : 'Carregar mensagens anteriores'}</Button></div>}
-    {hasNewMessages && <div className="sticky bottom-2 z-10 mx-auto -mb-9 flex justify-center"><Button type="button" variant="outline" size={null} onClick={goToLatest} className="h-auto rounded-full border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-medium text-primary shadow-md hover:border-primary/30 hover:bg-background/95">Novas mensagens · Ir para o fim</Button></div>}
-    <div className="mx-auto flex max-w-3xl flex-col gap-0">
+  const navigateToTurn = useTurnNavigation({ turns, offsets, visibleTurns, scrollTop, scrollRef, turnNodes, setScrollTop, setHasNewMessages, stickToBottom })
+  return <div ref={scrollRef} onScroll={onScroll} style={{ overflowAnchor: 'none' }} className={css.scroll}>
+    {hasNewerMessages && <div className={css.newer}><Button type="button" variant="outline" size={null} onClick={onReturnToLatest}>Voltar às mensagens recentes</Button></div>}
+    {turns.length > 1 && <TurnNavigator count={turns.length} activeIndex={firstVisible} onNavigate={navigateToTurn} />}
+    <div className={css.column}>
+    {hasOlderMessages && <div className={css.older}><Button type="button" variant="outline" size={null} disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? 'Carregando…' : 'Carregar mensagens anteriores'}</Button></div>}
+    {hasNewMessages && <div className={css.toBottomSlot}><Button type="button" variant="ghost" size="icon" className={css.toBottom} onClick={goToLatest} aria-label="Ir para as mensagens mais recentes" title="Ir para as mensagens mais recentes"><ArrowDown aria-hidden="true" /></Button></div>}
       {startIndex > 0 && <div aria-hidden="true" style={{ height: offsets[startIndex] }} />}
-      {visibleMessages.map(message => {
-        const agent = agentOf(message.agentId)
-        const relatedConversation = message.relatedConversationId ? conversationsById.get(message.relatedConversationId) : undefined
-        const run = message.runId ? runInfo.get(message.runId) : undefined
-        // Aprovações do run aparecem uma vez, sob a última linha dele.
-        const runApprovals = message.runId && run?.lastRowId === message.id ? approvalsByRun.get(message.runId) || [] : []
-        const appliedChanges = appliedByMessage.get(message.id)
-        // A revisão fica dentro do wrapper medido pelo ResizeObserver: expandir o diff atualiza a virtualização.
-        return <div key={message.id} ref={messageRef(message.id)} data-message-id={message.id} className={`mb-6 space-y-2${enteringMessageId === message.id ? ' chat-message-enter' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && enteringMessageId === message.id) setEnteringMessageId(null) }}>
-          {message.delegations
-            ? <DelegationCard delegations={message.delegations} agentOf={agentOf} conversationsById={conversationsById} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} />
-            : message.activities
-            ? <ActivitySummary activities={message.activities} running={!!run?.active} durationMs={run && Number.isFinite(run.end - run.start) ? run.end - run.start : undefined} />
-            : <MessageItem message={message} agent={agent} relatedConversation={relatedConversation} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} canCancelQueued={canCancelQueued} quietProgress={!!run?.hasActivity} />}
-          {appliedChanges && <CompletedFileReview changes={appliedChanges} label={INLINE_REVIEW_LABEL} />}
-          {runApprovals.map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} canApprove={canApprove} />)}
-
-        </div>
-      })}
-      {endIndex < messages.length && <div aria-hidden="true" style={{ height: Math.max(0, offsets[messages.length] - offsets[endIndex]) }} />}
-      {!messages.length && <div className="mx-auto mt-[18vh] max-w-xl text-center"><h2 className="text-lg font-medium text-muted-foreground">Como posso ajudar?</h2></div>}
+    {visibleTurns.map(turn => {
+      const expanded = expandedTurns.has(turn.id)
+      const foldable = turnFoldable(turn)
+      const header = turnHeaderText(turn)
+      const latestReply = finalReply(turn)
+      const showLatestActions = !!latestReply && endsWithReply(turn) && turn.id === turns.at(-1)?.id
+      const turnItems = messagesInTurn(turn)
+      const appliedExtra = (message: Message) => appliedByMessage.get(message.id) && <CompletedFileReview changes={appliedByMessage.get(message.id)!} label={INLINE_REVIEW_LABEL} />
+      const approvalExtra = (message: Message) => message.runId && lastMessageByRun.get(message.runId) === message.id && (approvalsByRun.get(message.runId) || []).map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} canApprove={canApprove} />)
+      const extras = (message: Message) => <>{appliedExtra(message)}{approvalExtra(message)}</>
+      return <section key={turn.id} ref={turnRef(turn.id)} data-turn-id={turn.id} className={`${css.turn}${enteringTurnId === turn.id ? ' chat-message-enter' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && enteringTurnId === turn.id) setEnteringTurnId(null) }}>
+        {turn.user && <div data-message-id={turn.user.id} data-part="user" className={focusedMessageId === turn.user.id ? css.focused : undefined}>
+          <MessageItem message={turn.user} agent={agentOf(turn.user.agentId)} relatedConversation={undefined} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={false} canCancelQueued={canCancelQueued} presentation="dsh" alwaysShowActions={turn.id === turns.at(-1)?.id} />
+          {extras(turn.user)}
+        </div>}
+        {header && <div data-part="header">{foldable
+          ? <button type="button" className={css.header} aria-expanded={expanded} onClick={() => setExpandedTurns(previous => { const next = new Set(previous); if (next.has(turn.id)) next.delete(turn.id); else next.add(turn.id); return next })}>
+            <span className={css.headerLabel}>{header}</span><ChevronDown className={css.headerChevron} aria-hidden="true" />
+          </button>
+          : <div className={css.header} aria-live="polite"><span className={css.headerLabel}>{header}</span></div>}
+        </div>}
+        {turn.items.map((item: TurnItem) => {
+          if (!expanded && foldable && foldsAway(item)) return null
+          if (item.kind === 'reply') {
+            const message = item.message
+            return <div key={item.id} data-message-id={message.id} data-part="reply" className={focusedMessageId === message.id ? css.focused : undefined}>
+              <MessageItem message={message} agent={agentOf(message.agentId)} relatedConversation={undefined} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} presentation="dsh" showAgent={item.boo} alwaysShowActions={showLatestActions && latestReply?.id === message.id} />
+              {extras(message)}
+            </div>
+          }
+          if (item.kind === 'tools') {
+            const active = turn.status === 'running'
+            return <div key={item.id} data-part="process">
+              <DshToolGroup messages={item.messages} turnActive={active} autoOpen={!!focusedMessageId && item.messages.some(message => message.id === focusedMessageId)}>
+                {item.messages.map(message => <div key={message.id} data-message-id={message.id} className={focusedMessageId === message.id ? css.focused : undefined}>
+                  <ToolCallTree call={activityToolCall(message, active)} />
+                  {appliedExtra(message)}
+                </div>)}
+              </DshToolGroup>
+              {item.messages.map(message => <div key={`approval:${message.id}`} data-part="extra">{approvalExtra(message)}</div>)}
+            </div>
+          }
+          if (item.kind === 'reasoning') {
+            const message = item.message
+            return <div key={item.id} data-part="process" data-message-id={message.id} className={focusedMessageId === message.id ? css.focused : undefined}>
+              <ReasoningDisclosure message={message} autoOpen={focusedMessageId === message.id} />{extras(message)}
+            </div>
+          }
+          if (item.kind === 'delegations') {
+            return <div key={item.id} data-part="extra" data-message-id={item.messages[0]?.id}>
+              <DelegationCard delegations={item.messages} agentOf={agentOf} conversationsById={conversationsById} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} />
+            </div>
+          }
+          const message = item.message
+          const relatedConversation = message.relatedConversationId ? conversationsById.get(message.relatedConversationId) : undefined
+          return <div key={item.id} data-part="extra" data-message-id={message.id} className={css.note}>
+            <span>{message.text}</span>
+            {relatedConversation && <Button type="button" variant="link" size={null} onClick={() => onOpenRelatedConversation(relatedConversation.id)} className={css.noteLink}>Abrir conversa relacionada: {relatedConversation.name}</Button>}
+            {message.delegationId && ['queued', 'running', 'waiting'].includes(message.status) && <Button type="button" variant="link" size={null} onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(error => onNotice(error instanceof Error ? error.message : 'Não foi possível cancelar a delegação.'))} className={css.noteLink} data-tone="danger">Cancelar pedido</Button>}
+            {extras(message)}
+          </div>
+        })}
+        {(turn.status === 'running' || turn.status === 'waiting') && <RunningTurnStatus turn={turn} />}
+      </section>
+    })}
+      {endIndex < turns.length && <div aria-hidden="true" style={{ height: Math.max(0, offsets[turns.length] - offsets[endIndex]) }} />}
+      {!turns.length && <div className={css.empty}><h2>Como posso ajudar?</h2></div>}
     </div>
   </div>
 }

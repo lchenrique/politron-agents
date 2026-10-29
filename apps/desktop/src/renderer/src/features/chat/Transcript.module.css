@@ -1,0 +1,479 @@
+/*
+ * Transcrição no estilo do DSH (ui-chat ChatView/MessageItem/TurnProcess/TurnTail/ChatGroupSeat, MIT).
+ * Tokens --dsw-* vêm de components/dsh/theme.css (claro em :root, escuro em :root.dark).
+ */
+
+.scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: clip;
+  overflow-y: auto;
+  overflow-anchor: none;
+  padding: 16px 32px 24px;
+  container-type: inline-size;
+  color: var(--dsw-alias-label-primary);
+}
+
+.navigator {
+  position: fixed;
+  z-index: 8;
+  top: 50%;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(420px, 52%);
+  overflow-y: auto;
+  padding: 6px 2px;
+  scrollbar-width: none;
+  transform: translateY(-50%);
+}
+
+.navigator::-webkit-scrollbar { display: none; }
+
+.navigatorMark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  width: 24px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.navigatorMark::before {
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--dsw-alias-border-l4);
+  content: '';
+  transition: width 120ms ease, background-color 120ms ease;
+}
+
+.navigatorMark[aria-current="location"]::before {
+  width: 22px;
+  background: var(--dsw-alias-label-primary);
+}
+
+.navigatorMark:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .navigator { display: none; }
+}
+
+/* Largura do DSH: clamp(680px, 64% da coluna, 920px), nunca além da área disponível. */
+.column {
+  position: relative;
+  width: 100%;
+  max-width: min(100%, clamp(680px, 64cqw, 920px));
+  margin: 0 auto;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 6px;
+}
+
+/* Ritmo do DSH: linhas de processo a 4px, respostas a 12px, cabeçalho do turno a 16px. */
+.turn > * + * { margin-top: 4px; }
+.turn > [data-part="reply"],
+.turn > [data-part="reply"] + * { margin-top: 12px; }
+.turn > [data-part="header"],
+.turn > [data-part="header"] + * { margin-top: 16px; }
+.turn > [data-part="user"] { margin-top: 0; }
+.turn > [data-part="tail"] { margin-top: 12px; }
+.turn > [data-part="running"] { margin-top: 16px; }
+.turn > [data-part="extra"] { margin-top: 8px; }
+
+/* Mensagem do usuário: balão à direita, relógio e ações abaixo. */
+.userRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.userStack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+  max-width: min(calc(min(100%, clamp(680px, 64cqw, 920px)) * 0.702), 82%);
+}
+
+.failedSend {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 13px;
+}
+
+/* Linha de ações compartilhada (MessageIconActions). */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+}
+
+.timeStart {
+  padding-right: 12px;
+  font-size: 13px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+.endInfo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  font-size: 12px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.action svg { width: 15px; height: 15px; }
+.tail .action svg { width: 17px; height: 17px; }
+.action:disabled { cursor: default; opacity: 0.4; }
+
+@media (hover: hover) {
+  .action:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-secondary);
+  }
+}
+
+/* Mensagens anteriores do usuário e rodapés que não terminam em resposta: ações só no hover/foco (DSH). */
+@media (hover: hover) {
+  [data-actions-reveal="hover"] > .actions,
+  [data-actions-reveal="hover"] .userActions {
+    opacity: 0;
+    transition: opacity 80ms ease;
+  }
+  [data-actions-reveal="hover"]:hover > .actions,
+  [data-actions-reveal="hover"]:focus-within > .actions,
+  [data-actions-reveal="hover"]:hover .userActions,
+  [data-actions-reveal="hover"]:focus-within .userActions {
+    opacity: 1;
+  }
+}
+
+.tail {
+  display: flex;
+  flex-direction: column;
+}
+
+.tail > .actions {
+  margin-top: 4px;
+  margin-left: -6px;
+}
+
+/* Cabeçalho do turno encerrado: "Concluído em 1min 23s" com divisória. */
+.header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 33px;
+  padding: 0 0 8px;
+  border: none;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: color 100ms ease;
+}
+
+.header:disabled { cursor: default; }
+
+@media (hover: hover) {
+  .header:hover:not(:disabled) { color: var(--dsw-alias-label-secondary); }
+}
+
+.headerLabel {
+  min-width: 0;
+  overflow: hidden;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.headerChevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+  transition: transform 100ms ease;
+}
+
+.header[aria-expanded="true"] .headerChevron { transform: rotate(180deg); }
+
+/* Grupo de passos (ChatGroupSeat): ícone da atividade que vira chevron no hover. */
+.group { min-width: 0; }
+
+.groupTitle {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 24px;
+  text-align: left;
+  cursor: pointer;
+  transition: color 100ms ease;
+}
+
+@media (hover: hover) {
+  .groupTitle:hover { color: var(--dsw-alias-label-secondary); }
+}
+
+.groupTitle[aria-expanded="true"] { padding-bottom: 8px; }
+
+.groupLeading {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.groupLeading svg { width: 14px; height: 14px; }
+
+.groupIcon,
+.groupChevron {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 100ms ease;
+}
+
+.groupChevron { opacity: 0; }
+.groupTitle:focus-visible .groupIcon,
+.groupTitle[aria-expanded="true"] .groupIcon { opacity: 0; }
+.groupTitle:focus-visible .groupChevron,
+.groupTitle[aria-expanded="true"] .groupChevron { opacity: 1; }
+
+@media (hover: hover) {
+  .groupTitle:hover .groupIcon { opacity: 0; }
+  .groupTitle:hover .groupChevron { opacity: 1; }
+}
+
+.groupLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupBody {
+  max-height: min(400px, 50vh);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Resposta do agente: texto corrido sem balão. */
+.reply {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Boo que responde: avatar 20px e nome no tom secundário do DSH. */
+.boo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.boo[data-quiet] {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.boo[data-quiet] [data-slot="avatar"] { opacity: 0.85; }
+
+.note {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reasoningBody {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.noteLink {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-label-link, var(--dsw-alias-state-business-primary));
+  font: inherit;
+  cursor: pointer;
+}
+
+.noteLink[data-tone="danger"] { color: var(--dsw-alias-state-error-primary); }
+
+/* Status ao vivo do turno (RunningStatus), com a divisória fina acima. */
+.running {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.runningDivider {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 0.5px;
+  background: color-mix(in srgb, var(--dsw-alias-border-l1) 75%, var(--dsw-alias-border-l2));
+}
+
+.runningContent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 4px;
+  height: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  margin: 18vh auto 0;
+  max-width: 36rem;
+  text-align: center;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.older {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.older button,
+.newer button {
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  cursor: pointer;
+}
+
+.older button:disabled { cursor: default; opacity: 0.6; }
+
+.newer {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+/* Voltar ao fim: botão redondo de 34px, à direita da coluna, sobre o composer. */
+.toBottomSlot {
+  position: sticky;
+  bottom: 0;
+  z-index: 8;
+  height: 0;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.toBottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-top: -34px;
+  padding: 0;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 100px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-button-floating-fill);
+  box-shadow: var(--dsw-elevation-panel);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.toBottom svg { width: 16px; height: 16px; }
+
+@media (hover: hover) {
+  .toBottom:hover { background: var(--dsw-alias-button-floating-hover); }
+}
+
+.focused {
+  border-radius: var(--dsw-radius-sm);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-business-primary) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header, .headerChevron, .groupTitle, .groupIcon, .groupChevron { transition: none; }
+}

@@ -12,5 +12,5 @@ export type UserMessageBubbleProps = ComponentPropsWithoutRef<'div'>
  * @returns A theme-aware message surface that wraps its content.
  */
 export function UserMessageBubble({ className, ...props }: UserMessageBubbleProps) {
-  return <div {...props} className={clsx(css.bubble, className)} />
+  return <div {...props} data-slot="dsh-user-message-bubble" className={clsx(css.bubble, className)} />
 }

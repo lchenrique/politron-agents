@@ -84,7 +84,7 @@ describe('diffs de runs anteriores no histórico', () => {
     class TestResizeObserver { observe = (element: Element) => { observed.push(element) }; unobserve = () => undefined; disconnect = () => undefined }
     vi.stubGlobal('ResizeObserver', TestResizeObserver)
     const { container } = render(list([reply('m1', 'run-1')], [write('c1', 'm1', 'run-1', 'src/primeiro.ts')]))
-    const wrapper = wrapperOf(container, 'm1')
+    const wrapper = container.querySelector<HTMLElement>('[data-turn-id="turn:m1"]')!
     expect(observed).toContain(wrapper)
     expect(wrapper).toContainElement(screen.getByRole('region', { name: 'Arquivos modificados nesta resposta' }))
     vi.unstubAllGlobals()
@@ -92,11 +92,11 @@ describe('diffs de runs anteriores no histórico', () => {
 })
 
 describe('balão do usuário', () => {
-  it('usa superfície neutra em vez da cor primary dos temas', () => {
+  it('usa o balão neutro do DSH em vez da cor primary dos temas', () => {
     const userMessage: Message = { ...message, id: 'human-1', agentId: null, role: 'user', author: 'Você', text: 'Mensagem do usuário', runId: null }
     render(<MessageList messages={[userMessage]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    const bubble = screen.getByText('Mensagem do usuário').closest('[data-slot="message-bubble"]')
-    expect(bubble).toHaveClass('boobot-user-bubble')
+    const bubble = screen.getByText('Mensagem do usuário').closest('[data-slot="dsh-user-message-bubble"]')
+    expect(bubble).toBeInTheDocument()
     expect(bubble).not.toHaveClass('bg-primary')
     expect(bubble).not.toHaveClass('text-primary-foreground')
   })
@@ -127,6 +127,23 @@ describe('scroll automático da conversa', () => {
     expect((container.firstElementChild as HTMLElement).style.overflowAnchor).toBe('none')
   })
 
+  it('mostra marcadores acessíveis e navega para um turno carregado', () => {
+    const messages = [
+      makeMessage('m1', 'Resposta um'),
+      { ...makeMessage('m2', 'Pergunta dois'), role: 'user' as const, agentId: null, author: 'Você' },
+      makeMessage('m3', 'Resposta dois'),
+      { ...makeMessage('m4', 'Pergunta três'), role: 'user' as const, agentId: null, author: 'Você' },
+      makeMessage('m5', 'Resposta três'),
+    ]
+    const { container } = render(<MessageList messages={messages} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    const scroller = container.firstElementChild as HTMLElement
+    mockScrollMetrics(scroller, { scrollHeight: 1200, clientHeight: 300 })
+    fireEvent.scroll(scroller)
+    fireEvent.click(screen.getByRole('button', { name: 'Ir para o turno 2' }))
+    expect(scroller.scrollTop).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Ir para o turno 2' })).toHaveAttribute('aria-current', 'location')
+  })
+
   it('corrige a âncora de leitura quando o ResizeObserver mede crescimento acima dela', () => {
     const observers: Array<{ callback: ResizeObserverCallback; observed: Element[] }> = []
     class TestResizeObserver {
@@ -143,9 +160,9 @@ describe('scroll automático da conversa', () => {
     mockScrollMetrics(scroller, { scrollHeight: 1000, clientHeight: 300, scrollTop: 220 })
     fireEvent.scroll(scroller)
     const observer = observers[0]
-    const firstMessage = observer.observed.find(element => (element as HTMLElement).dataset.messageId === 'm1')
-    expect(firstMessage).toBeTruthy()
-    act(() => observer.callback([{ target: firstMessage!, contentRect: { height: 260 }, borderBoxSize: [] } as unknown as ResizeObserverEntry], observer as unknown as ResizeObserver))
+    const firstTurn = observer.observed.find(element => (element as HTMLElement).dataset.turnId === 'turn:m1')
+    expect(firstTurn).toBeTruthy()
+    act(() => observer.callback([{ target: firstTurn!, contentRect: { height: 260 }, borderBoxSize: [] } as unknown as ResizeObserverEntry], observer as unknown as ResizeObserver))
     rerender(<MessageList messages={[makeMessage('m1', 'Um com conteúdo expandido'), makeMessage('m2', 'Dois'), makeMessage('m3', 'Três')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(scroller.scrollTop).toBeGreaterThanOrEqual(220)
     vi.unstubAllGlobals()
@@ -162,13 +179,12 @@ describe('estado vazio da conversa', () => {
 })
 
 describe('identificação de agentes no chat', () => {
-  it('usa menção colorida e nome em negrito sem renderizar avatar por mensagem', () => {
+  it('mostra avatar e nome discreto do Boo no primeiro bloco da resposta', () => {
     const agent = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as import('../../../../shared/v9').Agent
     render(<MessageList messages={[message]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} selectedAgents={[agent, { ...agent, id: 'agent-2', name: 'Atlas', alias: 'atlas' }]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(screen.getByText('@lyra')).toHaveClass('font-bold')
-    expect(screen.getByTitle('Lyra')).toHaveTextContent('@lyra')
-    expect(screen.queryByText('Lyra')).not.toBeInTheDocument()
-    expect(screen.queryByRole('img', { name: /Avatar de Lyra/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Lyra')).toBeInTheDocument()
+    expect(screen.getByTitle('Lyra')).toHaveTextContent('Lyra')
+    expect(screen.getByRole('img', { name: 'Lyra — idle' })).toBeInTheDocument()
   })
 })
 
@@ -181,21 +197,23 @@ describe('linha de atividade do agente', () => {
 
   it('enquanto roda, mostra uma única linha no presente e não repete o "está trabalhando"', () => {
     const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...browser(6)]))
-    expect(screen.getByRole('status')).toHaveTextContent(/Usando seu navegador real.*\(6 ações\)/)
+    expect(screen.getByRole('status')).toHaveTextContent(/Navegando.*js · alvo https:\/\/example\.com/)
     expect(container).not.toHaveTextContent('await tab.goto')
     expect(container).not.toHaveTextContent('está trabalhando')
-    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(2)
+    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
   })
 
   it('ao terminar, resume no passado recolhido, expande a lista e mantém a resposta final abaixo', () => {
     const { container } = render(list([reply('pre', 'Vou abrir o site.', 'completed', 0), ...browser(6), act('t1', 'Terminal · npm test', 30), act('t2', 'Terminal · ls', 35), reply('final', 'Pronto.', 'completed', 38)]))
-    const summary = screen.getByRole('button', { name: /Usou o navegador real \(6 ações\) · executou 2 comandos · 38s/ })
-    expect(screen.queryByRole('list', { name: 'Ações do agente' })).not.toBeInTheDocument()
+    const summary = screen.getByRole('button', { name: /Concluído em 38s · 8 ferramentas/ })
+    expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(0)
     fireEvent.click(summary)
-    const items = within(screen.getByRole('list', { name: 'Ações do agente' })).getAllByRole('listitem')
-    expect(items).toHaveLength(8)
-    expect(items[6]).toHaveTextContent('Terminal · npm test')
-    expect([...container.querySelectorAll('[data-message-id]')].map(node => node.getAttribute('data-message-id'))).toEqual(['pre', 'a0', 'final'])
+    fireEvent.click(screen.getByRole('button', { name: /Navegou na web e executou comandos/ }))
+    expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(8)
+    expect(container.querySelector('[data-chat-call-id="t1"]')).toBeInTheDocument()
+    const lastTool = container.querySelectorAll('[data-chat-call-id]')[7]!
+    const finalReply = container.querySelector('[data-message-id="final"]')!
+    expect(lastTool.compareDocumentPosition(finalReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('mostra aprovações do run uma única vez, sob a última linha, e oculta a resposta vazia concluída', () => {
