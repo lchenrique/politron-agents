@@ -99,4 +99,29 @@ describe('aprovações reais do Politron', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Negar' }))
     await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', false))
   })
+
+  it('no takeover, Enter aprova e Esc rejeita sem depender de foco no botão', async () => {
+    const respondApproval = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('appAPI', { respondApproval })
+    const { unmount } = render(<PolitronToolApproval approval={browserApproval} onNotice={vi.fn()} takeover />)
+    fireEvent.keyDown(document.body, { key: 'Enter' })
+    await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', true))
+
+    unmount()
+    respondApproval.mockClear()
+    render(<PolitronToolApproval approval={{ ...browserApproval, id: 'approval-browser-second' }} onNotice={vi.fn()} takeover />)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser-second', false))
+  })
+
+  it('teclado respeita a confirmação extra de ações sensíveis', async () => {
+    const respondApproval = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('appAPI', { respondApproval })
+    render(<PolitronToolApproval approval={{ ...browserApproval, kind: 'command', details: { command: 'npm install', cwd: 'D:/projeto' } }} onNotice={vi.fn()} takeover />)
+    fireEvent.keyDown(document.body, { key: 'Enter' })
+    expect(respondApproval).not.toHaveBeenCalled()
+    expect(screen.getByText('Confirmação adicional obrigatória')).toBeInTheDocument()
+    fireEvent.keyDown(document.body, { key: 'Enter' })
+    await waitFor(() => expect(respondApproval).toHaveBeenCalledExactlyOnceWith('approval-browser', true))
+  })
 })

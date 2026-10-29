@@ -11,16 +11,19 @@ import { VoiceRecorder } from '../voice/voice-recorder'
 import { PromptInput } from '@/components/ai/prompt-input'
 import { MentionSuggestions } from './MentionSuggestions'
 import { getMentionQuery, replaceMention, type MentionQuery } from './mentions'
+import styles from './Composer.module.css'
 
 export type ComposerModel = ModelChoice
 const INHERIT_OPTION: ComposerModel = { name: INHERIT_MODEL_NAME, description: 'Cada participante usa o modelo configurado no seu perfil' }
 
-export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false }: {
+export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow }: {
   reviewChanges?: FileChange[]
   reviewKey?: string
   working?: boolean
   /** Mensagens do usuário que aguardam a vez (status queued). */
   queued?: Message[]
+  onCancelQueued?: (messageId: string) => Promise<void>
+  onSendQueuedNow?: (messageId: string) => Promise<void>
   canAttachImages?: boolean
   conversationId?: string
   mentionAgents?: Agent[]
@@ -153,13 +156,13 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     }
   }
 
-  const submit = async (rawValue = value, chosenFiles = files) => {
+  const submit = async (rawValue = value, chosenFiles = files, delivery: 'queue' | 'now' = 'queue') => {
     const message = rawValue.trim()
     if ((!message && chosenFiles.length === 0) || pendingCount.current > 0) return
     const submittedConversation = conversationId
     const submittedGeneration = submissionGeneration.current
     const submittedFiles = chosenFiles
-    const signature = JSON.stringify([submittedConversation, message, submittedFiles.map(file => [file.name, file.size, file.type, file.lastModified])])
+    const signature = JSON.stringify([submittedConversation, message, delivery, submittedFiles.map(file => [file.name, file.size, file.type, file.lastModified])])
     const requestId = retryRequest.current?.signature === signature ? retryRequest.current.id : crypto.randomUUID()
     retryRequest.current = { signature, id: requestId }
     pendingCount.current++
@@ -170,7 +173,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     setPlanMode(false)
     try {
       await onSubmit(message, model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name,
-        { files: submittedFiles, effort: selectedEffort, planMode, delivery: 'queue', requestId })
+        { files: submittedFiles, effort: selectedEffort, planMode, delivery, requestId })
       if (retryRequest.current?.id === requestId) retryRequest.current = null
     } catch (cause) {
       if (activeConversation.current === submittedConversation) { setValue(current => current || message); setFiles(current => current.length ? current : submittedFiles); setPlanMode(planMode); notify(cause) }
@@ -180,19 +183,19 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   const runQueued = async (action: () => Promise<void>) => { try { await action() } catch (cause) { notify(cause) } }
   // Editar tira a mensagem da fila e devolve o texto ao campo; anexos de imagem já enviados ao host não voltam.
   const editQueued = (message: Message) => runQueued(async () => {
-    await window.appAPI.cancelQueuedMessage(message.id)
+    await (onCancelQueued ? onCancelQueued(message.id) : window.appAPI.cancelQueuedMessage(message.id))
     setValue(current => current.trim() ? `${current}
 
 ${message.text}` : message.text)
     pendingCaret.current = Number.MAX_SAFE_INTEGER
   })
 
-  return <div className="shrink-0 px-3 pb-3 pt-1 sm:px-6">
-    <div className="mx-auto max-w-3xl">
+  return <div className={styles.root}>
+    <div className={styles.column}>
       {reviewChanges.length > 0 && <CompletedFileReview key={reviewKey} changes={reviewChanges} />}
-      <QueuedMessages messages={queued} onEdit={editQueued} onSendNow={message => runQueued(() => window.appAPI.sendQueuedNow(message.id))} onRemove={message => runQueued(() => window.appAPI.cancelQueuedMessage(message.id))} />
+      <QueuedMessages messages={queued} onEdit={editQueued} onSendNow={message => runQueued(() => onSendQueuedNow ? onSendQueuedNow(message.id) : window.appAPI.sendQueuedNow(message.id))} onRemove={message => runQueued(() => onCancelQueued ? onCancelQueued(message.id) : window.appAPI.cancelQueuedMessage(message.id))} />
       <PromptInput
-        className="relative rounded-xl border border-input bg-card shadow-composer transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/15"
+        className={styles.promptCard}
         value={value}
         onValueChange={setValue}
         textareaRef={textareaRef}
@@ -201,21 +204,33 @@ ${message.text}` : message.text)
         mentionListId={mentionListId}
         mentionActiveId={mentionOptions[activeMention] ? `${mentionListId}-${mentionOptions[activeMention].id}` : undefined}
         onTextareaKeyDown={event => {
-          if (!mention || event.nativeEvent.isComposing || event.keyCode === 229) return
-          if (event.key === 'Escape') {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return
+          if (mention) {
+            if (event.key === 'Escape') {
             event.preventDefault()
             dismissedMention.current = `${mention.start}:${mention.end}:${mention.query}`
             setMention(null)
-          } else if (event.key === 'ArrowDown' && mentionOptions.length) {
+            } else if (event.key === 'ArrowDown' && mentionOptions.length) {
             event.preventDefault()
             setActiveMention(index => (index + 1) % mentionOptions.length)
-          } else if (event.key === 'ArrowUp' && mentionOptions.length) {
+            } else if (event.key === 'ArrowUp' && mentionOptions.length) {
             event.preventDefault()
             setActiveMention(index => (index - 1 + mentionOptions.length) % mentionOptions.length)
-          } else if ((event.key === 'Enter' || event.key === 'Tab') && mentionOptions.length) {
+            } else if ((event.key === 'Enter' || event.key === 'Tab') && mentionOptions.length) {
             event.preventDefault()
             chooseMention(mentionOptions[activeMention] || mentionOptions[0])
-          } else if (event.key === 'Enter') event.preventDefault()
+            } else if (event.key === 'Enter') event.preventDefault()
+            return
+          }
+          if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && working) {
+            event.preventDefault()
+            const hasImage = files.some(file => file.type.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name))
+            if (hasImage) {
+              setError('Imagens não podem ser enviadas diretamente ao turno em andamento. Use Enter para adicioná-las à fila.')
+              return
+            }
+            void submit(value, files, 'now')
+          }
         }}
         suggestions={mention && mentionAgents.length > 0 ? <MentionSuggestions id={mentionListId} agents={mentionOptions} activeIndex={activeMention} onSelect={chooseMention} /> : null}
         files={files}
@@ -226,7 +241,7 @@ ${message.text}` : message.text)
         accept={`${canAttachImages ? 'image/png,image/jpeg,image/webp,' : ''}text/*,.md,.txt,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml`}
         onStop={onStop}
         submitLabel={working ? 'Adicionar à fila' : 'Enviar mensagem'}
-        placeholder={working ? 'Escreva uma mensagem para adicionar à fila…' : 'Escreva uma mensagem…'}
+        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : 'Escreva uma mensagem…'}
         onSubmit={(message, selection) => { void submit(message, selection.files) }}
         trailingControls={working && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" title="Parar geração" onClick={onStop}><Square className="size-4 fill-current" /></Button>}
         extraControls={<>

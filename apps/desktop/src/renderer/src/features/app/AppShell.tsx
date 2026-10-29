@@ -15,6 +15,7 @@ import { MessageLinkContext, type MessageLinkHandlers } from '../chat/MessageMar
 import { linkFileWorkspaceId } from '../chat/message-link'
 import { useConversationHistory } from '../chat/useConversationHistory'
 import { Composer } from '../composer/Composer'
+import { ComposerTakeover } from '../composer/ComposerTakeover'
 import { modelOptions } from '../composer/model-options'
 import { DockWorkspace, type DockWorkspaceHandle, type DockTool, type DockZone } from '../panels/DockWorkspace'
 import type { EditorData, EditorKind } from '../editors/Editor'
@@ -114,6 +115,12 @@ export default function AppShell() {
   const visibleRunEvidence = useMemo(() => selectVisibleRunEvidence(messages, snapshot.fileChanges, snapshot.approvals), [messages, snapshot.fileChanges, snapshot.approvals])
   const visibleFileChanges = visibleRunEvidence.fileChanges
   const visibleApprovals = visibleRunEvidence.approvals
+  const composerTakeoverApproval = canApprove
+    ? visibleApprovals.find(approval => approval.status === 'pending' && approval.kind !== 'plan')
+    : undefined
+  const transcriptApprovals = composerTakeoverApproval
+    ? visibleApprovals.filter(approval => approval.id !== composerTakeoverApproval.id)
+    : visibleApprovals
   // Only completed, real writes from this conversation can appear above the composer.
   const finishedWithChanges = [...messages].reverse().find(message => message.role === 'assistant'
     && message.runId && ['completed', 'failed', 'interrupted'].includes(message.status)
@@ -412,7 +419,7 @@ export default function AppShell() {
               focusedMessageId={focusedHistoryMessageId}
               fileChanges={visibleFileChanges}
               reviewRunId={latestReview.length ? finishedWithChanges?.runId || null : null}
-              approvals={visibleApprovals}
+              approvals={transcriptApprovals}
               conversations={snapshot.conversations}
               agentOf={agentOf}
               selectedAgents={selectedAgents}
@@ -424,6 +431,7 @@ export default function AppShell() {
             />
             </MessageLinkContext.Provider>
             <fieldset disabled={!canChat} className="m-0 min-w-0 border-0 p-0">
+            <div hidden={Boolean(composerTakeoverApproval)}>
             <Composer
               mentionAgents={selectedAgents}
               working={conversationRuns.length > 0}
@@ -441,7 +449,9 @@ export default function AppShell() {
               onStop={() => void window.appAPI.stop(selected.id)}
               onVoiceNotice={setNotice}
             />
+            </div>
             </fieldset>
+            {composerTakeoverApproval && <ComposerTakeover key={composerTakeoverApproval.id} approval={composerTakeoverApproval} onNotice={setNotice} canApprove={canApprove} />}
             {browserMode && !canChat && <p className="mx-3 mb-2 rounded-lg bg-warning-soft px-3 py-2 text-center text-xs text-warning sm:mx-auto sm:max-w-3xl">O host está em leitura para este dispositivo. Libere o chat nas permissões PWA do Boobot.</p>}
           </div>
         </> : activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} conversations={snapshot.conversations} workspaces={snapshot.workspaces} agents={snapshot.agents} onCreateSession={() => void startConversation(activeWorkspace.id)} onOpenConversation={selectConversation} onEdit={() => setEditor({ kind: 'workspace', initial: activeWorkspace })} onOpenAgent={agent => {

@@ -1,0 +1,122 @@
+.dock {
+  position: relative;
+  z-index: 7;
+  flex: none;
+  padding: 8px 16px 4px;
+  container-type: inline-size;
+}
+
+.column {
+  width: min(100%, clamp(680px, 64cqw, 920px));
+  margin-inline: auto;
+}
+
+.approvalCard {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 !important;
+  border: 1px solid var(--dsw-alias-state-warn-secondary, var(--warning)) !important;
+  border-radius: 20px !important;
+  background: var(--dsw-specific-input-major, var(--card)) !important;
+  box-shadow: var(--dsw-elevation-panel, var(--shadow-composer)) !important;
+}
+
+.approvalCard::before {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--dsw-alias-state-warn-tertiary, var(--warning-soft));
+  color: var(--dsw-alias-state-warn-primary, var(--warning));
+  content: '●  Aguardando aprovação';
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.approvalCard > div:first-child {
+  padding: 12px 16px 0;
+}
+
+.approvalCard > div:first-child > span {
+  background: var(--dsw-alias-state-warn-tertiary, var(--warning-soft));
+  color: var(--dsw-alias-state-warn-primary, var(--warning));
+}
+
+.approvalCard > div:last-child {
+  margin-top: 0 !important;
+  padding: 14px 16px;
+}
+
+.approvalCard > div:last-child > button {
+  min-height: 36px;
+  height: 36px !important;
+  border: 1px solid var(--dsw-alias-border-l2, var(--border));
+  border-radius: 12px;
+}
+
+.approvalCard > div:last-child > button:first-child {
+  border-color: transparent;
+  background: var(--dsw-alias-button-info-fill, var(--primary)) !important;
+  color: #fff !important;
+}
+
+.approvalCard > div:last-child > button:last-child {
+  background: transparent !important;
+  color: var(--dsw-alias-label-secondary, var(--muted-foreground)) !important;
+}
+
+.approvalCard > [role="status"] {
+  margin: 0 !important;
+  padding: 8px 16px 4px;
+}
+
+.approvalCard > details,
+.approvalCard > p {
+  margin: 0 !important;
+  padding: 4px 16px;
+}
+
+.questionPanel {
+  overflow: auto;
+  max-height: min(60vh, 520px);
+  padding: 16px 20px 20px;
+  border: 0.5px solid var(--dsw-alias-border-l1, var(--border));
+  border-radius: 20px;
+  background: var(--dsw-specific-input-major, var(--card));
+  box-shadow: var(--dsw-elevation-panel, var(--shadow-composer));
+}
+
+.questionStatus {
+  margin: 0 0 8px;
+  color: var(--dsw-alias-label-tertiary, var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.questionCard {
+  width: 100%;
+  max-width: 100% !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.questionCard :global([data-slot="card-footer"] button:last-child) {
+  min-height: 36px;
+  height: 36px !important;
+  border-radius: 12px;
+  background: var(--dsw-alias-button-info-fill, var(--primary)) !important;
+  background-image: none !important;
+  color: #fff !important;
+}
+
+@media (max-width: 600px) {
+  .dock { padding-inline: 10px; }
+  .column { width: 100%; }
+  .questionPanel { padding: 12px; }
+}

@@ -112,7 +112,7 @@ function PromptInput({
 
   function resizeTextarea(element: HTMLTextAreaElement) {
     element.style.height = '0px'
-    element.style.height = `${Math.max(36, Math.min(element.scrollHeight, 220))}px`
+    element.style.height = `${Math.max(36, Math.min(element.scrollHeight, 336))}px`
   }
 
   useLayoutEffect(() => {

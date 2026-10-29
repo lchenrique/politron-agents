@@ -21,6 +21,7 @@ interface FollowUpSuggestionsProps extends Omit<React.ComponentProps<'section'>,
   onSelect?: (id: string, value?: string) => void
   onSelectedIdChange?: (id: string) => void
   selectedId?: string
+  submitLabel?: string
   title?: string
 }
 
@@ -32,6 +33,7 @@ function FollowUpSuggestions({
   onSelect,
   onSelectedIdChange,
   selectedId,
+  submitLabel = 'Submit',
   title = 'What would you like to do?',
   ...props
 }: FollowUpSuggestionsProps) {
@@ -214,7 +216,7 @@ function FollowUpSuggestions({
               size="sm"
               variant="default"
             >
-              Submit
+              {submitLabel}
               <Kbd className="ml-0.5 size-4 min-h-4 min-w-4 bg-primary-foreground/10 p-0 leading-none text-primary-foreground shadow-none">
                 <svg aria-hidden="true" className="size-3" viewBox="0 0 24 24" fill="none">
                   <path

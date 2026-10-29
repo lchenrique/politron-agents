@@ -17,7 +17,7 @@ it('apresenta opções, envia escolha única ao backend e mostra resposta persis
   const view = render(<AgentInteractionCard approval={base} onNotice={notice} />)
   expect(screen.getByText('Qual biblioteca?')).toBeInTheDocument()
   fireEvent.click(screen.getByText('Vue'))
-  fireEvent.click(screen.getByRole('button', { name: /Submit/ }))
+  fireEvent.click(screen.getByRole('button', { name: /Enviar resposta/ }))
   await waitFor(() => expect(answerQuestion).toHaveBeenCalledWith('q-1', 'Vue'))
   view.rerender(<AgentInteractionCard approval={{ ...base, status: 'approved', details: { ...base.details, answer: 'Vue' } }} onNotice={notice} />)
   expect(screen.getByText('Resposta: Vue')).toBeInTheDocument()

@@ -13,6 +13,8 @@ const FloatingMascotPage = lazy(() => import("@/features/panels/FloatingMascotPa
 const DshGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/DshGallery")) : null;
 // Transcrição de demonstração com dados fictícios, isolada da persistência do aplicativo.
 const TranscriptGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/TranscriptGallery")) : null;
+// Composer, fila e estados de decisão sintéticos, sem chamadas de envio ao agente.
+const ComposerGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/ComposerGallery")) : null;
 const RemoteFolderDialog = lazy(() => import("@/features/hosts/RemoteFolderDialog").then(module => ({ default: module.RemoteFolderDialog })));
 
 const queryClient = new QueryClient();
@@ -34,6 +36,7 @@ const App = () => (
               <Route path="/mascot" element={<Suspense fallback={null}><FloatingMascotPage /></Suspense>} />
               {DshGallery && <Route path="/dsh-gallery" element={<Suspense fallback={null}><DshGallery /></Suspense>} />}
               {TranscriptGallery && <Route path="/transcript-gallery" element={<Suspense fallback={null}><TranscriptGallery /></Suspense>} />}
+              {ComposerGallery && <Route path="/composer-gallery" element={<Suspense fallback={null}><ComposerGallery /></Suspense>} />}
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

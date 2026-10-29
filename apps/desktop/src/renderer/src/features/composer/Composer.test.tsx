@@ -78,7 +78,7 @@ describe('Composer compacto e elástico', () => {
     expect(screen.queryByText(/Agentes podem errar/)).not.toBeInTheDocument()
   })
 
-  it('cresce automaticamente com múltiplas linhas até o limite de 220px', () => {
+  it('cresce automaticamente com múltiplas linhas até o limite de 336px', () => {
     const { textarea } = setup()
     let measuredHeight = 126
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, get: () => measuredHeight })
@@ -86,7 +86,7 @@ describe('Composer compacto e elástico', () => {
     expect(textarea.style.height).toBe('126px')
     measuredHeight = 400
     fireEvent.change(textarea, { target: { value: 'uma linha\nsegunda linha\nterceira linha\nquarta' } })
-    expect(textarea.style.height).toBe('220px')
+    expect(textarea.style.height).toBe('336px')
     measuredHeight = 30
     fireEvent.change(textarea, { target: { value: '' } })
     expect(textarea.style.height).toBe('36px')
@@ -222,6 +222,25 @@ describe('instruções durante uma tarefa', () => {
     expect(screen.queryByRole('button', { name: 'Enviar agora' })).not.toBeInTheDocument()
     const stop = screen.getByRole('button', { name: 'Parar geração' })
     expect(stop.nextElementSibling).toBe(screen.getByRole('button', { name: 'Adicionar à fila' }))
+  })
+
+  it('Ctrl/Cmd+Enter envia a instrução diretamente ao turno em andamento', async () => {
+    const { textarea, onSubmit } = setup({ conversationId: 'steer-test', working: true })
+    fireEvent.change(textarea, { target: { value: 'Priorize este ajuste' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    expect(onSubmit.mock.calls[0][2]).toMatchObject({ delivery: 'now' })
+  })
+
+  it('mantém imagens na fila ao tentar envio direto durante a execução', async () => {
+    const { textarea, onSubmit } = setup({ conversationId: 'steer-image-test', working: true })
+    const image = new File(['image'], 'captura.png', { type: 'image/png' })
+    fireEvent.change(screen.getByLabelText('Upload files'), { target: { files: [image] } })
+    fireEvent.change(textarea, { target: { value: 'Veja esta imagem' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+    expect(await screen.findByText(/Imagens não podem ser enviadas diretamente/)).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(textarea).toHaveValue('Veja esta imagem')
   })
 
   it('cartões da fila: Editar devolve o texto, Enviar agora e Remover agem na fila do host', async () => {

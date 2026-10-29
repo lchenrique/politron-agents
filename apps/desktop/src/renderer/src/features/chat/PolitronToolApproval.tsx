@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, FileEdit, Globe, Send, Settings2, Terminal } from 'lucide-react'
 import type { Approval } from '../../../../shared/v9'
 import { DiffCard } from '../diff/DiffCard'
 import { errorText } from '../app/appShellShared'
 import { ApprovalCard } from '@/components/ai/approval-card'
 import { AgentInteractionCard } from './AgentInteractionCard'
+import styles from '../composer/ComposerTakeover.module.css'
 
 const approvalKind = {
   write: { title: 'Alteração de arquivo', icon: FileEdit },
@@ -17,22 +18,20 @@ const approvalKind = {
 /** Confirmação extra fica armada por esse tempo antes de voltar ao normal, pra não aprovar sem querer num clique tardio. */
 const ARM_TIMEOUT_MS = 4000
 
-export function PolitronToolApproval({ approval, onNotice, canApprove = true }: { approval: Approval; onNotice: (text: string) => void; canApprove?: boolean }) {
+export function PolitronToolApproval({ approval, onNotice, canApprove = true, takeover = false }: { approval: Approval; onNotice: (text: string) => void; canApprove?: boolean; takeover?: boolean }) {
   // A trava síncrona impede duplo envio mesmo antes do próximo render do React.
   const lock = useRef(false)
+  const keyboardScope = useRef<HTMLDivElement>(null)
   const [submitting, setSubmitting] = useState(false)
   const [armed, setArmed] = useState(false)
   const armTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   useEffect(() => () => clearTimeout(armTimer.current), [])
 
-  if (approval.status === 'pending' && !canApprove) return <section role="status" className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">Ação aguardando aprovação. Libere aprovações para este dispositivo no Boobot do host.</section>
-  if (approval.kind === 'question' || approval.kind === 'plan') return <AgentInteractionCard approval={approval} onNotice={onNotice} />
-  const definition = approvalKind[approval.kind]
   const details = approval.details
   const sensitive = approval.kind === 'agent-change' || approval.kind === 'command' || (approval.kind === 'write' && Boolean(details.before))
   const pending = approval.status === 'pending'
 
-  async function respond(approved: boolean) {
+  const respond = useCallback(async (approved: boolean) => {
     if (!pending || lock.current) return
     lock.current = true
     setSubmitting(true)
@@ -45,15 +44,35 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true }: 
       setArmed(false)
       onNotice(errorText(error))
     }
-  }
+  }, [approval.id, onNotice, pending])
 
-  function onApprove() {
+  const onApprove = useCallback(() => {
     if (lock.current) return
     if (!sensitive || armed) { void respond(true); return }
     setArmed(true)
     clearTimeout(armTimer.current)
     armTimer.current = setTimeout(() => setArmed(false), ARM_TIMEOUT_MS)
-  }
+  }, [armed, respond, sensitive])
+
+  useEffect(() => {
+    if (!takeover || !pending || !canApprove) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.isComposing || (event.key !== 'Enter' && event.key !== 'Escape')) return
+      const scope = keyboardScope.current
+      const active = document.activeElement
+      if (!scope || (active !== document.body && active !== document.documentElement && !scope.contains(active))) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.key === 'Enter') onApprove()
+      else void respond(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [canApprove, onApprove, pending, respond, takeover])
+
+  if (approval.status === 'pending' && !canApprove) return <section role="status" className="rounded-lg border border-border/60 bg-muted/10 px-3 py-2 text-xs text-muted-foreground">Ação aguardando aprovação. Libere aprovações para este dispositivo no Boobot do host.</section>
+  if (approval.kind === 'question' || approval.kind === 'plan') return <AgentInteractionCard approval={approval} onNotice={onNotice} />
+  const definition = approvalKind[approval.kind]
 
   const statusText = pending ? (submitting ? 'Enviando sua decisão…' : 'Aguardando sua decisão') : approval.status === 'approved' ? 'Aprovada' : approval.status === 'denied' ? 'Negada' : 'Interrompida'
 
@@ -63,8 +82,8 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true }: 
     : approval.kind === 'delegation' ? `Para ${details.recipientName || 'agente'}: ${(details.task || '(sem resumo)').slice(0, 160)}`
     : details.action || 'Alteração de configuração solicitada'
   const options = pending ? [
-    { label: armed ? 'Aprovar mesmo assim' : sensitive ? 'Confirmar e aprovar' : 'Aprovar', value: 'approve', description: armed ? 'Confirmação adicional obrigatória' : undefined },
-    { label: 'Negar', value: 'deny' },
+    { label: armed ? 'Aprovar mesmo assim' : sensitive ? takeover ? 'Confirmar e permitir' : 'Confirmar e aprovar' : takeover ? 'Permitir uma vez' : 'Aprovar', value: 'approve', description: armed ? 'Confirmação adicional obrigatória' : undefined },
+    { label: takeover ? 'Rejeitar' : 'Negar', value: 'deny' },
   ] : []
 
   if (!pending) return <section aria-label="Aprovação de ferramenta"
@@ -75,7 +94,8 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true }: 
     <span role="status" className="shrink-0">{statusText}</span>
   </section>
 
-  return <ApprovalCard aria-label="Aprovação de ferramenta" className="min-w-0 border border-border/60 !rounded-xl !p-3 shadow-none" title={definition.title} description={description}
+  return <div ref={takeover ? keyboardScope : undefined} className={takeover ? 'contents' : undefined}>
+  <ApprovalCard aria-label="Aprovação de ferramenta" className={takeover ? styles.approvalCard : 'min-w-0 border border-border/60 !rounded-xl !p-3 shadow-none'} title={definition.title} description={description}
     status={pending ? 'pending' : approval.status === 'approved' ? 'approved' : approval.status === 'denied' ? 'denied' : 'interrupted'}
     disabled={submitting}
     options={options} onDecision={value => value === 'approve' ? onApprove() : void respond(false)}>
@@ -100,4 +120,5 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true }: 
     {details.truncated && <p className="text-xs text-muted-foreground">Prévia limitada a 200 KB; examine o arquivo antes de aprovar.</p>}
     {submitting && <p className="mt-3 text-xs text-muted-foreground">Enviando sua decisão…</p>}
   </ApprovalCard>
+  </div>
 }

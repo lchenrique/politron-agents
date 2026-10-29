@@ -3,10 +3,11 @@ import type { Approval } from '../../../../shared/v9'
 import { FollowUpSuggestions } from '@/components/ai/follow-up-suggestions'
 import { PlanApprovalCard } from '@/components/ai/plan-approval-card'
 import { errorText } from '../app/appShellShared'
+import takeoverStyles from '../composer/ComposerTakeover.module.css'
 
 /** Persisted plan and question tool results live alongside the related agent message. */
-export function AgentInteractionCard({ approval, onNotice }: {
-  approval: Approval; onNotice: (message: string) => void
+export function AgentInteractionCard({ approval, onNotice, takeover = false }: {
+  approval: Approval; onNotice: (message: string) => void; takeover?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const locked = useRef(false)
@@ -36,10 +37,11 @@ export function AgentInteractionCard({ approval, onNotice }: {
     <p className="font-medium">{approval.details.question}</p>
     <p className="mt-1 text-xs text-muted-foreground">Resposta: {approval.details.answer || 'Interrompida'}</p>
   </section>
-  return <div aria-label="Pergunta do Boo" className="max-w-xl rounded-xl border border-border/60 bg-card p-2" aria-busy={busy}>
+  return <div aria-label="Pergunta do Boo" className={takeover ? takeoverStyles.questionCard : 'max-w-xl rounded-xl border border-border/60 bg-card p-2'} aria-busy={busy}>
     <FollowUpSuggestions
       title={approval.details.question || 'Escolha uma opção'}
       items={[...options, { id: 'custom', label: 'Outra resposta', custom: true, placeholder: 'Escreva sua resposta' }]}
+      submitLabel="Enviar resposta"
       onSelect={(id, value) => void answer(id === 'custom' ? value || '' : options[Number(id)]?.label || '')}
     />
     {busy && <p role="status" className="px-2 text-xs text-muted-foreground">Enviando resposta…</p>}
