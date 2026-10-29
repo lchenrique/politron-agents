@@ -17,6 +17,7 @@ import { PwaSettingsPanel } from '../hosts/PwaSettingsPanel'
 import { ApprovalGrantList } from '../editors/ApprovalGrantList'
 import { AppUpdatesPanel } from './AppUpdatesPanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
+import css from './SettingsPage.module.css'
 
 export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'skills' | 'voz' | 'conexoes' | 'atualizacoes'
 type Section = SettingsSection
@@ -224,7 +225,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
   const current = SECTIONS.find(item => item.id === section) || SECTIONS[0]
 
   return <Modal open={open} onClose={() => onOpenChange(false)} title="Configurações" headless backdropBlur={false}
-    className="flex h-[min(44rem,calc(100dvh-2rem))] w-[min(64rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:grid sm:grid-cols-[13rem_minmax(0,1fr)]">
+    className={css.dialog}>
     {/* Em janelas estreitas a navegação vira uma faixa rolável acima do conteúdo; o X do diálogo fica fora das duas áreas de rolagem. */}
       <button type="button" aria-label="Fechar" onClick={() => onOpenChange(false)}
         className="absolute right-3 top-3 z-20 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

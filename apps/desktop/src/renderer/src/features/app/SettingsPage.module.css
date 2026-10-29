@@ -1,0 +1,19 @@
+/* O .dialog do Modal DSH é CSS sem camada e fixa largura, flex e padding; utilitários do Tailwind ficam em @layer e perdem.
+   O seletor com [data-dsh-modal] sobe a especificidade para o layout de duas colunas valer. */
+[data-dsh-modal].dialog {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  width: min(64rem, 100%);
+  max-width: none;
+  height: min(44rem, 100%);
+}
+
+@media (max-width: 639px) {
+  [data-dsh-modal].dialog {
+    display: flex;
+    flex-direction: column;
+  }
+}
