@@ -50,7 +50,7 @@
 - [x] Rodar `npm run typecheck`, ESLint nos arquivos tocados e os testes focados; registrar erros/avisos reais.
 - [x] Conferir visualmente o ciclo em perfil isolado, claro/escuro e viewport estreito, sem enviar mensagem de execução.
 - [x] Atualizar `ESTRATEGIA_POLITRON.md`, `PRODUCT.md` e este plano com evidência e limites.
-- [ ] Commit: `docs: record DSH plan review evidence`.
+- [x] Commit: `docs: record DSH plan review evidence` (`8f0215c`).
 
 ### Evidência transversal
 
