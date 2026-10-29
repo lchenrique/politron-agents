@@ -105,7 +105,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
             <p className="ds-page-lede mt-1">Descreva o objetivo. Ele planeja, monta a equipe, executa e só chama você para decisões.</p>
           </div>
         </div>
-        <form className="mt-6 rounded-xl border border-input bg-card shadow-composer transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/15"
+        <form className="mt-6 rounded-3xl bg-[var(--dsw-specific-input-major,var(--card))] shadow-[var(--dsw-elevation-soft,var(--shadow-composer))] transition-shadow focus-within:shadow-[var(--dsw-elevation-prominent,var(--shadow-composer))]"
           onSubmit={event => { event.preventDefault(); void assign() }}>
           <label htmlFor="chief-goal" className="sr-only">Objetivo para {chief?.name || 'o Chief'}</label>
           <Textarea id="chief-goal" value={goal} disabled={!canChat} onChange={event => setGoal(event.target.value)} rows={3}

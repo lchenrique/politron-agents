@@ -34,7 +34,7 @@ const lastSegment = (value: string) => value.trim().replace(/\.git\/?$/, '').rep
 
 function EditorGroup({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   const titleId = useId()
-  return <section aria-labelledby={titleId} className="rounded-xl border border-border bg-card p-4">
+  return <section aria-labelledby={titleId} className="ds-card p-4">
     <h4 id={titleId} className="ds-section-title">{title}</h4>
     {description && <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>}
     <div className="mt-4 space-y-4">{children}</div>

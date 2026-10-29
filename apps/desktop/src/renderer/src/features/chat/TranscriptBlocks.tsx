@@ -9,7 +9,8 @@ import css from './Transcript.module.css'
 export function DshToolGroup({ messages, turnActive, autoOpen, children }: { messages: Message[]; turnActive: boolean; autoOpen?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   const calls = useMemo(() => messages.map(message => ({ message, call: activityToolCall(message, turnActive) })), [messages, turnActive])
-  const current = [...calls].reverse().find(({ message }) => turnActive && (message.tool?.status === 'running' || message.status === 'running')) || (turnActive ? calls.at(-1) : undefined)
+  // "Ao vivo" só com chamada realmente em execução; entre chamadas o turno mostra "Pensando".
+  const current = [...calls].reverse().find(({ message }) => turnActive && (message.tool?.status === 'running' || message.status === 'running'))
   const title = current ? liveStep(current.call, stepActivity(current.call, current.message)) : processTitle(calls.map(({ call, message }) => stepActivity(call, message)))
 
   useEffect(() => { if (autoOpen) setOpen(true) }, [autoOpen])
@@ -51,10 +52,8 @@ export function ReasoningDisclosure({ message, autoOpen }: { message: Message; a
 export function RunningTurnStatus({ turn }: { turn: Turn }) {
   const [now, setNow] = useState(() => Date.now())
   const messages = useMemo(() => messagesInTurn(turn), [turn])
-  const current = [...messages].reverse().find(message => message.role === 'activity' && (message.tool?.status === 'running' || message.status === 'running'))
-    || (turn.status === 'running' ? [...messages].reverse().find(message => message.role === 'activity' && !!message.runId) : undefined)
-  const call = current ? activityToolCall(current, true) : undefined
-  const title = turn.status === 'waiting' ? 'Aguardando sua aprovação' : current && call ? liveStep(call, stepActivity(call, current)) : 'Pensando'
+  const running = messages.some(message => message.role === 'activity' && (message.tool?.status === 'running' || message.status === 'running'))
+  const title = turn.status === 'waiting' ? 'Aguardando sua aprovação' : running ? 'Em andamento' : 'Pensando'
 
   useEffect(() => {
     if (turn.status !== 'running') return

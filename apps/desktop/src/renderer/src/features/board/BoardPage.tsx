@@ -8,7 +8,7 @@ import type { BoardTask, BoardTaskInput, BoardTeam, Snapshot } from '../../../..
 import { Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 
-const field = 'h-9 w-full rounded-md border border-input bg-card px-3 text-sm shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
+const field = 'h-9 w-full rounded-lg border-[0.5px] border-input bg-card px-3 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
 const statuses: { id: BoardTask['status'] | 'queue'; label: string }[] = [
   { id: 'queue', label: 'Fila' }, { id: 'doing', label: 'Em execução' }, { id: 'review', label: 'Revisão' },
   { id: 'rework', label: 'Retrabalho' }, { id: 'integration', label: 'Integração' }, { id: 'blocked', label: 'Bloqueadas' }, { id: 'done', label: 'Concluídas' }, { id: 'cancelled', label: 'Canceladas' },
@@ -192,7 +192,7 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice, readOnly }: 
         {empty ? <div className="ds-empty px-6 py-10 text-center"><p className="text-sm font-medium">Nenhuma tarefa no board ainda</p><p className="mt-1 text-xs text-muted-foreground">O board só recebe tarefas criadas aqui; mensagens comuns continuam nas conversas.</p></div>
           : <div className="flex gap-3 overflow-x-auto pb-3" aria-label="Colunas do board">{statuses.map(column => {
             const cards = board.tasks.filter(taskMatches).filter(task => taskColumn(task) === column.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-            return <section key={column.id} className="ds-card flex w-[min(84vw,20rem)] shrink-0 flex-col gap-3 p-3" aria-label={`Coluna ${column.label}`}><header className="flex items-center justify-between"><h2 className="text-xs font-semibold">{column.label}</h2><span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{cards.length}</span></header><div className="flex flex-col gap-3">{cards.map(renderTaskCard)}</div>{cards.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">Sem tarefas</p>}</section>
+            return <section key={column.id} className="ds-column flex w-[min(84vw,20rem)] shrink-0 flex-col gap-3 p-3" aria-label={`Coluna ${column.label}`}><header className="flex items-center justify-between"><h2 className="text-xs font-semibold">{column.label}</h2><span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{cards.length}</span></header><div className="flex flex-col gap-3">{cards.map(renderTaskCard)}</div>{cards.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">Sem tarefas</p>}</section>
           })}</div>}
         {!empty && !board.tasks.some(taskMatches) && <div className="ds-empty px-6 py-10 text-center text-sm">Nenhuma tarefa corresponde aos filtros.</div>}
       </>}
