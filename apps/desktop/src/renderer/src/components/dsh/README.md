@@ -6,7 +6,7 @@ Componentes de interface portados do DeepSeek Harness (DSH), licença MIT (texto
 - Pacotes: `packages/client/ui-primitives/src`, `packages/client/ui-tool/src/client/tool`, `packages/client/ui-theme/src/styles` e trechos de `packages/util/{code-language,workspace-path,file-drag}`.
 - Marca do DSH não foi trazida: sem `BrandWordmark`, `FishLogo`, baleia, Montserrat nem os nomes "DeepSeek"/"Harness" na interface.
 
-Fase 1: biblioteca isolada. Nenhuma tela do Boobot usa estes componentes ainda, exceto a galeria de desenvolvimento em `features/dev/DshGallery.tsx` (só com `import.meta.env.DEV`, rota `#/dsh-gallery`).
+Fase 1: biblioteca criada. A transcrição do chat usa `UserMessageBubble`, `ToolCallTree` e os tokens deste tema em `apps/desktop/src/renderer/src/features/chat/`. A galeria de desenvolvimento da biblioteca continua em `apps/desktop/src/renderer/src/features/dev/DshGallery.tsx` (somente com `import.meta.env.DEV`, rota `#/dsh-gallery`); a prévia funcional da transcrição usa dados fictícios em `apps/desktop/src/renderer/src/features/dev/TranscriptGallery.tsx` (rota `#/transcript-gallery`, também só em desenvolvimento).
 
 ## O que veio
 

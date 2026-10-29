@@ -69,7 +69,7 @@ No navegador, o objetivo é que os agentes usem o Browser visível do Politron, 
 - Abrir perfil, instruções, modelo e recursos do bot por ações próprias, preservando a conversa como tela principal.
 - Grupos são uma opção explícita. Pastas, terminal e Computer Use aparecem conforme a necessidade do trabalho.
 - Conversas diretas servem também para perguntas, ideias e análise; o usuário não precisa formular uma tarefa de desenvolvimento para começar.
-- O trabalho do agente aparece como uma única linha de atividade: o passo atual no presente enquanto roda e, ao terminar, um resumo recolhido no passado (por exemplo, "Usou o navegador real (6 ações) · executou 2 comandos · 38s") que expande a lista. O preâmbulo fica acima, a resposta final nasce como mensagem nova abaixo do trabalho e `run.messageId` aponta para a última resposta do run. Validado por testes automatizados (28/10/2026); não verificado no app rodando com Codex/Claude reais.
+- A transcrição segue o modelo de turnos do DSH: mensagem do usuário, trabalho do agente e respostas ficam agrupados; ao concluir, o trabalho recolhe em um resumo com duração e quantidade de ferramentas e pode ser expandido para ver detalhes. Respostas mostram o Boo, o raciocínio fica recolhido e a navegação lateral salta entre turnos carregados; a rolagem acompanha o fim apenas se o usuário já estiver nele. Validado em Electron com dados fictícios, typecheck, 53 testes focados e build (29/10/2026). Ainda sem inferência real Codex/Claude; composer, fila e aprovações junto ao campo seguem na fase 3.
 
 ### Projetos e alterações visíveis
 
