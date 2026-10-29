@@ -52,8 +52,9 @@ export function ReasoningDisclosure({ message, autoOpen }: { message: Message; a
 export function RunningTurnStatus({ turn }: { turn: Turn }) {
   const [now, setNow] = useState(() => Date.now())
   const messages = useMemo(() => messagesInTurn(turn), [turn])
-  const running = messages.some(message => message.role === 'activity' && (message.tool?.status === 'running' || message.status === 'running'))
-  const title = turn.status === 'waiting' ? 'Aguardando sua aprovação' : running ? 'Em andamento' : 'Pensando'
+  const current = [...messages].reverse().find(message => message.role === 'activity' && (message.tool?.status === 'running' || message.status === 'running'))
+  const call = current ? activityToolCall(current, true) : undefined
+  const title = turn.status === 'waiting' ? 'Aguardando sua aprovação' : current && call ? liveStep(call, stepActivity(call, current)) : 'Pensando'
 
   useEffect(() => {
     if (turn.status !== 'running') return

@@ -208,11 +208,19 @@ describe('linha de atividade do agente', () => {
   const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
 
   it('enquanto roda, mostra uma única linha no presente e não repete o "está trabalhando"', () => {
-    const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...browser(6)]))
+    const calls = browser(6)
+    calls[5] = { ...calls[5]!, status: 'running' }
+    const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]))
     expect(screen.getByRole('status')).toHaveTextContent(/Navegando.*js · alvo https:\/\/example\.com/)
     expect(container).not.toHaveTextContent('await tab.goto')
     expect(container).not.toHaveTextContent('está trabalhando')
     expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
+  })
+
+  it('entre chamadas já concluídas, o turno ativo mostra "Pensando" em vez de repetir a última ação', () => {
+    render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...browser(6)]))
+    expect(screen.getByRole('status')).toHaveTextContent('Pensando')
+    expect(screen.getByRole('status')).not.toHaveTextContent('Navegando')
   })
 
   it('ao terminar, resume no passado recolhido, expande a lista e mantém a resposta final abaixo', () => {
