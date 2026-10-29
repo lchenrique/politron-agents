@@ -1021,8 +1021,12 @@ export class AppService extends EventEmitter {
       // Só em memória: as chamadas de ferramenta da revisão localizam este contexto pelo turno atual.
       run.turnId = turnId
       const key = `${threadId}:${turnId}`
+      if (this.completedTurns.get(runtime)?.has(key)) return
+      if (signal.aborted || timeout.signal.aborted) {
+        await runtime.interrupt(threadId, turnId).catch(() => undefined)
+        return
+      }
       await new Promise<void>(resolve => {
-        if (this.completedTurns.get(runtime)?.has(key)) { resolve(); return }
         const finish = () => { runtime.off('event', done); signal.removeEventListener('abort', finish); timeout.signal.removeEventListener('abort', finish); resolve() }
         const done = (event: { method?: string; params?: { threadId?: string; turn?: { id?: string } } }) => { if (event.method === 'turn/completed' && event.params?.threadId === threadId && event.params?.turn?.id === turnId) finish() }
         runtime.on('event', done); signal.addEventListener('abort', finish, { once: true }); timeout.signal.addEventListener('abort', finish, { once: true })

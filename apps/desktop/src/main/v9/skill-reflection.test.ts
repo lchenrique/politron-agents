@@ -12,6 +12,7 @@ import type { AgentRuntime } from './agent-runtime'
 const directories: string[] = []
 const services: AppService[] = []
 afterEach(() => { for (const service of services.splice(0)) service.dispose(); for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }) })
+const nativeSetTimeout = globalThis.setTimeout.bind(globalThis)
 
 type Step = { method: string; params?: Record<string, unknown>; id?: string }
 /** Um roteiro por turno (send); cada turno ganha um id próprio e termina com turn/completed. */
@@ -39,8 +40,26 @@ class MultiTurnRuntime extends EventEmitter {
     if (step.method !== 'item/tool/call') setTimeout(() => this.next(), 0)
   }
   respond() { setTimeout(() => this.next(), 0) }
-  async interrupt() {}
+  async interrupt(_threadId: string, _turnId: string) {}
   close() {}
+}
+class LateReflectionRuntime extends MultiTurnRuntime {
+  readonly reflectionStarted: Promise<void>
+  readonly interruptedTurns: string[] = []
+  private markReflectionStarted!: () => void
+  constructor(turns: Step[][]) {
+    super(turns)
+    this.reflectionStarted = new Promise(resolve => { this.markReflectionStarted = resolve })
+  }
+  override async send(threadId: string, input: string | { text: string }) {
+    const text = typeof input === 'string' ? input : input.text
+    if (!text.includes('Revisão interna')) return super.send(threadId, input)
+    this.inputs.push(text)
+    this.markReflectionStarted()
+    await new Promise<void>(resolve => nativeSetTimeout(resolve, 20))
+    return { thread: { id: threadId }, turn: { id: 'late-reflection', status: 'inProgress' } }
+  }
+  override async interrupt(_threadId: string, turnId: string) { this.interruptedTurns.push(turnId) }
 }
 let seq = 0
 const tool = (name: string, args: Record<string, unknown> = {}): Step => ({ id: `t${++seq}`, method: 'item/tool/call', params: { tool: name, arguments: args } })
@@ -115,6 +134,31 @@ describe('autoaprendizado no fim da execução', () => {
     expect(runtime.inputs[2]).toContain('Segunda')
     const replies = service.store.history(conversation.id).filter(message => message.role === 'assistant' && message.text.trim()).map(message => message.text)
     expect(replies).toEqual(['Feito.', 'Segunda resposta.'])
+  })
+
+  it('libera a fila quando o envio da revisão retorna depois que seu prazo já expirou', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'politron-reflection-late-')); directories.push(directory)
+    const runtime = new LateReflectionRuntime([work(5), [say('Segunda resposta.')]])
+    const service = new AppService(directory, runtime as unknown as AgentRuntime); services.push(service)
+    const conversation = service.saveConversation({ name: 'Fila após revisão' })
+    const schedule = globalThis.setTimeout.bind(globalThis)
+    const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) =>
+      schedule(callback, delay === 60_000 ? 1 : delay, ...args)) as typeof setTimeout)
+    try {
+      const first = service.send(conversation.id, 'Primeira tarefa')
+      void first.catch(() => undefined)
+      await runtime.reflectionStarted
+      expect(service.store.runs().find(run => run.input === 'Primeira tarefa')?.status).toBe('completed')
+
+      const second = service.send(conversation.id, 'Segunda tarefa')
+      void second.catch(() => undefined)
+      expect(service.store.runs().find(run => run.input === 'Segunda tarefa')?.status).toBe('queued')
+      await new Promise<void>(resolve => nativeSetTimeout(resolve, 40))
+
+      expect(runtime.inputs.some(input => input.includes('Segunda tarefa'))).toBe(true)
+      expect(runtime.interruptedTurns).toContain('late-reflection')
+      await Promise.all([first, second])
+    } finally { timer.mockRestore() }
   })
 
   it('o turno recebe a lista curta de skills disponíveis', async () => {
