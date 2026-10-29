@@ -1,13 +1,13 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { FolderOpen, Globe, MoreHorizontal, Search, Settings2, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Menu, MenuSurface, useAnchoredPosition, useDismissOnOutsidePointer } from '@/components/dsh'
 import type { Agent, Conversation, MessageSearchHit, Workspace } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
 import { assistantPlaceholder } from '../app/appShellShared'
 import { conversationDisplayName } from '../../../../shared/delegation-title'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 export interface ConversationChromeProps {
   assistant?: Agent
@@ -73,6 +73,27 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
   const [searching, setSearching] = useState(false)
   const [searched, setSearched] = useState(false)
   const [searchError, setSearchError] = useState('')
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const searchTriggerRef = useRef<HTMLButtonElement>(null)
+  const searchPanelRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchPanelId = useId()
+  const searchPosition = useAnchoredPosition({ open: searchOpen, anchorRef: searchTriggerRef, panelRef: searchPanelRef, side: 'bottom', align: 'end', gap: 4, margin: 12 })
+  useDismissOnOutsidePointer(rootRef, searchOpen, setSearchOpen, searchPanelRef)
+  useEffect(() => {
+    if (!searchOpen) return
+    const focusInput = requestAnimationFrame(() => searchInputRef.current?.focus())
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      setSearchOpen(false)
+      searchTriggerRef.current?.focus()
+    }
+    document.addEventListener('keydown', closeOnEscape, true)
+    return () => { cancelAnimationFrame(focusInput); document.removeEventListener('keydown', closeOnEscape, true) }
+  }, [searchOpen])
   const submitSearch = async (event: FormEvent) => {
     event.preventDefault()
     if (!onSearchHistory || !query.trim() || searching) return
@@ -84,31 +105,40 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
   const showFiles = !browserMode || canReadFiles
   const buttonClass = compact ? 'size-6' : undefined
   const iconClass = compact ? 'size-3.5' : 'size-4'
-  return <div className={'flex shrink-0 items-center justify-end ' + (compact ? 'gap-0' : 'gap-1')}>
-    <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-      <PopoverTrigger asChild><Button variant="ghost" size="icon" className={buttonClass} aria-label="Buscar no histórico desta conversa" title="Buscar no histórico"><Search className={iconClass} /></Button></PopoverTrigger>
-      <PopoverContent align="end" aria-label="Busca no histórico" className="w-[min(22rem,calc(100vw-2rem))] rounded-xl p-3 shadow-xl">
+  const actionItems = [
+    { id: 'files', label: 'Arquivos', icon: <FolderOpen /> },
+    ...(!browserMode ? [
+      { id: 'mascot', label: 'Mascote e voz', icon: <UserRound /> },
+      { id: 'browser', label: 'Navegador', icon: <Globe /> },
+      { id: 'conversation', label: 'Conversa e equipe', icon: <Settings2 /> },
+    ] : []),
+  ]
+  return <div ref={rootRef} className={'flex shrink-0 items-center justify-end ' + (compact ? 'gap-0' : 'gap-1')}>
+    <Button ref={searchTriggerRef} variant="ghost" size="icon" className={buttonClass} aria-label="Buscar no histórico desta conversa" title="Buscar no histórico"
+      aria-haspopup="dialog" aria-expanded={searchOpen} aria-controls={searchOpen ? searchPanelId : undefined} onClick={() => setSearchOpen(value => !value)}>
+      <Search className={iconClass} />
+    </Button>
+    {searchOpen && createPortal(<MenuSurface ref={searchPanelRef} id={searchPanelId} role="dialog" aria-label="Busca no histórico"
+      className="fixed z-[1100] w-[min(22rem,calc(100vw-2rem))] rounded-xl p-3 shadow-xl"
+      style={searchPosition || { left: -9999, top: -9999, visibility: 'hidden' }}>
         <form onSubmit={event => void submitSearch(event)} className="flex gap-2">
-          <Input aria-label="Buscar no histórico desta conversa" value={query} onChange={event => { setQuery(event.target.value); setSearched(false); setSearchError('') }} placeholder="Buscar mensagens…" className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-none outline-none focus-visible:border-input focus-visible:ring-2 focus-visible:ring-primary/40" />
+          <Input ref={searchInputRef} aria-label="Buscar no histórico desta conversa" value={query} onChange={event => { setQuery(event.target.value); setSearched(false); setSearchError('') }} placeholder="Buscar mensagens…" className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-none outline-none focus-visible:border-input focus-visible:ring-2 focus-visible:ring-primary/40" />
           <Button type="submit" size="sm" disabled={searching || !query.trim()}>{searching ? 'Buscando…' : 'Buscar'}</Button>
         </form>
         {searched && hits.length > 0 && <div className="mt-2 max-h-72 space-y-1 overflow-y-auto">{hits.map(hit => <Button type="button" variant="ghost" size={null} key={hit.message.id} onClick={() => { onOpenSearchHit?.(hit); setSearchOpen(false) }} className="block h-auto w-full whitespace-normal rounded-md px-2.5 py-2 text-left font-normal text-inherit hover:bg-accent hover:text-inherit"><span className="block text-xs font-semibold">{hit.message.author} · {new Date(hit.message.createdAt).toLocaleString('pt-BR')}</span><span className="mt-1 block text-xs text-muted-foreground">{hit.snippet}</span></Button>)}</div>}
         {searchError && <p role="alert" className="px-2 py-3 text-xs text-destructive">{searchError}</p>}
         {!searching && searched && hits.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">Nenhuma mensagem encontrada.</p>}
         {focusedMessageId && <Button type="button" variant="link" size={null} onClick={() => { onReturnToLatest?.(); setSearchOpen(false) }} className="mt-2 h-auto w-full justify-start rounded-none border-t border-border p-0 pt-2 text-left text-xs font-normal text-primary hover:underline">Voltar às mensagens recentes</Button>}
-      </PopoverContent>
-    </Popover>
-    {showFiles && <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className={buttonClass} aria-label="Ações da conversa" title="Ações da conversa"><MoreHorizontal className={iconClass} /></Button></DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={() => { if (onOpenProjectFiles) onOpenProjectFiles(); else void window.appAPI.openFolder(selected.id) }}><FolderOpen />Arquivos</DropdownMenuItem>
-          {!browserMode && <DropdownMenuItem onSelect={onOpenMascot}><UserRound />Mascote e voz</DropdownMenuItem>}
-          {!browserMode && <DropdownMenuItem onSelect={onOpenComputerUse}><Globe />Navegador</DropdownMenuItem>}
-          {!browserMode && <DropdownMenuItem onSelect={onEditConversation}><Settings2 />Conversa e equipe</DropdownMenuItem>}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>}
+      </MenuSurface>, document.body)}
+    {showFiles && <Menu open={actionsOpen} onClose={() => setActionsOpen(false)} anchor={<Button variant="ghost" size="icon" className={buttonClass} aria-label="Ações da conversa" title="Ações da conversa"
+      aria-haspopup="menu" aria-expanded={actionsOpen} onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setActionsOpen(value => !value) } }} onClick={() => setActionsOpen(value => !value)}><MoreHorizontal className={iconClass} /></Button>}
+      items={actionItems} onSelect={id => {
+        setActionsOpen(false)
+        if (id === 'files') { if (onOpenProjectFiles) onOpenProjectFiles(); else void window.appAPI.openFolder(selected.id) }
+        else if (id === 'mascot') onOpenMascot?.()
+        else if (id === 'browser') onOpenComputerUse()
+        else if (id === 'conversation') onEditConversation()
+      }} align="end" portal listClassName="w-56" autoFocus />}
   </div>
 }
 

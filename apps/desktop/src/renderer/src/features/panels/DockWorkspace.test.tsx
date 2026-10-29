@@ -34,6 +34,19 @@ function setup(chrome: Pick<ComponentProps<typeof DockWorkspace>, 'chatTab' | 'c
 }
 
 describe('abas e painéis móveis do Politron', () => {
+  it('abre menus DSH para adicionar e organizar painéis', () => {
+    const { ref } = setup()
+    act(() => ref.current!.openTool('diff', 'main'))
+    fireEvent.click(screen.getByRole('button', { name: 'Nova aba' }))
+    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Arquivos' })).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Organizar área principal' }))
+    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Dividir à esquerda com aba atual' })).toBeInTheDocument()
+  })
+
   it('mostra a faixa de abas só quando há mais de uma aba no layout', async () => {
     const { ref } = setup()
     expect(screen.getByText('Chat existente')).toBeInTheDocument()

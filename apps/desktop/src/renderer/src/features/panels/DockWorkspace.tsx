@@ -2,7 +2,7 @@ import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle
 import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Menu, type MenuEntry } from '@/components/dsh'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Agent } from '../../../../shared/v9'
 import { ProjectExplorer } from './ProjectExplorer'
@@ -47,12 +47,13 @@ function loadLayout(): DockLayoutState {
 }
 
 function DockAddMenu({ groupId, onOpen, label = 'Nova aba', browserMode = false, canReadFiles = true }: { groupId: string; onOpen: (kind: DockTool, groupId: string) => void; label?: string; browserMode?: boolean; canReadFiles?: boolean }) {
+  const [open, setOpen] = useState(false)
   const available = browserMode ? toolKinds.filter(kind => kind === 'chat' || kind === 'diff' || kind === 'files' && canReadFiles) : toolKinds
-  return <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="size-7 shrink-0" aria-label={label} title={label}><Plus className="size-4" /></Button></DropdownMenuTrigger>
-    <DropdownMenuContent align="end">
-      {available.map(kind => { const Icon = icons[kind]; return <DropdownMenuItem key={kind} onSelect={() => onOpen(kind, groupId)}><Icon className="mr-2 size-4" />{labels[kind]}</DropdownMenuItem> })}
-    </DropdownMenuContent>
-  </DropdownMenu>
+  return <Menu open={open} onClose={() => setOpen(false)} align="end" portal autoFocus
+    anchor={<Button size="icon" variant="ghost" className="size-7 shrink-0" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
+      onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpen(value => !value) } }} onClick={() => setOpen(value => !value)}><Plus className="size-4" /></Button>}
+    items={available.map(kind => { const Icon = icons[kind]; return { id: kind, label: labels[kind], icon: <Icon /> } })}
+    onSelect={kind => { setOpen(false); if (available.includes(kind as DockTool)) onOpen(kind as DockTool, groupId) }} />
 }
 
 const MASCOT_STATE_LABEL: Record<AgentAvatarState, string> = { idle: 'Ocioso', working: 'Trabalhando', waiting: 'Aguardando aprovação', speaking: 'Falando' }
@@ -108,6 +109,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   canWriteFiles?: boolean
 }>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
   const [layout, setLayout] = useState<DockLayoutState>(loadLayout)
+  const [openOrganizeMenuId, setOpenOrganizeMenuId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, FileDraft>>({})
   const changeDraft = useCallback((id: string, updater: Parameters<FileDraftChange>[0]) => setDrafts(current => {
     const next = updater(current[id])
@@ -301,18 +303,34 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
         </div>
         <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-border/50 pl-1">
           <DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} />
-          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label={'Organizar ' + (primary ? 'área principal' : 'painel auxiliar')}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {group.active && groups(layout.root).length > 1 && groups(layout.root).filter(item => item.id !== group.id).map(item =>
-                <DropdownMenuItem key={item.id} onSelect={() => moveTab(group.active, item.id)}><Columns2 className="mr-2 size-4" />Mover aba para {item.tabs.map(tabLabel).join(', ') || 'painel vazio'}</DropdownMenuItem>)}
-              {group.active && <DropdownMenuSeparator />}
-              {positions.map(position => { const Icon = position.icon; return <DropdownMenuItem key={position.value} disabled={groups(layout.root).length >= 8} onSelect={() => splitEmpty(group.id, position.value, group.active)}><Icon className="mr-2 size-4" />{position.label} com aba atual</DropdownMenuItem> })}
-              <DropdownMenuSeparator />
-              {positions.map(position => { const Icon = position.icon; return <DropdownMenuItem key={'empty-' + position.value} disabled={groups(layout.root).length >= 8} onSelect={() => splitEmpty(group.id, position.value)}><Icon className="mr-2 size-4" />Novo painel {position.value === 'left' ? 'à esquerda' : position.value === 'right' ? 'à direita' : position.value === 'top' ? 'acima' : 'abaixo'}</DropdownMenuItem> })}
-              {groups(layout.root).length > 1 && <><DropdownMenuSeparator /><DropdownMenuItem disabled={group.tabs.length > 0} onSelect={() => setLayout(current => removeGroup(current, group.id))}>Fechar painel vazio</DropdownMenuItem></>}
-              <DropdownMenuSeparator /><DropdownMenuItem onSelect={resetLayout}><RotateCcw className="mr-2 size-4" />Restaurar layout inicial</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Menu open={openOrganizeMenuId === group.id} onClose={() => setOpenOrganizeMenuId(null)} align="end" portal autoFocus
+            anchor={<Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label={'Organizar ' + (primary ? 'área principal' : 'painel auxiliar')}
+              aria-haspopup="menu" aria-expanded={openOrganizeMenuId === group.id}
+              onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpenOrganizeMenuId(current => current === group.id ? null : group.id) } }}
+              onClick={() => setOpenOrganizeMenuId(current => current === group.id ? null : group.id)}><MoreHorizontal className="size-4" /></Button>}
+            items={(() => {
+              const allGroups = groups(layout.root)
+              const targets = group.active && allGroups.length > 1 ? allGroups.filter(item => item.id !== group.id) : []
+              const entries: MenuEntry[] = [
+                ...targets.map(item => ({ id: `move:${item.id}`, label: `Mover aba para ${item.tabs.map(tabLabel).join(', ') || 'painel vazio'}`, icon: <Columns2 /> })),
+                ...(targets.length ? [{ type: 'separator' as const, id: 'move-separator' }] : []),
+                ...positions.map(position => { const Icon = position.icon; return { id: `split:${position.value}`, label: `${position.label} com aba atual`, icon: <Icon />, disabled: allGroups.length >= 8 } }),
+                { type: 'separator', id: 'empty-separator' },
+                ...positions.map(position => { const Icon = position.icon; return { id: `empty:${position.value}`, label: `Novo painel ${position.value === 'left' ? 'à esquerda' : position.value === 'right' ? 'à direita' : position.value === 'top' ? 'acima' : 'abaixo'}`, icon: <Icon />, disabled: allGroups.length >= 8 } }),
+                ...(allGroups.length > 1 ? [{ type: 'separator' as const, id: 'close-separator' }, { id: 'close-panel', label: 'Fechar painel vazio', disabled: group.tabs.length > 0 }] : []),
+                { type: 'separator', id: 'restore-separator' },
+                { id: 'reset-layout', label: 'Restaurar layout inicial', icon: <RotateCcw /> },
+              ]
+              return entries
+            })()}
+            onSelect={id => {
+              setOpenOrganizeMenuId(null)
+              if (id.startsWith('move:') && group.active) moveTab(group.active, id.slice('move:'.length))
+              else if (id.startsWith('split:')) splitEmpty(group.id, id.slice('split:'.length) as DockEdge, group.active)
+              else if (id.startsWith('empty:')) splitEmpty(group.id, id.slice('empty:'.length) as DockEdge)
+              else if (id === 'close-panel') setLayout(current => removeGroup(current, group.id))
+              else if (id === 'reset-layout') resetLayout()
+            }} />
         </div>
       </header>}
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">

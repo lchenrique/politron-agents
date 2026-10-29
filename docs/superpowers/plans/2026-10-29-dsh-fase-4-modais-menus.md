@@ -30,7 +30,7 @@
 
 - Componentes DSH existentes a reutilizar: `apps/desktop/src/renderer/src/components/dsh/Modal.tsx`, `Menu.tsx`, `MenuSurface.tsx`, `MenuGroup.tsx` e respectivos módulos CSS.
 - Migrar modais em `features/app/SettingsPage.tsx`, `features/hosts/RemoteFolderDialog.tsx`, `features/sidebar/GroupDialog.tsx`, `features/sidebar/Sidebar.tsx`, `features/voice/VoiceCall.tsx` e `features/work/mission-ui.tsx`. Preservar `AgentDetails.tsx`: ele é um painel lateral não modal (`Sheet modal={false}`).
-- Migrar menus e popovers em `features/chat/ChatHeader.tsx`, `features/composer/ModelSelector.tsx`, `features/hosts/HostSelector.tsx`, `features/panels/DockWorkspace.tsx`, `features/sidebar/ProjectGroupSection.tsx` e `features/sidebar/Sidebar.tsx`.
+- Migrar menus e popovers em `features/chat/ChatHeader.tsx`, `features/composer/ModelSelector.tsx`, `components/kokonutui/ai-model-selector.tsx` (seletor usado pelo composer), `features/hosts/HostSelector.tsx`, `features/panels/DockWorkspace.tsx`, `features/sidebar/ProjectGroupSection.tsx` e `features/sidebar/Sidebar.tsx`.
 - Atualizar ou criar testes adjacentes; já existem `features/app/SettingsPage.test.tsx`, `features/chat/ChatHeader.test.tsx`, `features/hosts/HostSelector.test.tsx`, `features/panels/DockWorkspace.test.tsx`, `features/sidebar/Sidebar.test.tsx`, `features/voice/VoiceCall.test.tsx`, `features/work/mission-ui.test.tsx` e `components/dsh/dsh-primitives.test.tsx`. Criar testes para `RemoteFolderDialog.tsx` e `GroupDialog.tsx` se ainda não existirem.
 
 ### Task 1: Cobrir e migrar modais
@@ -43,11 +43,11 @@
 
 ### Task 2: Cobrir e migrar menus e popovers
 
-- [ ] Adicionar testes de teclado, seleção, posicionamento e foco aos fluxos listados.
-- [ ] Rodar `npx vitest run` nos testes focados abaixo; confirmar as falhas esperadas. `npm test` executa `pretest`, que reconstrói a PWA antes de cada ciclo. A suíte oficial completa fica para a verificação transversal.
-- [ ] Migrar os seis fluxos de menu/popover para `Menu`, `MenuSurface` e `MenuGroup`, mantendo comandos, atalhos e condicionais de permissão.
-- [ ] Rodar os testes de menu afetados e os testes dos primitivos DSH.
-- [ ] Commit: `feat: apply DSH menus across the app`.
+- [x] Adicionar testes de teclado, seleção, posicionamento na borda da janela e restauração de foco aos fluxos listados.
+- [x] Rodar `npx vitest run` nos testes focados de `ChatHeader`, `Composer`, `HostSelector`, `DockWorkspace`, `Sidebar` e dos primitivos DSH; confirmar as falhas esperadas. `npm test` executa `pretest`, que reconstrói a PWA antes de cada ciclo. A suíte oficial completa fica para a verificação transversal.
+- [x] Migrar os menus e popovers listados e o seletor usado pelo composer para `Menu`, `MenuSurface` e `MenuGroup`, mantendo comandos, atalhos e condicionais de permissão.
+- [x] Rodar os testes de menu afetados e os testes dos primitivos DSH.
+- [x] Commit: `feat: apply DSH menus across the app`.
 
 ### Task 3: Verificação transversal
 

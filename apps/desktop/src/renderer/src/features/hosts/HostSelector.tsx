@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Check, ChevronDown, Monitor, Plus, Settings2, Unplug } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Menu, MenuGroup, MenuItemButton } from '@/components/dsh'
 import { Input } from '@/components/ui/input'
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field'
 import type { HostsSnapshot } from '../../../../shared/hosts'
@@ -11,6 +11,7 @@ const statuses = { connected: 'Conectado', connecting: 'Conectando…', disconne
 export function HostSelector() {
   const api = window.hostsAPI
   const [snapshot, setSnapshot] = useState<HostsSnapshot | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [modal, setModal] = useState<'add' | null>(null)
   const [pairing, setPairing] = useState(''), [name, setName] = useState(''), [endpoint, setEndpoint] = useState(''), [ssh, setSsh] = useState('')
   const [busy, setBusy] = useState(false), [feedback, setFeedback] = useState('')
@@ -20,14 +21,22 @@ export function HostSelector() {
   const selected = snapshot.hosts.find(host => host.id === snapshot.selectedId)
   const openLocal = () => window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'conexoes' }))
   return <>
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size={null} className="dsh-panel-row" aria-label="Selecionar host" title={selected?.name || 'Host indisponível'}><Monitor data-icon="inline-start" /><span className="min-w-0 flex-1 truncate text-left">Remoto</span><span className="dsh-meta">{selected ? statuses[selected.status] : ''}</span><ChevronDown data-icon="inline-end" className="text-[var(--dsh-label-caption)]" /></Button></DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-80">
-        <DropdownMenuGroup>{snapshot.hosts.map(host => <DropdownMenuItem key={host.id} disabled={busy} onSelect={() => void run(() => api.select(host.id))}><Monitor /><span className="flex min-w-0 flex-1 flex-col"><span className="truncate">{host.name}</span><span className="truncate text-xs text-muted-foreground">{host.transport === 'local' ? 'Este computador' : host.endpoint}</span></span>{host.id === snapshot.selectedId && <Check />}</DropdownMenuItem>)}</DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup><DropdownMenuItem onSelect={() => { setFeedback(''); setModal('add') }}><Plus />Adicionar host</DropdownMenuItem><DropdownMenuItem onSelect={openLocal}><Settings2 />Configurar este host</DropdownMenuItem>{snapshot.selectedId !== 'local' && <DropdownMenuItem disabled={busy} onSelect={() => void run(() => api.remove(snapshot.selectedId))}><Unplug />Remover conexão selecionada</DropdownMenuItem>}</DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Menu open={menuOpen} onClose={() => setMenuOpen(false)} align="start" portal listClassName="w-80" autoFocus
+      anchor={<Button variant="ghost" size={null} className="dsh-panel-row" aria-label="Selecionar host" title={selected?.name || 'Host indisponível'}
+        aria-haspopup="menu" aria-expanded={menuOpen} onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setMenuOpen(value => !value) } }} onClick={() => setMenuOpen(value => !value)}>
+        <Monitor data-icon="inline-start" /><span className="min-w-0 flex-1 truncate text-left">Remoto</span><span className="dsh-meta">{selected ? statuses[selected.status] : ''}</span><ChevronDown data-icon="inline-end" className="text-[var(--dsh-label-caption)]" />
+      </Button>}>
+      <MenuGroup label="Hosts">
+        {snapshot.hosts.map(host => <MenuItemButton key={host.id} disabled={busy} icon={<Monitor />} onSelect={() => { setMenuOpen(false); void run(() => api.select(host.id)) }}>
+          <span className="flex min-w-0 flex-1 items-center gap-2"><span className="flex min-w-0 flex-1 flex-col"><span className="truncate">{host.name}</span><span className="truncate text-xs text-muted-foreground">{host.transport === 'local' ? 'Este computador' : host.endpoint}</span></span>{host.id === snapshot.selectedId && <Check className="size-4 shrink-0" aria-label="Selecionado" />}</span>
+        </MenuItemButton>)}
+      </MenuGroup>
+      <MenuGroup label="Gerenciar">
+        <MenuItemButton icon={<Plus />} onSelect={() => { setMenuOpen(false); setFeedback(''); setModal('add') }}>Adicionar host</MenuItemButton>
+        <MenuItemButton icon={<Settings2 />} onSelect={() => { setMenuOpen(false); openLocal() }}>Configurar este host</MenuItemButton>
+        {snapshot.selectedId !== 'local' && <MenuItemButton icon={<Unplug />} disabled={busy} onSelect={() => { setMenuOpen(false); void run(() => api.remove(snapshot.selectedId)) }}>Remover conexão selecionada</MenuItemButton>}
+      </MenuGroup>
+    </Menu>
     {selected?.error && <p role="status" className="px-3 text-xs text-destructive">{selected.error}</p>}
     {!modal && feedback && <p role="status" className="px-3 text-xs text-muted-foreground">{feedback}</p>}
     <Dialog open={modal !== null} onOpenChange={open => { if (!open && !busy) { setModal(null); setPairing(''); setFeedback('') } }}><DialogContent className="max-h-[85dvh] overflow-y-auto">

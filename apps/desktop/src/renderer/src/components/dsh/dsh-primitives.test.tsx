@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Menu, Modal, SegmentedTabs, Switch, Tooltip, type MenuEntry } from './index.ts'
 
@@ -85,10 +85,11 @@ function MenuHarness({ onSelect }: { onSelect: (id: string) => void }) {
 }
 
 describe('Menu (DSH)', () => {
-  it('navega com setas pulando itens desativados, Home/End, e seleciona com Enter', () => {
+  it('navega com setas pulando itens desativados, Home/End, e seleciona com Enter', async () => {
     const onSelect = vi.fn()
     render(<MenuHarness onSelect={onSelect} />)
     const menu = screen.getByRole('menu')
+    expect(menu).toHaveAttribute('data-dsh-menu-surface', 'true')
     const items = screen.getAllByRole('menuitem')
     expect(items.map(item => item.textContent)).toEqual(['Renomear', 'Fixar', 'Duplicar', 'Excluir'])
     expect(document.activeElement).toBe(items[0])
@@ -103,12 +104,38 @@ describe('Menu (DSH)', () => {
     fireEvent.click(items[2] as HTMLElement)
     expect(onSelect).toHaveBeenCalledWith('c')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'menu' })))
   })
 
   it('fecha com Esc', () => {
     render(<MenuHarness onSelect={vi.fn()} />)
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('reposiciona o menu dentro de uma viewport estreita', () => {
+    const width = Object.getOwnPropertyDescriptor(window, 'innerWidth')
+    const height = Object.getOwnPropertyDescriptor(window, 'innerHeight')
+    const offsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')
+    const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 320 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 240 })
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { return this.getAttribute('role') === 'menu' ? 200 : 0 } })
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return this.getAttribute('role') === 'menu' ? 160 : 0 } })
+    try {
+      render(<Menu open portal align="end" autoFocus items={ITEMS} onClose={vi.fn()} getAnchorRect={() => new DOMRect(290, 200, 40, 20)} anchor={<button type="button">menu</button>} />)
+      const menu = screen.getByRole('menu')
+      expect(Number.parseFloat(menu.style.left)).toBeLessThanOrEqual(108)
+      expect(Number.parseFloat(menu.style.top)).toBeLessThanOrEqual(68)
+      expect(menu).toHaveAttribute('data-dsh-menu-surface', 'true')
+    } finally {
+      if (width) Object.defineProperty(window, 'innerWidth', width)
+      if (height) Object.defineProperty(window, 'innerHeight', height)
+      if (offsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidth)
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth
+      if (offsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offsetHeight)
+      else delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight
+    }
   })
 })
 

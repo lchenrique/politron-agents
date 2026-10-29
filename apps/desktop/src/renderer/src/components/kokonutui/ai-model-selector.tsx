@@ -7,8 +7,10 @@
 import { ArrowLeft, Check, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command'
 import { Button } from '@/components/ui/button'
+import { MenuSurface, useAnchoredPosition, useDismissOnOutsidePointer } from '@/components/dsh'
 import { cn } from '@/lib/utils'
 import { EFFORT_LABELS, INHERIT_MODEL_NAME } from '@/features/app/appShellShared'
 import { VirtualModelList } from '@/features/composer/VirtualModelList'
@@ -203,9 +205,11 @@ export default function AIModelSelector({ models, providers, value, onChange, di
   const [activeItem, setActiveItem] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const panelId = useId()
   const effortLabelId = useId()
+  const panelPosition = useAnchoredPosition({ open, anchorRef: triggerRef, panelRef, side: 'top', align: 'start', gap: 8, margin: 12 })
 
   const providerList = useMemo(() => {
     const entries = new Map((providers || []).map(provider => [provider.id, provider]))
@@ -258,32 +262,29 @@ export default function AIModelSelector({ models, providers, value, onChange, di
     triggerRef.current?.focus()
   }
 
+  useDismissOnOutsidePointer(rootRef, open, next => { if (!next) close() }, panelRef)
   useEffect(() => {
     if (disabled) close()
   }, [disabled])
   useEffect(() => {
     if (!open) return
-    const onPointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) close()
-    }
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (providerId) { event.preventDefault(); navigate(null) }
       else { close(); triggerRef.current?.focus() }
     }
-    document.addEventListener('pointerdown', onPointer)
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
     return () => {
-      document.removeEventListener('pointerdown', onPointer)
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
     }
   }, [open, providerId])
 
   return <MotionConfig reducedMotion="user">
     <div ref={rootRef} className={cn('relative min-w-0 max-w-full', className)}>
       <button ref={triggerRef} type="button" disabled={disabled}
-        aria-label="Selecionar modelo" aria-expanded={open} aria-controls={panelId}
+        aria-label="Selecionar modelo" aria-expanded={open} aria-controls={panelId} aria-haspopup="dialog"
         title={selected ? selected.name + (selected.provider ? ' · ' + selected.provider : '') : INHERIT_MODEL_NAME}
+        onKeyDown={event => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setOpen(true); requestAnimationFrame(() => searchRef.current?.focus()) } }}
         onClick={() => { if (open) close(); else { setOpen(true); requestAnimationFrame(() => searchRef.current?.focus()) } }}
         className={cn('flex h-8 max-w-[min(16rem,100%)] items-center gap-1.5 rounded-lg border border-transparent px-2 text-xs text-foreground',
           'outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
@@ -295,12 +296,11 @@ export default function AIModelSelector({ models, providers, value, onChange, di
         </span>}
         <ChevronDown aria-hidden className={cn('size-3 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
-      {open && <motion.div id={panelId} role="dialog" aria-label="Modelos disponíveis"
-          initial={{ opacity: 0, scale: 0.97, y: 4 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.97, y: 4 }}
-          transition={{ duration: 0.16, ease: EASE_OUT }}
-          className="absolute bottom-full left-0 z-50 mb-2 w-[430px] max-w-[calc(100vw-2rem)] origin-bottom-left overflow-hidden rounded-xl border border-border/80 bg-popover text-popover-foreground shadow-2xl">
+      {open && createPortal(<MenuSurface ref={panelRef} id={panelId} role="dialog" aria-label="Modelos disponíveis"
+          className="fixed z-[1100] w-[430px] max-w-[calc(100vw-2rem)] overflow-y-auto border border-[var(--dsw-alias-border-l1)] shadow-[var(--dsw-elevation-prominent)]"
+          style={panelPosition ? { ...panelPosition, maxHeight: 'calc(100dvh - max(24px, var(--dsh-frame-overlay-top, 24px)) - 24px)' } : { left: -9999, top: -9999, visibility: 'hidden' }}>
+        <motion.div initial={{ opacity: 0, scale: 0.97, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: 4 }}
+          transition={{ duration: 0.16, ease: EASE_OUT }} className="origin-bottom-left overflow-hidden text-popover-foreground">
           {!currentProvider && <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
             <SlidersHorizontal aria-hidden className="size-3.5 text-muted-foreground" />
             <span className="text-xs font-semibold">Modelo de IA</span>
@@ -356,7 +356,8 @@ export default function AIModelSelector({ models, providers, value, onChange, di
               </AnimatePresence>
             </div>
           </div>}
-        </motion.div>}
+        </motion.div>
+      </MenuSurface>, document.body)}
     </div>
   </MotionConfig>
 }

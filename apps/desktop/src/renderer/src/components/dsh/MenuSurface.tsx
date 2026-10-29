@@ -32,7 +32,7 @@ export const MenuSurface = forwardRef<HTMLDivElement, MenuSurfaceProps>(function
     '--dsh-menu-anchor': `--dsh-menu-${id.split(':').join('')}`,
   }
   return <>
-    <div {...props} ref={ref} data-menu-material="translucent"
+    <div {...props} ref={ref} data-dsh-menu-surface="true" data-menu-material="translucent"
       className={clsx(css.surface, compact && css.compact, className)} style={{ ...style, ...anchorStyle }}>
       <div aria-hidden="true" className={css.material} />
       {children}

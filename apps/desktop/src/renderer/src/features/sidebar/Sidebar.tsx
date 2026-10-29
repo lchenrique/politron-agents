@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, CalendarClock, ChevronRight, CirclePlus, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
+import { Archive, ArrowLeft, CalendarClock, Check, ChevronRight, CirclePlus, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Modal } from '@/components/dsh'
+import { Menu, Modal, type MenuEntry, type MenuItem } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
 import { ProjectGroupSection } from './ProjectGroupSection'
 import { useSidebarIndex } from './sidebarIndex'
 import { WorkspaceSearch } from './WorkspaceSearch'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { Agent, Conversation, Snapshot, Workspace } from '../../../../shared/v9'
 import { AgentPresence, Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
@@ -66,6 +65,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null)
   const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null)
   const [openWorkspaceMenuId, setOpenWorkspaceMenuId] = useState<string | null>(null)
+  const [createMenuOpen, setCreateMenuOpen] = useState(false)
   // Projetos com muitas sessoes mostram so as mais recentes; o resto fica sob demanda.
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(() => new Set())
   const [expandedDelegations, setExpandedDelegations] = useState<Set<string>>(() => new Set())
@@ -151,6 +151,18 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const removeConversation = (conversation: Conversation) => { setOpenConversationMenuId(null); setDeleteRequest({ kind: 'conversation', id: conversation.id, title: `Excluir a conversa “${conversation.name}”?`, description: 'Esta ação não pode ser desfeita.' }) }
   const removeAgent = (agent: Agent) => { setOpenAgentMenuId(null); setDeleteRequest({ kind: 'agent', id: agent.id, title: `Excluir o agente ${agent.name}?`, description: 'As conversas continuam, mas perdem este participante.' }) }
 
+  const agentMenuEntries = (agent: Agent): MenuEntry[] => {
+    const chiefExists = snapshot.agents.some(item => item.role === 'chief')
+    const favoriteLabel = isFavorite('agent', agent.id) ? 'Remover dos favoritos' : 'Favoritar agente'
+    return [
+      { id: 'new-conversation', label: 'Nova conversa', icon: <MessageSquarePlus />, disabled: !canChat },
+      ...(!browserMode ? [{ id: 'edit-agent', label: 'Editar perfil', icon: <Pencil /> }] : []),
+      { id: 'favorite-agent', label: favoriteLabel, icon: <Star /> },
+      ...(!browserMode ? [{ id: 'chief-role', label: agent.role === 'chief' ? 'Remover papel de Chief' : chiefExists ? 'Já existe um Chief' : 'Promover a Chief', icon: <Crown />, disabled: agent.role !== 'chief' && chiefExists }] : []),
+      ...(!browserMode ? [{ id: 'delete-agent', label: 'Excluir agente', icon: <Trash2 />, danger: true }] : []),
+    ]
+  }
+
   const agentRow = (agent: Agent, pinnedChief = false) => <div
     key={agent.id}
     className="dsh-row dsh-session group"
@@ -163,18 +175,18 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       <AgentPresence state={agentStates[agent.id] || 'idle'} />
       {isFavorite('agent', agent.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
     </Button>
-    <DropdownMenu open={openAgentMenuId === agent.id} onOpenChange={open => setOpenAgentMenuId(open ? agent.id : null)}>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações de ' + agent.name}><MoreHorizontal /></Button></DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem disabled={!canChat} onSelect={() => void onOpenAgent(agent, true)}><MessageSquarePlus className="mr-2 size-4" />Nova conversa</DropdownMenuItem>
-        {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'agent', initial: agent })}><Pencil className="mr-2 size-4" />Editar perfil</DropdownMenuItem>}
-        <DropdownMenuItem onSelect={() => toggleFavorite(favoriteKey('agent', agent.id))}><Star className="mr-2 size-4" />{isFavorite('agent', agent.id) ? 'Remover dos favoritos' : 'Favoritar agente'}</DropdownMenuItem>
-        {!browserMode && (agent.role === 'chief'
-          ? <DropdownMenuItem onSelect={() => void onSetChief(agent, false)}><Crown className="mr-2 size-4" />Remover papel de Chief</DropdownMenuItem>
-          : <DropdownMenuItem disabled={snapshot.agents.some(item => item.role === 'chief')} onSelect={() => void onSetChief(agent, true)}><Crown className="mr-2 size-4" />{snapshot.agents.some(item => item.role === 'chief') ? 'Já existe um Chief' : 'Promover a Chief'}</DropdownMenuItem>)}
-        {!browserMode && <DropdownMenuItem onSelect={() => removeAgent(agent)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 size-4" />Excluir agente</DropdownMenuItem>}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Menu open={openAgentMenuId === agent.id} onClose={() => setOpenAgentMenuId(null)} align="end" portal autoFocus
+      anchor={<Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações de ' + agent.name} aria-haspopup="menu" aria-expanded={openAgentMenuId === agent.id}
+        onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpenAgentMenuId(current => current === agent.id ? null : agent.id) } }}
+        onClick={() => setOpenAgentMenuId(current => current === agent.id ? null : agent.id)}><MoreHorizontal /></Button>}
+      items={agentMenuEntries(agent)} onSelect={id => {
+        setOpenAgentMenuId(null)
+        if (id === 'new-conversation') void onOpenAgent(agent, true)
+        else if (id === 'edit-agent') onOpenEditor({ kind: 'agent', initial: agent })
+        else if (id === 'favorite-agent') toggleFavorite(favoriteKey('agent', agent.id))
+        else if (id === 'chief-role') void onSetChief(agent, agent.role !== 'chief')
+        else if (id === 'delete-agent') removeAgent(agent)
+      }} />
   </div>
   const chiefAgent = useMemo(() => snapshot.agents.find(agent => agent.role === 'chief'), [snapshot.agents])
   const showChief = !!chiefAgent
@@ -198,6 +210,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     </div>
   }
   /** Como no DSH: o espaço inicial só mostra estado (aprovação > execução > não lida); à direita, o tempo dá lugar ao menu no hover. */
+  const conversationMenuEntries = (conversation: Conversation): MenuEntry[] => [
+    ...(!browserMode ? [{ id: 'edit-conversation', label: 'Renomear ou editar', icon: <Pencil /> }] : []),
+    { id: 'favorite-conversation', label: isFavorite('conversation', conversation.id) ? 'Remover dos favoritos' : 'Favoritar sessão', icon: <Star /> },
+    ...(!browserMode ? [{ id: 'delete-conversation', label: 'Excluir conversa', icon: <Trash2 />, danger: true }] : []),
+  ]
   const conversationRow = (conversation: Conversation, attention: boolean, unread: number, running: boolean) =>
     <div key={conversation.id} data-active={conversation.id === selected?.id} className="dsh-row dsh-session group" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
       <Button variant="ghost" size={null} onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="dsh-row-main">
@@ -206,36 +223,52 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         {isFavorite('conversation', conversation.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
         <span className="dsh-meta dsh-resting">{attention ? 'Aprovação' : relativeTime(conversation.updatedAt || conversation.createdAt, now)}</span>
       </Button>
-      <DropdownMenu open={openConversationMenuId === conversation.id} onOpenChange={open => setOpenConversationMenuId(open ? conversation.id : null)}>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações da conversa ' + conversation.name}><MoreHorizontal /></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'conversation', initial: conversation })}><Pencil className="mr-2 size-4" />Renomear ou editar</DropdownMenuItem>}
-          <DropdownMenuItem onSelect={() => toggleFavorite(favoriteKey('conversation', conversation.id))}><Star className="mr-2 size-4" />{isFavorite('conversation', conversation.id) ? 'Remover dos favoritos' : 'Favoritar sessão'}</DropdownMenuItem>
-          {!browserMode && <DropdownMenuItem onSelect={() => removeConversation(conversation)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 size-4" />Excluir conversa</DropdownMenuItem>}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Menu open={openConversationMenuId === conversation.id} onClose={() => setOpenConversationMenuId(null)} align="end" portal autoFocus
+        anchor={<Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações da conversa ' + conversation.name} aria-haspopup="menu" aria-expanded={openConversationMenuId === conversation.id}
+          onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpenConversationMenuId(current => current === conversation.id ? null : conversation.id) } }}
+          onClick={() => setOpenConversationMenuId(current => current === conversation.id ? null : conversation.id)}><MoreHorizontal /></Button>}
+        items={conversationMenuEntries(conversation)} onSelect={id => {
+          setOpenConversationMenuId(null)
+          if (id === 'edit-conversation') onOpenEditor({ kind: 'conversation', initial: conversation })
+          else if (id === 'favorite-conversation') toggleFavorite(favoriteKey('conversation', conversation.id))
+          else if (id === 'delete-conversation') removeConversation(conversation)
+        }} />
     </div>
 
-  const workspaceMenu = (workspace: Workspace, triggerClassName: string) =>
-    <DropdownMenu open={openWorkspaceMenuId === workspace.id} onOpenChange={open => setOpenWorkspaceMenuId(open ? workspace.id : null)}><DropdownMenuTrigger asChild><Button variant="ghost" size={null} className={triggerClassName} aria-label={`Ações de ${workspace.name}`}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-      <DropdownMenuItem disabled={!canChat} onSelect={() => void onStartConversation(workspace.id)}><Plus className="mr-2 size-4" />Nova conversa</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => toggleFavorite(favoriteKey('workspace', workspace.id))}><Star className="mr-2 size-4" />{isFavorite('workspace', workspace.id) ? 'Remover dos favoritos' : 'Favoritar projeto'}</DropdownMenuItem>
-      {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'workspace', initial: workspace })}><Settings2 className="mr-2 size-4" />Editar projeto</DropdownMenuItem>}
-      {!browserMode && workspace.kind !== 'worktree' && workspace.kind !== 'free' && <DropdownMenuItem onSelect={() => { const branch = window.prompt('Nome da branch do novo worktree:'); if (!branch?.trim()) return; void window.appAPI.createWorktree({ sourceWorkspaceId: workspace.id, branch: branch.trim() }).catch(error => onNotice(errorText(error))) }}><GitBranch className="mr-2 size-4" />Novo worktree</DropdownMenuItem>}
-      {!browserMode && workspace.kind === 'worktree' && <DropdownMenuItem onSelect={() => void archiveWorkspace(workspace)}><Archive className="mr-2 size-4" />Arquivar worktree</DropdownMenuItem>}
-      {!browserMode && <DropdownMenuSub>
-        <DropdownMenuSubTrigger><FolderPlus className="mr-2 size-4" />Mover para pasta</DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          <DropdownMenuRadioGroup value={workspaceGroup[workspace.id] || 'none'} onValueChange={value => moveWorkspaceToGroup(workspace.id, value === 'none' ? null : value)}>
-            <DropdownMenuRadioItem value="none">Sem pasta</DropdownMenuRadioItem>
-            {groups.map(group => <DropdownMenuRadioItem key={group} value={group}>{group}</DropdownMenuRadioItem>)}
-          </DropdownMenuRadioGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => openGroupDialog('create', { workspaceId: workspace.id })}>Nova pasta…</DropdownMenuItem>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>}
-      {!browserMode && <DropdownMenuItem onSelect={() => removeWorkspace(workspace)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 size-4" />Excluir projeto</DropdownMenuItem>}
-    </DropdownMenuContent></DropdownMenu>
+  const workspaceMenu = (workspace: Workspace, triggerClassName: string) => {
+    const selectedGroup = workspaceGroup[workspace.id] || null
+    const groupItems: MenuItem[] = [
+      { id: 'move:__none', label: 'Sem pasta', icon: selectedGroup === null ? <Check /> : <span className="size-4" /> },
+      ...groups.map(group => ({ id: `move:${group}`, label: group, icon: selectedGroup === group ? <Check /> : <span className="size-4" /> })),
+      { id: 'create-group', label: 'Nova pasta…', icon: <FolderPlus /> },
+    ]
+    const items: MenuEntry[] = [
+      { id: 'new-conversation', label: 'Nova conversa', icon: <Plus />, disabled: !canChat },
+      { id: 'favorite-workspace', label: isFavorite('workspace', workspace.id) ? 'Remover dos favoritos' : 'Favoritar projeto', icon: <Star /> },
+      ...(!browserMode ? [{ id: 'edit-workspace', label: 'Editar projeto', icon: <Settings2 /> }] : []),
+      ...(!browserMode && workspace.kind !== 'worktree' && workspace.kind !== 'free' ? [{ id: 'new-worktree', label: 'Novo worktree', icon: <GitBranch /> }] : []),
+      ...(!browserMode && workspace.kind === 'worktree' ? [{ id: 'archive-worktree', label: 'Arquivar worktree', icon: <Archive /> }] : []),
+      ...(!browserMode ? [{ id: 'move-workspace', label: 'Mover para pasta', icon: <FolderPlus />, submenu: groupItems }] : []),
+      ...(!browserMode ? [{ id: 'delete-workspace', label: 'Excluir projeto', icon: <Trash2 />, danger: true }] : []),
+    ]
+    return <Menu open={openWorkspaceMenuId === workspace.id} onClose={() => setOpenWorkspaceMenuId(null)} align="end" portal autoFocus
+      anchor={<Button variant="ghost" size={null} className={triggerClassName} aria-label={`Ações de ${workspace.name}`} aria-haspopup="menu" aria-expanded={openWorkspaceMenuId === workspace.id}
+        onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpenWorkspaceMenuId(current => current === workspace.id ? null : workspace.id) } }}
+        onClick={() => setOpenWorkspaceMenuId(current => current === workspace.id ? null : workspace.id)}><MoreHorizontal /></Button>}
+      items={items} onSelect={id => {
+        setOpenWorkspaceMenuId(null)
+        if (id === 'new-conversation') void onStartConversation(workspace.id)
+        else if (id === 'favorite-workspace') toggleFavorite(favoriteKey('workspace', workspace.id))
+        else if (id === 'edit-workspace') onOpenEditor({ kind: 'workspace', initial: workspace })
+        else if (id === 'new-worktree') {
+          const branch = window.prompt('Nome da branch do novo worktree:')
+          if (branch?.trim()) void window.appAPI.createWorktree({ sourceWorkspaceId: workspace.id, branch: branch.trim() }).catch(error => onNotice(errorText(error)))
+        } else if (id === 'archive-worktree') void archiveWorkspace(workspace)
+        else if (id === 'delete-workspace') removeWorkspace(workspace)
+        else if (id === 'create-group') openGroupDialog('create', { workspaceId: workspace.id })
+        else if (id.startsWith('move:')) moveWorkspaceToGroup(workspace.id, id === 'move:__none' ? null : id.slice('move:'.length))
+      }} />
+  }
 
   const workspaceLabel = (workspace: Workspace) => workspace.kind === 'worktree' ? workspace.branch || workspace.name : workspace.name
 
@@ -392,14 +425,16 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </>}
       {!browserMode && <div className="dsh-new-row">
         <Button variant="outline" size={null} disabled={!canChat} onClick={() => void onStartConversation()} className="dsh-new-session"><CirclePlus />Nova sessão</Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="outline" size={null} className="dsh-new-session dsh-square" aria-label="Criar novo" title="Criar novo"><Plus /></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'workspace' })}><FolderPlus className="mr-2 size-4" />Novo projeto</DropdownMenuItem>}
-            {!browserMode && <DropdownMenuItem onSelect={() => openGroupDialog('create')}><Folder className="mr-2 size-4" />Nova pasta de projetos</DropdownMenuItem>}
-            {!browserMode && <DropdownMenuItem onSelect={() => onOpenEditor({ kind: 'agent' })}><Users className="mr-2 size-4" />Novo Boo</DropdownMenuItem>}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Menu open={createMenuOpen} onClose={() => setCreateMenuOpen(false)} align="end" portal autoFocus
+          anchor={<Button variant="outline" size={null} className="dsh-new-session dsh-square" aria-label="Criar novo" title="Criar novo" aria-haspopup="menu" aria-expanded={createMenuOpen}
+            onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setCreateMenuOpen(value => !value) } }} onClick={() => setCreateMenuOpen(value => !value)}><Plus /></Button>}
+          items={[{ id: 'new-workspace', label: 'Novo projeto', icon: <FolderPlus /> }, { id: 'new-group', label: 'Nova pasta de projetos', icon: <Folder /> }, { id: 'new-agent', label: 'Novo Boo', icon: <Users /> }]}
+          onSelect={id => {
+            setCreateMenuOpen(false)
+            if (id === 'new-workspace') onOpenEditor({ kind: 'workspace' })
+            else if (id === 'new-group') openGroupDialog('create')
+            else if (id === 'new-agent') onOpenEditor({ kind: 'agent' })
+          }} />
       </div>}
     </header>
     {onOpenHome && <nav aria-label="Trabalho" className="dsh-panel-list">

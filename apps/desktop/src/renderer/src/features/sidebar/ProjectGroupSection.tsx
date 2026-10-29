@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Folder, FolderOpen, MoreHorizontal, Pencil, Trash2, Triangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Menu } from '@/components/dsh'
 import type { Workspace } from '../../../../shared/v9'
 import { moveKey, SortableGroup, useSortableStyle } from './SortableRows'
 
@@ -17,6 +17,7 @@ export function ProjectGroupSection({ name, items, collapsed, editable, onToggle
   onMove?: (delta: number) => void
   renderWorkspace: (workspace: Workspace) => ReactNode
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   // "Outros" (projetos sem pasta) não se move, mas aceita projetos tirados de uma pasta.
   const { setNodeRef, listeners, style } = useSortableStyle(editable ? 'group:' + name : 'group:', { type: 'group', name: editable ? name : null }, editable ? undefined : { draggable: true, droppable: false })
   return <div ref={setNodeRef} style={style} className="dsh-rows mt-1">
@@ -26,13 +27,11 @@ export function ProjectGroupSection({ name, items, collapsed, editable, onToggle
         <span className="dsh-title">{name}</span>
         <span className="dsh-meta dsh-resting">{items.length}</span>
       </Button>
-      {editable && <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size={null} className="dsh-row-action" aria-label={`Ações da pasta ${name}`} title="Ações da pasta"><MoreHorizontal /></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onRename}><Pencil className="mr-2 size-4" />Renomear pasta</DropdownMenuItem>
-          <DropdownMenuItem onSelect={onRemove} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 size-4" />Excluir pasta</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>}
+      {editable && <Menu open={menuOpen} onClose={() => setMenuOpen(false)} align="end" portal autoFocus
+        anchor={<Button variant="ghost" size={null} className="dsh-row-action" aria-label={`Ações da pasta ${name}`} title="Ações da pasta"
+          aria-haspopup="menu" aria-expanded={menuOpen} onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setMenuOpen(value => !value) } }} onClick={() => setMenuOpen(value => !value)}><MoreHorizontal /></Button>}
+        items={[{ id: 'rename', label: 'Renomear pasta', icon: <Pencil /> }, { id: 'remove', label: 'Excluir pasta', icon: <Trash2 />, danger: true }]}
+        onSelect={id => { setMenuOpen(false); if (id === 'rename') onRename(); else if (id === 'remove') onRemove() }} />}
     </div>
     {!collapsed && !!items.length && <div className="dsh-indent dsh-rows"><SortableGroup ids={items.map(workspace => workspace.id)}>{items.map(workspace => renderWorkspace(workspace))}</SortableGroup></div>}
   </div>

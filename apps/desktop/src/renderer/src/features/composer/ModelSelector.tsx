@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ArrowLeft, Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel,
-  DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { Menu, MenuSurface, useAnchoredPosition, useDismissOnOutsidePointer } from '@/components/dsh'
 import { cn } from '@/lib/utils'
 import type { ModelEffort } from '../../../../shared/v9'
 import { EFFORT_LABELS, INHERIT_MODEL_NAME } from '../app/appShellShared'
@@ -32,6 +29,11 @@ export function ModelSelector({ models, providers, value, onValueChange, disable
   const [search, setSearch] = useState('')
   const [activeItem, setActiveItem] = useState('')
   const searchRef = useRef<HTMLInputElement | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelId = useId()
+  const position = useAnchoredPosition({ open, anchorRef: triggerRef, panelRef, side: 'top', align: 'start', gap: 4, margin: 12 })
   const selected = models.find(model => (model.id || model.name) === value || model.name === value)
   const providerList = useMemo(() => {
     const entries = new Map((providers || []).map(provider => [provider.id, provider]))
@@ -44,27 +46,41 @@ export function ModelSelector({ models, providers, value, onValueChange, disable
   const currentProvider = providerList.find(provider => provider.id === providerId)
   const currentModels = useMemo(() => providerId ? models.filter(model => providerKey(model) === providerId) : [], [models, providerId])
   const name = value === INHERIT_MODEL_NAME ? INHERIT_MODEL_NAME : selected?.name || 'Padrão do motor'
-  const onOpenChange = (next: boolean) => {
-    setOpen(next); setProviderId(null); setSearch(''); setActiveItem('')
+  const close = (restoreFocus = false) => {
+    setOpen(false); setProviderId(null); setSearch(''); setActiveItem('')
+    if (restoreFocus) requestAnimationFrame(() => triggerRef.current?.focus())
   }
+  const openSelector = () => { setProviderId(null); setSearch(''); setActiveItem(''); setOpen(true) }
   const navigate = (next: string | null) => {
     setActiveItem(next ? '' : `provider:${providerId}`)
     setProviderId(next); setSearch('')
     requestAnimationFrame(() => searchRef.current?.focus())
   }
-  const choose = (next: string) => { onValueChange(next); onOpenChange(false) }
+  const choose = (next: string) => { onValueChange(next); close(true) }
+  useDismissOnOutsidePointer(rootRef, open, next => { if (!next) close() }, panelRef)
+  useEffect(() => {
+    if (!open) return
+    const focusSearch = requestAnimationFrame(() => searchRef.current?.focus())
+    return () => cancelAnimationFrame(focusSearch)
+  }, [open])
   useEffect(() => { setOpen(false); setProviderId(null); setSearch(''); setActiveItem('') }, [value, disabled])
-  return <Popover open={open} onOpenChange={onOpenChange}>
-    <PopoverTrigger asChild>
-      <Button type="button" variant={variant} size="sm" aria-label={label} title={selected?.provider ? `${name} · ${selected.provider}` : name} disabled={disabled} className="max-w-72 gap-1.5">
+  return <div ref={rootRef} className="relative inline-flex">
+      <Button ref={triggerRef} type="button" variant={variant} size="sm" aria-label={label} title={selected?.provider ? `${name} · ${selected.provider}` : name} disabled={disabled}
+        aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panelId : undefined}
+        onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); open ? close() : openSelector() } }} onClick={() => open ? close() : openSelector()} className="max-w-72 gap-1.5">
         <span className="min-w-0 truncate">{name}</span>
         {selected?.provider && <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{selected.provider}</span>}
         <ChevronDown data-icon="inline-end" />
       </Button>
-    </PopoverTrigger>
-    <PopoverContent align="start" side="top" aria-label="Modelos disponíveis" className="w-80 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
-      onOpenAutoFocus={event => { event.preventDefault(); searchRef.current?.focus() }}
-      onEscapeKeyDown={event => { if (providerId) { event.preventDefault(); navigate(null) } }}>
+    {open && createPortal(<MenuSurface ref={panelRef} id={panelId} role="dialog" aria-label="Modelos disponíveis"
+      className="fixed z-[1100] w-80 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+      style={position || { left: -9999, top: -9999, visibility: 'hidden' }}
+      onKeyDownCapture={event => {
+        if (event.key !== 'Escape') return
+        event.preventDefault(); event.stopPropagation()
+        if (providerId) navigate(null)
+        else close(true)
+      }}>
       {currentProvider && <div className="flex items-center gap-2 border-b p-1">
         <Button type="button" variant="ghost" size="icon" aria-label="Voltar aos provedores" onClick={() => navigate(null)}><ArrowLeft /></Button>
         <span className="flex-1 text-sm font-medium">{currentProvider.name}</span>
@@ -94,8 +110,8 @@ export function ModelSelector({ models, providers, value, onValueChange, disable
         value={value} search={search} onSearchChange={setSearch}
         searchRef={searchRef} onChoose={choose} />}
 
-    </PopoverContent>
-  </Popover>
+    </MenuSurface>, document.body)}
+  </div>
 }
 
 export function EffortSelector({ efforts, value, onValueChange, disabled = false }: {
@@ -104,20 +120,13 @@ export function EffortSelector({ efforts, value, onValueChange, disabled = false
   onValueChange: (value: ModelEffort) => void
   disabled?: boolean
 }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => { if (disabled) setOpen(false) }, [disabled])
   if (!efforts.length) return null
-  return <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <Button type="button" variant="ghost" size="sm" aria-label="Nível de esforço" disabled={disabled}>
+  return <Menu open={open} onClose={() => setOpen(false)} anchor={<Button type="button" variant="ghost" size="sm" aria-label="Nível de esforço" disabled={disabled}
+    aria-haspopup="menu" aria-expanded={open} onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpen(value => !value) } }} onClick={() => setOpen(value => !value)}>
         {EFFORT_LABELS[value]}<ChevronDown data-icon="inline-end" />
-      </Button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" side="top">
-      <DropdownMenuRadioGroup value={value} onValueChange={next => { if (efforts.includes(next as ModelEffort)) onValueChange(next as ModelEffort) }}>
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Esforço</DropdownMenuLabel>
-          {efforts.map(effort => <DropdownMenuRadioItem key={effort} value={effort}>{EFFORT_LABELS[effort]}</DropdownMenuRadioItem>)}
-        </DropdownMenuGroup>
-      </DropdownMenuRadioGroup>
-    </DropdownMenuContent>
-  </DropdownMenu>
+      </Button>} items={efforts.map(effort => ({ id: effort, label: EFFORT_LABELS[effort] }))}
+    selectedId={value} onSelect={effort => { if (efforts.includes(effort as ModelEffort)) onValueChange(effort as ModelEffort); setOpen(false) }}
+    align="start" side="top" portal autoFocus />
 }

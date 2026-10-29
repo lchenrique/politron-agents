@@ -53,11 +53,20 @@ describe('cabeçalho da conversa', () => {
     const onOpenSearchHit = vi.fn()
     render(<ConversationTools compact selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} onSearchHistory={onSearchHistory} onOpenSearchHit={onOpenSearchHit} />)
     fireEvent.click(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' }))
+    expect(screen.getByRole('dialog', { name: 'Busca no histórico' })).toHaveAttribute('data-dsh-menu-surface', 'true')
     fireEvent.change(screen.getByRole('textbox', { name: 'Buscar no histórico desta conversa' }), { target: { value: 'trecho' } })
     fireEvent.click(screen.getByRole('button', { name: 'Buscar' }))
     fireEvent.click(await screen.findByText('trecho encontrado'))
     expect(onSearchHistory).toHaveBeenCalledWith('trecho')
     expect(onOpenSearchHit).toHaveBeenCalledWith(hit)
+  })
+
+  it('abre as ações da conversa em uma superfície de menu DSH', () => {
+    render(<ChatHeader selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ações da conversa' }))
+    const menu = screen.getByRole('menu')
+    expect(menu).toHaveAttribute('data-dsh-menu-surface', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Arquivos' })).toBeInTheDocument()
   })
 
   it('o avatar compacto da aba mantém os detalhes do Boo', () => {

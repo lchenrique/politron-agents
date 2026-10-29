@@ -13,6 +13,7 @@ async function menu() { fireEvent.keyDown(await screen.findByRole('button', { na
 it('encaminha a configuração para as Configurações do app sem ativar listener', async () => {
   const opened = vi.fn(); window.addEventListener('boobot:open-settings', opened)
   const api = setup(); await menu()
+  expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Configurar este host' }))
   expect(opened).toHaveBeenCalledWith(expect.objectContaining({ detail: 'conexoes' }))
   window.removeEventListener('boobot:open-settings', opened)

@@ -32,6 +32,19 @@ describe('hierarquia visual do sidebar', () => {
     renderSidebar({ onOpenHome: vi.fn() })
     expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
   })
+
+  it('abre ações do projeto e o submenu de pastas em superfícies DSH', () => {
+    renderSidebar()
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Instruções de Paz/ }))
+    const menu = screen.getByRole('menu')
+    expect(menu).toHaveAttribute('data-dsh-menu-surface', 'true')
+    const move = screen.getByRole('menuitem', { name: 'Mover para pasta' })
+    fireEvent.focus(move)
+    const menus = screen.getAllByRole('menu')
+    expect(menus).toHaveLength(2)
+    expect(menus[1]).toHaveAttribute('data-dsh-menu-surface', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Sem pasta' })).toBeInTheDocument()
+  })
 })
 
 /** Entra no projeto clicando na sua linha da lista. */
@@ -59,6 +72,7 @@ describe('contatos de agentes na barra lateral', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nova sessão' }))
     expect(onStartConversation).toHaveBeenCalledOnce()
     fireEvent.keyDown(screen.getByRole('button', { name: 'Criar novo' }), { key: 'Enter' })
+    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
     expect(screen.getByRole('menuitem', { name: 'Novo projeto' })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Novo Boo' })).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
@@ -127,6 +141,7 @@ describe('contatos de agentes na barra lateral', () => {
     expect(section.querySelector('svg[aria-label="Chief"]')).not.toBeNull()
     expect(screen.getAllByText('Lyra')).toHaveLength(1)
     fireEvent.contextMenu(section.querySelector('button')!)
+    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
     expect(screen.getByRole('menuitem', { name: /Remover papel de Chief/ })).toBeInTheDocument()
   })
 
@@ -335,6 +350,16 @@ describe('reordenação do sidebar', () => {
   }
   afterEach(() => { delete (window as { appAPI?: unknown }).appAPI })
   const rowNames = (pattern: RegExp) => screen.getAllByRole('button').map(item => (item.closest('.dsh-session') ? item.querySelector('.dsh-title')?.textContent : item.textContent) ?? '').filter(text => pattern.test(text))
+
+  it('usa menu DSH nas ações da pasta e abre o modal de renomear', async () => {
+    installAppAPI({ projectOrder: [], groups: [{ name: 'Clientes', workspaceIds: [alfa.id] }], sessionOrder: {}, agentOrder: [] })
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [alfa, beta] } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Ações da pasta Clientes' }))
+    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Renomear pasta' }))
+    const dialog = screen.getByRole('dialog', { name: 'Renomear pasta' })
+    expect(dialog).toHaveAttribute('data-dsh-modal', 'true')
+  })
 
   it('migra uma vez as pastas antigas do localStorage para o banco', async () => {
     localStorage.setItem('politron.sidebar.groups', JSON.stringify(['Clientes']))

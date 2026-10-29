@@ -177,6 +177,7 @@ describe('modelos por provedor no composer', () => {
     fireEvent.click(selector)
     expect(selector).toHaveAttribute('aria-expanded', 'true')
     const popup = await screen.findByRole('dialog', { name: 'Modelos disponíveis' })
+    expect(popup).toHaveAttribute('data-dsh-menu-surface', 'true')
     expect(await screen.findByRole('option', { name: /^OpenCode\s+1 modelos$/ })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /^Pi\s+1 modelos$/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('option', { name: /^OpenCode\s+1 modelos$/ }))
