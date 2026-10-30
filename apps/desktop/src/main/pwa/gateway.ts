@@ -384,6 +384,7 @@ export class PwaGateway {
             effort: a.effort, revision: a.revision, createdAt: a.createdAt,
             pitsShape: a.pitsShape, pitsHeadAccessory: a.pitsHeadAccessory, pitsFaceAccessory: a.pitsFaceAccessory,
             pitsAccessoryColors: a.pitsAccessoryColors, pitsEyeColor: a.pitsEyeColor, pitsCheekColor: a.pitsCheekColor,
+            pitsAccentColor: a.pitsAccentColor, pitsHeadset: a.pitsHeadset,
             pitsBodyWidth: a.pitsBodyWidth, pitsBodyHeight: a.pitsBodyHeight, pitsEyeSize: a.pitsEyeSize,
             pitsEyeSpacing: a.pitsEyeSpacing, pitsMouthSize: a.pitsMouthSize, pitsBlush: a.pitsBlush,
             pitsAura: a.pitsAura, pitsAnimate: a.pitsAnimate, pitsSpeed: a.pitsSpeed, pitsAmplitude: a.pitsAmplitude,

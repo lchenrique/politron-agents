@@ -42,8 +42,9 @@ describe('Coleção original de acessórios do Boo Pet', () => {
     const { container } = render(<PoliAvatar agent={{ ...agent, pitsShape: 'little-cat', pitsHeadAccessory: 'bow', pitsFaceAccessory: 'heart-glasses', pitsBodyWidth: 1.2 }} size={128} />)
     expect(container.querySelector('g[aria-label="Laço"]')).toBeInTheDocument()
     expect(container.querySelector('g[aria-label="Óculos de coração"]')).toBeInTheDocument()
-    const body = container.querySelector('.poli-avatar__body-transform')!
-    expect(body.contains(container.querySelector('g[aria-label="Laço"]'))).toBe(false)
+    // Acessórios acompanham a pose (inclusive deitado), mas ficam fora do caminho do corpo.
+    expect(container.querySelector('.boo__pose')?.contains(container.querySelector('g[aria-label="Laço"]'))).toBe(true)
+    expect(container.querySelector('.boo__face')?.contains(container.querySelector('g[aria-label="Óculos de coração"]'))).toBe(true)
   })
   it('permite selecionar e persistir os identificadores novos através da UI', () => {
     const onChange = vi.fn()

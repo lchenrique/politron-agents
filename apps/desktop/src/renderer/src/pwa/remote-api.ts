@@ -37,7 +37,7 @@ function safeAgent(input: unknown): Agent {
     temporaryWorkspaceId: text(value.temporaryWorkspaceId), temporaryTask: '',
     pitsShape: value.pitsShape as Agent['pitsShape'], pitsHeadAccessory: value.pitsHeadAccessory as Agent['pitsHeadAccessory'],
     pitsFaceAccessory: value.pitsFaceAccessory as Agent['pitsFaceAccessory'], pitsAccessoryColors: value.pitsAccessoryColors as Agent['pitsAccessoryColors'],
-    pitsEyeColor: text(value.pitsEyeColor), pitsCheekColor: text(value.pitsCheekColor), pitsAura: bool(value.pitsAura), pitsBlush: bool(value.pitsBlush),
+    pitsEyeColor: text(value.pitsEyeColor), pitsCheekColor: text(value.pitsCheekColor), pitsAccentColor: text(value.pitsAccentColor) || undefined, pitsHeadset: bool(value.pitsHeadset, true), pitsAura: bool(value.pitsAura), pitsBlush: bool(value.pitsBlush),
     pitsAnimate: bool(value.pitsAnimate), pitsSpeed: optionalNumber(value.pitsSpeed), pitsAmplitude: optionalNumber(value.pitsAmplitude),
     pitsBodyWidth: optionalNumber(value.pitsBodyWidth), pitsBodyHeight: optionalNumber(value.pitsBodyHeight), pitsEyeSize: optionalNumber(value.pitsEyeSize),
     pitsEyeSpacing: optionalNumber(value.pitsEyeSpacing), pitsMouthSize: optionalNumber(value.pitsMouthSize),

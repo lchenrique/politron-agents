@@ -19,7 +19,7 @@ const box = (element: HTMLElement, left: number, top: number, size: number) =>
 
 const avatarOf = () => screen.getByRole('img').parentElement!
 
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Poli / avatar de agente', () => {
   it('usa o rosto original SVG e altera expressão de acordo com trabalho e espera', () => {
@@ -28,60 +28,57 @@ describe('Poli / avatar de agente', () => {
     rerender(<PoliAvatar agent={agent} size={48} state="waiting" />)
     expect(screen.getByRole('img', { name: 'Poli — thinking' })).toBeInTheDocument()
   })
-  it('permite esculpir proporções, escolher silhuetas e acessórios no SVG', () => {
-    const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsShape: 'drop', pitsAccessory: 'glasses', pitsBodyWidth: 1.2, pitsBodyHeight: .85 }} size={80} />)
+  it('desenha o Boo com headset por padrão e mantém acessórios encaixados na cabeça nova', () => {
+    const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsShape: 'drop', pitsAccessory: 'glasses' }} size={80} />)
     expect(container.querySelector('[data-shape="drop"]')).toBeInTheDocument()
-    const scaled = container.querySelector('.poli-avatar__body-transform')
-    expect(scaled).toHaveAttribute('transform', 'translate(120 100) scale(1.2 0.85) translate(-120 -100)')
-    expect(scaled?.querySelector('.poli-avatar__shape')).toBeInTheDocument()
-    // Estilo chapado: sem aura, brilho nem gradiente no corpo.
-    expect(scaled?.querySelector('.poli-avatar__aura')).toBeNull()
-    expect(container.querySelector('.poli-avatar svg > defs radialGradient')).toBeNull()
-    expect(container.querySelector('.poli-avatar__mouth-scale')).toBeInTheDocument()
+    expect(screen.getByLabelText('Headset do Boo')).toBeInTheDocument()
     expect(screen.getByLabelText('Óculos do Boo')).toBeInTheDocument()
-    rerender(<PoliAvatar agent={{ ...agent, pitsShape: 'bean', pitsAccessory: 'horns' }} size={80} />)
-    expect(container.querySelector('[data-shape="bean"]')).toBeInTheDocument()
+    // Braços são caminhos separados (atrás e por cima do corpo) para posar em cada estado.
+    expect(container.querySelectorAll('.boo__arm--l path')).toHaveLength(2)
+    expect(container.querySelectorAll('.boo__arm--r path')).toHaveLength(2)
+    // Sem filtro de turbulência do visual antigo.
+    expect(container.querySelector('feTurbulence')).toBeNull()
+    rerender(<PoliAvatar agent={{ ...agent, pitsAccessory: 'horns', pitsHeadset: false }} size={80} />)
     expect(screen.getByLabelText('Chifres do Boo')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Headset do Boo')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Óculos do Boo')).not.toBeInTheDocument()
   })
-  it('apresenta opções de silhueta, proporção e acessórios no Boo Studio', () => {
+  it('expõe no Boo Studio as cores do corpo, olhos, bochechas, destaque e o headset', () => {
     const onChange = vi.fn()
     render(<PoliCustomizer agent={agent} onChange={onChange} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Gota' }))
-    expect(onChange).toHaveBeenCalledWith({ pitsShape: 'drop' })
-    fireEvent.click(screen.getByRole('button', { name: 'Óculos' }))
-    expect(onChange).toHaveBeenCalledWith({ pitsFaceAccessory: 'glasses', pitsAccessory: 'none' })
-    expect(screen.getByText('Largura do corpo')).toBeInTheDocument()
-    expect(screen.getByText('Altura do corpo')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher cor #ffffff' }))
+    expect(onChange).toHaveBeenCalledWith({ color: '#ffffff' })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Usar headset' }))
+    expect(onChange).toHaveBeenCalledWith({ pitsHeadset: false })
+    for (const name of ['Cor do Boo', 'Cor dos olhos', 'Cor das bochechas', 'Cor de destaque']) expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    // Olho branco era o padrão dos corpos coloridos antigos: aparece como o escuro novo.
+    expect(screen.getByRole('button', { name: 'Cor dos olhos' })).toHaveTextContent('#0d0d12')
+    expect(screen.queryByRole('group', { name: 'Formatos pré-definidos' })).toBeNull()
+    expect(screen.queryByText('Largura do corpo')).toBeNull()
   })
-  it('redimensiona o corpo chapado sem deslocar o pivô central', () => {
-    const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsShape: 'ghost-wave', pitsBodyWidth: 1.25, pitsBodyHeight: .75, pitsMouthSize: 1.6, pitsBlushStrength: .8 }} size={120} />)
-    const body = container.querySelector('.poli-avatar__body-transform')
-    expect(body).toHaveAttribute('transform', 'translate(120 100) scale(1.25 0.75) translate(-120 -100)')
-    expect(body?.querySelector('.poli-avatar__shape path')).toHaveAttribute('fill', agent.color || '#786bea')
-    expect(body?.querySelector('.poli-avatar__shape')).toBeInTheDocument()
-    // A boca segue o tamanho escolhido, já levada ao ponto e à inclinação da boca do logo.
-    expect(body?.querySelector('.poli-avatar__mouth-scale')?.getAttribute('transform')).toContain('scale(1.28)')
-    expect(container.querySelectorAll('ellipse[fill="#f5a5d1"]').length).toBe(2)
-    rerender(<PoliAvatar agent={{ ...agent, pitsShape: 'ghost-puff', pitsBodyWidth: .75, pitsBodyHeight: 1.25, pitsAura: false }} size={120} />)
-    expect(container.querySelector('.poli-avatar__body-transform')).toHaveAttribute('transform', 'translate(120 100) scale(0.75 1.25) translate(-120 -100)')
-    expect(container.querySelector('.poli-avatar__aura')).toBeNull()
-    expect(container.querySelector('.poli-avatar__glow')).toBeNull()
+  it('aplica as cores do agente pelas variáveis CSS do Boo', () => {
+    const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsEyeColor: '#ffffff' }} size={120} />)
+    const svg = () => container.querySelector('svg.boo') as SVGElement
+    expect(svg().style.getPropertyValue('--boo-body')).toBe('#786bea')
+    expect(svg().style.getPropertyValue('--boo-eye')).toBe('#0d0d12')
+    expect(svg().style.getPropertyValue('--boo-blush')).toBe('#f7a1b5')
+    expect(svg().style.getPropertyValue('--boo-accent')).toBe('#3aa7ff')
+    rerender(<PoliAvatar agent={{ ...agent, color: '', pitsEyeColor: '#223344', pitsCheekColor: '#ff0000', pitsAccentColor: '#ff8800' }} size={120} />)
+    expect(svg().style.getPropertyValue('--boo-body')).toBe('#ffffff')
+    expect(svg().style.getPropertyValue('--boo-eye')).toBe('#223344')
+    expect(svg().style.getPropertyValue('--boo-blush')).toBe('#ff0000')
+    expect(svg().style.getPropertyValue('--boo-accent')).toBe('#ff8800')
+    expect(svg().style.getPropertyValue('--boo-accent-2')).toContain('#ff8800')
   })
-  it('oferece presets de fantasminha e restaura os valores visuais, sem mudar identidade', () => {
+  it('restaura os valores visuais do Boo novo, sem mudar identidade', () => {
     const onChange = vi.fn()
     const onReset = vi.fn()
     render(<PoliCustomizer agent={{ ...agent, pitsShape: 'ghost-wave', pitsBodyWidth: 1.25, pitsMouthSize: 1.5 }} onChange={onChange} onReset={onReset} />)
-    const presets = screen.getByRole('group', { name: 'Formatos pré-definidos' })
-    expect(presets.querySelectorAll('button')).toHaveLength(8)
-    fireEvent.click(screen.getByRole('button', { name: 'Fofinho' }))
-    expect(onChange).toHaveBeenCalledWith({ pitsShape: 'ghost-puff' })
-    expect(screen.getByText('Tamanho da boca')).toBeInTheDocument()
     expect(screen.getByText('Intensidade do rosado')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Restaurar aparência' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      pitsShape: 'ghost-wave', pitsBodyWidth: 1, pitsBodyHeight: 1, pitsMouthSize: 1,
-      pitsBlushStrength: .45, pitsAura: true, pitsAccessory: 'none',
+      color: '#ffffff', pitsEyeColor: '#0d0d12', pitsCheekColor: '#f7a1b5', pitsAccentColor: '#3aa7ff', pitsHeadset: true,
+      pitsShape: 'ghost-wave', pitsBodyWidth: 1, pitsBodyHeight: 1, pitsMouthSize: 1, pitsBlushStrength: .45, pitsAccessory: 'none',
     }))
     expect(onReset).toHaveBeenCalledOnce()
   })
@@ -89,30 +86,33 @@ describe('Poli / avatar de agente', () => {
     const { rerender } = render(<PoliAvatar agent={{ ...agent, pitsHeadAccessory: 'headphones', pitsFaceAccessory: 'glasses' }} size={100} />)
     expect(screen.getByLabelText('Fone de ouvido do Boo')).toBeInTheDocument()
     expect(screen.getByLabelText('Óculos do Boo')).toBeInTheDocument()
+    // O fone de ouvido substitui o headset embutido.
+    expect(screen.queryByLabelText('Headset do Boo')).not.toBeInTheDocument()
     rerender(<PoliAvatar agent={{ ...agent, pitsHeadAccessory: 'cap', pitsFaceAccessory: 'round-glasses' }} size={100} />)
     expect(screen.getByLabelText('Boné do Boo')).toBeInTheDocument()
     expect(screen.getByLabelText('Óculos redondos do Boo')).toBeInTheDocument()
+    expect(screen.getByLabelText('Headset do Boo')).toBeInTheDocument()
     expect(screen.queryByLabelText('Fone de ouvido do Boo')).not.toBeInTheDocument()
   })
-  it('oferece cabeças e rostos separados e presets animais', () => {
+  it('oferece cabeças e rostos separados', () => {
     const onChange = vi.fn()
     render(<PoliCustomizer agent={agent} onChange={onChange} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Lulinha' }))
-    expect(onChange).toHaveBeenCalledWith({ pitsShape: 'cute-squid' })
-    fireEvent.click(screen.getByRole('button', { name: 'Quadradinho' }))
-    expect(onChange).toHaveBeenCalledWith({ pitsShape: 'soft-square' })
     fireEvent.click(screen.getByRole('group', { name: 'Acessórios de cabeça' }).querySelector('button:nth-child(11)')!)
     expect(onChange).toHaveBeenCalledWith({ pitsHeadAccessory: 'headphones', pitsAccessory: 'none' })
     fireEvent.click(screen.getByRole('group', { name: 'Acessórios de rosto' }).querySelector('button:nth-child(2)')!)
     expect(onChange).toHaveBeenCalledWith({ pitsFaceAccessory: 'glasses', pitsAccessory: 'none' })
   })
   it('respeita opções visuais e animação desligada', () => {
-    const { container } = render(<PoliAvatar agent={{ ...agent, pitsAura: false, pitsBlush: false, pitsAnimate: false, pitsEyeSize: 10, pitsEyeSpacing: 34 }} />)
-    expect(container.querySelector('.poli-avatar__aura')).toBeNull()
-    expect(container.querySelector('[data-animate="false"]')).not.toBeNull()
-    expect(container.querySelectorAll('ellipse[fill="#f5a5d1"]')).toHaveLength(0)
-    // Rosto do logo: olhos e brilho vêm da arte do logo, não de elipses ajustáveis.
-    expect(container.querySelector('.poli-avatar__eyes path[fill="#080808"]')).not.toBeNull()
+    const { container } = render(<PoliAvatar agent={{ ...agent, pitsBlush: false, pitsAnimate: false }} />)
+    expect(container.querySelector('.poli-avatar[data-animate="false"]')).not.toBeNull()
+    expect(container.querySelector('svg.boo[data-animate="false"]')).not.toBeNull()
+    expect(container.querySelector('.boo__blush')).toBeNull()
+    expect(container.querySelectorAll('.boo__eye')).toHaveLength(2)
+  })
+  it('marca o avatar quando o sistema prefere menos movimento', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce'), media: query, onchange: null, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn() }))
+    render(<PoliAvatar agent={agent} size={56} />)
+    expect(avatarOf().dataset.reducedMotion).toBe('true')
   })
   it('expõe no Studio as opções com atualizações ao vivo', () => {
     const onChange = vi.fn()
@@ -212,7 +212,8 @@ describe('reações do Pits', () => {
     fireEvent.pointerDown(avatarOf())
     fireEvent.pointerDown(avatarOf())
     expect(screen.getByRole('img', { name: 'Poli — dizzy' })).toBeInTheDocument()
-    expect(avatarOf().querySelectorAll('.poli-avatar__spin')).toHaveLength(2)
+    expect(avatarOf().querySelectorAll('.boo__spiral')).toHaveLength(2)
+    expect(avatarOf().querySelector('[data-boo-prop="stars"]')).not.toBeNull()
   })
 
   it('fica apaixonado com carinho de um lado para o outro', () => {
@@ -220,7 +221,8 @@ describe('reações do Pits', () => {
     fireEvent.pointerEnter(avatarOf(), { clientX: 100 })
     for (const x of [120, 100, 120, 100, 120, 100]) fireEvent.pointerMove(avatarOf(), { clientX: x })
     expect(screen.getByRole('img', { name: 'Poli — love' })).toBeInTheDocument()
-    expect(avatarOf().querySelectorAll('.poli-avatar__heart')).toHaveLength(3)
+    expect(avatarOf().querySelectorAll('.boo__heart')).toHaveLength(4)
+    expect(avatarOf().querySelectorAll('.boo__heart-eye')).toHaveLength(2)
   })
 
   it('leva um susto quando o cursor chega rápido', () => {

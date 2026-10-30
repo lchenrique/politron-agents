@@ -82,6 +82,7 @@ const SELF_PROFILE_PROPERTIES: Record<string, unknown> = {
   pitsFaceAccessory: { type: 'string', enum: ['none', 'glasses', 'round-glasses', 'sunglasses', 'heart-glasses', 'star-glasses', 'monocle', 'mustache', 'star-mask'] },
   pitsAccessoryColors: { type: 'object', description: 'Paletas personalizadas por acessório: IDs dos itens mapeados para listas de até 3 cores #RRGGBB.' },
   pitsEyeColor: { type: 'string' }, pitsCheekColor: { type: 'string' },
+  pitsAccentColor: { type: 'string', description: 'Cor de destaque do headset no formato #RRGGBB.' }, pitsHeadset: { type: 'boolean' },
   pitsEyeSize: { type: 'number' }, pitsEyeSpacing: { type: 'number' },
   pitsBodyWidth: { type: 'number' }, pitsBodyHeight: { type: 'number' },
   pitsMouthSize: { type: 'number' }, pitsBlushStrength: { type: 'number' },

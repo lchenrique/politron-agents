@@ -69,7 +69,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
   const [pitsShape, setPitsShape] = useState((initial as Agent | undefined)?.pitsShape || 'ghost-wave')
   const [pits, setPits] = useState<Partial<Agent>>(() => {
     const agent = initial as Agent | undefined
-    return { pitsAccessory: agent?.pitsAccessory, pitsHeadAccessory: agent?.pitsHeadAccessory, pitsFaceAccessory: agent?.pitsFaceAccessory, pitsBodyWidth: agent?.pitsBodyWidth, pitsBodyHeight: agent?.pitsBodyHeight, pitsMouthSize: agent?.pitsMouthSize, pitsBlushStrength: agent?.pitsBlushStrength, pitsEyeColor: agent?.pitsEyeColor, pitsEyeSize: agent?.pitsEyeSize, pitsEyeSpacing: agent?.pitsEyeSpacing, pitsCheekColor: agent?.pitsCheekColor, pitsBlush: agent?.pitsBlush, pitsAura: agent?.pitsAura, pitsAnimate: agent?.pitsAnimate, pitsSpeed: agent?.pitsSpeed, pitsAmplitude: agent?.pitsAmplitude }
+    return { pitsAccessory: agent?.pitsAccessory, pitsHeadAccessory: agent?.pitsHeadAccessory, pitsFaceAccessory: agent?.pitsFaceAccessory, pitsBodyWidth: agent?.pitsBodyWidth, pitsBodyHeight: agent?.pitsBodyHeight, pitsMouthSize: agent?.pitsMouthSize, pitsBlushStrength: agent?.pitsBlushStrength, pitsEyeColor: agent?.pitsEyeColor, pitsEyeSize: agent?.pitsEyeSize, pitsEyeSpacing: agent?.pitsEyeSpacing, pitsCheekColor: agent?.pitsCheekColor, pitsAccentColor: agent?.pitsAccentColor, pitsHeadset: agent?.pitsHeadset, pitsBlush: agent?.pitsBlush, pitsAura: agent?.pitsAura, pitsAnimate: agent?.pitsAnimate, pitsSpeed: agent?.pitsSpeed, pitsAmplitude: agent?.pitsAmplitude }
   })
   const [avatar, setAvatar] = useState((initial as Agent | undefined)?.avatar || '')
   const [canWrite, setCanWrite] = useState((initial as Agent | undefined)?.canWrite ?? true)

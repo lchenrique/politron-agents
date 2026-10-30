@@ -4,6 +4,7 @@ export type RemoteBoo = {
   id: string; name: string; alias?: string; color: string
   pitsShape?: string; pitsHeadAccessory?: string; pitsFaceAccessory?: string
   pitsAccessoryColors?: Record<string, string[]>; pitsEyeColor?: string; pitsCheekColor?: string
+  pitsAccentColor?: string; pitsHeadset?: boolean
   pitsBodyWidth?: number; pitsBodyHeight?: number; pitsEyeSize?: number
   pitsEyeSpacing?: number; pitsMouthSize?: number; pitsBlush?: boolean
   pitsAura?: boolean; pitsAnimate?: boolean; pitsSpeed?: number; pitsAmplitude?: number

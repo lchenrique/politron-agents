@@ -31,6 +31,8 @@ export interface Agent {
   pitsEyeSize?: number; pitsEyeSpacing?: number; pitsSpeed?: number; pitsAmplitude?: number
   pitsBodyWidth?: number; pitsBodyHeight?: number
   pitsMouthSize?: number; pitsBlushStrength?: number
+  /** Cor de destaque do headset e dos brilhos do Boo (#RRGGBB); o headset fica ligado por padrão. */
+  pitsAccentColor?: string; pitsHeadset?: boolean
   canWrite: boolean; computerUse: boolean; approvalMode: 'ask' | 'automatic' | 'bypass'; runtimePermissionMode?: 'managed' | 'bypass'; revision: number; createdAt: string
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }

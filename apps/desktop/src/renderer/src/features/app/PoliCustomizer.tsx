@@ -3,14 +3,15 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Slider } from '@/components/ui/slider'
 import { PIT_COLOR_PALETTE, type Agent } from '../../../../shared/v9'
-import { PoliAvatar, type PoliExpression } from './PoliAvatar'
-import { BOO_BODY_PATHS, BOO_SHAPE_PRESETS, DEFAULT_BOO_APPEARANCE } from './boo-appearance'
+import { booColorsOf, PoliAvatar, type PoliExpression } from './PoliAvatar'
+import { BOO_DEFAULT_COLORS } from './BooFigure'
+import { DEFAULT_BOO_APPEARANCE } from './boo-appearance'
 import { BooAccessoryColorEditor } from './BooAccessoryColorEditor'
 import { ReactColorField } from '@/components/ui/ReactColorField'
 
 type Tab = 'appearance' | 'animation' | 'states'
-// Mesma paleta usada para sortear a cor de um Pit novo (ver randomPitColor em shared/v9.ts).
-const swatches = PIT_COLOR_PALETTE
+// Branco do Boo clássico + a paleta usada para sortear a cor de um Pit novo (ver randomPitColor em shared/v9.ts).
+const swatches = ['#ffffff', ...PIT_COLOR_PALETTE]
 const states: { value: PoliExpression; label: string }[] = [
   { value: 'idle', label: 'Disponível' },
   { value: 'thinking', label: 'Pensando' },
@@ -31,11 +32,12 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
   const [background, setBackground] = useState<'light' | 'dark' | 'grid'>('light')
   const selectedHead = agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')
   const selectedFace = agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')
+  const colors = booColorsOf(agent)
   return <div className="overflow-hidden rounded-lg border border-border/70" aria-label="Boo Studio — editor do mascote">
     <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
       <div><h3 className="text-sm font-semibold">Boo Studio</h3><p className="text-[11px] text-muted-foreground">Personalize o seu agente em tempo real</p></div>
       <div className="flex shrink-0 items-center gap-2">
-        <Button type="button" variant="ghost" size={null} onClick={() => { onChange({ ...DEFAULT_BOO_APPEARANCE }); onReset?.() }} title="Volta ao formato Boo (ondinha) e valores visuais originais. Clique em Salvar para confirmar." className="h-auto rounded-full border border-border px-2 py-1 text-[11px] font-normal text-inherit hover:bg-accent hover:text-inherit">Restaurar aparência</Button>
+        <Button type="button" variant="ghost" size={null} onClick={() => { onChange({ ...DEFAULT_BOO_APPEARANCE }); onReset?.() }} title="Volta ao Boo branco com headset e aos valores visuais originais. Clique em Salvar para confirmar." className="h-auto rounded-full border border-border px-2 py-1 text-[11px] font-normal text-inherit hover:bg-accent hover:text-inherit">Restaurar aparência</Button>
         <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] text-primary">SVG animado</span>
       </div>
     </div>
@@ -56,30 +58,18 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
           {tab === 'appearance' && <>
             <p className="text-xs font-medium">Cor do corpo</p>
             <div className="flex flex-wrap gap-2">{swatches.map(value => <Button key={value} type="button" variant="ghost" size="icon" aria-label={`Escolher cor ${value}`} aria-pressed={agent.color === value} onClick={() => onChange({color: value})} className={`size-7 rounded-full border-2 ${agent.color === value ? 'border-foreground ring-2 ring-primary/30' : 'border-transparent'}`} style={{backgroundColor:value}} />)}</div>
-            <ReactColorField label="Cor do Boo" value={agent.color} onChange={color => onChange({ color })} />
-            <div className="border-t border-border/60 pt-3"><p className="mb-2 text-xs font-medium">Olhos e formato</p><div className="space-y-3">
-              <ReactColorField label="Cor dos olhos" value={agent.pitsEyeColor || '#ffffff'} onChange={color => onChange({ pitsEyeColor: color })} />
-              <Range label="Tamanho dos olhos" value={agent.pitsEyeSize ?? 8} min={4} max={15} onChange={value => onChange({pitsEyeSize:value})} />
-              <Range label="Distância dos olhos" value={(agent.pitsEyeSpacing ?? 26)*2} min={32} max={84} step={2} onChange={value => onChange({pitsEyeSpacing:value/2})} />
-              <Range label="Largura do corpo" value={Math.round((agent.pitsBodyWidth ?? 1)*100)} min={75} max={125} step={5} unit="%" onChange={value => onChange({pitsBodyWidth:value/100})} />
-              <Range label="Altura do corpo" value={Math.round((agent.pitsBodyHeight ?? 1)*100)} min={75} max={125} step={5} unit="%" onChange={value => onChange({pitsBodyHeight:value/100})} />
-              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Formatos pré-definidos">
-                {BOO_SHAPE_PRESETS.map(({ value, label }) => (
-                  <Button key={value} type="button" variant="ghost" size={null} aria-pressed={(agent.pitsShape || 'ghost-wave') === value}
-                    onClick={() => onChange({ pitsShape: value })}
-                    className={['flex h-auto flex-col items-center gap-1 rounded-md border px-1.5 py-2 text-[11px] font-normal transition-colors', (agent.pitsShape || 'ghost-wave') === value ? 'border-primary bg-primary/10 text-foreground hover:bg-primary/10 hover:text-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-muted-foreground'].join(' ')}>
-                    <svg viewBox="28 0 185 200" className="size-11" aria-hidden="true">
-                      <path d={BOO_BODY_PATHS[value]} fill={agent.color || '#786bea'} />
-                      <ellipse cx="94" cy="94" rx="8" ry="12" fill={agent.pitsEyeColor || '#fff'} />
-                      <ellipse cx="146" cy="94" rx="8" ry="12" fill={agent.pitsEyeColor || '#fff'} />
-                      <path d="M108 124 Q120 135 132 124" stroke="#fff" strokeWidth="5" strokeLinecap="round" fill="none" />
-                    </svg>
-                    {label}
-                  </Button>
-                ))}
-              </div>
-              <Range label="Tamanho da boca" value={Math.round((agent.pitsMouthSize ?? 1)*100)} min={65} max={160} step={5} unit="%" onChange={value => onChange({ pitsMouthSize: value / 100 })} />
-            </div></div>
+            <ReactColorField label="Cor do Boo" value={agent.color || '#ffffff'} onChange={color => onChange({ color })} />
+            <div className="space-y-3 border-t border-border/60 pt-3"><p className="text-xs font-medium">Rosto</p>
+              <ReactColorField label="Cor dos olhos" value={colors.eye || BOO_DEFAULT_COLORS.eye} onChange={color => onChange({ pitsEyeColor: color })} />
+              <Toggle label="Bochechas rosadas" checked={agent.pitsBlush!==false} onChange={value => onChange({pitsBlush:value})}/>
+              {agent.pitsBlush !== false && <ReactColorField label="Cor das bochechas" value={colors.blush || BOO_DEFAULT_COLORS.blush} onChange={color => onChange({ pitsCheekColor: color })} />}
+              {agent.pitsBlush !== false && <Range label="Intensidade do rosado" value={Math.round((agent.pitsBlushStrength ?? .45) * 100)} min={0} max={100} step={5} unit="%" onChange={value => onChange({ pitsBlushStrength: value / 100 })} />}
+            </div>
+            <div className="space-y-3 border-t border-border/60 pt-3"><p className="text-xs font-medium">Headset</p>
+              <Toggle label="Usar headset" checked={agent.pitsHeadset !== false} onChange={value => onChange({ pitsHeadset: value })} />
+              <ReactColorField label="Cor de destaque" value={agent.pitsAccentColor || BOO_DEFAULT_COLORS.accent} onChange={color => onChange({ pitsAccentColor: color })} />
+              <p className="text-[11px] text-muted-foreground">O destaque colore o visor, os fones e os brilhos. Com o fone de ouvido escolhido nos acessórios, o headset sai.</p>
+            </div>
             <div className="space-y-2 border-t border-border/60 pt-3">
               <p className="text-xs font-medium">Acessórios</p>
               <p className="text-[11px] text-muted-foreground">Escolha um item de cabeça e um de rosto. Chapéus e fones não se sobrepõem.</p>
@@ -102,7 +92,6 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
               </div>
               <BooAccessoryColorEditor layer="face" accessory={selectedFace} colors={agent.pitsAccessoryColors} onChange={onChange} />
             </div>
-            <div className="space-y-3 border-t border-border/60 pt-3"><Toggle label="Bochechas rosadas" checked={agent.pitsBlush!==false} onChange={value => onChange({pitsBlush:value})}/>{agent.pitsBlush!==false && <ReactColorField label="Cor das bochechas" value={agent.pitsCheekColor || '#f5a5d1'} onChange={color => onChange({ pitsCheekColor: color })} />}{agent.pitsBlush !== false && <Range label="Intensidade do rosado" value={Math.round((agent.pitsBlushStrength ?? .45) * 100)} min={0} max={100} step={5} unit="%" onChange={value => onChange({ pitsBlushStrength: value / 100 })} />}<Toggle label="Aura colorida" checked={agent.pitsAura!==false} onChange={value => onChange({pitsAura:value})}/></div>
           </>}
           {tab === 'animation' && <><Toggle label="Ativar animações" checked={agent.pitsAnimate!==false} onChange={value => onChange({pitsAnimate:value})}/><Range label="Velocidade da flutuação" min={1} max={6} step={.5} unit="s" value={agent.pitsSpeed ?? 3} onChange={value => onChange({pitsSpeed:value})}/><Range label="Amplitude do movimento" min={0} max={24} unit="px" value={agent.pitsAmplitude ?? 9} onChange={value => onChange({pitsAmplitude:value})}/><p className="text-[11px] text-muted-foreground">A animação reduz automaticamente quando o sistema prefere menos movimento.</p></>}
           {tab === 'states' && <><p className="text-xs font-medium">Testar expressões</p><div className="grid grid-cols-2 gap-2">{states.map(item => <Button key={item.value} type="button" variant="ghost" size={null} aria-pressed={expression===item.value} onClick={() => setExpression(item.value)} className={`h-auto whitespace-normal rounded-md border px-2 py-2 text-xs font-normal text-inherit hover:text-inherit ${expression===item.value ? 'border-primary bg-primary/10 hover:bg-primary/10' : 'border-border hover:bg-accent/40'}`}>{item.label}</Button>)}</div><p className="text-[11px] text-muted-foreground">Durante o uso, o Boobot troca a expressão automaticamente conforme o estado do Boo.</p></>}

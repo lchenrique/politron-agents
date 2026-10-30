@@ -29,14 +29,16 @@ export const BOO_SHAPE_PRESETS: { value: NonNullable<Agent['pitsShape']>; label:
 
 /** Restaura somente o visual, mantendo identidade, instruções, modelo e permissões. */
 export const DEFAULT_BOO_APPEARANCE: Partial<Agent> = {
-  color: '#786bea',
+  color: '#ffffff',
   pitsShape: 'ghost-wave',
   pitsAccessory: 'none',
   pitsHeadAccessory: 'none',
   pitsFaceAccessory: 'none',
   pitsAccessoryColors: {},
-  pitsEyeColor: '#ffffff',
-  pitsCheekColor: '#f5a5d1',
+  pitsEyeColor: '#0d0d12',
+  pitsCheekColor: '#f7a1b5',
+  pitsAccentColor: '#3aa7ff',
+  pitsHeadset: true,
   pitsEyeSize: 8,
   pitsEyeSpacing: 26,
   pitsMouthSize: 1,

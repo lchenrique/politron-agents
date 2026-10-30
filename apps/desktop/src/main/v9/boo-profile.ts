@@ -5,7 +5,7 @@ import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 export const SELF_PROFILE_FIELDS = [
   'name', 'description', 'instructions', 'color', 'pitsShape', 'pitsAccessory', 'pitsHeadAccessory', 'pitsFaceAccessory', 'pitsAccessoryColors',
   'pitsEyeColor', 'pitsCheekColor', 'pitsEyeSize', 'pitsEyeSpacing',
-  'pitsBlush', 'pitsAura', 'pitsAnimate', 'pitsSpeed', 'pitsAmplitude', 'pitsBodyWidth', 'pitsBodyHeight', 'pitsMouthSize', 'pitsBlushStrength',
+  'pitsAccentColor', 'pitsHeadset', 'pitsBlush', 'pitsAura', 'pitsAnimate', 'pitsSpeed', 'pitsAmplitude', 'pitsBodyWidth', 'pitsBodyHeight', 'pitsMouthSize', 'pitsBlushStrength',
 ] as const
 
 const hexColor = /^#[\da-f]{6}$/i
@@ -31,7 +31,7 @@ export function buildSelfProfileUpdate(current: Agent, supplied: Record<string, 
       const max = key === 'name' ? 80 : key === 'description' ? 500 : 20000
       if (typeof value !== 'string' || value.length > max || (key !== 'description' && !value.trim())) throw new Error('Texto inválido para ' + key)
       update[key] = value.trim()
-    } else if (key === 'color' || key === 'pitsEyeColor' || key === 'pitsCheekColor') {
+    } else if (key === 'color' || key === 'pitsEyeColor' || key === 'pitsCheekColor' || key === 'pitsAccentColor') {
       if (typeof value !== 'string' || !hexColor.test(value)) throw new Error('Cor inválida em ' + key + '. Use #RRGGBB.')
       update[key] = value.toLowerCase()
     } else if (key === 'pitsShape') {

@@ -454,6 +454,8 @@ export class WorkspaceStore {
       pitsAura: input.pitsAura ?? previous?.pitsAura ?? true,
       pitsBlush: input.pitsBlush ?? previous?.pitsBlush ?? true,
       pitsAnimate: input.pitsAnimate ?? previous?.pitsAnimate ?? true,
+      pitsAccentColor: /^#[\da-f]{6}$/i.test(input.pitsAccentColor || '') ? input.pitsAccentColor : previous?.pitsAccentColor,
+      pitsHeadset: input.pitsHeadset ?? previous?.pitsHeadset ?? true,
       canWrite: input.canWrite ?? previous?.canWrite ?? true, computerUse: input.computerUse ?? previous?.computerUse ?? false, approvalMode, runtimePermissionMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_agents', value); return value
   }
