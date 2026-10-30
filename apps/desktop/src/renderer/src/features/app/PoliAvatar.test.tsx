@@ -60,7 +60,8 @@ describe('Poli / avatar de agente', () => {
     expect(body).toHaveAttribute('transform', 'translate(120 100) scale(1.25 0.75) translate(-120 -100)')
     expect(body?.querySelector('.poli-avatar__shape path')).toHaveAttribute('fill', agent.color || '#786bea')
     expect(body?.querySelector('.poli-avatar__shape')).toBeInTheDocument()
-    expect(body?.querySelector('.poli-avatar__mouth-scale')).toHaveAttribute('transform', 'translate(120 128) scale(1.6) translate(-120 -128)')
+    // A boca segue o tamanho escolhido, já levada ao ponto e à inclinação da boca do logo.
+    expect(body?.querySelector('.poli-avatar__mouth-scale')?.getAttribute('transform')).toContain('scale(1.28)')
     expect(container.querySelectorAll('ellipse[fill="#f5a5d1"]').length).toBe(2)
     rerender(<PoliAvatar agent={{ ...agent, pitsShape: 'ghost-puff', pitsBodyWidth: .75, pitsBodyHeight: 1.25, pitsAura: false }} size={120} />)
     expect(container.querySelector('.poli-avatar__body-transform')).toHaveAttribute('transform', 'translate(120 100) scale(0.75 1.25) translate(-120 -100)')
@@ -110,7 +111,8 @@ describe('Poli / avatar de agente', () => {
     expect(container.querySelector('.poli-avatar__aura')).toBeNull()
     expect(container.querySelector('[data-animate="false"]')).not.toBeNull()
     expect(container.querySelectorAll('ellipse[fill="#f5a5d1"]')).toHaveLength(0)
-    expect(container.querySelector('ellipse[cx="86"]')).not.toBeNull()
+    // Rosto do logo: olhos e brilho vêm da arte do logo, não de elipses ajustáveis.
+    expect(container.querySelector('.poli-avatar__eyes path[fill="#080808"]')).not.toBeNull()
   })
   it('expõe no Studio as opções com atualizações ao vivo', () => {
     const onChange = vi.fn()
