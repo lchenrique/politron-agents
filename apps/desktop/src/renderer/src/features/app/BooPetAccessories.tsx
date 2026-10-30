@@ -12,9 +12,9 @@ import { extraHeads, extraFaces } from './BooPetExtraArt'
 type Paint = {c: string[]; id: (key: string) => string; url: (key: string) => string}
 type Colors = [label: string, color: string][]
 
-/** Gradiente vertical com luz em cima e sombra embaixo, a partir de uma cor. */
-function Shade({id, color, light = .38, dark = .28}: {id: string; color: string; light?: number; dark?: number}) {
- return <linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={mix(color, 255, light)}/><stop offset=".55" stopColor={color}/><stop offset="1" stopColor={mix(color, 0, dark)}/></linearGradient>
+/** Estilo chapado (2D): o "gradiente" é uma cor sólida; light/dark ficam na assinatura por compatibilidade. */
+function Shade({id, color}: {id: string; color: string; light?: number; dark?: number}) {
+ return <linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={color}/><stop offset="1" stopColor={color}/></linearGradient>
 }
 const edge = (color: string) => mix(color, 0, .38)
 
@@ -56,12 +56,11 @@ const HEADS: Record<string, Head> = {
   <rect x="52" y="46" width="136" height="22" rx="11" fill={url('b')} stroke={edge(c[1])} strokeWidth="2"/>
   <g stroke={edge(c[1])} strokeWidth="2.5" opacity=".35">{Array.from({length: 15}, (_, i) => <path key={i} d={`M${62 + i * 8} 50 V64`}/>)}</g>
   <g fill={c[2]} stroke={edge(c[2])} strokeWidth="1.2">{[0, 60, 120, 180, 240, 300].map(a => <circle key={a} cx={120 + 11 * Math.cos(a * Math.PI / 180)} cy={-6 + 11 * Math.sin(a * Math.PI / 180)} r="7"/>)}</g>
-  <circle cx="120" cy="-6" r="12" fill={c[2]}/><circle cx="115" cy="-11" r="4" fill="#fff" opacity=".6"/>
+  <circle cx="120" cy="-6" r="12" fill={c[2]}/>
  </>},
  'top-hat': {label: 'Cartola', colors: [['Cartola', '#3a3150'], ['Faixa', '#e0457b'], ['Estrela', '#ffd166']], anchor: [120, 50], draw: ({c, id, url}) => <>
   <defs><Shade id={id('d')} color={c[0]} light={.3}/><Shade id={id('b')} color={c[1]}/></defs>
   <path d="M86 -44 H154 Q159 -44 158 -39 L153 40 H87 L82 -39 Q81 -44 86 -44 Z" fill={url('d')} stroke={edge(c[0])} strokeWidth="2"/>
-  <rect x="94" y="-36" width="8" height="58" rx="4" fill="#fff" opacity=".18"/>
   <path d="M87.2 22 H152.8 L152 40 H88 Z" fill={url('b')} stroke={edge(c[1])} strokeWidth="1.5"/>
   <path d={star(120, 31, 8)} fill={c[2]} stroke={edge(c[2])} strokeWidth="1.2" strokeLinejoin="round"/>
   <rect x="54" y="38" width="132" height="13" rx="6.5" fill={url('d')} stroke={edge(c[0])} strokeWidth="2"/>
@@ -91,7 +90,7 @@ const HEADS: Record<string, Head> = {
   <g clipPath={`url(#${id('clip')})`} stroke={c[1]} strokeWidth="7">{[-10, 14, 38, 62, 86].map(y => <path key={y} d={`M70 ${y + 20} L170 ${y - 20}`}/>)}</g>
   <Gloss d="M110 -12 L98 26" width={3}/>
   <g fill={c[2]} stroke={edge(c[2])} strokeWidth="1">{[88, 99, 110, 121, 132, 143, 152].map(x => <circle key={x} cx={x} cy={48 + (x === 88 || x === 152 ? -1 : 1)} r="5.5"/>)}</g>
-  <circle cx="120" cy="-40" r="9" fill={c[2]} stroke={edge(c[2])} strokeWidth="1.2"/><circle cx="117" cy="-43" r="3" fill="#fff" opacity=".6"/>
+  <circle cx="120" cy="-40" r="9" fill={c[2]} stroke={edge(c[2])} strokeWidth="1.2"/>
  </>},
  'chef-hat': {label: 'Chapéu de chef', colors: [['Chapéu', '#ffffff'], ['Faixa', '#d9def2']], anchor: [120, 56], draw: ({c, id, url}) => <>
   <defs><Shade id={id('d')} color={c[0]} light={0} dark={.16}/><Shade id={id('b')} color={c[1]}/></defs>
@@ -116,7 +115,7 @@ const HEADS: Record<string, Head> = {
   <g fill={url('d')} stroke={edge(c[0])} strokeWidth="1.5">{[0, 72, 144, 216, 288].map(a => <ellipse key={a} cx="0" cy="-11" rx="9" ry="12" transform={`rotate(${a})`}/>)}</g>
   <circle r="8" fill={c[1]} stroke={edge(c[1])} strokeWidth="1.5"/>
   <g fill={mix(c[1], 0, .3)}>{[[-3, -2], [3, -1], [0, 3]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r="1.3"/>)}</g>
-  <circle cx="-3" cy="-4" r="2.2" fill="#fff" opacity=".6"/>
+  
  </g>},
  'halo': {label: 'Auréola', colors: [['Auréola', '#ffd95e']], anchor: [120, 30], draw: ({c}) => <>
   <ellipse cx="120" cy="-8" rx="40" ry="10" fill="none" stroke={c[0]} strokeOpacity=".25" strokeWidth="13"/>
@@ -137,7 +136,7 @@ const FACES: Record<string, FaceItem> = {
   {[x1, x2].map(x => <path key={x} d={`M${x - r * .55} ${y - r * .3} Q${x - r * .4} ${y - r * .65} ${x - r * .05} ${y - r * .7}`} stroke="#fff" strokeOpacity=".7" strokeWidth="2.2"/>)}
  </g>},
  'sunglasses': {label: 'Óculos escuros', colors: [['Armação', '#1f2430'], ['Lente', '#27324d']], draw: ({c, id, url}, {x1, x2, y, r}) => <g>
-  <defs><linearGradient id={id('l')} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={mix(c[1], 255, .18)}/><stop offset="1" stopColor={mix(c[1], 0, .35)}/></linearGradient></defs>
+  <defs><linearGradient id={id('l')} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={c[1]}/><stop offset="1" stopColor={c[1]}/></linearGradient></defs>
   {[x1, x2].map(x => <rect key={x} x={x - r - 2} y={y - r * .8} width={2 * r + 4} height={r * 1.65} rx={r * .55} fill={url('l')} stroke={c[0]} strokeWidth="3.5"/>)}
   <path d={`M${x1 + r + 2} ${y - r * .45} Q120 ${y - r * .75} ${x2 - r - 2} ${y - r * .45} M${x1 - r - 2} ${y - r * .4} L${x1 - r - 15} ${y - r * .6} M${x2 + r + 2} ${y - r * .4} L${x2 + r + 15} ${y - r * .6}`} fill="none" stroke={c[0]} strokeWidth="3.5" strokeLinecap="round"/>
   {[x1, x2].map(x => <path key={x} d={`M${x - r * .6} ${y + r * .1} L${x - r * .05} ${y - r * .5} M${x - r * .1} ${y + r * .35} L${x + r * .35} ${y - r * .15}`} stroke="#fff" strokeOpacity=".55" strokeWidth="2.4" strokeLinecap="round"/>)}

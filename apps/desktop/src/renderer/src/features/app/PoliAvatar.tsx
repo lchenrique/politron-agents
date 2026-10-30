@@ -23,6 +23,10 @@ function mix(hex: string, target: number, amount: number): string {
   return '#' + [16, 8, 0].map(shift => Math.round(((value >> shift) & 255) * (1 - amount) + target * amount).toString(16).padStart(2, '0')).join('')
 }
 
+function prefersReducedMotion(): boolean {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false }
+}
+
 function spiral(cx: number, cy: number, radius: number): string {
   const steps = 28
   return Array.from({ length: steps + 1 }, (_, step) => {
@@ -127,6 +131,20 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
   const riveEligible = riveOptIn && import.meta.env.MODE !== 'test' && size >= 80 && agent.pitsAnimate !== false
   const [riveReady, setRiveReady] = useState(false)
   const riveVisible = riveEligible && riveReady
+
+  // Ondulação de líquido/pano no hover: a intensidade sobe e desce suave (rAF), nunca liga de uma vez.
+  const [liquid, setLiquid] = useState(0)
+  const liquidTarget = hovered && agent.pitsAnimate !== false && size >= 20 && !prefersReducedMotion() ? 14 : 0
+  useEffect(() => {
+    let frame = 0
+    const step = () => setLiquid(current => {
+      const next = Math.abs(liquidTarget - current) < .2 ? liquidTarget : current + (liquidTarget - current) * .18
+      if (next !== liquidTarget) frame = requestAnimationFrame(step)
+      return next
+    })
+    frame = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frame)
+  }, [liquidTarget])
   const style = {
     '--poli-speed': `${Math.max(1, Math.min(6, agent.pitsSpeed ?? 3))}s`,
     '--poli-amplitude': `-${(Math.max(0, Math.min(24, agent.pitsAmplitude ?? 9)) * size / 180).toFixed(2)}px`,
@@ -138,29 +156,21 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
       onPointerEnter={event => { pet.current = { x: event.clientX, direction: 0, flips: [] }; setHovered(true) }}
       onPointerLeave={() => setHovered(false)} onPointerDown={onPress} onPointerMove={onPet}>
       <svg viewBox="28 0 185 200" className="size-full overflow-visible" style={riveVisible ? { visibility: 'hidden' } : undefined} role="img" aria-label={`${agent.name || 'Boo'} — ${mood}`}>
-        <defs>
-          <radialGradient id={gradientId} cx="30%" cy="20%" r="85%">
-            <stop offset="0" stopColor={mix(color, 255, .46)} />
-            <stop offset=".52" stopColor={color} />
-            <stop offset="1" stopColor={mix(color, 0, .39)} />
-          </radialGradient>
-          <radialGradient id={`${gradientId}-glow`}>
-            <stop offset="0" stopColor={color} stopOpacity=".24" />
-            <stop offset=".72" stopColor={color} stopOpacity=".16" />
-            <stop offset="1" stopColor={color} stopOpacity="0" />
-          </radialGradient>
-        </defs>
-        <ellipse cx="120" cy="190" rx={54 * bodyWidth} ry="9" fill={color} opacity=".15" />
-        <g className="poli-avatar__float">
+        {/* Estilo chapado (2D), como o logo: cor sólida, sem gradiente, reflexo, brilho ou sombra.
+            No hover, um ruído animado desloca as bordas, como pano ou líquido. */}
+        {liquid > 0 && <defs>
+          <filter id={`${gradientId}-liquid`} x="-15%" y="-15%" width="130%" height="130%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.009 0.022" numOctaves="2" seed="7" result="noise">
+              <animate attributeName="baseFrequency" dur="2.6s" values="0.009 0.022;0.013 0.03;0.009 0.022" repeatCount="indefinite" />
+            </feTurbulence>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale={liquid} xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+        </defs>}
+        <g className="poli-avatar__float" filter={liquid > 0 ? `url(#${gradientId}-liquid)` : undefined}>
           <g className="poli-avatar__lean">
             <g className="poli-avatar__body-transform" transform={bodyTransform}>
-              {showAura && <>
-                <ellipse className="poli-avatar__glow" cx="120" cy="100" rx="100" ry="100" fill={`url(#${gradientId}-glow)`} />
-                <circle className="poli-avatar__aura" cx="120" cy="98" r="83" fill={color} opacity=".12" />
-              </>}
               <g className="poli-avatar__shape">
-                <path d={BOO_BODY_PATHS[shape]} fill={`url(#${gradientId})`} />
-            <ellipse cx="91" cy="43" rx="37" ry="13" transform="rotate(-24 91 43)" fill="#fff" opacity=".22" />
+                <path d={BOO_BODY_PATHS[shape]} fill={color} />
             {(showBlush || mood === 'love') && <>
               <ellipse cx="77" cy="118" rx="14" ry="7" fill={cheek} opacity={blushOpacity} />
               <ellipse cx="163" cy="118" rx="14" ry="7" fill={cheek} opacity={blushOpacity} />
@@ -216,7 +226,6 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
               <circle cx="183" cy="42" r="21" fill="#31bd92" />
               <path d="M172 42 l8 8 14 -17" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
             </>}
-            <circle cx="55" cy="63" r="3" fill="#fff" opacity=".55" />
             {(mood === 'love' || mood === 'boop') && (mood === 'love' ? [[176, 46, 0], [204, 74, .35], [58, 36, .7]] : [[182, 40, 0]]).map(([x, y, delay]) =>
               <g key={`${x}-${y}`} transform={`translate(${x} ${y}) scale(.9)`}><path className="poli-avatar__heart" d={HEART} fill="#ff5d8f" style={{ animationDelay: `${delay}s` }} /></g>)}
             {mood === 'sleep' && <g fill={eyeColor} fontWeight="700">

@@ -34,8 +34,9 @@ describe('Poli / avatar de agente', () => {
     const scaled = container.querySelector('.poli-avatar__body-transform')
     expect(scaled).toHaveAttribute('transform', 'translate(120 100) scale(1.2 0.85) translate(-120 -100)')
     expect(scaled?.querySelector('.poli-avatar__shape')).toBeInTheDocument()
-    expect(scaled?.querySelector('.poli-avatar__aura')).toBeInTheDocument()
-    expect(scaled?.querySelector('.poli-avatar__glow')).toBeInTheDocument()
+    // Estilo chapado: sem aura, brilho nem gradiente no corpo.
+    expect(scaled?.querySelector('.poli-avatar__aura')).toBeNull()
+    expect(container.querySelector('.poli-avatar svg > defs radialGradient')).toBeNull()
     expect(container.querySelector('.poli-avatar__mouth-scale')).toBeInTheDocument()
     expect(screen.getByLabelText('Óculos do Boo')).toBeInTheDocument()
     rerender(<PoliAvatar agent={{ ...agent, pitsShape: 'bean', pitsAccessory: 'horns' }} size={80} />)
@@ -53,12 +54,11 @@ describe('Poli / avatar de agente', () => {
     expect(screen.getByText('Largura do corpo')).toBeInTheDocument()
     expect(screen.getByText('Altura do corpo')).toBeInTheDocument()
   })
-  it('redimensiona corpo, aura e brilho sem deslocar o pivô central', () => {
+  it('redimensiona o corpo chapado sem deslocar o pivô central', () => {
     const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsShape: 'ghost-wave', pitsBodyWidth: 1.25, pitsBodyHeight: .75, pitsMouthSize: 1.6, pitsBlushStrength: .8 }} size={120} />)
     const body = container.querySelector('.poli-avatar__body-transform')
     expect(body).toHaveAttribute('transform', 'translate(120 100) scale(1.25 0.75) translate(-120 -100)')
-    expect(body?.querySelector('.poli-avatar__aura')).toBeInTheDocument()
-    expect(body?.querySelector('.poli-avatar__glow')).toBeInTheDocument()
+    expect(body?.querySelector('.poli-avatar__shape path')).toHaveAttribute('fill', agent.color || '#786bea')
     expect(body?.querySelector('.poli-avatar__shape')).toBeInTheDocument()
     expect(body?.querySelector('.poli-avatar__mouth-scale')).toHaveAttribute('transform', 'translate(120 128) scale(1.6) translate(-120 -128)')
     expect(container.querySelectorAll('ellipse[fill="#f5a5d1"]').length).toBe(2)

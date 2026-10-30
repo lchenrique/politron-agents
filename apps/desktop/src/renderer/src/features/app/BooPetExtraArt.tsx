@@ -8,11 +8,12 @@ type Face = { x1: number; x2: number; y: number; r: number; mouthY: number; mout
 type FaceItem = { label: string; colors: Palette; draw: (p: Brush, face: Face) => ReactNode }
 
 const dark = (color: string) => mix(color, 0, .4)
+/** Estilo chapado (2D): cor sólida, sem luz nem sombra. */
 function Fabric({ id, base }: { id: string; base: string }) {
   return <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-    <stop stopColor={mix(base, 255, .44)}/>
+    <stop stopColor={base}/>
     <stop offset=".43" stopColor={base}/>
-    <stop offset="1" stopColor={mix(base, 0, .38)}/>
+    <stop offset="1" stopColor={base}/>
   </linearGradient>
 }
 const Stitch = ({ d }: { d: string }) => <path d={d} fill="none" stroke="#fff" strokeWidth="1.3" strokeOpacity=".58" strokeDasharray="3 3" strokeLinecap="round"/>
@@ -50,7 +51,7 @@ export const extraHeads: Record<string, Head> = {
     label: 'Antena', colors: [['Haste', '#796dba'], ['Luz', '#ffbb69']], anchor: [120, 48],
     draw: ({ c, id, url }) => <>
       <defs><Fabric id={id('stem')} base={c[0]}/><radialGradient id={id('orb')} cx=".3" cy=".25" r=".85">
-        <stop stopColor="#fff6d5"/><stop offset=".4" stopColor={c[1]}/><stop offset="1" stopColor={dark(c[1])}/>
+        <stop stopColor={c[1]}/><stop offset="1" stopColor={c[1]}/>
       </radialGradient></defs>
       <path d="M107 51 Q108 35 117 22 Q128 5 116 -30 Q108 -43 116 -53" fill="none" stroke={dark(c[0])} strokeWidth="9" strokeLinecap="round"/>
       <path d="M107 51 Q109 34 117 22 Q128 4 116 -30" fill="none" stroke={url('stem')} strokeWidth="5" strokeLinecap="round"/>
@@ -137,7 +138,7 @@ export const extraFaces: Record<string, FaceItem> = {
     label: 'Óculos', colors: [['Armação', '#304762'], ['Lentes', '#bfe6ff']],
     draw: ({ c, id, url }, { x1, x2, y, r }) => <>
       <defs><Fabric id={id('frame')} base={c[0]}/><linearGradient id={id('lens')} x1="0" y1="0" x2="1" y2="1">
-        <stop stopColor="#fff" stopOpacity=".65"/><stop offset=".5" stopColor={c[1]} stopOpacity=".2"/><stop offset="1" stopColor={c[1]} stopOpacity=".45"/>
+        <stop stopColor={c[1]} stopOpacity=".35"/><stop offset="1" stopColor={c[1]} stopOpacity=".35"/>
       </linearGradient></defs>
       {[x1, x2].map(x => <g key={x}>
         <rect x={x-r-2} y={y-r*.85} width={2*r+4} height={1.7*r} rx={r*.45}
