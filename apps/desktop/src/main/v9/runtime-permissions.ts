@@ -1,5 +1,8 @@
 import type { Agent } from '../../shared/v9'
 
+/** Acesso total: motor sem sandbox e sem perguntas, ferramentas nativas ligadas e nenhuma confirmação do Boobot. */
+export const hasFullAccess = (agent: Pick<Agent, 'runtimePermissionMode'>) => agent.runtimePermissionMode === 'bypass'
+
 export function codexRuntimePermissions(agent: Pick<Agent, 'runtimePermissionMode'>) {
   return agent.runtimePermissionMode === 'bypass'
     ? { sandbox: 'danger-full-access' as const, approvalPolicy: 'never' as const }

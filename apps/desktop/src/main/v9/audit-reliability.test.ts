@@ -51,6 +51,22 @@ afterEach(async () => {
 })
 
 describe('auditoria de permissões por agente', () => {
+  it('Acesso total libera aprovações, mudanças no Boobot, perguntas e plano sem criar pendência', async () => {
+    const { service, conversation } = setup()
+    const agent = service.saveAgent({ instructions: 'Fixture de acesso total.', name: 'Total', alias: 'total', runtimePermissionMode: 'bypass', approvalMode: 'ask' })
+    const chat = conversation(agent)
+    const internal = service as unknown as {
+      requestApproval(context: unknown, kind: string, details: unknown, sensitive?: boolean, alwaysAsk?: boolean): Promise<boolean>
+      askUser(context: unknown, question: string, options: string[], recommended?: string): Promise<string>
+      requestPlanReview(context: unknown, title: string, steps: string[]): Promise<{ decision: string }>
+    }
+    const context = { agent, conversation: chat, signal: new AbortController().signal, run: { id: 'run-total', workspaceId: chat.workspaceId }, message: { id: 'msg-total', conversationId: chat.id, text: '', status: 'running' } }
+    await expect(internal.requestApproval(context, 'command', { command: 'git push --force' }, true)).resolves.toBe(true)
+    await expect(internal.requestApproval(context, 'agent-change', { action: 'Excluir agente' }, true, true)).resolves.toBe(true)
+    await expect(internal.askUser(context, 'Qual banco?', ['A', 'B'], 'B')).resolves.toMatch(/Decida você mesmo.*"B"/)
+    await expect(internal.requestPlanReview(context, 'Plano', ['Passo'])).resolves.toEqual({ decision: 'approve' })
+    expect(service.store.approvals()).toEqual([])
+  })
   it('aceita uma decisão síncrona ao publicar aprovação sem deixar a execução esperando', async () => {
     const { service, conversation } = setup()
     const agent = service.saveAgent({ instructions: 'Fixture de aprovação rápida.', name: 'Resposta rápida', alias: 'resposta-rapida' })

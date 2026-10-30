@@ -230,19 +230,38 @@ describe('linha de atividade do agente', () => {
     expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
   })
 
-  it('durante uma ferramenta ativa, abre o card "Executando tarefa" com os passos e mantém o status do turno genérico', () => {
+  it('durante uma ferramenta ativa, abre o card "Executando tarefa" com os passos em ordem e mantém o status do turno genérico', () => {
     const calls = browser(6)
     calls[5] = { ...calls[5]!, status: 'running' }
-    const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]))
-    const toggle = screen.getByRole('button', { name: /Navegando/ })
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(container.querySelector('[data-part="work-card"]')).toHaveTextContent('Executando tarefa')
+    // Chegam fora de ordem: o card ordena pelo início de cada ferramenta.
+    const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...[...calls].reverse()]))
+    const card = container.querySelector('[data-part="work-card"]') as HTMLElement
+    expect(card).toHaveTextContent('Executando tarefa')
+    expect(within(card).getAllByText(/^Navegando/).length).toBeGreaterThan(0)
+    const steps = within(card).getAllByRole('listitem')
+    expect(steps.map(step => step.getAttribute('data-message-id'))).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5'])
+    expect(steps.at(-1)).toHaveAttribute('data-state', 'running')
     expect(screen.getByRole('status')).toHaveTextContent('Em andamento')
     expect(container).not.toHaveTextContent('está trabalhando')
-    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(7)
-    // O usuário pode recolher o card enquanto a tarefa roda.
-    fireEvent.click(toggle)
-    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
+    // Detalhes de um passo abrem sob demanda; recolher esconde a lista.
+    const first = within(steps[0]!).getByRole('button')
+    fireEvent.click(first)
+    expect(first).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(within(card).getByRole('button', { name: 'Recolher passos' }))
+    expect(within(card).queryByRole('list')).not.toBeInTheDocument()
+  })
+
+  it('mostra só os seis passos mais recentes e o bloco de comandos com o resultado', () => {
+    const calls = [...browser(7), { ...act('cmd', 'Terminal · npm test', 20), tool: { name: 'workspace_run_command', args: '{"command":"npm test"}', status: 'completed' as const, output: 'Tests 12 passed', startedAt: at(20), finishedAt: at(21) } }, { ...act('run', 'Terminal · npm run build', 22), status: 'running' as const, tool: { name: 'workspace_run_command', args: '{"command":"npm run build"}', status: 'running' as const, startedAt: at(22) } }]
+    const { container } = render(list([reply('pre', 'Vou testar.', 'running', 0), ...calls]))
+    const card = container.querySelector('[data-part="work-card"]') as HTMLElement
+    expect(within(card).getByRole('button', { name: '+3 passos anteriores' })).toBeInTheDocument()
+    const terminal = within(card).getByLabelText('Comandos executados')
+    expect(terminal).toHaveTextContent('> npm test')
+    expect(terminal).toHaveTextContent('✓ Tests 12 passed')
+    expect(terminal).toHaveTextContent('executando…')
+    fireEvent.click(within(card).getByRole('button', { name: '+3 passos anteriores' }))
+    expect(within(card).getAllByRole('listitem')).toHaveLength(9)
   })
 
   it('entre chamadas já concluídas, o turno ativo mostra "Pensando" em vez de repetir a última ação', () => {

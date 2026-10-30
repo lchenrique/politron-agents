@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Brain, Wrench } from 'lucide-react'
 import { DisclosureRow, TextShimmer } from '@/components/dsh'
 import type { Agent, Message } from '../../../../shared/v9'
-import { BooWorking } from '../app/BooWorking'
-import { booColorsOf } from '../app/PoliAvatar'
+import { WorkCard } from './WorkCard'
 import { activityToolCall, formatRunDuration, liveStep, processTitle, stepActivity } from './tool-call'
 import { messagesInTurn, type Turn } from './turns'
 import css from './Transcript.module.css'
@@ -33,12 +32,9 @@ export function DshToolGroup({ messages, turnActive, autoOpen, agent, children }
   >
     <div className={css.groupBody}><div className={css.rows}>{children}</div></div>
   </DisclosureRow>
-  // Enquanto uma ferramenta roda, o grupo vira card; o Boo digitando só aparece sem avatar em imagem.
-  if (!current) return row
-  return <div className={css.workCard} data-part="work-card">
-    <div className={css.workMain}><span className={css.workEyebrow}>Executando tarefa</span>{row}</div>
-    {agent && !agent.avatar && <BooWorking size={132} colors={booColorsOf(agent)} label={`${agent.name} está trabalhando`} />}
-  </div>
+  // Enquanto uma ferramenta roda, o grupo vira o card "Executando tarefa" (checklist, terminal e Boo).
+  if (current) return <WorkCard messages={messages} agent={agent} turnActive={turnActive} />
+  return row
 }
 
 export function ReasoningDisclosure({ message, autoOpen }: { message: Message; autoOpen?: boolean }) {

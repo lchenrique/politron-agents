@@ -66,11 +66,16 @@ const currentMessages: Message[] = [
     id: 'gallery-reply-running', conversationId: 'gallery-chat', agentId: agent.id, author: agent.name, role: 'assistant',
     text: 'Estou organizando a recomendação por impacto e esforço.', status: 'running', runId: 'gallery-run-2', createdAt: new Date().toISOString(),
   },
-  {
-    id: 'gallery-tool-running', conversationId: 'gallery-chat', agentId: agent.id, author: agent.name, role: 'activity',
-    text: 'Terminal · preparando comparação', status: 'running', runId: 'gallery-run-2', createdAt: new Date().toISOString(),
-    tool: { name: 'bash', args: 'npm run typecheck', output: 'Aguardando conclusão…', status: 'running', startedAt: new Date().toISOString() },
-  },
+  ...([
+    ['gallery-step-read', 'Leitura · src/services/ServiceCard.tsx', 'workspace_read', '{"path":"src/services/ServiceCard.tsx"}', 'completed', 'export function ServiceCard() {}', 42],
+    ['gallery-step-edit', 'Edição · src/services/ServiceCard.tsx', 'workspace_write', '{"path":"src/services/ServiceCard.tsx"}', 'completed', 'Arquivo atualizado.', 30],
+    ['gallery-step-checkout', 'Terminal · git checkout -b develop', 'workspace_run_command', '{"command":"git checkout -b develop"}', 'completed', "Switched to a new branch 'develop'", 18],
+    ['gallery-step-push', 'Terminal · git push -u origin develop', 'workspace_run_command', '{"command":"git push -u origin develop"}', 'running', undefined, 4],
+  ] as const).map(([id, text, name, args, status, output, ago]): Message => {
+    const startedAt = new Date(Date.now() - ago * 1000).toISOString()
+    return { id, conversationId: 'gallery-chat', agentId: agent.id, author: agent.name, role: 'activity', text, status: status === 'running' ? 'running' : 'completed', runId: 'gallery-run-2', createdAt: startedAt,
+      tool: { name, args, status, startedAt, ...(output ? { output, finishedAt: new Date(Date.parse(startedAt) + 1400).toISOString() } : {}), ...(name === 'workspace_write' || name === 'workspace_read' ? { path: 'src/services/ServiceCard.tsx' } : {}) } }
+  }),
 ]
 const messages = [...history, ...currentMessages]
 

@@ -9,7 +9,7 @@ import { SessionUnavailableError, type AgentRuntime, type ExternalBrowserRegistr
 import type { DynamicTool } from './codex'
 import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
 import { buildAgentSystemPrompt } from './agent-prompt'
-import { claudeRuntimePermissions } from './runtime-permissions'
+import { claudeRuntimePermissions, hasFullAccess } from './runtime-permissions'
 
 type ClaudeTurn = { id: string; controller: AbortController; terminal: boolean; initialized: Deferred; initializedResolved: boolean; eventGate?: Deferred; query?: Query }
 type ClaudeThread = { id: string; sessionId: string | null; agent: Agent; directory: string; tools: DynamicTool[]; projectInstructions: string; externalBrowser?: ExternalBrowserRegistration; activeTurn?: ClaudeTurn }
@@ -140,8 +140,8 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         pathToClaudeCodeExecutable: this.executable,
         settingSources: [],
         ...claudeRuntimePermissions(context.agent),
-        tools: [],
-        disallowedTools: ['Write', 'Edit', 'Bash', 'NotebookEdit', 'MultiEdit'],
+        // Acesso total (como o bypass do Paseo): ferramentas nativas ligadas; perguntas e planos nativos ficam fora para não travar sem resposta.
+        ...(hasFullAccess(context.agent) ? { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } : { tools: [], disallowedTools: ['Write', 'Edit', 'Bash', 'NotebookEdit', 'MultiEdit'] }),
         allowedTools: [...context.tools.map(item => `mcp__politron__${item.name}`), ...(browser?.tools.map(name => `mcp__${EXTERNAL_BROWSER_MCP}__${name}`) || [])],
         mcpServers: { politron: server, ...(browser ? { [EXTERNAL_BROWSER_MCP]: { type: 'http' as const, url: browser.url, headers: { Authorization: `Bearer ${browser.token}` } } } : {}) },
         systemPrompt: { type: 'preset', preset: 'claude_code', append: buildAgentSystemPrompt(context.agent, context.projectInstructions, context.tools) },
@@ -186,6 +186,13 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         if (thinking.length) this.emit('event', { method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'reasoning', summary: thinking } } })
         const value = message.message.content.filter((item): item is Extract<typeof item, { type: 'text' }> => item.type === 'text').map(item => item.text).join('')
         if (value) this.emit('event', { method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, delta: value } })
+        // Ferramentas nativas (só no Acesso total) viram atividade no chat; as do Boobot já chegam por item/tool/call.
+        for (const item of message.message.content) if (item.type === 'tool_use' && !item.name.startsWith('mcp__'))
+          this.emit('event', { method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'nativeTool', id: item.id, name: item.name, input: item.input } } })
+      }
+      if (message.type === 'user' && Array.isArray(message.message.content)) {
+        for (const item of message.message.content) if (typeof item === 'object' && item.type === 'tool_result')
+          this.emit('event', { method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'nativeTool', id: item.tool_use_id, output: item.content, isError: item.is_error === true } } })
       }
       if (message.type === 'result') {
         const status = message.subtype === 'success' && !message.is_error ? 'completed' : 'failed'

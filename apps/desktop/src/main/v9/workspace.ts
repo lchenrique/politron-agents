@@ -12,6 +12,7 @@ import { delegationEligibility } from './delegation-eligibility'
 import { createCommandEvidence, formatCommandEvidence } from './command-evidence'
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
+import { hasFullAccess } from './runtime-permissions'
 import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type BoardEvidence, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
@@ -42,7 +43,7 @@ import { delegatedConversationName } from '../../shared/delegation-title'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
 
-type RunContext = { run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
+type RunContext = { nativeItems?: Map<string, Message>; run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
   /** Autoaprendizado: chamadas de ferramenta (fora as de skill), erro seguido de sucesso, skill já gravada e revisão final em curso. */
   voiceReply?: boolean; toolCalls?: number; toolFailed?: boolean; recovered?: boolean; savedSkill?: boolean; reflecting?: boolean }
 const SKILL_TOOLS = new Set(['list_skills', 'read_skill', 'save_skill'])
@@ -56,6 +57,18 @@ function approvalScope(kind: Approval['kind'], details: Approval['details']): { 
   }
   if (kind === 'browser' && details.action && !details.desktopOnly) return { kind, scopeKey: approvalScopeKey(`browser\0${details.action}`), summary: 'Ação idêntica no navegador' }
   return undefined
+}
+/** Item nativo do Codex/Claude no formato das ferramentas do Boobot (terminal, edição, leitura). */
+const changedPaths = (changes: unknown) => Array.isArray(changes) ? changes.map(change => (change as { path?: unknown } | null)?.path).filter((path): path is string => typeof path === 'string') : []
+export function nativeToolCall(item: Record<string, unknown>): { name: string; args: Record<string, unknown> } {
+  if (item.type === 'commandExecution') return { name: 'workspace_run_command', args: { command: Array.isArray(item.command) ? item.command.join(' ') : String(item.command || '') } }
+  if (item.type === 'fileChange') return { name: 'workspace_write', args: { path: changedPaths(item.changes).join(', ') } }
+  if (item.type !== 'nativeTool' || typeof item.name !== 'string') return { name: '', args: {} }
+  const input = item.input && typeof item.input === 'object' ? item.input as Record<string, unknown> : {}
+  if (item.name === 'Bash') return { name: 'workspace_run_command', args: { command: String(input.command || '') } }
+  if (['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(item.name)) return { name: 'workspace_write', args: { path: String(input.file_path || input.notebook_path || '') } }
+  if (item.name === 'Read') return { name: 'workspace_read', args: { path: String(input.file_path || '') } }
+  return { name: item.name, args: input }
 }
 const approvalScopeKey = (value: string) => createHash('sha256').update(value).digest('hex')
 const browserApprovalScope = (action: string): NonNullable<ReturnType<typeof approvalScope>> => ({ kind: 'browser', scopeKey: approvalScopeKey(`browser\0${action}`), summary: 'Ação idêntica no navegador' })
@@ -521,6 +534,7 @@ export class AppService extends EventEmitter {
   }
   private askUser(context: RunContext, question: string, options: string[], recommendedOption?: string): Promise<string> {
     if (context.signal?.aborted) return Promise.reject(new Error('Execução interrompida.'))
+    if (hasFullAccess(context.agent)) return Promise.resolve(`Acesso total ativo: o usuário pediu para não ser consultado. Decida você mesmo${recommendedOption ? ` (a opção recomendada foi "${recommendedOption}")` : ''} e continue.`)
     const approval: Approval = { id: randomUUID(), runId: context.run.id,
       conversationId: context.conversation.id, agentId: context.agent.id, kind: 'question',
       details: { question, options, ...(recommendedOption ? { recommendedOption } : {}) }, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
@@ -549,6 +563,7 @@ export class AppService extends EventEmitter {
   private requestPlanReview(context: RunContext, title: string, steps: string[]): Promise<{ decision: PlanReviewDecision; feedback?: string }> {
     const signal = context.signal
     if (signal?.aborted) return Promise.reject(new Error('Revisão do plano interrompida.'))
+    if (hasFullAccess(context.agent)) return Promise.resolve({ decision: 'approve' as const })
     const approval: Approval = { id: randomUUID(), runId: context.run.id, conversationId: context.conversation.id,
       agentId: context.agent.id, kind: 'plan', details: { planTitle: title, planSteps: steps },
       status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
@@ -578,6 +593,7 @@ export class AppService extends EventEmitter {
   private async requestApproval(context: RunContext, kind: Approval['kind'], details: Approval['details'], sensitive = false, alwaysAsk = false, scopeOverride?: ReturnType<typeof approvalScope>): Promise<boolean> {
     const signals = [context.signal].filter((signal): signal is AbortSignal => !!signal)
     if (signals.some(signal => signal.aborted)) return false
+    if (hasFullAccess(context.agent)) return true
     const scope = scopeOverride || approvalScope(kind, details)
     if (!alwaysAsk && scope && this.store.approvalGrant(context.agent.id, context.run.workspaceId, scope.kind, scope.scopeKey)) return true
     if (!alwaysAsk && shouldAutoApprove(context.agent.approvalMode, kind, sensitive)) return true
@@ -1304,8 +1320,32 @@ export class AppService extends EventEmitter {
       }
     }
     if (['execCommandApproval', 'commandExecutionRequestApproval', 'applyPatchApproval', 'item/permissions/requestApproval'].includes(event.method)) {
-      runtime.respond(event.id, { decision: 'decline' })
+      const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId)
+      runtime.respond(event.id, { decision: context && hasFullAccess(context.agent) ? 'accept' : 'decline' })
     }
+    // Ferramentas nativas (Acesso total): Codex manda commandExecution/fileChange; Claude manda nativeTool.
+    if ((event.method === 'item/started' || event.method === 'item/completed') && ['commandExecution', 'fileChange', 'nativeTool'].includes(params.item?.type)) {
+      const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
+      if (context && !context.reflecting) this.recordNativeTool(context, event.method === 'item/completed', params.item)
+    }
+  }
+  private recordNativeTool(context: RunContext, done: boolean, item: Record<string, unknown>) {
+    const id = typeof item.id === 'string' ? item.id : ''
+    const items = context.nativeItems ??= new Map()
+    let recorded = id ? items.get(id) : undefined
+    if (!recorded) {
+      const { name, args } = nativeToolCall(item)
+      if (!name) return
+      const activity = toolActivityText(name, args) || `Ferramenta · ${name}`
+      recorded = this.addMessage(context.conversation.id, context.agent, 'activity', redactApprovalUrls(activity), 'completed', context.run.id, { tool: startedTool(name, args, redactApprovalUrls) })
+      if (id) items.set(id, recorded)
+    }
+    if (!done || !recorded.tool) return
+    const failed = item.isError === true || item.status === 'failed' || (typeof item.exitCode === 'number' && item.exitCode !== 0)
+    const output = item.aggregatedOutput ?? item.output ?? changedPaths(item.changes).join('\n')
+    const next = { ...recorded, tool: { ...finishedTool(recorded.tool, failed ? 'failed' : 'completed', output, redactApprovalUrls), ...(typeof item.exitCode === 'number' ? { exitCode: item.exitCode } : {}) } }
+    this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
+    if (id) items.delete(id)
   }
   private async callTool(context: RunContext, name: string, args: Record<string, unknown>, callId = ''): Promise<unknown> {
     if (context.conversation && this.boardReviewerConversations.has(context.conversation.id) && (CHIEF_TOOLS.has(name) || name.startsWith('browser_') || name.startsWith('external_browser_') || ['workspace_write', 'workspace_run_command', 'workspace_start_process', 'workspace_stop_process', 'ask_agent', 'agent_create', 'self_update', 'propose_self_profile', 'save_skill'].includes(name)))

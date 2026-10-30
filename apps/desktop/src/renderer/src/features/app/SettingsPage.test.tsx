@@ -59,9 +59,9 @@ describe('carregamento leve das configurações', () => {
     vi.stubGlobal('appAPI', appAPI)
     render(<SettingsPage open onOpenChange={vi.fn()} initialSection="assistente" />)
     fireEvent.click(await screen.findByRole('combobox', { name: 'Permissões do Codex' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Acesso total do Codex' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Acesso total · full access do Codex' }))
     await waitFor(() => expect(appAPI.saveAssistantPreferences).toHaveBeenCalledWith(expect.objectContaining({ runtimePermissionMode: 'bypass' })))
-    expect(screen.getByText(/danger-full-access/)).toBeInTheDocument()
+    expect(screen.getByText(/Acesso total: o Codex roda sem sandbox/)).toBeInTheDocument()
   })
 
   it('ao abrir Geral não pede snapshot completo nem consulta chaves desnecessárias', async () => {

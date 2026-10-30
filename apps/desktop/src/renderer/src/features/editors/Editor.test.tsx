@@ -52,8 +52,8 @@ describe('criação simples de conversa', () => {
 
 describe('permissões do motor no perfil do agente', () => {
   it.each([
-    ['codex', 'Permissões do Codex', 'Acesso total do Codex'],
-    ['claude', 'Permissões do Claude Code', 'Bypass do Claude Code'],
+    ['codex', 'Permissões do Codex', 'Acesso total · full access do Codex'],
+    ['claude', 'Permissões do Claude Code', 'Acesso total · bypass do Claude Code'],
   ] as const)('oferece e salva a opção específica do runtime %s', async (runtime, label, option) => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<Editor kind="agent" agents={[]} models={[]} initial={{ ...agent('runtime-agent', 'Agente'), runtime }} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn()} />)

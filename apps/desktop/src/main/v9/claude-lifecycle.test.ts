@@ -149,3 +149,30 @@ describe('ciclo de vida do turno Claude', () => {
     expect(querySdk).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('Acesso total no Claude', () => {
+  it('libera as ferramentas nativas com bypass e mostra Bash como atividade', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'politron-claude-full-'))
+    directories.push(directory)
+    const querySdk = vi.fn(() => (async function* () {
+      yield initialized
+      yield { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'tool-1', name: 'Bash', input: { command: 'npm test' } }, { type: 'tool_use', id: 'tool-2', name: 'mcp__politron__workspace_read', input: {} }] } } as unknown as SDKMessage
+      yield { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tool-1', content: 'ok', is_error: false }] } } as unknown as SDKMessage
+      yield success
+    })() as any)
+    const runtime = new ClaudeRuntime(directory, async () => null, querySdk as any)
+    ;(runtime as any).executable = 'claude'
+    runtimes.push(runtime)
+    const threadId = (await runtime.thread({ ...ASSISTANT, runtime: 'claude', runtimePermissionMode: 'bypass' }, directory, [])).id
+    const events: any[] = []
+    runtime.on('event', event => events.push(event))
+    await runtime.request('turn/start', { threadId, input: [{ text: 'Rode os testes' }] })
+    await terminal(events)
+    const options = (querySdk.mock.calls[0] as any)[0].options
+    expect(options.permissionMode).toBe('bypassPermissions')
+    expect(options.tools).toBeUndefined()
+    expect(options.disallowedTools).toEqual(['AskUserQuestion', 'ExitPlanMode'])
+    const native = events.filter(event => event.params?.item?.type === 'nativeTool')
+    expect(native.map(event => [event.method, event.params.item.id])).toEqual([['item/started', 'tool-1'], ['item/completed', 'tool-1']])
+  })
+})

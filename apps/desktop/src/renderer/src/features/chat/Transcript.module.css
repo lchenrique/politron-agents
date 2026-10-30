@@ -499,20 +499,3 @@
 @media (prefers-reduced-motion: reduce) {
   .header, .headerChevron, .groupTitle, .groupIcon, .groupChevron { transition: none; }
 }
-
-/* Card "Executando tarefa": passos à esquerda, Boo do agente digitando à direita. */
-.workCard {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  min-width: 0;
-  padding: 12px 12px 0 14px;
-  border: 0.5px solid color-mix(in srgb, var(--dsw-alias-border-l1) 75%, var(--dsw-alias-border-l2));
-  border-radius: 12px;
-  background: var(--dsw-alias-button-floating-fill, transparent);
-}
-.workMain { flex: 1; min-width: 0; align-self: stretch; padding-bottom: 12px; }
-.workEyebrow { display: block; color: var(--dsw-alias-label-primary); font-size: 13px; font-weight: 600; line-height: 20px; }
-.workCard > svg { flex: none; margin-bottom: -1px; }
-@container (max-width: 420px) { .workCard > svg { display: none; } }
-@media (max-width: 520px) { .workCard > svg { width: 88px !important; height: auto !important; } }

@@ -9,7 +9,7 @@ import { SessionUnavailableError, type AgentRuntime, type ExternalBrowserRegistr
 import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { spawnCli } from './cli-launch'
-import { codexRuntimePermissions } from './runtime-permissions'
+import { codexRuntimePermissions, hasFullAccess } from './runtime-permissions'
 
 type RpcMessage = { id?: number | string; method?: string; params?: Record<string, any>; result?: any; error?: { code?: number | string; message: string } }
 export interface DynamicTool { type: 'function'; name: string; description: string; inputSchema: Record<string, unknown> }
@@ -136,6 +136,8 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       'features.browser_use_full_cdp_access': false,
       'features.apply_patch_freeform': false
     }
+    // Acesso total (como o full-access do Paseo): shell e edição nativos do Codex voltam a funcionar.
+    if (hasFullAccess(agent)) for (const key of ['features.shell_tool', 'features.unified_exec', 'features.apply_patch_freeform']) delete config[key]
     for (const name of await this.configuredMcpNames(join(directory, '.codex', 'config.toml'))) config[`mcp_servers.${name}.enabled`] = false
     if (externalBrowser) {
       // Único MCP habilitado: o proxy do Politron, que pede aprovação a cada chamada. O node_repl oficial nunca é registrado aqui.
