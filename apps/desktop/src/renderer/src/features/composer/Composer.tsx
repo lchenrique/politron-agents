@@ -223,6 +223,7 @@ ${message.text}` : message.text)
       <QueuedMessages messages={queued} onEdit={editQueued} onSendNow={message => runQueued(() => onSendQueuedNow ? onSendQueuedNow(message.id) : window.appAPI.sendQueuedNow(message.id))} onRemove={message => runQueued(() => onCancelQueued ? onCancelQueued(message.id) : window.appAPI.cancelQueuedMessage(message.id))} />
       <PromptInput
         className={styles.promptCard}
+        inline
         value={value}
         onValueChange={setValue}
         textareaRef={textareaRef}
@@ -276,13 +277,13 @@ ${message.text}` : message.text)
             aria-label="Modo planejamento" aria-pressed={planMode}
             title={planMode ? 'Planejamento ativo: não altera arquivos' : 'Ativar planejamento sem alterações'}
             disabled={busy} onClick={() => setPlanMode(current => !current)}
-            className="h-8 shrink-0 gap-1.5 rounded-full px-2.5 text-xs aria-pressed:bg-primary-soft aria-pressed:text-primary-soft-foreground">
-            <ClipboardList className="size-4" /><span>Plano</span>
+            className="size-8 shrink-0 rounded-full p-0 text-muted-foreground hover:text-foreground aria-pressed:bg-primary-soft aria-pressed:text-primary-soft-foreground">
+            <ClipboardList className="size-4" />
           </Button>
-          <AIModelSelector key={conversationId} models={models} providers={modelProviders}
+          <AIModelSelector key={conversationId} compact models={models} providers={modelProviders}
             value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort, ...modelOptions }}
             onChange={changeModel} disabled={busy} />
-          <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label={recording ? 'Parar gravação de voz' : 'Gravar áudio'} title={recording ? 'Parar e transcrever' : 'Ditado por voz local'} disabled={transcribing} onClick={() => void toggleRecord()}>
+          <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground" aria-label={recording ? 'Parar gravação de voz' : 'Gravar áudio'} title={recording ? 'Parar e transcrever' : 'Ditado por voz local'} disabled={transcribing} onClick={() => void toggleRecord()}>
             {transcribing ? <LoaderCircle /> : recording ? <Square /> : <Mic />}
           </Button>
         </>}

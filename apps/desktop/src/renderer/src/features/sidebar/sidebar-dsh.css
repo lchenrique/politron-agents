@@ -122,8 +122,10 @@
   transition: none;
 }
 .dsh-panel-row:hover,
-.dsh-panel-row[aria-current="page"],
 .dsh-panel-row[aria-expanded="true"] { background: var(--dsh-hover); color: var(--dsh-label-primary); }
+/* Item ativo: tom suave da cor primária do tema, com o ícone na mesma cor. */
+.dsh-panel-row[aria-current="page"] { background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--dsh-label-primary); font-weight: 500; }
+.dsh-panel-row[aria-current="page"] .dsh-glyph > svg.lucide { color: var(--primary); }
 .dsh-panel-row svg.lucide { width: 16px; height: 16px; flex: none; }
 .dsh-panel-row .dsh-meta { margin-left: auto; }
 .dsh-glyph { display: inline-flex; flex: none; width: 16px; height: 16px; align-items: center; justify-content: center; }
@@ -366,7 +368,9 @@
 .dsh-project-head .dsh-row { flex: 1; min-width: 0; font-weight: 500; }
 
 /* Rodapé: linhas de 32px sem divisória. */
-.dsh-foot { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.dsh-foot { display: flex; align-items: center; gap: 2px; margin: 4px 0; padding-top: 6px; border-top: 0.5px solid var(--dsh-hover); }
+.dsh-foot > .dsh-panel-row:first-child { flex: 1; min-width: 0; }
+.dsh-foot .dsh-foot-icon { flex: none; width: 32px; justify-content: center; padding-inline: 0; }
 .dsh-foot .dsh-panel-row { min-height: 32px; margin: 0 -2px; padding: 6px 2px 6px 6px; line-height: 20px; }
 .dsh-foot .dsh-panel-row:disabled { opacity: 1; color: var(--dsh-label-caption); }
 
@@ -374,3 +378,9 @@
   .boobot-sidebar, .dsh-row, .dsh-spinner g, .dsh-spinner circle { animation: none; }
   .dsh-folder .dsh-slot .dsh-arrow, .dsh-overflow svg { transition: none; }
 }
+
+/* Boos: ponto de status só quando há algo acontecendo; o botão de criar fecha a lista. */
+.boobot-sidebar .agent-presence[data-state="idle"] i { visibility: hidden; }
+.dsh-new-boo { display: inline-flex; align-items: center; gap: 6px; width: fit-content; margin: 6px 4px 2px; padding: 4px 10px 4px 8px; border-radius: 999px; background: var(--dsh-hover); color: var(--dsh-label-secondary, inherit); font-size: 13px; line-height: 20px; }
+.dsh-new-boo:hover { color: var(--dsh-label-primary); background: color-mix(in srgb, var(--primary) 14%, transparent); }
+.dsh-new-boo svg.lucide { width: 14px; height: 14px; }

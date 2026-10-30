@@ -27,6 +27,16 @@
 .boo__spark { fill: none; stroke: var(--boo-accent); stroke-width: 4.2px; stroke-linecap: round; }
 .boo__talk-lines path { fill: none; stroke: var(--boo-accent); stroke-width: 3px; stroke-linecap: round; }
 
+/* Pensando: balão com três pontos; dormindo: Z subindo. */
+.boo__bubble { fill: var(--boo-body); stroke: var(--boo-outline); stroke-width: 2px; stroke-opacity: .35; }
+.boo__thought-dot { fill: var(--boo-eye); transform-box: fill-box; transform-origin: center; }
+.boo__z-line { fill: none; stroke: var(--boo-accent); stroke-width: 3.2px; stroke-linecap: round; stroke-linejoin: round; }
+.boo__z { transform-box: fill-box; transform-origin: center; }
+.boo[data-animate='true'] .boo__thought-dot { animation: boo-dot 1.2s ease-in-out infinite; }
+.boo[data-animate='true'] .boo__z { animation: boo-z 2.4s ease-in-out infinite both; }
+@keyframes boo-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .35; } 30% { transform: translateY(-3px); opacity: 1; } }
+@keyframes boo-z { 0% { transform: translate(-4px, 6px) scale(.6); opacity: 0; } 25% { opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(4px, -8px) scale(1); opacity: 0; } }
+
 /* A cabeça permanece de frente ao dormir; o gesto vem da respiração e dos olhos. */
 .boo__hand-position { transform-box: view-box; transform-origin: 0 0; }
 .boo__hand { transform-box: fill-box; transform-origin: center; }

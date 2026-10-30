@@ -26,6 +26,16 @@ function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
 }
 
 describe('Composer compacto e elástico', () => {
+  it('fica numa linha: anexar, texto, plano, modelo, microfone e enviar', () => {
+    const { textarea } = setup()
+    const row = textarea.parentElement!
+    for (const name of ['Anexar arquivos', 'Modo planejamento', 'Selecionar modelo', 'Gravar áudio', 'Enviar mensagem']) expect(row).toContainElement(screen.getByRole('button', { name }))
+    const model = screen.getByRole('button', { name: 'Selecionar modelo' })
+    expect(model).not.toHaveTextContent('Modelo real')
+    expect(model).toHaveAttribute('title', expect.stringContaining('Modelo real'))
+    expect(screen.getByRole('button', { name: 'Modo planejamento' })).not.toHaveTextContent('Plano')
+  })
+
   it('continua pronto para a primeira mensagem quando a conversa está vazia', async () => {
     const { textarea, onSubmit } = setup()
     expect(textarea).toBeVisible()

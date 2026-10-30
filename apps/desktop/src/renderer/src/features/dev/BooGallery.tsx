@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { BOO_MOODS, BooFigure, type BooColors, type BooMood } from '../app/BooFigure'
+import { BooWorking } from '../app/BooWorking'
 import '../app/PoliAvatar.css'
 
 const LABELS: Record<BooMood, string> = {
@@ -34,6 +35,9 @@ export default function BooGallery() {
     </header>
     {THEMES.map(theme => <section key={theme.name} data-theme-sample={theme.name} style={{ background: theme.background, color: theme.color, padding: '20px 16px' }}>
       <h2 style={{ margin: '0 0 12px', fontSize: 14 }}>{theme.name} · {SCHEMES[scheme].name}</h2>
+      <div data-boo-working style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 24, marginBottom: 20 }}>
+        {[220, 132, 96].map(size => <BooWorking key={size} size={size} colors={colors} label={`Trabalhando em ${size} px`} animate={animate} />)}
+      </div>
       <div key={round} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 16 }}>
         {BOO_MOODS.map(mood => <figure key={mood} style={{ margin: 0, display: 'grid', justifyItems: 'center', gap: 6 }}>
           <BooFigure mood={mood} size={200} colors={colors} label={LABELS[mood]} animate={animate} />

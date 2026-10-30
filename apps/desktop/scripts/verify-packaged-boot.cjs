@@ -32,7 +32,10 @@ async function run() {
     const conversation = await window.appAPI.saveConversation({ name: 'QA plano instalador', workspaceId: workspace.id, kind: 'direct', agentIds: [] })
     return conversation.name
   })
-  await page.getByRole('button', { name: fixture, exact: true }).click()
+  // A sidebar lista projetos; a conversa aparece depois de entrar no projeto.
+  await page.getByRole('button', { name: /^QA instalador/ }).first().click()
+  // O nome acessível da conversa inclui o tempo relativo ("agora").
+  await page.getByRole('button', { name: new RegExp('^' + fixture) }).first().click()
   const control = page.getByRole('button', { name: 'Modo planejamento' })
   await control.waitFor({ timeout: 30000 })
   assert.equal(await control.getAttribute('aria-pressed'), 'false')

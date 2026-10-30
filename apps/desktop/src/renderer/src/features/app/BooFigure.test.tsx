@@ -18,7 +18,7 @@ describe('Boo / 11 estados', () => {
     const parts: Record<BooMood, string[]> = {
       idle: ['.boo__eye', '.boo__reference-mouth'],
       coding: ['.boo__typing', '.boo__eye'],
-      thinking: ['.boo__reference-mouth', '.boo__thought-gaze'],
+      thinking: ['.boo__reference-mouth', '.boo__thought-gaze', '[data-boo-prop="thought"]'],
       speaking: ['.boo__talk', '.boo__talk-lines'],
       done: ['[data-boo-prop="check"]', '.boo__eye-line'],
       happy: ['.boo__reference-mouth', '.boo__eye-line'],
@@ -26,7 +26,7 @@ describe('Boo / 11 estados', () => {
       dizzy: ['.boo__spiral', '[data-boo-prop="stars"]'],
       love: ['.boo__heart-eye', '[data-boo-prop="hearts"]'],
       surprised: ['[data-boo-prop="sparks"]', '.boo__brow'],
-      sleep: ['.boo__snore', '.boo__eye-line'],
+      sleep: ['.boo__snore', '.boo__eye-line', '[data-boo-prop="zzz"]'],
     }
     expect(BOO_MOODS).toHaveLength(11)
     for (const mood of BOO_MOODS) {

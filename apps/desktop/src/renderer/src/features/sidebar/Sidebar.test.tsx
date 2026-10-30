@@ -56,6 +56,31 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
   return render(<Sidebar snapshot={snapshot} selected={undefined} unreadCounts={{}} agentStates={{}} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} onOpenSettings={vi.fn()} onDeleteWorkspace={vi.fn()} onDeleteConversation={vi.fn()} onDeleteAgent={vi.fn()} onSetChief={vi.fn()} onNotice={vi.fn()} {...overrides} />)
 }
 
+describe('acabamento da barra lateral', () => {
+  it('oferece "Novo Boo" no fim da lista de Boos e abre o editor de agente', () => {
+    const onOpenEditor = vi.fn()
+    renderSidebar({ onOpenEditor, section: 'agents' })
+    fireEvent.click(screen.getByRole('button', { name: 'Novo Boo' }))
+    expect(onOpenEditor).toHaveBeenCalledWith({ kind: 'agent' })
+  })
+
+  it('rodapé numa linha: Configurações e o atalho de pasta só com ícone', () => {
+    const onOpenSettings = vi.fn()
+    renderSidebar({ onOpenSettings })
+    fireEvent.click(screen.getByRole('button', { name: 'Configurações' }))
+    expect(onOpenSettings).toHaveBeenCalled()
+    const folder = screen.getByRole('button', { name: 'Abrir pasta' })
+    expect(folder).toBeDisabled()
+    expect(folder).toHaveTextContent('')
+  })
+
+  it('marca o painel ativo e informa o estado do Boo', () => {
+    renderSidebar({ onOpenHome: vi.fn(), view: 'board', section: 'agents', agentStates: { 'agent-1': 'working' } })
+    expect(screen.getByRole('button', { name: /Board da empresa/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('img', { name: 'Trabalhando' })).toBeInTheDocument()
+  })
+})
+
 describe('contatos de agentes na barra lateral', () => {
   it('abre a conversa direta ao selecionar um agente', () => {
     const onOpenAgent = vi.fn()

@@ -495,13 +495,14 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         <section aria-label="Catálogo de agentes" className="dsh-rows">
           {onOpenHome && chiefAgent && agentRow(chiefAgent, true)}
           {sortableAgents(visibleAgents, agent => agentRow(agent))}
+          {!browserMode && <Button type="button" variant={null} size={null} className="dsh-new-boo" onClick={() => onOpenEditor({ kind: 'agent' })}><Plus aria-hidden="true" />Novo Boo</Button>}
           {!visibleAgents.length && <p className="dsh-empty">{chiefAgent ? 'Nenhum outro agente cadastrado. Use o botão + para criar.' : 'Crie um Boo pelo botão + para começar.'}</p>}
         </section>
       </TabsContent>
     </Tabs>}
     {!browserMode && <footer className="dsh-foot">
-      <Button variant="ghost" size={null} disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} title={selected?.workspaceId ? 'Abrir a pasta do projeto desta conversa' : 'Abra uma conversa de projeto para acessar a pasta'} className="dsh-panel-row"><FolderOpen />Abrir pasta</Button>
       <Button variant="ghost" size={null} onClick={onOpenSettings} className="dsh-panel-row"><Settings2 />Configurações</Button>
+      <Button variant="ghost" size={null} disabled={!selected?.workspaceId} onClick={() => selected && void window.appAPI.openFolder(selected.id).catch(error => onNotice(errorText(error)))} aria-label="Abrir pasta" title={selected?.workspaceId ? 'Abrir a pasta do projeto desta conversa' : 'Abra uma conversa de projeto para acessar a pasta'} className="dsh-panel-row dsh-foot-icon"><FolderOpen /></Button>
     </footer>}
     <div aria-live="polite" role="status" aria-label="Ordem do sidebar" className="sr-only">{announcement}</div>
     <GroupDialog draft={groupDialog} onChange={value => setGroupDialog(current => current ? { ...current, value } : current)} onCancel={() => setGroupDialog(null)} onConfirm={confirmGroupDialog} />

@@ -14,6 +14,7 @@ Execute comandos a partir de `apps/desktop`, onde fica o `package.json`:
 | `npm run test:models` | Detecção de provedores, catálogo e configurações |
 | `npm run test:voice` | Casos locais da infraestrutura de voz/realtime |
 | `npm run test:performance` | Benchmark SQLite opt-in, com fixtures descartáveis |
+| `npm run test:redesign:web` | E2E no navegador das galerias de desenvolvimento: card "Executando tarefa", navegador de turnos, composer em linha, sidebar e painel de voz; salva capturas (pasta opcional como argumento). Não abre o Electron nem testa áudio real |
 | `npm run verify` | Encadeia verificações; falha enquanto persistirem erros do lint legado |
 
 `npm run test:codex` é uma integração opcional que chama o Codex real. Só a execute quando essa integração externa for intencional; resultados de mocks não substituem execução real.

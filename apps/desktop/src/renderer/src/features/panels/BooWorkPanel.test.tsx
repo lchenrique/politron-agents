@@ -24,6 +24,19 @@ describe('Boo ao vivo na mesma conversa', () => {
     await screen.findByText('Controles de áudio')
   })
 
+  it('mostra o status no cabeçalho e expande a atividade com os detalhes da ferramenta', async () => {
+    const { container } = render(<BooWorkPanel {...base} agents={[{ ...agent, description: 'Código e arquitetura' }]} selectedAgents={[{ ...agent, description: 'Código e arquitetura' }]} />)
+    expect(screen.getByText('Trabalhando')).toBeInTheDocument()
+    expect(screen.getByText('Código e arquitetura')).toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: /Atividade em andamento/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    const before = container.querySelectorAll('[data-chat-call-id]').length
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelectorAll('[data-chat-call-id]').length).toBeGreaterThan(before)
+    await screen.findByText('Controles de áudio')
+  })
+
   it('não mostra ferramentas ou gestos de outra conversa', async () => {
     const { container } = render(<BooWorkPanel {...base} conversationId="c2" />)
     expect(container.querySelector('svg.boo')).toHaveAttribute('data-mood', 'idle')

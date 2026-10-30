@@ -4,7 +4,7 @@
  * O renderer usa o catálogo e as capacidades reais dos CLIs do Politron,
  * mantendo a trilha de esforço e a apresentação animada do componente.
  */
-import { ArrowLeft, Check, ChevronDown, ChevronRight, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Cpu, SlidersHorizontal } from 'lucide-react'
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -28,6 +28,8 @@ export interface AIModelSelectorProps {
   onChange: (value: ModelSelection) => void
   disabled?: boolean
   className?: string
+  /** Só o ícone no gatilho; nome, esforço e opções ficam no título e no painel. */
+  compact?: boolean
 }
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const
@@ -100,7 +102,7 @@ const toTrackModel = (model: ModelChoice): ModelOption => ({
   supportsFastMode: model.supportsFastMode,
 })
 
-export default function AIModelSelector({ models, providers, value, onChange, disabled = false, className }: AIModelSelectorProps) {
+export default function AIModelSelector({ models, providers, value, onChange, disabled = false, className, compact = false }: AIModelSelectorProps) {
   const [open, setOpen] = useState(false)
   const [providerId, setProviderId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -111,7 +113,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
   const searchRef = useRef<HTMLInputElement>(null)
   const panelId = useId()
   const effortLabelId = useId()
-  const panelPosition = useAnchoredPosition({ open, anchorRef: triggerRef, panelRef, side: 'top', align: 'start', gap: 8, margin: 12 })
+  const panelPosition = useAnchoredPosition({ open, anchorRef: triggerRef, panelRef, side: 'top', align: compact ? 'end' : 'start', gap: 8, margin: 12 })
 
   const providerList = useMemo(() => {
     const entries = new Map((providers || []).map(provider => [provider.id, provider]))
@@ -194,7 +196,9 @@ export default function AIModelSelector({ models, providers, value, onChange, di
         onClick={() => { if (open) close(); else { setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
         className={cn('flex h-8 max-w-[min(16rem,100%)] items-center gap-1.5 rounded-full border border-transparent px-2 text-xs text-foreground',
           'outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+          compact && 'w-8 justify-center px-0 text-muted-foreground hover:text-foreground',
           open && 'bg-accent')}>
+        {compact ? <Cpu aria-hidden className="size-4" /> : <>
         <span className="min-w-0 truncate font-medium">{selected?.name || INHERIT_MODEL_NAME}</span>
         {trackModel && currentEffort && <span className="hidden shrink-0 items-center gap-1.5 text-muted-foreground sm:flex">
           <EffortGlyph count={trackModel.efforts.length} level={effortIndexValue} />
@@ -204,6 +208,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
         {currentVariant && <span className="hidden max-w-20 truncate rounded-fullbg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline" title={currentVariant.name}>{currentVariant.name}</span>}
         {value.fastMode && <span className="hidden rounded-fullbg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 sm:inline">Fast</span>}
         <ChevronDown aria-hidden className={cn('size-3 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+        </>}
       </button>
       {open && createPortal(<MenuSurface ref={panelRef} id={panelId} role="dialog" aria-label="Modelos disponíveis"
           className="fixed z-[1100] w-[430px] max-w-[calc(100vw-2rem)] overflow-y-auto border border-[var(--dsw-alias-border-l1)] shadow-[var(--dsw-elevation-prominent)]"

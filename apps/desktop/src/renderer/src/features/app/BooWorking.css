@@ -1,0 +1,22 @@
+/* Laptop do Boo trabalhando: tampa escura tingida pelo acento do agente. */
+/* Faces do notebook: tampa em gradiente, bordas e laterais em tons do mesmo grafite. */
+.boo-work__lid, .boo-work__edge, .boo-work__deck, .boo-work__side { stroke-linejoin: round; stroke-width: 1.2px; }
+.boo-work__lid { stroke: color-mix(in srgb, var(--boo-accent) 14%, #1f2330); }
+.boo-work__edge { fill: color-mix(in srgb, var(--boo-accent) 16%, #4a5164); stroke: color-mix(in srgb, var(--boo-accent) 16%, #4a5164); }
+.boo-work__deck { fill: color-mix(in srgb, var(--boo-accent) 12%, #3b4152); stroke: color-mix(in srgb, var(--boo-accent) 12%, #3b4152); }
+.boo-work__side { fill: color-mix(in srgb, var(--boo-accent) 8%, #252935); stroke: color-mix(in srgb, var(--boo-accent) 8%, #252935); }
+.boo-work__rim { fill: none; stroke: var(--boo-accent); stroke-width: 1.8px; stroke-linecap: round; opacity: .8; }
+.boo-work__logo { fill: var(--boo-body); opacity: .95; }
+.boo-work__logo-glow { fill: var(--boo-accent); opacity: .16; }
+.boo-work__code rect { fill: var(--boo-accent); opacity: 0; transform-box: fill-box; }
+.boo[data-animate='true'] .boo-work__code rect { animation: boo-work-code 1.65s ease-out infinite; }
+@keyframes boo-work-code {
+  0% { opacity: 0; transform: translate(0, 0); }
+  25% { opacity: .9; }
+  100% { opacity: 0; transform: translate(-10px, -34px); }
+}
+/* Fone: arco e casca em grafite tingido; tampa da concha no acento do agente. */
+.boo-work__band, .boo-work__shell { fill: color-mix(in srgb, var(--boo-accent) 30%, #353c4c); stroke: color-mix(in srgb, var(--boo-accent) 30%, #353c4c); stroke-width: .6px; stroke-linejoin: round; }
+.boo-work__band-shine { fill: none; stroke: var(--boo-accent); stroke-width: 2.2px; stroke-linecap: round; opacity: .75; }
+.boo-work__cap { fill: var(--boo-accent); }
+.boo-work__cap-face { fill: color-mix(in srgb, var(--boo-accent) 70%, #fff); opacity: .55; }

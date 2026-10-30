@@ -20,6 +20,13 @@ const CSS_VAR: Record<keyof BooColors, string> = {
   accent: '--boo-accent', accent2: '--boo-accent-2', code: '--boo-code', check: '--boo-check', heart: '--boo-heart', spark: '--boo-spark',
 }
 
+/** Variáveis CSS de cor do Boo, compartilhadas com outras cenas (ex.: BooWorking). */
+export function booColorVars(colors?: Partial<BooColors>): Record<string, string> {
+  const style: Record<string, string> = {}
+  for (const key of Object.keys(CSS_VAR) as (keyof BooColors)[]) style[CSS_VAR[key]] = colors?.[key] || BOO_DEFAULT_COLORS[key]
+  return style
+}
+
 /** As quatro poses vêm dos contornos da imagem aprovada, não de uma aproximação. */
 function referencePose(mood: BooMood) {
   return mood === 'sleep' ? BOO_REFERENCE_ART.sleep
@@ -103,6 +110,17 @@ function MoodMouth({ mood }: { mood: BooMood }) {
 
 function FrontEffects({ mood }: { mood: BooMood }) {
   switch (mood) {
+    case 'thinking': return <g transform="translate(192 26)" data-boo-prop="thought" aria-hidden="true">
+      <circle className="boo__bubble" cx="-20" cy="24" r="3.6" />
+      <circle className="boo__bubble" cx="-12" cy="15" r="5.4" />
+      <rect className="boo__bubble" x="-10" y="-14" width="44" height="26" rx="13" />
+      {[2, 12, 22].map((x, i) => <circle key={x} className="boo__thought-dot" cx={x} cy="-1" r="3.2" style={{ animationDelay: `${i * .18}s` }} />)}
+    </g>
+    case 'sleep': return <g transform="translate(184 46)" data-boo-prop="zzz" aria-hidden="true">
+      {([[0, 0, .7], [12, -16, .95], [26, -34, 1.2]] as const).map(([x, y, s], i) => <g key={i} transform={`translate(${x} ${y}) scale(${s})`}>
+        <g className="boo__z" style={{ animationDelay: `${i * .8}s` }}><path className="boo__under" d="M-5 -5 H5 L-5 5 H5" /><path className="boo__z-line" d="M-5 -5 H5 L-5 5 H5" /></g>
+      </g>)}
+    </g>
     case 'speaking': return <g className="boo__talk-lines" transform="translate(212 62)" aria-hidden="true"><path d="M0 0 Q6 8 0 16" /><path d="M9 -6 Q18 8 9 22" /></g>
     case 'done': return <g transform="translate(206 40)" data-boo-prop="check" aria-hidden="true"><g className="boo__pop-once">
       <path className="boo__check-under" d="M-15 0 L-4 11 L16 -14" /><path className="boo__check" d="M-15 0 L-4 11 L16 -14" />
@@ -151,8 +169,7 @@ export const BooFigure = memo(function BooFigure({ mood, size, colors, label, an
   const detail = size >= 40
   const art = referencePose(mood)
   const tier = size < 40 ? 's' : size < 96 ? 'm' : 'l'
-  const style = { width: size, height: size, ...(hidden ? { visibility: 'hidden' } : {}) } as Record<string, string | number>
-  for (const key of Object.keys(CSS_VAR) as (keyof BooColors)[]) style[CSS_VAR[key]] = colors?.[key] || BOO_DEFAULT_COLORS[key]
+  const style = { width: size, height: size, ...(hidden ? { visibility: 'hidden' } : {}), ...booColorVars(colors) } as Record<string, string | number>
   const showBlush = blush && mood === 'love'
   style['--boo-liquid-rest'] = `path('${art.body}')`
   style['--boo-liquid-a'] = `path('${art.liquidA}')`

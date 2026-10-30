@@ -16,9 +16,9 @@
   display: flex !important;
   flex-direction: column;
   gap: 4px !important;
-  padding: 8px 6px 6px !important;
+  padding: 6px !important;
   border: 0 !important;
-  border-radius: 28px !important;
+  border-radius: 24px !important;
   background: var(--dsw-specific-input-major, var(--card)) !important;
   box-shadow: var(--dsw-elevation-soft, var(--shadow-composer)) !important;
   transition: box-shadow 150ms ease;
@@ -34,12 +34,9 @@
   color: #fff !important;
 }
 
-/* Barra de controles e botões nos tamanhos do DSH: + 28px, chips 28px, enviar/parar 34px. */
-.promptCard :global(textarea[aria-label="Message"] ~ div) { padding: 2px 2px 0 !important; }
-.promptCard :global(button[type="submit"]), .promptCard :global(button[aria-label="Parar geração"]) { width: 34px !important; height: 34px !important; min-width: 34px !important; }
-.promptCard :global(button[aria-label="Anexar arquivos"]) { width: 28px !important; height: 28px !important; border-radius: 999px !important; }
-/* Chips dentro do cartão de 28px: totalmente arredondados, concêntricos com o cartão e o botão redondo. */
-.promptCard :global(button[aria-label="Modo planejamento"]), .promptCard :global(button[aria-label="Selecionar modelo"]) { height: 28px !important; border-radius: 999px !important; }
+/* Linha única: + 32px à esquerda, ícones de 32px e enviar/parar 36px à direita. */
+.promptCard :global(button[type="submit"]), .promptCard :global(button[aria-label="Parar geração"]) { width: 36px !important; height: 36px !important; min-width: 36px !important; }
+.promptCard :global(button[aria-label="Anexar arquivos"]) { width: 32px !important; height: 32px !important; border-radius: 999px !important; color: var(--dsw-alias-label-secondary, var(--muted-foreground)); }
 
 .root:has(.queue) .promptCard {
   border-top-left-radius: 0 !important;
@@ -49,7 +46,7 @@
 .promptCard :global(textarea[aria-label="Message"]) {
   min-height: 36px !important;
   max-height: 336px;
-  padding: 4px 8px 0 14px !important;
+  padding: 7px 6px !important;
   font-size: 14px !important;
   line-height: 22px !important;
   caret-color: var(--dsw-alias-state-business-primary, var(--primary));

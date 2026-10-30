@@ -1,0 +1,22 @@
+/* Tela de ligação do painel do Boo, nas cores do tema. */
+.realtime-stage { display: flex; width: 100%; flex-direction: column; align-items: center; text-align: center; }
+.realtime-wave { display: flex; height: 44px; align-items: center; justify-content: center; gap: 3px; margin-top: 4px; }
+.realtime-wave i { display: block; width: 3px; height: calc(4px + var(--amp) * var(--shape) * 40px); border-radius: 999px; background: linear-gradient(to top, color-mix(in srgb, var(--primary) 70%, transparent), var(--primary)); transition: height 120ms ease; }
+.realtime-wave[data-active='true'] i { animation: realtime-wave .9s ease-in-out infinite alternate; }
+@keyframes realtime-wave { from { transform: scaleY(.55); } to { transform: scaleY(1); } }
+.realtime-label { margin-top: 10px; font-size: 15px; font-weight: 600; color: var(--foreground); }
+.realtime-clock { font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.realtime-buttons { display: flex; align-items: flex-start; justify-content: center; gap: 22px; margin-top: 16px; }
+.realtime-button { display: flex; width: 72px; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); }
+.realtime-button:nth-child(2) { margin-top: -8px; color: var(--foreground); }
+.realtime-main { background: var(--primary); color: var(--primary-foreground); box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 18%, transparent); }
+.realtime-main:hover { background: color-mix(in srgb, var(--primary) 88%, #fff); }
+.realtime-main[aria-pressed='false'] { background: var(--secondary); color: var(--foreground); box-shadow: none; }
+.realtime-mode { width: 100%; margin-top: 18px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--card) 70%, transparent); text-align: left; }
+.realtime-mode-head { display: flex; width: 100%; align-items: center; justify-content: space-between; color: var(--muted-foreground); }
+.realtime-mode-head:hover { color: var(--foreground); }
+.realtime-mode-title { font-size: 12px; font-weight: 600; color: var(--foreground); }
+.realtime-mode-value { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--foreground); }
+.realtime-mode-value svg { color: var(--primary); }
+.realtime-mode-hint { margin-top: 6px; font-size: 11px; line-height: 16px; color: var(--muted-foreground); }
+@media (prefers-reduced-motion: reduce) { .realtime-wave i { animation: none !important; } }

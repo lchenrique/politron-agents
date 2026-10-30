@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, KeyRound, Phone, PhoneOff, Settings2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { AudioLines, ChevronRight, Download, Headphones, KeyRound, Mic, MicOff, Phone, PhoneOff, Settings2, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,7 @@ import { notifyVoiceSettings, useVoicePreferences } from './preferences'
 import { PocketTtsSettings } from './PocketTtsSettings'
 import { PiperTtsSettings } from './PiperTtsSettings'
 import { ChatSpeechSettings } from '../voice/ChatSpeechSettings'
+import './RealtimeCall.css'
 
 const PHASE_LABEL: Record<RealtimePhase, string> = {
   idle: 'Desligado', connecting: 'Conectando…', listening: 'Ouvindo', hearing: 'Você está falando…',
@@ -136,7 +137,7 @@ export function RealtimeSettingsPanel() {
 }
 
 /** Tela de telefonema do mascote: mantém o foco no agente e nos controles da ligação. */
-export function RealtimeCall({ conversationId, agentId, agentName, mode, headphones, refreshToken = 0, onPhaseChange, onErrorChange, compact = false }: { conversationId?: string; agentId?: string; agentName: string; mode: RealtimeMode; headphones: boolean; refreshToken?: number; onPhaseChange?: (phase: RealtimePhase) => void; onErrorChange?: (error: string) => void; compact?: boolean }) {
+export function RealtimeCall({ conversationId, agentId, agentName, mode, headphones, refreshToken = 0, onPhaseChange, onErrorChange, compact = false, variant = 'default' }: { conversationId?: string; agentId?: string; agentName: string; mode: RealtimeMode; headphones: boolean; refreshToken?: number; onPhaseChange?: (phase: RealtimePhase) => void; onErrorChange?: (error: string) => void; compact?: boolean; variant?: 'default' | 'panel' }) {
   const [status, setStatus] = useState<RealtimeStatus | null>(null)
   const [phase, setPhase] = useState<RealtimePhase>('idle')
   const phaseRef = useRef<RealtimePhase>('idle')
@@ -147,6 +148,11 @@ export function RealtimeCall({ conversationId, agentId, agentName, mode, headpho
   const player = useRef<PcmPlayer | null>(null)
   const headphonesRef = useRef(headphones)
   headphonesRef.current = headphones
+  // Mudo só deixa de enviar o microfone; a sessão e a voz do agente continuam.
+  const [muted, setMuted] = useState(false)
+  const mutedRef = useRef(false)
+  mutedRef.current = muted
+  const [startedAt, setStartedAt] = useState<number | null>(null)
   const reportError = useCallback((message: string) => { setError(message); onErrorChange?.(message) }, [onErrorChange])
   const refresh = useCallback(async () => { try { setStatus(await window.realtimeAPI.status()) } catch (cause) { reportError(errorText(cause)) } }, [reportError])
   const updatePhase = useCallback((value: RealtimePhase) => { phaseRef.current = value; setPhase(value); onPhaseChange?.(value) }, [onPhaseChange])
@@ -164,7 +170,7 @@ export function RealtimeCall({ conversationId, agentId, agentName, mode, headpho
   const hangUp = useCallback(async () => {
     mic.current?.stop(); mic.current = null
     player.current?.close(); player.current = null
-    setActive(false); setLevel(0); updatePhase('idle')
+    setActive(false); setLevel(0); setMuted(false); setStartedAt(null); updatePhase('idle')
     await window.realtimeAPI.stop().catch(() => undefined)
   }, [updatePhase])
   useEffect(() => window.realtimeAPI.onEvent((event: RealtimeEvent) => {
@@ -176,7 +182,7 @@ export function RealtimeCall({ conversationId, agentId, agentName, mode, headpho
       updatePhase(event.phase)
     }
     else if (event.type === 'error') { updatePhase('error'); reportError(event.message) }
-    else if (event.type === 'ended') { mic.current?.stop(); mic.current = null; setActive(false); setLevel(0); updatePhase('idle') }
+    else if (event.type === 'ended') { mic.current?.stop(); mic.current = null; setActive(false); setLevel(0); setMuted(false); setStartedAt(null); updatePhase('idle') }
   }), [reportError, updatePhase])
   useEffect(() => () => { void hangUp() }, [conversationId, hangUp])
   const call = async () => {
@@ -190,15 +196,19 @@ export function RealtimeCall({ conversationId, agentId, agentName, mode, headpho
       const capture = mic.current = new MicCapture()
       await Promise.all([playback.resume(), capture.start((pcm, value) => {
         setLevel(value)
-        if (!sessionReady) return
+        if (!sessionReady || mutedRef.current) return
         if (!headphonesRef.current && player.current?.isPlaying()) return
         window.realtimeAPI.pushAudio(pcm)
       })])
       await window.realtimeAPI.start(mode, conversationId, agentId)
       sessionReady = true
       setActive(true)
+      setStartedAt(Date.now())
     } catch (cause) { reportError(errorText(cause)); await hangUp() }
   }
+  if (variant === 'panel') return <CallStage {...{ agentName, mode, headphones, phase, active, error, level, muted, startedAt, conversationId }} ready={!!ready} hasKey={!!hasKey}
+    localMissing={mode === 'free' && !!status && !!hasKey && !status.localModels}
+    onCall={() => void call()} onHangUp={() => void hangUp()} onToggleMute={() => setMuted(value => !value)} />
   return <section aria-label="Ligação por voz" className={compact ? 'w-auto text-center' : 'w-full max-w-xs text-center'}>
     {!compact && <>
       <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground"><span aria-hidden="true" className={`size-2 rounded-full ${active ? 'animate-pulse bg-emerald-500' : 'bg-muted-foreground/40'}`} />{active ? PHASE_LABEL[phase] : phase === 'connecting' ? PHASE_LABEL.connecting : `Ligar para ${agentName}`}</p>
@@ -213,5 +223,60 @@ export function RealtimeCall({ conversationId, agentId, agentName, mode, headpho
     {!compact && error && <p role="alert" className="mt-3 text-xs text-destructive">{error}</p>}
     {!compact && !active && !hasKey && <p className="mt-2 text-[11px] text-muted-foreground">Configure em Configurações → Voz em tempo real.</p>}
     {!compact && mode === 'free' && status && hasKey && !status.localModels && <p className="mt-2 text-[11px] text-muted-foreground">Baixe a voz local nas configurações para poder ligar.</p>}
+  </section>
+}
+
+const WAVE = Array.from({ length: 31 }, (_, index) => .35 + .65 * Math.sin(Math.PI * (index + .5) / 31) * (.55 + .45 * Math.abs(Math.sin(index * 1.7))))
+const MODE_LABEL: Record<RealtimeMode, string> = { gemini: 'Gemini Live', free: 'Gratuito · voz local' }
+const clock = (ms: number) => { const total = Math.floor(ms / 1000); return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}` }
+
+/** Tela de ligação do painel do Boo: ondas, estado com cronômetro, três botões e o modo de voz. */
+function CallStage({ agentName, mode, headphones, phase, active, error, level, muted, startedAt, ready, hasKey, conversationId, localMissing, onCall, onHangUp, onToggleMute }: {
+  agentName: string; mode: RealtimeMode; headphones: boolean; phase: RealtimePhase; active: boolean; error: string; level: number; muted: boolean; startedAt: number | null
+  ready: boolean; hasKey: boolean; conversationId?: string; localMissing: boolean; onCall: () => void; onHangUp: () => void; onToggleMute: () => void
+}) {
+  const { setHeadphones } = useVoicePreferences()
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!startedAt) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [startedAt])
+  // Amplitude das ondas: voz do agente forte, microfone pelo nível captado, espera quase parada.
+  const amp = !active ? .08 : phase === 'speaking' ? .9 : muted ? .1 : phase === 'hearing' ? Math.max(.45, Math.min(1, level * 5)) : phase === 'listening' ? Math.min(.8, .22 + level * 4) : .35
+  const label = active ? (muted ? 'Microfone mudo' : PHASE_LABEL[phase] + (phase === 'listening' || phase === 'speaking' ? '…' : '')) : phase === 'connecting' ? PHASE_LABEL.connecting : `Ligar para ${agentName}`
+  return <section aria-label="Ligação por voz" className="realtime-stage">
+    <div className="realtime-wave" data-active={active} style={{ '--amp': amp } as CSSProperties} role="img" aria-label={active ? `Nível do microfone: ${Math.round(level * 100)}%` : 'Ligação desligada'}>
+      {WAVE.map((shape, index) => <i key={index} style={{ '--shape': shape, animationDelay: `${-(index % 7) * .13}s` } as CSSProperties} />)}
+    </div>
+    <p className="realtime-label">{label}</p>
+    <p className="realtime-clock" aria-label="Duração da ligação">{startedAt ? clock(now - startedAt) : '00:00'}</p>
+    <div className="realtime-buttons">
+      <div className="realtime-button">
+        <Button type="button" variant="secondary" size="icon" className="size-12 rounded-full" aria-pressed={!headphones} aria-label={headphones ? 'Usar alto-falante' : 'Usar fone de ouvido'}
+          title={headphones ? 'Fone: o microfone continua aberto enquanto o agente fala' : 'Alto-falante: o microfone pausa enquanto o agente fala'} onClick={() => setHeadphones(!headphones)}>
+          {headphones ? <Headphones className="size-5" /> : <Volume2 className="size-5" />}
+        </Button>
+        <span>{headphones ? 'Fone' : 'Alto-falante'}</span>
+      </div>
+      <div className="realtime-button">
+        {active
+          ? <Button type="button" size="icon" className="realtime-main size-16 rounded-full" aria-pressed={!muted} aria-label={muted ? 'Ativar microfone' : 'Silenciar microfone'} onClick={onToggleMute}>{muted ? <MicOff className="size-6" /> : <Mic className="size-6" />}</Button>
+          : <Button type="button" size="icon" className="realtime-main size-16 rounded-full" aria-label={`Ligar para ${agentName}`} title="Ligar" onClick={onCall} disabled={!conversationId || !ready || phase === 'connecting'}><Phone className="size-6" /></Button>}
+        <span>{active ? (muted ? 'Mudo' : 'Falar') : 'Ligar'}</span>
+      </div>
+      <div className="realtime-button">
+        <Button type="button" variant="destructive" size="icon" className="size-12 rounded-full" aria-label="Desligar ligação" title="Encerrar" disabled={!active && phase !== 'connecting'} onClick={onHangUp}><PhoneOff className="size-5" /></Button>
+        <span>Encerrar</span>
+      </div>
+    </div>
+    {error && <p role="alert" className="mt-3 text-xs text-destructive">{error}</p>}
+    <div className="realtime-mode">
+      <button type="button" className="realtime-mode-head" onClick={() => window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'voz' }))} aria-label="Abrir configurações de voz">
+        <span className="realtime-mode-title">Modo de voz</span><ChevronRight aria-hidden="true" className="size-4" />
+      </button>
+      <p className="realtime-mode-value"><AudioLines aria-hidden="true" className="size-4" />{MODE_LABEL[mode]}</p>
+      <p className="realtime-mode-hint">{!hasKey ? 'Configure em Configurações → Voz em tempo real.' : localMissing ? 'Baixe a voz local nas configurações para poder ligar.' : `Fale naturalmente. ${agentName} entende, pensa e executa tarefas no seu projeto em tempo real.`}</p>
+    </div>
   </section>
 }

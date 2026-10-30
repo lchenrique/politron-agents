@@ -7,7 +7,7 @@ export function TurnNavigator({ count, activeIndex, onNavigate }: {
   onNavigate: (index: number) => void
 }) {
   return (
-    <nav className={css.navigator} aria-label="Navegação por turnos">
+    <div className={css.navigatorDock}><nav className={css.navigator} aria-label="Navegação por turnos">
       {Array.from({ length: count }, (_, index) => (
         <button
           key={index}
@@ -18,6 +18,6 @@ export function TurnNavigator({ count, activeIndex, onNavigate }: {
           onClick={() => onNavigate(index)}
         />
       ))}
-    </nav>
+    </nav></div>
   )
 }

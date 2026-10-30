@@ -76,7 +76,9 @@ export class WorkspaceStore {
     this.dataDirectory = directory
     mkdirSync(directory, { recursive: true })
     this.db = new DatabaseSync(join(directory, 'politron-v9.sqlite'))
-    const previousSchema = this.schemaVersion()
+    let previousSchema: number | null
+    // Falha na primeira leitura fecha a conexão, para uma nova tentativa não deixar o arquivo preso.
+    try { previousSchema = this.schemaVersion() } catch (error) { this.db.close(); throw error }
     if (previousSchema !== null && previousSchema > SCHEMA_VERSION) {
       this.db.close()
       throw new Error(`O banco V9 usa o esquema ${previousSchema}, mais novo que o suportado (${SCHEMA_VERSION}).`)

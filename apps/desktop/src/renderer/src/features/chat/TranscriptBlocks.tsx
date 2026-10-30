@@ -1,26 +1,30 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Brain, Wrench } from 'lucide-react'
 import { DisclosureRow, TextShimmer } from '@/components/dsh'
-import type { Message } from '../../../../shared/v9'
+import type { Agent, Message } from '../../../../shared/v9'
+import { BooWorking } from '../app/BooWorking'
+import { booColorsOf } from '../app/PoliAvatar'
 import { activityToolCall, formatRunDuration, liveStep, processTitle, stepActivity } from './tool-call'
 import { messagesInTurn, type Turn } from './turns'
 import css from './Transcript.module.css'
 
-export function DshToolGroup({ messages, turnActive, autoOpen, children }: { messages: Message[]; turnActive: boolean; autoOpen?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(false)
+export function DshToolGroup({ messages, turnActive, autoOpen, agent, children }: { messages: Message[]; turnActive: boolean; autoOpen?: boolean; agent?: Agent; children: ReactNode }) {
+  // null = segue o estado: aberto enquanto há ferramenta rodando; depois do clique vale a escolha do usuário.
+  const [manual, setManual] = useState<boolean | null>(null)
   const calls = useMemo(() => messages.map(message => ({ message, call: activityToolCall(message, turnActive) })), [messages, turnActive])
   // "Ao vivo" só com chamada realmente em execução; entre chamadas o turno mostra "Pensando".
   const current = [...calls].reverse().find(({ message }) => turnActive && (message.tool?.status === 'running' || message.status === 'running'))
   const title = current ? liveStep(current.call, stepActivity(current.call, current.message)) : processTitle(calls.map(({ call, message }) => stepActivity(call, message)))
 
-  useEffect(() => { if (autoOpen) setOpen(true) }, [autoOpen])
+  useEffect(() => { if (autoOpen) setManual(true) }, [autoOpen])
+  const open = manual ?? !!current
 
-  return <DisclosureRow
+  const row = <DisclosureRow
     icon={<Wrench aria-hidden="true" />}
     title={title}
     open={open}
     expandable
-    onToggle={() => setOpen(value => !value)}
+    onToggle={() => setManual(!open)}
     running={!!current}
     className={css.group}
     rowClassName={css.groupTitle}
@@ -29,6 +33,12 @@ export function DshToolGroup({ messages, turnActive, autoOpen, children }: { mes
   >
     <div className={css.groupBody}><div className={css.rows}>{children}</div></div>
   </DisclosureRow>
+  // Enquanto uma ferramenta roda, o grupo vira card; o Boo digitando só aparece sem avatar em imagem.
+  if (!current) return row
+  return <div className={css.workCard} data-part="work-card">
+    <div className={css.workMain}><span className={css.workEyebrow}>Executando tarefa</span>{row}</div>
+    {agent && !agent.avatar && <BooWorking size={132} colors={booColorsOf(agent)} label={`${agent.name} está trabalhando`} />}
+  </div>
 }
 
 export function ReasoningDisclosure({ message, autoOpen }: { message: Message; autoOpen?: boolean }) {

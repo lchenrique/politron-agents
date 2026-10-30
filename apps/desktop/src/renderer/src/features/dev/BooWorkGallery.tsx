@@ -4,7 +4,9 @@ import type { Agent, Message, Run } from '../../../../shared/v9'
 import { Button } from '@/components/ui/button'
 import { BooWorkPanel } from '../panels/BooWorkPanel'
 
-const agent = { id: 'demo-boo', name: 'Boo', alias: 'boo', color: '#ffffff', avatar: '', description: '' } as Agent
+const agent = { id: 'demo-boo', name: 'Atlas', alias: 'atlas', color: '#ffffff', avatar: '', description: 'Código, refatoração e arquitetura' } as Agent
+// Só na galeria do navegador: API de voz simulada para exibir a tela de ligação, sem áudio real.
+if (typeof window !== 'undefined' && !window.realtimeAPI) window.realtimeAPI = { onEvent: () => () => undefined, status: async () => ({ geminiKey: true, groqKey: true, settings: {} }), stop: async () => undefined } as unknown as typeof window.realtimeAPI
 const PHASES = ['Leitura', 'Edição', 'Comando', 'Aprovação', 'Concluído', 'Interrompido'] as const
 type Phase = typeof PHASES[number]
 export default function BooWorkGallery() {

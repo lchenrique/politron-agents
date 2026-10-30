@@ -297,7 +297,7 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
           if (item.kind === 'tools') {
             const active = turn.status === 'running'
             return <div key={item.id} data-part="process">
-              <DshToolGroup messages={item.messages} turnActive={active} autoOpen={!!focusedMessageId && item.messages.some(message => message.id === focusedMessageId)}>
+              <DshToolGroup messages={item.messages} turnActive={active} agent={agentOf(item.messages[0]?.agentId ?? null)} autoOpen={!!focusedMessageId && item.messages.some(message => message.id === focusedMessageId)}>
                 {item.messages.map(message => <div key={message.id} data-message-id={message.id} className={focusedMessageId === message.id ? css.focused : undefined}>
                   <ToolCallTree call={activityToolCall(message, active)} />
                   {appliedExtra(message)}

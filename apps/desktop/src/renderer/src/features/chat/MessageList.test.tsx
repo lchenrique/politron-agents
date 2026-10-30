@@ -207,15 +207,41 @@ describe('linha de atividade do agente', () => {
   const browser = (n: number) => Array.from({ length: n }, (_, index) => act(`a${index}`, `Navegador real · js · alvo https://example.com/\nawait tab.goto(${index})`, 2 + index))
   const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
 
-  it('durante uma ferramenta ativa, mostra o passo uma vez no grupo e mantém o status do turno genérico', () => {
+  it('mostra o Boo do agente digitando no card enquanto roda, e nunca para agente com foto', () => {
+    const lyra = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as import('../../../../shared/v9').Agent
+    const calls = browser(2)
+    calls[1] = { ...calls[1]!, status: 'running' }
+    const view = (agent: typeof lyra) => <MessageList messages={[reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+    const { container, rerender } = render(view(lyra))
+    const working = within(container.querySelector('[data-part="work-card"]') as HTMLElement).getByRole('img', { name: 'Lyra está trabalhando' })
+    expect(working.style.getPropertyValue('--boo-body')).toBe('#7565e8')
+    rerender(view({ ...lyra, avatar: 'data:image/png;base64,AA==' }))
+    expect(container.querySelector('[data-part="work-card"]')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Lyra está trabalhando' })).not.toBeInTheDocument()
+    rerender(view(lyra))
+  })
+
+  it('ao terminar a ferramenta, o card volta a ser a linha recolhida', () => {
+    const calls = browser(2)
+    const { container, rerender } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls.slice(0, 1), { ...calls[1]!, status: 'running' }]))
+    expect(container.querySelector('[data-part="work-card"]')).toBeInTheDocument()
+    rerender(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]))
+    expect(container.querySelector('[data-part="work-card"]')).not.toBeInTheDocument()
+    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
+  })
+
+  it('durante uma ferramenta ativa, abre o card "Executando tarefa" com os passos e mantém o status do turno genérico', () => {
     const calls = browser(6)
     calls[5] = { ...calls[5]!, status: 'running' }
     const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]))
-    expect(screen.getByRole('button', { name: /Navegando/ })).toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: /Navegando/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelector('[data-part="work-card"]')).toHaveTextContent('Executando tarefa')
     expect(screen.getByRole('status')).toHaveTextContent('Em andamento')
-    expect(container.textContent?.match(/Navegando/g)).toHaveLength(1)
-    expect(container).not.toHaveTextContent('await tab.goto')
     expect(container).not.toHaveTextContent('está trabalhando')
+    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(7)
+    // O usuário pode recolher o card enquanto a tarefa roda.
+    fireEvent.click(toggle)
     expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
   })
 

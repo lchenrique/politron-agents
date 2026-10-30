@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage, screen, ipcMain, crashReporter, powerMonitor } from 'electron'
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage, screen, ipcMain, crashReporter, powerMonitor, dialog } from 'electron'
 import { dirname, join, resolve, sep } from 'node:path'
 import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -21,6 +21,7 @@ import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
 import { PwaGateway } from './pwa/gateway'
 import { initAutoUpdater } from './v9/auto-updater'
+import { retryTransient } from './startup'
 
 process.on('uncaughtException', (error) => {
   console.error('[Main] uncaughtException', error)
@@ -128,10 +129,8 @@ if (shouldUseSingleInstanceLock && !gotTheLock) {
 
   app.on('second-instance', () => {
     console.log('[Main] Received second-instance event')
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
+    // A janela pode estar escondida na bandeja; abrir o app de novo precisa mostrá-la, não só focar.
+    if (mainWindow) showMainWindow()
   })
 }
 
@@ -264,7 +263,8 @@ app.whenReady().then(async () => {
   console.log('[Main] app.whenReady() resolved')
   electronApp.setAppUserModelId('com.boobot.desktop')
 
-  appService = new AppService(app.getPath('userData'))
+  // Outro processo do Boobot fechando o mesmo banco pode causar "malformed" passageiro; tenta de novo antes de desistir.
+  appService = await retryTransient(() => new AppService(app.getPath('userData')), { onRetry: (error, attempt) => diagnostic('startup-db-retry', { attempt, error: String(error) }) })
   appService.store.applyAutonomyDefaults()
   hosts = new HostManager(new HostStore(app.getPath('userData')), () => realtimeService?.stop())
   registerV9Ipc(appService, hosts)
@@ -357,6 +357,12 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     showMainWindow()
   })
+}).catch(error => {
+  // Sem janela, o processo ficaria vivo segurando a instância única: avisa e encerra.
+  diagnostic('startup-failed', { error: String((error as Error)?.stack || error) })
+  dialog.showErrorBox('Boobot não conseguiu iniciar', `${error instanceof Error ? error.message : String(error)}\n\nDetalhes em: ${diagnosticLog}\n\nFeche outras janelas do Boobot e abra de novo.`)
+  isQuitting = true
+  app.quit()
 })
 
 // Quit when all windows are closed, except on macOS
