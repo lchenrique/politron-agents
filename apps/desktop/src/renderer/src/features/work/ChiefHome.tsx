@@ -115,14 +115,14 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
           {/* Barra de controles como a do composer do DSH: chips de 28px sem borda e botão redondo de 34px. */}
           <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5 pt-0.5">
             <Select value={selectedWorkspace?.id || NO_PROJECT} onValueChange={value => { const id = value === NO_PROJECT ? '' : value; setWorkspaceId(id); try { localStorage.setItem('politron.home.workspace', id) } catch { /* opcional */ } }}>
-              <SelectTrigger aria-label="Projeto" className="max-w-48 h-7 w-auto gap-1 rounded-[8px] border-0 bg-transparent px-2 text-[13px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus:ring-0 focus-visible:ring-2 focus-visible:ring-ring/35"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Projeto" className="max-w-48 h-7 w-auto gap-1 rounded-full border-0 bg-transparent px-2 text-[13px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus:ring-0 focus-visible:ring-2 focus-visible:ring-ring/35"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NO_PROJECT}>Sem projeto (Livre)</SelectItem>
                 {projects.filter(item => !(item.kind === 'free' && item.name === 'Livre')).map(project => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={owner?.id || ''} onValueChange={setOwnerId}>
-              <SelectTrigger aria-label="Responsável" className="max-w-44 h-7 w-auto gap-1 rounded-[8px] border-0 bg-transparent px-2 text-[13px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus:ring-0 focus-visible:ring-2 focus-visible:ring-ring/35"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Responsável" className="max-w-44 h-7 w-auto gap-1 rounded-full border-0 bg-transparent px-2 text-[13px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus:ring-0 focus-visible:ring-2 focus-visible:ring-ring/35"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {owners.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.role === 'chief' ? `${agent.name} (Chief)` : agent.name}</SelectItem>)}
               </SelectContent>
@@ -132,7 +132,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
           </div>
         </form>
         {!goal && <div className="mt-3 flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((suggestion, index) => <Button key={suggestion} type="button" variant="outline" size={null} disabled={!canChat} onClick={() => setGoal(suggestion)} className="h-7 rounded-[8px] border-0 bg-[var(--dsw-alias-button-tool-bar-fill,var(--muted))] px-2.5 text-[13px] font-normal text-muted-foreground shadow-none transition-colors hover:bg-[var(--dsw-alias-button-tool-bar-hover,var(--accent))] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0 disabled:opacity-50">{SUGGESTION_LABELS[index]}</Button>)}
+          {SUGGESTIONS.map((suggestion, index) => <Button key={suggestion} type="button" variant="outline" size={null} disabled={!canChat} onClick={() => setGoal(suggestion)} className="h-7 rounded-full border-0 bg-[var(--dsw-alias-button-tool-bar-fill,var(--muted))] px-2.5 text-[13px] font-normal text-muted-foreground shadow-none transition-colors hover:bg-[var(--dsw-alias-button-tool-bar-hover,var(--accent))] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0 disabled:opacity-50">{SUGGESTION_LABELS[index]}</Button>)}
         </div>}
       </section>
 

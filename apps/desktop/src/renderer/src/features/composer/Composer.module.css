@@ -38,7 +38,8 @@
 .promptCard :global(textarea[aria-label="Message"] ~ div) { padding: 2px 2px 0 !important; }
 .promptCard :global(button[type="submit"]), .promptCard :global(button[aria-label="Parar geração"]) { width: 34px !important; height: 34px !important; min-width: 34px !important; }
 .promptCard :global(button[aria-label="Anexar arquivos"]) { width: 28px !important; height: 28px !important; }
-.promptCard :global(button[aria-label="Modo planejamento"]), .promptCard :global(button[aria-label="Selecionar modelo"]) { height: 28px !important; }
+/* Chips dentro do cartão de 28px: totalmente arredondados, concêntricos com o cartão e o botão redondo. */
+.promptCard :global(button[aria-label="Modo planejamento"]), .promptCard :global(button[aria-label="Selecionar modelo"]) { height: 28px !important; border-radius: 999px !important; }
 
 .root:has(.queue) .promptCard {
   border-top-left-radius: 0 !important;
