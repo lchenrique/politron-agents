@@ -192,7 +192,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
         title={selected ? [selected.name, selected.provider, currentEffort?.label, currentServiceTier?.name, currentVariant?.name, value.fastMode ? 'Modo rápido' : ''].filter(Boolean).join(' · ') : INHERIT_MODEL_NAME}
         onKeyDown={event => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
         onClick={() => { if (open) close(); else { setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
-        className={cn('flex h-8 max-w-[min(16rem,100%)] items-center gap-1.5 rounded-lg border border-transparent px-2 text-xs text-foreground',
+        className={cn('flex h-8 max-w-[min(16rem,100%)] items-center gap-1.5 rounded-full border border-transparent px-2 text-xs text-foreground',
           'outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
           open && 'bg-accent')}>
         <span className="min-w-0 truncate font-medium">{selected?.name || INHERIT_MODEL_NAME}</span>
@@ -200,9 +200,9 @@ export default function AIModelSelector({ models, providers, value, onChange, di
           <EffortGlyph count={trackModel.efforts.length} level={effortIndexValue} />
           {currentEffort.label}
         </span>}
-        {currentServiceTier && <span className="hidden max-w-20 truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline" title={currentServiceTier.name}>{currentServiceTier.name}</span>}
-        {currentVariant && <span className="hidden max-w-20 truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline" title={currentVariant.name}>{currentVariant.name}</span>}
-        {value.fastMode && <span className="hidden rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 sm:inline">Fast</span>}
+        {currentServiceTier && <span className="hidden max-w-20 truncate rounded-fullbg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline" title={currentServiceTier.name}>{currentServiceTier.name}</span>}
+        {currentVariant && <span className="hidden max-w-20 truncate rounded-fullbg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline" title={currentVariant.name}>{currentVariant.name}</span>}
+        {value.fastMode && <span className="hidden rounded-fullbg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 sm:inline">Fast</span>}
         <ChevronDown aria-hidden className={cn('size-3 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
       {open && createPortal(<MenuSurface ref={panelRef} id={panelId} role="dialog" aria-label="Modelos disponíveis"

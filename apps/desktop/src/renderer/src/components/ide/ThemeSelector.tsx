@@ -27,7 +27,7 @@ export function ThemeSelector({ compact = false, className }: { compact?: boolea
           setMode(next.id)
           ;(event.currentTarget.parentElement?.querySelector(`[aria-label="${next.label}"]`) as HTMLElement | null)?.focus()
         }}
-        className={cn('gap-1.5 rounded-[calc(var(--radius)-1px)] text-xs font-medium focus-visible:ring-0', compact && 'h-6 px-0')}>
+        className={cn('gap-1.5 rounded-full text-xs font-medium focus-visible:ring-0', compact && 'h-6 px-0')}>
         <Icon aria-hidden="true" className="size-3.5" />{!compact && option.label}
       </Button>
     })}

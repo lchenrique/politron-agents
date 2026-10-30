@@ -67,7 +67,7 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
       <legend className="mb-2 text-xs font-medium">Quando</legend>
       <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Gatilho">
         {([['daily', 'Em horário fixo'], ['interval', 'A cada intervalo'], ['app-start', 'Ao abrir o Boobot'], ['project-changed', 'Quando o projeto mudar']] as const).map(([kind, label]) =>
-          <Button key={kind} type="button" variant="ghost" size={null} role="radio" aria-checked={draft.kind === kind} onClick={() => patch({ kind })} className={cn('h-auto rounded-lg border px-3 py-1.5 text-xs font-normal transition-colors', draft.kind === kind ? 'border-primary/50 bg-primary-soft text-primary-soft-foreground hover:bg-primary-soft hover:text-primary-soft-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground')}>{label}</Button>)}
+          <Button key={kind} type="button" variant="ghost" size={null} role="radio" aria-checked={draft.kind === kind} onClick={() => patch({ kind })} className={cn('h-auto rounded-full border px-3 py-1.5 text-xs font-normal transition-colors', draft.kind === kind ? 'border-primary/50 bg-primary-soft text-primary-soft-foreground hover:bg-primary-soft hover:text-primary-soft-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground')}>{label}</Button>)}
       </div>
       {draft.kind === 'daily' && <div className="flex flex-wrap items-center gap-3">
         <Input type="time" aria-label="Horário" required value={draft.time} onChange={event => patch({ time: event.target.value })} className={cn(field, 'w-28')} />

@@ -121,7 +121,7 @@ RealTerminal.displayName = 'RealTerminal';
 
 const TerminalPlaceholder = () => (
   <div className="flex-1 w-full h-full bg-background flex flex-col items-center justify-center text-center p-8">
-    <div className="w-14 h-14 rounded-xl bg-muted border border-border flex items-center justify-center mb-4">
+    <div className="w-14 h-14 rounded-lg bg-muted border border-border flex items-center justify-center mb-4">
       <svg
         className="w-7 h-7 text-muted-foreground"
         fill="none" 
@@ -175,7 +175,7 @@ const TerminalPanel = memo(({ workspaceId, conversationId, showLogs = true }: { 
             <span>{TAB_LABELS[tab]}</span>
           </Button>
         ))}
-        {hasProject && <Button type="button" variant="ghost" size={null} onClick={openExternal} title="Abre o terminal do sistema na pasta do projeto, fora do Boobot" className="ml-auto px-2 h-[26px] rounded text-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground">Abrir terminal externo</Button>}
+        {hasProject && <Button type="button" variant="ghost" size={null} onClick={openExternal} title="Abre o terminal do sistema na pasta do projeto, fora do Boobot" className="ml-auto px-2 h-[26px] rounded-fulltext-[11px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground">Abrir terminal externo</Button>}
       </div>
       {externalError && <p role="alert" className="shrink-0 px-3 py-1 text-[11px] text-destructive">{externalError}</p>}
 
@@ -196,7 +196,7 @@ const TerminalPanel = memo(({ workspaceId, conversationId, showLogs = true }: { 
             { time: "14:32:08", from: "BA", fromColor: "text-warning", to: "", toColor: "", msg: "configurando JWT strategy", ok: false },
             { time: "14:32:12", from: "FE", fromColor: "text-success", to: "", toColor: "", msg: "LoginForm.tsx saved \u2713", ok: true },
           ].map((log, i) => (
-            <div key={i} className="text-[10px] font-mono flex gap-1.5 items-start px-1 py-0.5 rounded hover:bg-accent transition-colors">
+            <div key={i} className="text-[10px] font-mono flex gap-1.5 items-start px-1 py-0.5 rounded-smhover:bg-accent transition-colors">
               <span className="text-faint-foreground shrink-0">{log.time}</span>
               <span className={`font-medium shrink-0 ${log.fromColor}`}>{log.from}</span>
               {log.to && (

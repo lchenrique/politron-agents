@@ -10,7 +10,7 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: 999px;
 }
 
 @media (hover: hover) {

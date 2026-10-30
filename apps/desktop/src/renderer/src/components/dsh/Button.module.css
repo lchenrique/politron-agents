@@ -30,7 +30,7 @@
   font-size: 12px;
   line-height: 18px;
   padding: 0 10px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: 999px;
 }
 
 .primary {

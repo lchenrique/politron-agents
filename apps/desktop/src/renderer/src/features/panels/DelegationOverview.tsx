@@ -139,7 +139,7 @@ export function DelegationOverview({ conversationId, messages = [], conversation
               <p className="truncate text-[11px] text-muted-foreground" title={entry.task}>{delegationTitle(entry.task || 'Pedido')}</p>
             </div>
             <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground" aria-label={`Status: ${statusLabel(entry.status)}`}><StatusMark status={entry.status} />{statusLabel(entry.status)}</span>
-            <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" aria-label={`Abrir conversa de ${entry.agentName}`} title="Abrir conversa" onClick={() => onOpenConversation(entry.conversationId)}><ArrowUpRight aria-hidden="true" className="size-3.5" /></Button>
+            <Button type="button" variant="ghost" size="icon" className="size-7 rounded-full shrink-0" aria-label={`Abrir conversa de ${entry.agentName}`} title="Abrir conversa" onClick={() => onOpenConversation(entry.conversationId)}><ArrowUpRight aria-hidden="true" className="size-3.5" /></Button>
           </div>
         </li>)}
       </ul>}

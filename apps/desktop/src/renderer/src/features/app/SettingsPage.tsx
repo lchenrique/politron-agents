@@ -37,7 +37,7 @@ function Field({ icon: Icon, title, description, children }: { icon?: typeof Pal
   const titleId = useId()
   return <section aria-labelledby={titleId} className="ds-panel p-4 sm:p-5">
     <div className="flex items-start gap-3">
-      {Icon && <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary-soft-foreground"><Icon className="size-4" /></span>}
+      {Icon && <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground"><Icon className="size-4" /></span>}
       <div className="min-w-0"><h3 id={titleId} className="ds-section-title">{title}</h3><p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p></div>
     </div>
     <div className="mt-4 space-y-4 border-t border-border pt-4">{children}</div>
@@ -62,7 +62,7 @@ function ProvidersSection() {
     finally { setChecking(false) }
   }
   return <Field icon={Plug} title="CLIs de agentes instaladas" description="O inventário fica salvo no dispositivo. A atualização só é executada quando você solicita. Modelos de configurações locais não garantem autenticação ou suporte à execução no Boobot.">
-    <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+    <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
       {(inventory?.providers || []).map(provider => <li key={provider.id} className="px-3 py-2.5 text-sm">
         <details>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
@@ -110,7 +110,7 @@ function SkillsSection() {
     try { await window.skillsAPI.remove(id); await refresh() } catch (cause) { setError(errorText(cause)) } finally { setBusy(false) }
   }
   return <Field icon={GraduationCap} title="Skills no formato SKILL.md" description="O Boobot lê as skills já instaladas na sua máquina para o Codex e o Claude Code (pasta com SKILL.md) e você pode adicionar outras pastas. Só mostra o que existe; ainda não oferece as skills como ferramenta para os agentes dentro de uma conversa.">
-    <ul className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60">
+    <ul className="divide-y divide-border/60 overflow-hidden rounded-md border border-border/60">
       {(skills || []).map(skill => <li key={skill.id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
         <div className="min-w-0"><p className="truncate font-medium">{skill.name}</p><p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{skill.description}</p></div>
         <div className="flex shrink-0 items-center gap-2">
@@ -228,19 +228,19 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
     className={css.dialog}>
     {/* Em janelas estreitas a navegação vira uma faixa rolável acima do conteúdo; o X do diálogo fica fora das duas áreas de rolagem. */}
       <button type="button" aria-label="Fechar" onClick={() => onOpenChange(false)}
-        className="absolute right-3 top-3 z-20 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        className="absolute right-3 top-3 z-20 flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <X className="size-4" aria-hidden="true" />
       </button>
       <nav aria-label="Seções de configurações" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-chrome p-2 pr-12 sm:flex-col sm:gap-px sm:overflow-y-auto sm:overflow-x-hidden sm:border-b-0 sm:border-r sm:p-2.5">
         <p className="ds-eyebrow hidden px-2 pb-2 pt-1.5 sm:block">Configurações</p>
         {SECTIONS.map(item => <Button key={item.id} type="button" variant={null} size={null} onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined}
-          className="ds-nav-item flex h-8 shrink-0 items-center justify-start gap-2.5 whitespace-nowrap rounded-[calc(var(--radius)-1px)] px-2.5 text-left text-[13px] font-medium focus-visible:ring-0">
+          className="ds-nav-item flex h-8 shrink-0 items-center justify-start gap-2.5 whitespace-nowrap rounded-md px-2.5 text-left text-[13px] font-medium focus-visible:ring-0">
           <item.icon className="size-4 shrink-0" />{item.label}
         </Button>)}
       </nav>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <header className="flex shrink-0 items-start gap-3 border-b border-border px-5 py-4 sm:px-8 sm:py-5 sm:pr-14">
-          <span aria-hidden="true" className="mt-0.5 hidden size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground sm:flex"><current.icon className="size-[18px]" /></span>
+          <span aria-hidden="true" className="mt-0.5 hidden size-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground sm:flex"><current.icon className="size-[18px]" /></span>
           <div className="min-w-0">
             <h2 id="settings-section-title" className="ds-page-title text-xl">{current.label}</h2>
             <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">{current.description}</p>
@@ -259,16 +259,16 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         </>}
         {section === 'assistente' && <>
           <Field title="Assistente padrão" description="Escolha as permissões específicas do Assistente. A edição de arquivos respeita também a política do workspace.">
-            <div className="divide-y divide-border rounded-lg border border-border">
+            <div className="divide-y divide-border rounded-md border border-border">
               <label className="flex items-center gap-3 px-3 py-2.5 text-sm"><Checkbox checked={assistantAccess.canWrite} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, canWrite: checked === true })} /><span>Permitir edição de arquivos do workspace</span></label>
               <label className="flex items-start gap-3 px-3 py-2.5 text-sm"><Checkbox checked={assistantAccess.computerUse} onCheckedChange={checked => void updateAssistant({ ...assistantAccess, computerUse: checked === true })} className="mt-0.5" /><span><span className="font-medium">Permitir uso do navegador</span><span className="mt-0.5 block text-xs text-muted-foreground">Ações no navegador respeitam o modo de aprovação deste Assistente.</span></span></label>
             </div>
             <div className="space-y-2">
               <label className="block space-y-1.5 text-sm">Modo de aprovação do Assistente<Select value={assistantAccess.approvalMode} onValueChange={value => void updateAssistant({ ...assistantAccess, approvalMode: value as Agent['approvalMode'] })}><SelectTrigger aria-label="Modo de aprovação"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ask">Perguntar antes de cada ação</SelectItem><SelectItem value="automatic">Automático · pede só ações sensíveis (recomendado)</SelectItem><SelectItem value="bypass">Bypass · autonomia total</SelectItem></SelectContent></Select></label>
-              <p data-tone={assistantAccess.approvalMode === 'bypass' ? 'warning' : undefined} className="rounded-lg text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">Esta configuração vale somente para o Assistente padrão. Conversas com um Boo, como Atlas, usam o modo salvo no editor daquele agente. No Bypass, o terminal pode alterar outros caminhos do computador sem pedir confirmação; o Chief em Bypass também pode criar equipes e delegar dentro das permissões do workspace.</p>
+              <p data-tone={assistantAccess.approvalMode === 'bypass' ? 'warning' : undefined} className="rounded-md text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">Esta configuração vale somente para o Assistente padrão. Conversas com um Boo, como Atlas, usam o modo salvo no editor daquele agente. No Bypass, o terminal pode alterar outros caminhos do computador sem pedir confirmação; o Chief em Bypass também pode criar equipes e delegar dentro das permissões do workspace.</p>
             </div>
             <label className="block space-y-1.5 text-sm">Permissões do Codex<Select value={assistantAccess.runtimePermissionMode} onValueChange={value => void updateAssistant({ ...assistantAccess, runtimePermissionMode: value as NonNullable<Agent['runtimePermissionMode']> })}><SelectTrigger aria-label="Permissões do Codex"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="managed">Gerenciado · recomendado</SelectItem><SelectItem value="bypass">Acesso total do Codex</SelectItem></SelectContent></Select></label>
-            <p data-tone={assistantAccess.runtimePermissionMode === 'bypass' ? 'warning' : undefined} className="rounded-lg text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">{assistantAccess.runtimePermissionMode === 'bypass' ? 'Ativa danger-full-access e approvalPolicy never no Codex. As ferramentas nativas de edição e shell continuam bloqueadas; chamadas às ferramentas do Politron ainda seguem o modo de aprovação e os limites do workspace.' : 'O Codex usa permissões gerenciadas pelo Politron. Ferramentas continuam limitadas ao workspace e ao modo de aprovação.'}</p>
+            <p data-tone={assistantAccess.runtimePermissionMode === 'bypass' ? 'warning' : undefined} className="rounded-md text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">{assistantAccess.runtimePermissionMode === 'bypass' ? 'Ativa danger-full-access e approvalPolicy never no Codex. As ferramentas nativas de edição e shell continuam bloqueadas; chamadas às ferramentas do Politron ainda seguem o modo de aprovação e os limites do workspace.' : 'O Codex usa permissões gerenciadas pelo Politron. Ferramentas continuam limitadas ao workspace e ao modo de aprovação.'}</p>
             <ApprovalGrantList agentId={ASSISTANT_ID} />
             <p role="status" className="text-xs text-muted-foreground empty:hidden">{assistantFeedback}</p>
           </Field>
@@ -286,13 +286,13 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         {section === 'provedores' && <>
           <ProvidersSection />
           <Field icon={Router} title="OpenRouter para respostas em grupo" description="Informe sua chave OpenRouter e busque o catálogo. O Boobot mostra apenas modelos que aceitam decisões; TypeSafe/Jev é um deles. A chave fica criptografada neste computador. O texto novo, os participantes e até oito mensagens recentes são enviados ao OpenRouter para escolher um único agente. Confiança baixa ou falha usa o líder do grupo.">
-            <label className="block space-y-1.5 text-xs font-medium">Chave de API OpenRouter<Input aria-label="Chave de API OpenRouter" type="password" autoComplete="off" value={openRouterKey} onChange={event => { setOpenRouterKey(event.target.value); setDecisionModels([]) }} placeholder={decisionStatus.configured ? 'Chave configurada; digite outra para substituir' : 'sk-or-…'} className="h-10 w-full rounded-lg border border-input bg-background px-3 font-mono text-xs" /></label>
+            <label className="block space-y-1.5 text-xs font-medium">Chave de API OpenRouter<Input aria-label="Chave de API OpenRouter" type="password" autoComplete="off" value={openRouterKey} onChange={event => { setOpenRouterKey(event.target.value); setDecisionModels([]) }} placeholder={decisionStatus.configured ? 'Chave configurada; digite outra para substituir' : 'sk-or-…'} className="h-10 w-fullborder border-input bg-background px-3 font-mono text-xs" /></label>
             <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={savingDecision || (!openRouterKey.trim() && !decisionStatus.configured)} onClick={() => void discoverDecisionModels()}>{savingDecision && decisionFeedback.startsWith('Buscando') ? 'Buscando…' : 'Buscar modelos de decisão'}</Button>{decisionStatus.configured && <Button variant="outline" disabled={savingDecision} onClick={() => void clearDecisionKey()}>Remover chave</Button>}</div>
-            {decisionModels.length > 0 && <><label className="block space-y-1.5 text-xs font-medium">Modelo de decisão<Select value={decisionModelId} onValueChange={setDecisionModelId}><SelectTrigger aria-label="Modelo de decisão" className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"><SelectValue /></SelectTrigger><SelectContent>{decisionModels.map(model => <SelectItem key={model.id} value={model.id}>{model.free ? 'Grátis · ' : ''}{model.name} · {model.id}</SelectItem>)}</SelectContent></Select></label><div className="flex flex-wrap gap-2"><Button disabled={savingDecision || !openRouterKey.trim()} onClick={() => void saveDecisionSettings()}>{savingDecision ? 'Validando…' : 'Validar e salvar chave'}</Button>{decisionStatus.configured && decisionStatus.modelId !== decisionModelId && <Button variant="outline" disabled={savingDecision} onClick={() => void saveDecisionModel()}>Salvar modelo</Button>}</div></>}
+            {decisionModels.length > 0 && <><label className="block space-y-1.5 text-xs font-medium">Modelo de decisão<Select value={decisionModelId} onValueChange={setDecisionModelId}><SelectTrigger aria-label="Modelo de decisão" className="h-10 w-fullborder border-input bg-background px-3 text-sm"><SelectValue /></SelectTrigger><SelectContent>{decisionModels.map(model => <SelectItem key={model.id} value={model.id}>{model.free ? 'Grátis · ' : ''}{model.name} · {model.id}</SelectItem>)}</SelectContent></Select></label><div className="flex flex-wrap gap-2"><Button disabled={savingDecision || !openRouterKey.trim()} onClick={() => void saveDecisionSettings()}>{savingDecision ? 'Validando…' : 'Validar e salvar chave'}</Button>{decisionStatus.configured && decisionStatus.modelId !== decisionModelId && <Button variant="outline" disabled={savingDecision} onClick={() => void saveDecisionModel()}>Salvar modelo</Button>}</div></>}
             <p role="status" className="text-xs text-muted-foreground">{decisionFeedback || (decisionStatus.configured ? 'OpenRouter configurado · ' + decisionStatus.modelId : 'Sem chave configurada')}</p>
           </Field>
           <Field icon={KeyRound} title="Claude Agent SDK" description="Configure uma chave de API Anthropic. Ela é criptografada pelo sistema operacional e não é salva no banco de conversas.">
-            <label className="block space-y-1.5 text-xs font-medium">Chave de API<Input aria-label="Chave de API Anthropic" type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={configured ? 'Chave configurada; digite outra para substituir' : 'sk-ant-…'} className="h-10 w-full rounded-lg border border-input bg-background px-3 font-mono text-xs" /></label>
+            <label className="block space-y-1.5 text-xs font-medium">Chave de API<Input aria-label="Chave de API Anthropic" type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={configured ? 'Chave configurada; digite outra para substituir' : 'sk-ant-…'} className="h-10 w-fullborder border-input bg-background px-3 font-mono text-xs" /></label>
             <div className="flex flex-wrap items-center justify-between gap-3"><span role="status" className="min-w-0 flex-1 basis-56 text-xs text-muted-foreground">{feedback || (configured ? 'Chave Anthropic configurada' : 'Sem chave Anthropic no Boobot; o CLI pode usar suas credenciais próprias')}</span><div className="flex flex-wrap gap-2"><Button disabled={saving || !apiKey.trim()} onClick={() => void saveKey()}>{saving ? 'Salvando…' : configured ? 'Substituir chave Anthropic' : 'Salvar chave'}</Button>{configured && <Button variant="outline" disabled={saving} onClick={() => void removeKey()}>Remover chave Anthropic</Button>}</div></div>
           </Field>
         </>}

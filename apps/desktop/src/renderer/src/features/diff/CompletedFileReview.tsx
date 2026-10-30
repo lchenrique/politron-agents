@@ -44,7 +44,7 @@ export function CompletedFileReview({ changes, label = 'Revisão de arquivos mod
   }, { added: 0, removed: 0 })
   const unavailable = applied.filter(change => change.binary || change.truncated)
 
-  return <section aria-label={label} className="mb-2 overflow-hidden rounded-xl border border-border/70 bg-card/95 shadow-sm">
+  return <section aria-label={label} className="mb-2 overflow-hidden rounded-lg border border-border/70 bg-card/95 shadow-sm">
     <div className="flex min-h-9 items-center gap-2 px-2.5">
       <Button type="button" variant="ghost" size={null} aria-label="Revisar arquivos modificados" aria-expanded={expanded}
         onClick={() => setExpanded(open => !open)}
@@ -56,7 +56,7 @@ export function CompletedFileReview({ changes, label = 'Revisão de arquivos mod
         <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">Já aplicados · Revisar</span>
         <ChevronDown aria-hidden className={'size-3.5 shrink-0 transition-transform ' + (expanded ? 'rotate-180' : '')} />
       </Button>
-      <Button type="button" variant="ghost" size={null} aria-label="Dispensar revisão" title="Ocultar revisão" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-muted-foreground" onClick={() => setDismissed(true)}><X className="size-3.5" /></Button>
+      <Button type="button" variant="ghost" size={null} aria-label="Dispensar revisão" title="Ocultar revisão" className="rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-muted-foreground" onClick={() => setDismissed(true)}><X className="size-3.5" /></Button>
     </div>
     {expanded && <div className="max-h-72 overflow-y-auto border-t border-border/50 p-1.5">
       <AIDiffReview readOnly compact files={files} className="max-w-none" />

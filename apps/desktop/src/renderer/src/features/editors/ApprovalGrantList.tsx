@@ -27,7 +27,7 @@ export function ApprovalGrantList({ agentId }: { agentId: string }) {
   }
 
   if (grants.length === 0 && !problem) return <p className="text-xs text-muted-foreground">Nenhuma permissão de “Sempre permitir” salva para este agente.</p>
-  return <section aria-label="Permissões sempre permitidas" className="space-y-2 rounded-lg border border-border/70 p-3">
+  return <section aria-label="Permissões sempre permitidas" className="space-y-2 rounded-md border border-border/70 p-3">
     <div><h4 className="text-sm font-medium">Sempre permitir</h4><p className="text-xs leading-5 text-muted-foreground">Cada regra vale para a mesma ação, deste agente, no workspace indicado. Você pode revogá-la aqui.</p></div>
     {grants.map(grant => <div key={grant.id} className="flex items-center gap-2 border-t border-border/50 pt-2">
       <span className="min-w-0 flex-1 text-xs"><span className="block truncate font-medium">{grant.summary}</span><span className="text-muted-foreground">{grant.workspaceName || grant.workspaceId}</span></span>

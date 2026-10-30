@@ -123,7 +123,7 @@ export function ProjectExplorer({ workspaceId, onOpenFile }: {
   return <section aria-label="Explorador de arquivos" className="flex h-full min-h-0 flex-col overflow-hidden">
     <header className="flex h-9 shrink-0 items-center justify-between border-b border-border/50 px-3">
       <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Arquivos do projeto</span>
-      <Button size="icon" variant="ghost" className="size-7" aria-label="Atualizar árvore de arquivos" title="Atualizar arquivos" onClick={() => setRefreshKey(key => key + 1)}><RefreshCw className="size-3.5" /></Button>
+      <Button size="icon" variant="ghost" className="size-7 rounded-full" aria-label="Atualizar árvore de arquivos" title="Atualizar arquivos" onClick={() => setRefreshKey(key => key + 1)}><RefreshCw className="size-3.5" /></Button>
     </header>
     <div className="min-h-0 flex-1 overflow-auto py-1">
       <ProjectTree key={workspaceId + ':' + refreshKey} workspaceId={workspaceId} refreshKey={refreshKey} onOpenFile={onOpenFile} />

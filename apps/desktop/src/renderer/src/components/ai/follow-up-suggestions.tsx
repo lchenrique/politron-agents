@@ -115,7 +115,7 @@ function FollowUpSuggestions({
       data-slot="follow-up-suggestions"
       {...props}
     >
-      <Card className="gap-2 rounded-[16px] pt-5 shadow-linear-surface ring-foreground/8">
+      <Card className="gap-2 rounded-lg pt-5 shadow-linear-surface ring-foreground/8">
         <CardHeader className="mb-2">
           <CardTitle
             className="pl-3 card-heading leading-[19.25px] text-muted-foreground group-data-[size=sm]/card:text-[15px]"
@@ -148,7 +148,7 @@ function FollowUpSuggestions({
                     if (element) itemElements.current.set(item.id, element)
                     else itemElements.current.delete(item.id)
                   }}
-                  className="group/suggestion h-auto min-h-10 w-full justify-start gap-3 rounded-[10px] px-3 py-2 text-left text-sm leading-5 font-[450] text-muted-foreground hover:bg-muted/70 hover:text-muted-foreground data-pressed:bg-muted data-pressed:text-muted-foreground data-pressed:shadow-none"
+                  className="group/suggestion h-auto min-h-10 w-full justify-start gap-3 rounded-md px-3 py-2 text-left text-sm leading-5 font-[450] text-muted-foreground hover:bg-muted/70 hover:text-muted-foreground data-pressed:bg-muted data-pressed:text-muted-foreground data-pressed:shadow-none"
                   value={item.id}
                 >
                   {isSelected ? (
@@ -161,7 +161,7 @@ function FollowUpSuggestions({
                     </Kbd>
                   )}
                   <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {item.recommended && <span className="shrink-0 rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-primary">Recomendado</span>}
+                  {item.recommended && <span className="shrink-0 rounded-full border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-primary">Recomendado</span>}
                 </ToggleGroupItem>
               )
             })}
@@ -179,7 +179,7 @@ function FollowUpSuggestions({
                 {currentItem?.label ?? 'Your question'}
               </label>
               <input
-                className="h-10 w-full rounded-[10px] bg-muted/70 px-3 text-sm leading-5 font-[450] text-muted-foreground outline-none placeholder:text-muted-foreground/60"
+                className="h-10 w-full rounded-md bg-muted/70 px-3 text-sm leading-5 font-[450] text-muted-foreground outline-none placeholder:text-muted-foreground/60"
                 id={`${titleId}-custom`}
                 onChange={(event) => setCustomValue(event.target.value)}
                 onKeyDown={(event) => {

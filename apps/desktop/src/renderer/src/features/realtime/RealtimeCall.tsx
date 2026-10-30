@@ -78,11 +78,11 @@ export function RealtimeSettingsPanel() {
       <div><h3 className="flex items-center gap-2 text-base"><Settings2 className="size-4" />Configurar voz</h3>
         <p className="text-xs text-muted-foreground">Vozes do chat, do mascote do app e do flutuante. Alterações valem na próxima reprodução ou ligação.</p></div>
       <ChatSpeechSettings />
-      <div role="radiogroup" aria-label="Motor de voz" className="grid grid-cols-3 gap-1 rounded-lg border border-border/60 p-1">
+      <div role="radiogroup" aria-label="Motor de voz" className="grid grid-cols-3 gap-1 rounded-md border border-border/60 p-1">
         {([['gemini', 'Gemini Live', 'Voz Gemini'], ['piper', 'Agente + Piper', 'Leve e rápido'], ['pocket', 'PocketTTS', 'Vozes locais dos Boos']] as const).map(([value, label, hint]) =>
           <Button key={value} type="button" variant="ghost" size={null} role="radio" aria-checked={mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')}
             onClick={() => { if (value === 'gemini') onModeChange('gemini'); else { onModeChange('free'); void saveSetting({ ttsEngine: value }) } }}
-            className={`block whitespace-normal rounded-md px-2 py-1.5 text-left text-xs transition-colors ${(mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')) ? 'bg-accent font-medium text-inherit hover:bg-accent hover:text-inherit' : 'font-normal text-muted-foreground hover:bg-accent/50 hover:text-muted-foreground'}`}>
+            className={`block whitespace-normal rounded-sm px-2 py-1.5 text-left text-xs transition-colors ${(mode === 'gemini' ? value === 'gemini' : (settings?.ttsEngine === 'pocket' ? value === 'pocket' : value === 'piper')) ? 'bg-accent font-medium text-inherit hover:bg-accent hover:text-inherit' : 'font-normal text-muted-foreground hover:bg-accent/50 hover:text-muted-foreground'}`}>
             {label}<span className="block text-[10px] font-normal text-muted-foreground">{hint}</span>
           </Button>)}
       </div>
@@ -90,7 +90,7 @@ export function RealtimeSettingsPanel() {
       {status && (mode === 'gemini'
         ? <KeyField provider="gemini" configured={!!status.geminiKey} label="Chave do Gemini Live" help="Chave do Google AI Studio. O uso depende dos limites da sua conta." onSaved={() => { setCredentialRevision(value => value + 1); void refresh(); notifySaved() }} />
         : <KeyField provider="groq" configured={!!status.groqKey} label="Chave do Groq para Whisper" help="Usada somente para transcrever sua fala pela internet. Com Parakeet local, essa chave não é necessária." onSaved={() => { void refresh(); notifySaved() }} />)}
-      {status && mode === 'free' && <div className="space-y-3 rounded-lg border border-border/60 p-3 text-xs">
+      {status && mode === 'free' && <div className="space-y-3 rounded-md border border-border/60 p-3 text-xs">
         <p>O Boo selecionado usa o runtime e modelo configurados no seu perfil. Silero detecta a fala; Piper ou PocketTTS gera o áudio localmente. Whisper usa Groq para transcrever; Parakeet faz isso no computador.</p>
         <label className="block space-y-1 text-[11px] text-muted-foreground">Modelo de transcrição (ASR)
           <Select value={settings?.transcriptionModel || 'whisper-large-v3-turbo'} onValueChange={value => void saveSetting({ transcriptionModel: value as RealtimeSettings['transcriptionModel'] })}>

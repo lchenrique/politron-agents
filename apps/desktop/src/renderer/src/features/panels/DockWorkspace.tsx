@@ -51,7 +51,7 @@ function DockAddMenu({ groupId, onOpen, label = 'Nova aba', browserMode = false,
   const [open, setOpen] = useState(false)
   const available = browserMode ? toolKinds.filter(kind => kind === 'chat' || kind === 'diff' || kind === 'agents' || kind === 'files' && canReadFiles) : toolKinds
   return <Menu open={open} onClose={() => setOpen(false)} align="end" portal autoFocus
-    anchor={<Button size="icon" variant="ghost" className="size-7 shrink-0" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
+    anchor={<Button size="icon" variant="ghost" className="size-7 rounded-full shrink-0" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
       onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpen(value => !value) } }} onClick={() => setOpen(value => !value)}><Plus className="size-4" /></Button>}
     items={available.map(kind => { const Icon = icons[kind]; return { id: kind, label: labels[kind], icon: <Icon /> } })}
     onSelect={kind => { setOpen(false); if (available.includes(kind as DockTool)) onOpen(kind as DockTool, groupId) }} />
@@ -303,14 +303,14 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
                 {!chat?.leading && <Icon className="size-3.5 shrink-0" />}<span className="truncate">{label}</span>{drafts[tab.id] && drafts[tab.id].content !== drafts[tab.id].baseline && <span aria-label="Arquivo modificado" className="size-2 shrink-0 rounded-full bg-warning" />}
               </Button>
               {active && chat?.trailing}
-              <Button variant="ghost" size="icon" className={'size-5 shrink-0 hover:opacity-100 focus-visible:opacity-100 ' + (active ? 'opacity-65' : 'opacity-0 group-hover:opacity-65')} aria-label={'Fechar ' + label} title="Fechar aba" onClick={() => closeTab(tab.id)}><X className="size-3" /></Button>
+              <Button variant="ghost" size="icon" className={'size-5 rounded-full shrink-0 hover:opacity-100 focus-visible:opacity-100 ' + (active ? 'opacity-65' : 'opacity-0 group-hover:opacity-65')} aria-label={'Fechar ' + label} title="Fechar aba" onClick={() => closeTab(tab.id)}><X className="size-3" /></Button>
             </div>
           })}
         </div>
         <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-border/50 pl-1">
           <DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} />
           <Menu open={openOrganizeMenuId === group.id} onClose={() => setOpenOrganizeMenuId(null)} align="end" portal autoFocus
-            anchor={<Button variant="ghost" size="icon" className="size-7 shrink-0" aria-label={'Organizar ' + (primary ? 'área principal' : 'painel auxiliar')}
+            anchor={<Button variant="ghost" size="icon" className="size-7 rounded-full shrink-0" aria-label={'Organizar ' + (primary ? 'área principal' : 'painel auxiliar')}
               aria-haspopup="menu" aria-expanded={openOrganizeMenuId === group.id}
               onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpenOrganizeMenuId(current => current === group.id ? null : group.id) } }}
               onClick={() => setOpenOrganizeMenuId(current => current === group.id ? null : group.id)}><MoreHorizontal className="size-4" /></Button>}

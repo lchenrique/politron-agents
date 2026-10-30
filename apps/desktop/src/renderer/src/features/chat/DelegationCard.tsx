@@ -47,8 +47,8 @@ function DelegationRow({ message, agent, related, onOpenRelatedConversation, onN
           <span className="min-w-0 flex-1 truncate" title={task || undefined}>{summary}</span>
         </Button>
       </CollapsibleTrigger>
-      {related && <Button variant="ghost" size="icon" className="size-6 shrink-0 text-muted-foreground" aria-label="Abrir conversa" title="Abrir conversa" onClick={() => onOpenRelatedConversation(related.id)}><ArrowUpRight className="size-3.5" /></Button>}
-      {ACTIVE.includes(message.status) && <Button variant="ghost" size="icon" className="size-6 shrink-0 text-muted-foreground hover:text-destructive" aria-label="Cancelar pedido" title="Cancelar pedido" onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(cause => onNotice(errorText(cause)))}><X className="size-3.5" /></Button>}
+      {related && <Button variant="ghost" size="icon" className="size-6 rounded-full shrink-0 text-muted-foreground" aria-label="Abrir conversa" title="Abrir conversa" onClick={() => onOpenRelatedConversation(related.id)}><ArrowUpRight className="size-3.5" /></Button>}
+      {ACTIVE.includes(message.status) && <Button variant="ghost" size="icon" className="size-6 rounded-full shrink-0 text-muted-foreground hover:text-destructive" aria-label="Cancelar pedido" title="Cancelar pedido" onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(cause => onNotice(errorText(cause)))}><X className="size-3.5" /></Button>}
     </div>
     <CollapsibleContent className="space-y-2 px-9 pb-2 text-xs">
       {task && <section aria-label="Pedido completo"><p className="mb-0.5 font-medium text-muted-foreground">Pedido</p><p className="whitespace-pre-wrap break-words text-foreground/85">{task}</p></section>}

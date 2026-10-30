@@ -17,7 +17,7 @@
   overflow: hidden;
   padding: 0 !important;
   border: 1px solid var(--dsw-alias-state-warn-secondary, var(--warning)) !important;
-  border-radius: 20px !important;
+  border-radius: 28px !important;
   background: var(--dsw-specific-input-major, var(--card)) !important;
   box-shadow: var(--dsw-elevation-panel, var(--shadow-composer)) !important;
 }
@@ -83,7 +83,7 @@
   max-height: min(60vh, 520px);
   padding: 16px 20px 20px;
   border: 0.5px solid var(--dsw-alias-border-l1, var(--border));
-  border-radius: 20px;
+  border-radius: 28px;
   background: var(--dsw-specific-input-major, var(--card));
   box-shadow: var(--dsw-elevation-panel, var(--shadow-composer));
 }

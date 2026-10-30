@@ -37,7 +37,7 @@ export function PiperTtsSettings({ status, save, install, installing }: {
     else next[agentId] = voice as PiperVoice
     await save({ piperAgentVoices: next })
   }
-  return <section aria-label="Vozes Piper" className="space-y-2 rounded-lg border border-border/60 p-3 text-xs">
+  return <section aria-label="Vozes Piper" className="space-y-2 rounded-md border border-border/60 p-3 text-xs">
     <h4 className="font-medium">Piper · vozes locais</h4>
     <label className="block space-y-1 text-muted-foreground">Configurar voz para
       <Select value={agentId || ALL_BOOS} onValueChange={value => setAgentId(value === ALL_BOOS ? '' : value)}>

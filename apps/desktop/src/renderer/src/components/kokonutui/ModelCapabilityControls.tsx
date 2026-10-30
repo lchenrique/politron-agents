@@ -64,6 +64,6 @@ function Choice({ option, selected, onClick }: { option: ModelOptionChoice; sele
 }
 
 function choiceClass(selected: boolean) {
-  return cn('rounded-md border px-2 py-1 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+  return cn('rounded-full border px-2 py-1 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
     selected ? 'border-primary bg-primary/10 text-foreground' : 'border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground')
 }

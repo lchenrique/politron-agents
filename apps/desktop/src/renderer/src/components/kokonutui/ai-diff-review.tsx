@@ -386,7 +386,7 @@ function FileRow({
         <button
           aria-controls={diffId}
           aria-expanded={isOpen}
-          className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-400/40 disabled:cursor-default"
+          className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-full px-1.5 text-left outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-400/40 disabled:cursor-default"
           disabled={(!readOnly && decision !== "pending") || writing}
           onClick={onToggle}
           type="button"
@@ -418,7 +418,7 @@ function FileRow({
           {file.created && (
             <span
               className={cn(
-                "shrink-0 rounded bg-emerald-500/10 px-1 text-[10px] text-emerald-700 leading-4 transition-opacity duration-200 dark:text-emerald-300",
+                "shrink-0 rounded-fullbg-emerald-500/10 px-1 text-[10px] text-emerald-700 leading-4 transition-opacity duration-200 dark:text-emerald-300",
                 decision === "rejected" && "opacity-0"
               )}
             >
@@ -455,7 +455,7 @@ function FileRow({
               >
                 <button
                   aria-label={`Reject ${file.path}`}
-                  className="flex size-7 items-center justify-center rounded-md text-zinc-400 outline-hidden transition-colors duration-150 hover:bg-zinc-100 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:hover:bg-white/10 dark:hover:text-red-400"
+                  className="flex size-7 items-center justify-center rounded-full text-zinc-400 outline-hidden transition-colors duration-150 hover:bg-zinc-100 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:hover:bg-white/10 dark:hover:text-red-400"
                   onClick={() => onDecide("rejected")}
                   type="button"
                 >
@@ -463,7 +463,7 @@ function FileRow({
                 </button>
                 <button
                   aria-label={`Accept ${file.path}`}
-                  className="flex size-7 items-center justify-center rounded-md text-zinc-400 outline-hidden transition-colors duration-150 hover:bg-zinc-100 hover:text-emerald-600 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:hover:bg-white/10 dark:hover:text-emerald-400"
+                  className="flex size-7 items-center justify-center rounded-full text-zinc-400 outline-hidden transition-colors duration-150 hover:bg-zinc-100 hover:text-emerald-600 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:hover:bg-white/10 dark:hover:text-emerald-400"
                   onClick={() => onDecide("accepted")}
                   type="button"
                 >
@@ -491,7 +491,7 @@ function FileRow({
               </span>
               <button
                 aria-label={`Undo for ${file.path}`}
-                className="flex size-7 items-center justify-center rounded-md text-zinc-400 outline-hidden transition-colors duration-150 hover:bg-zinc-100 hover:text-zinc-700 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+                className="flex size-7 items-center justify-center rounded-full text-zinc-400 outline-hidden transition-colors duration-150 hover:bg-zinc-100 hover:text-zinc-700 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:hover:bg-white/10 dark:hover:text-zinc-200"
                 onClick={() => onDecide("pending")}
                 type="button"
               >
@@ -504,7 +504,7 @@ function FileRow({
 
       <Collapse id={diffId} open={isOpen} reduce={reduce}>
         <div className="px-2 pb-2">
-          <div className="overflow-x-auto rounded-lg bg-zinc-50 ring-1 ring-black/5 ring-inset dark:bg-white/[0.03] dark:ring-white/10">
+          <div className="overflow-x-auto rounded-md bg-zinc-50 ring-1 ring-black/5 ring-inset dark:bg-white/[0.03] dark:ring-white/10">
             {file.hunks.map((hunk) => (
               <Hunk hunk={hunk} key={hunk.start} />
             ))}
@@ -582,7 +582,7 @@ export default function AIDiffReview({
   return (
     <MotionConfig reducedMotion="user">
       <div className={cn("w-full", className)} ref={rootRef}>
-        <div className={cn(compact ? "bg-transparent p-0" : "rounded-2xl bg-black/5 p-1.5 dark:bg-white/5")}>
+        <div className={cn(compact ? "bg-transparent p-0" : "rounded-lgbg-black/5 p-1.5 dark:bg-white/5")}>
           {!compact && <div className="flex h-9 items-center gap-2 px-2.5">
             <output className="relative font-medium text-sm text-zinc-900 dark:text-zinc-100">
               <AnimatePresence initial={false} mode="popLayout">
@@ -636,7 +636,7 @@ export default function AIDiffReview({
                     key="review"
                   >
                     <button
-                      className="h-7 rounded-md px-2 text-xs text-zinc-600 outline-hidden transition-colors duration-150 hover:bg-black/5 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
+                      className="h-7 rounded-full px-2 text-xs text-zinc-600 outline-hidden transition-colors duration-150 hover:bg-black/5 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
                       onClick={() => {
                         for (const file of pending) {
                           decide(file.path, "rejected");
@@ -647,7 +647,7 @@ export default function AIDiffReview({
                       Reject all
                     </button>
                     <button
-                      className="h-7 rounded-md bg-zinc-900 px-2.5 font-medium text-white text-xs outline-hidden transition-colors duration-150 hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-zinc-400/60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+                      className="h-7 rounded-full bg-zinc-900 px-2.5 font-medium text-white text-xs outline-hidden transition-colors duration-150 hover:bg-zinc-700 focus-visible:ring-2 focus-visible:ring-zinc-400/60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
                       onClick={() => {
                         for (const file of pending) {
                           decide(file.path, "accepted");
@@ -666,7 +666,7 @@ export default function AIDiffReview({
                       filter: "blur(0px)",
                       transition: SWAP_IN,
                     }}
-                    className="h-7 rounded-md px-2 text-xs text-zinc-500 outline-hidden transition-colors duration-150 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:text-zinc-400 dark:hover:text-white"
+                    className="h-7 rounded-full px-2 text-xs text-zinc-500 outline-hidden transition-colors duration-150 hover:text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-400/50 dark:text-zinc-400 dark:hover:text-white"
                     exit={{
                       opacity: 0,
                       filter: "blur(2px)",
@@ -683,7 +683,7 @@ export default function AIDiffReview({
               </AnimatePresence>
             </div>
           </div>}
-          <ul className={cn("bg-white shadow-[0_1px_2px_rgb(0_0_0/0.04)] ring-1 ring-black/5 dark:bg-zinc-900 dark:ring-white/10", compact ? "rounded-lg" : "rounded-xl")}>
+          <ul className={cn("bg-white shadow-[0_1px_2px_rgb(0_0_0/0.04)] ring-1 ring-black/5 dark:bg-zinc-900 dark:ring-white/10", compact ? "rounded-lg" : "rounded-[10px]")}>
             <AnimatePresence initial={false}>
               {files.map((file) => (
                 <FileRow

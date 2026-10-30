@@ -39,10 +39,10 @@ describe('espaçamento das superfícies flutuantes', () => {
     for (const menu of menus) expect(menu).toHaveClass('p-1.5', 'rounded-lg', 'border')
     for (const name of ['Renomear', 'Mover para', 'Projeto X']) {
       const item = screen.getByRole('menuitem', { name })
-      expect(item).toHaveClass('px-2.5', 'py-1.5', 'rounded-md')
+      expect(item).toHaveClass('px-2.5', 'py-1.5', 'rounded-[10px]')
     }
-    expect(screen.getByRole('menuitemcheckbox', { name: 'Fixar' })).toHaveClass('pl-8', 'pr-2.5', 'rounded-md')
-    expect(screen.getByRole('menuitemradio', { name: 'Opção A' })).toHaveClass('pl-8', 'pr-2.5', 'rounded-md')
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Fixar' })).toHaveClass('pl-8', 'pr-2.5', 'rounded-[10px]')
+    expect(screen.getByRole('menuitemradio', { name: 'Opção A' })).toHaveClass('pl-8', 'pr-2.5', 'rounded-[10px]')
     expect(screen.getByText('Grupo')).toHaveClass('px-2.5')
     expect(within(menus[0]).getByRole('separator')).toHaveClass('-mx-1.5')
     expectNoMalformedClasses()
@@ -67,7 +67,7 @@ describe('espaçamento das superfícies flutuantes', () => {
     const listbox = screen.getByRole('listbox')
     // O recuo fica no viewport do Radix, que envolve as opções.
     expect(listbox.querySelector('[data-radix-select-viewport]')).toHaveClass('p-1.5')
-    for (const name of ['Perguntar', 'Automático']) expect(screen.getByRole('option', { name })).toHaveClass('pl-8', 'pr-2.5', 'rounded-md')
+    for (const name of ['Perguntar', 'Automático']) expect(screen.getByRole('option', { name })).toHaveClass('pl-8', 'pr-2.5', 'rounded-[10px]')
     expectNoMalformedClasses()
   })
 
@@ -80,7 +80,7 @@ describe('espaçamento das superfícies flutuantes', () => {
     </Popover>)
     expect(screen.getByRole('dialog', { name: 'Seletor' })).toHaveClass('p-4', 'rounded-lg')
     const option = screen.getByRole('option', { name: 'Codex' })
-    expect(option).toHaveClass('px-2.5', 'rounded-md')
+    expect(option).toHaveClass('px-2.5', 'rounded-[10px]')
     expect(option.closest('[data-slot="command-group"]')).toHaveClass('p-1.5')
     expectNoMalformedClasses()
   })

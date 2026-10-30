@@ -315,7 +315,7 @@
   max-width: 100%;
   height: auto;
   margin: 0;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-bg-base);
   object-fit: contain;
 }
@@ -480,7 +480,7 @@
   max-width: 100%;
   padding: 0;
   border: 0;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--dsw-radius-lg);
   background: transparent;
   vertical-align: middle;
   cursor: zoom-in;

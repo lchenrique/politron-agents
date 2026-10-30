@@ -105,7 +105,7 @@ function FileDiff({
   }
 
   const iconButton =
-    'flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40'
+    'flex size-6 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40'
 
   return (
     <MotionConfig reducedMotion="user">
@@ -113,7 +113,7 @@ function FileDiff({
         data-slot="file-diff"
         data-viewed={isViewed}
         className={cn(
-          'overflow-hidden rounded-[16px] bg-card font-sans text-sm font-[450] tracking-[-0.05px] text-muted-foreground shadow-card',
+          'overflow-hidden rounded-lg bg-card font-sans text-sm font-[450] tracking-[-0.05px] text-muted-foreground shadow-card',
           className,
         )}
         {...props}
@@ -155,7 +155,7 @@ function FileDiff({
               <CheckIcon className={cn('size-3.5', !copied && 'scale-75 opacity-0')} />
             </span>
           </button>
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-muted">
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-full px-1.5 py-0.5 transition-colors hover:bg-muted">
             <input
               checked={isViewed}
               className="size-3.5 accent-current"
@@ -186,7 +186,7 @@ function FileDiff({
                             {hunk.hidden?.length ? (
                               <button
                                 aria-expanded={showHidden}
-                                className="-ml-0.5 flex items-center gap-1.5 rounded-md px-1 text-muted-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40"
+                                className="-ml-0.5 flex items-center gap-1.5 rounded-full px-1 text-muted-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/40"
                                 onClick={() =>
                                   setExpanded((current) => {
                                     const next = new Set(current)

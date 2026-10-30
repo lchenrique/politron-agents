@@ -41,7 +41,7 @@
   padding: 0 0 24px;
   overflow: hidden;
   border: 0;
-  border-radius: var(--dsw-radius-panel);
+  border-radius: var(--dsw-radius-xl);
   background: var(--dsw-alias-bg-layer-2);
   box-shadow: var(--dsw-elevation-prominent);
   animation: modalEnter var(--ds-transition-duration) var(--ds-ease-in-out);
@@ -92,7 +92,7 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: 999px;
   background: transparent;
   cursor: pointer;
   color: var(--dsw-alias-label-secondary);

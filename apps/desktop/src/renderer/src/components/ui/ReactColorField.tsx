@@ -29,7 +29,7 @@ export const ReactColorField = memo(function ReactColorField({
       <Popover.Portal>
         <Popover.Positioner align="end" collisionPadding={16} side="top" sideOffset={8} className="isolate z-[80]">
           <Popover.Popup aria-label={`Selecionar ${label}`}
-            className="rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-2xl outline-none"
+            className="rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-2xl outline-none"
             initialFocus={(type) => type === 'keyboard'}>
             <ChromePicker color={value} onChange={accept} disableAlpha />
           </Popover.Popup>

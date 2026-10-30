@@ -8,7 +8,7 @@ import type { BoardTask, BoardTaskInput, BoardTeam, Snapshot } from '../../../..
 import { Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 
-const field = 'h-9 w-full rounded-lg border-[0.5px] border-input bg-card px-3 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
+const field = 'h-9 w-full rounded-md border-[0.5px] border-input bg-card px-3 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
 const statuses: { id: BoardTask['status'] | 'queue'; label: string }[] = [
   { id: 'queue', label: 'Fila' }, { id: 'doing', label: 'Em execução' }, { id: 'review', label: 'Revisão' },
   { id: 'rework', label: 'Retrabalho' }, { id: 'integration', label: 'Integração' }, { id: 'blocked', label: 'Bloqueadas' }, { id: 'done', label: 'Concluídas' }, { id: 'cancelled', label: 'Canceladas' },
@@ -78,7 +78,7 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice, readOnly }: 
     return <article key={task.id} className="ds-card min-w-0 p-3" aria-label={`Tarefa ${task.title}`}>
       <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{task.title}</h3><span className="ds-meta mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px]">{waiting ? `Aguardando vaga · posição ${waiting.position}` : statusLabel(task.status)}</span></div><span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">{task.kind === 'code' ? <GitBranch className="size-3" /> : <Users className="size-3" />}{task.kind === 'code' ? task.branch || 'Código' : 'Geral'}</span></div>
       <p className="mt-2 text-xs leading-5 text-muted-foreground">{task.description}</p>
-      {waiting && <p className="mt-2 rounded bg-muted/50 px-2 py-1.5 text-[11px] text-muted-foreground">Aguardando o limite global de duas execuções ou a liberação do mesmo workspace. Posição estimada: {waiting.position}.</p>}
+      {waiting && <p className="mt-2 rounded-mdbg-muted/50 px-2 py-1.5 text-[11px] text-muted-foreground">Aguardando o limite global de duas execuções ou a liberação do mesmo workspace. Posição estimada: {waiting.position}.</p>}
       <p className="mt-2 text-xs"><span className="text-muted-foreground">Equipe</span> · {team?.name || 'Equipe removida'}{worker && <> · <span className="text-muted-foreground">Responsável</span> <span className="inline-flex items-center gap-1"><Avatar agent={worker} size="xxs" />{worker.name}</span></>}{reviewer && <> · <span className="text-muted-foreground">Revisor</span> <span className="inline-flex items-center gap-1"><Avatar agent={reviewer} size="xxs" />{reviewer.name}</span></>}</p>
       {task.status === 'review' && <div className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-xs"><p className="font-medium">{reviewMission?.status === 'completed' ? 'Parecer do revisor' : 'Revisão em andamento'}</p>{reviewMission?.result && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{reviewMission.result}</p>}</div>}
       {task.status === 'doing' && workerMission?.updates?.length ? <p className="mt-2 text-xs text-muted-foreground">Progresso: {workerMission.updates[workerMission.updates.length - 1]?.text}</p> : null}

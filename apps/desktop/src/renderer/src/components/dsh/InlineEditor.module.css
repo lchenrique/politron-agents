@@ -8,7 +8,7 @@
   margin: 0;
   padding: 3px 8px;
   border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--dsw-radius-md);
   outline: none;
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);

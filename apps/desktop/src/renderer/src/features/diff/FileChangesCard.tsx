@@ -30,7 +30,7 @@ export const FileChangesCard = memo(({ block, defaultExpanded = false }: FileCha
 
   return (
     <div className="flex w-full group py-2">
-      <div className="flex-1 ml-12 rounded-xl overflow-hidden border border-zinc-800/80 bg-zinc-900/40">
+      <div className="flex-1 ml-12 rounded-lg overflow-hidden border border-zinc-800/80 bg-zinc-900/40">
         {/* Header */}
         <Button
           variant="ghost"
@@ -84,7 +84,7 @@ export const FileChangesCard = memo(({ block, defaultExpanded = false }: FileCha
               {block.files.map((file, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center gap-2 py-1.5 px-2 rounded bg-zinc-950/50"
+                  className="flex items-center gap-2 py-1.5 px-2 rounded-smbg-zinc-950/50"
                 >
                   <div className="shrink-0">
                     {file.action === 'created' && (

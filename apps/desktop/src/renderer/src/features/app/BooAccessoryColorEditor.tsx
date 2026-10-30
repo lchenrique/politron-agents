@@ -31,17 +31,17 @@ export const BooAccessoryColorEditor = memo(function BooAccessoryColorEditor({
     onChange({ pitsAccessoryColors: next })
   }
 
-  return <div className="rounded-lg border border-border/70 bg-muted/25 p-2.5" role="group"
+  return <div className="rounded-md border border-border/70 bg-muted/25 p-2.5" role="group"
     aria-label={`Personalizar cores: ${layer === 'head' ? 'cabeça' : 'rosto'}`}>
     <div className="mb-2 flex items-center justify-between gap-2">
       <span className="text-[11px] font-medium">Cores do acessório</span>
       {overrides?.length ? <Button type="button" variant="ghost" size={null} onClick={restore}
-        className="h-auto rounded px-1.5 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="h-auto rounded-fullpx-1.5 py-1 text-[10px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
         aria-label={`Restaurar cores de ${accessory}`}>Restaurar cores</Button> : null}
     </div>
     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
       {parts.map(([label, defaultColor], index) => <div key={index}
-        className="rounded-md border border-border/60 bg-background/70 px-2 py-1.5">
+        className="rounded-sm border border-border/60 bg-background/70 px-2 py-1.5">
         <ReactColorField compact label={`${accessory} — ${label}`}
           value={overrides?.[index] || defaultColor} onChange={hex => setPart(index, hex)} />
       </div>)}

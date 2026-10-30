@@ -60,7 +60,7 @@ export function PocketTtsSettings({ installed }: { installed: boolean }) {
     } catch (cause) { setError(errorText(cause)) }
     finally { setBusy(false) }
   }
-  return <section aria-label="Vozes PocketTTS" className="space-y-3 rounded-lg border border-border/60 p-3 text-xs">
+  return <section aria-label="Vozes PocketTTS" className="space-y-3 rounded-md border border-border/60 p-3 text-xs">
     <div>
       <h4 className="font-medium">PocketTTS · vozes locais dos Boos</h4>
       <p className="mt-1 text-[11px] text-muted-foreground">Funciona no seu computador, sem servidor de voz. Escolha uma voz por Boo ou mantenha a voz geral.</p>

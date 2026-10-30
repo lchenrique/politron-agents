@@ -83,8 +83,8 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono: "Cascadia Code", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
-  --radius: 0.5rem;
-  --radius-canvas: 12px;
+  --radius: 12px; /* Controle médio. Regra completa: docs/superpowers/specs/2026-10-29-arredondamento.md */
+  --radius-canvas: 16px;
   --spacing: 0.25rem;
 
   --shadow-2xs: 0 1px 1px rgb(16 17 26 / 0.04);
@@ -251,10 +251,10 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 
-  --radius-sm: calc(var(--radius) - 3px);
-  --radius-md: calc(var(--radius) - 1px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xs: 4px; --radius-sm: 8px; /* xs: checkbox e teclas; sm: tooltip e itens em superfícies de 12px */
+  --radius-md: 12px; /* controles médios (34–44px): botões, campos, linhas */
+  --radius-lg: 16px; /* cartões, painéis, popovers, menus, toasts */
+  --radius-xl: 20px; --radius-2xl: 28px; --radius-3xl: 28px; /* xl: diálogos e balão do usuário; 2xl: composers */
 
   --shadow-2xs: var(--shadow-2xs);
   --shadow-xs: var(--shadow-xs);
@@ -431,8 +431,8 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
     border-radius: var(--dsw-radius-lg, 16px);
     box-shadow: 0 0 0 0.5px var(--border-strong), 0 3px 8px 0 rgb(0 0 0 / 0.03), 0 0 16px 0 rgb(0 0 0 / 0.02);
   }
-  .ds-card { border-radius: var(--dsw-radius-md, 12px); }
-  .ds-list { overflow: hidden; border-radius: var(--dsw-radius-md, 12px); }
+  .ds-card { border-radius: var(--dsw-radius-lg, 16px); }
+  .ds-list { overflow: hidden; border-radius: var(--dsw-radius-lg, 16px); }
   .ds-list > * + * { border-top: 0.5px solid var(--border); }
 
   /* Coluna do board: camada rebaixada que abriga os cartões. */
@@ -445,7 +445,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
 
   .ds-empty {
     border: 0.5px dashed var(--border-strong);
-    border-radius: var(--dsw-radius-md, 12px);
+    border-radius: var(--dsw-radius-lg, 16px);
     background: color-mix(in srgb, var(--muted) 55%, transparent);
     color: var(--muted-foreground);
   }
@@ -473,7 +473,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
     align-items: center;
     gap: 2px;
     padding: 2px;
-    border-radius: calc(var(--radius) + 1px);
+    border-radius: 999px;
     background: var(--segmented-track);
   }
   .ds-segmented > [role="radio"],
@@ -485,7 +485,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
     justify-content: center;
     gap: 6px;
     padding: 0 10px;
-    border-radius: calc(var(--radius) - 1px);
+    border-radius: 999px;
     font-size: 12px;
     font-weight: 500;
     color: var(--muted-foreground);
@@ -507,7 +507,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
 
   /* Item de navegação no chrome: hover discreto, seleção como superfície do canvas. */
   .ds-nav-item {
-    border-radius: calc(var(--radius) - 1px);
+    border-radius: var(--radius-md);
     color: var(--muted-foreground);
     transition: color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
   }
@@ -890,7 +890,7 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
 .boobot-markdown :not(pre) > code::before,
 .boobot-markdown :not(pre) > code::after { content: none; }
 .boobot-markdown :not(pre) > code {
-  border-radius: 5px;
+  border-radius: var(--dsw-radius-sm);
   padding: 0.1em 0.35em;
   background: var(--muted);
   font-size: 0.88em;

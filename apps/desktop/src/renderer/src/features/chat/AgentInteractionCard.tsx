@@ -16,7 +16,7 @@ export function AgentInteractionCard({ approval, onNotice, takeover = false }: {
       : approval.details.planReviewDecision === 'reject' ? 'Plano recusado'
         : approval.details.planReviewDecision === 'approve' ? 'Plano aprovado'
           : approval.status === 'pending' ? 'Aguardando revisão' : approval.status === 'approved' ? 'Plano registrado' : 'Revisão interrompida'
-    return <div className="max-w-xl rounded-xl border border-border/60 bg-card p-3">
+    return <div className="max-w-xl rounded-lg border border-border/60 bg-card p-3">
       <PlanApprovalCard title={approval.details.planTitle || 'Plano de implementação'}
         steps={(approval.details.planSteps || []).map((label, index) => ({ id: String(index), label }))}
         className="w-full max-w-xl border border-border/60 shadow-none" />
@@ -41,11 +41,11 @@ export function AgentInteractionCard({ approval, onNotice, takeover = false }: {
       onNotice(errorText(error))
     }
   }
-  if (!pending) return <section aria-label="Pergunta do Boo" className="rounded-xl border border-border/60 bg-card p-3 text-sm">
+  if (!pending) return <section aria-label="Pergunta do Boo" className="rounded-lg border border-border/60 bg-card p-3 text-sm">
     <p className="font-medium">{approval.details.question}</p>
     <p className="mt-1 text-xs text-muted-foreground">Resposta: {approval.details.answer || 'Interrompida'}</p>
   </section>
-  return <div aria-label="Pergunta do Boo" className={takeover ? takeoverStyles.questionCard : 'max-w-xl rounded-xl border border-border/60 bg-card p-2'} aria-busy={busy}>
+  return <div aria-label="Pergunta do Boo" className={takeover ? takeoverStyles.questionCard : 'max-w-xl rounded-lg border border-border/60 bg-card p-2'} aria-busy={busy}>
     <FollowUpSuggestions
       title={approval.details.question || 'Escolha uma opção'}
       items={[...options, { id: 'custom', label: 'Outra resposta', custom: true, placeholder: 'Escreva sua resposta' }]}

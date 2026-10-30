@@ -56,9 +56,9 @@ export function AppUpdatesPanel() {
   }
   const unavailable = !status || status.phase === 'development' || status.phase === 'not-configured'
   const isChecking = busy || status?.phase === 'checking'
-  return <div className="space-y-4 rounded-xl border border-border/70 bg-card p-5">
+  return <div className="space-y-4 rounded-lg border border-border/70 bg-card p-5">
     <div className="flex items-start gap-3">
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
         <Download className="size-4" />
       </span>
       <div>
@@ -66,7 +66,7 @@ export function AppUpdatesPanel() {
         <p className="mt-1 text-xs text-muted-foreground">Verificações a cada 30 minutos nas versões instaladas; você escolhe quando reiniciar.</p>
       </div>
     </div>
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5 text-sm">
       <span>Versão instalada: <strong>{status?.currentVersion || 'Consultando…'}</strong></span>
       <span className="text-xs text-muted-foreground">Nova versão: {status?.latestVersion || '—'}</span>
     </div>
@@ -92,7 +92,7 @@ export function AppUpdatesPanel() {
       <div className="h-full rounded-full bg-primary transition-[width]"
         style={{ width: String(status.progressPercent ?? 0) + '%' }} />
     </div>}
-    {status?.releaseNotes && <details className="rounded-lg border border-border/60 p-3 text-xs">
+    {status?.releaseNotes && <details className="rounded-md border border-border/60 p-3 text-xs">
       <summary className="cursor-pointer font-medium">Notas da atualização {status.latestVersion}</summary>
       <p className="mt-2 whitespace-pre-wrap text-muted-foreground">{status.releaseNotes}</p>
     </details>}

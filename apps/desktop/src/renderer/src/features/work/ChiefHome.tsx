@@ -81,7 +81,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
       </Button>
       {isOpen && <div className="space-y-4 border-t border-border/50 bg-muted/20 px-4 py-4 @md:pl-[3.25rem]">
         <StepList steps={mission.steps} />
-        {mission.result && <div className="rounded-lg border border-success/25 bg-success-soft px-3 py-2 text-xs leading-5 whitespace-pre-wrap">{mission.result}</div>}
+        {mission.result && <div className="rounded-md border border-success/25 bg-success-soft px-3 py-2 text-xs leading-5 whitespace-pre-wrap">{mission.result}</div>}
         {!!mission.updates.length && <ul className="space-y-1 text-[11px] leading-5 text-muted-foreground">
           {mission.updates.slice(-4).map(update => <li key={update.at + update.text} className="flex gap-2"><time className="shrink-0 tabular-nums" dateTime={update.at}>{new Date(update.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time><span className="min-w-0">{update.agentId ? `${agentName(update.agentId)}: ` : ''}{update.text}</span></li>)}
         </ul>}
@@ -105,7 +105,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
             <p className="ds-page-lede mt-1">Descreva o objetivo. Ele planeja, monta a equipe, executa e só chama você para decisões.</p>
           </div>
         </div>
-        <form className="mt-6 rounded-[28px] bg-[var(--dsw-specific-input-major,var(--card))] shadow-[var(--dsw-elevation-soft,var(--shadow-composer))] transition-shadow focus-within:shadow-[var(--dsw-elevation-prominent,var(--shadow-composer))]"
+        <form className="mt-6 rounded-2xl bg-[var(--dsw-specific-input-major,var(--card))] shadow-[var(--dsw-elevation-soft,var(--shadow-composer))] transition-shadow focus-within:shadow-[var(--dsw-elevation-prominent,var(--shadow-composer))]"
           onSubmit={event => { event.preventDefault(); void assign() }}>
           <label htmlFor="chief-goal" className="sr-only">Objetivo para {chief?.name || 'o Chief'}</label>
           <Textarea id="chief-goal" value={goal} disabled={!canChat} onChange={event => setGoal(event.target.value)} rows={3}
@@ -141,7 +141,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
           {attention > 0 && <section aria-labelledby="attention-title">
             <h2 id="attention-title" className="ds-section-title mb-3 flex items-center gap-2">Precisa de você <span className="ds-count" data-tone="attention">{attention}</span></h2>
             <div className="space-y-3">
-              {waiting.map(mission => <article key={mission.id} className="rounded-xl border border-warning/30 bg-warning-soft/50 px-4 py-3">
+              {waiting.map(mission => <article key={mission.id} className="rounded-lg border border-warning/30 bg-warning-soft/50 px-4 py-3">
                 <header className="mb-2 flex items-center gap-2 text-xs text-muted-foreground"><Avatar agent={agentOf(mission.ownerAgentId)} size="xs" /><span className="min-w-0 flex-1 truncate"><span className="font-medium text-foreground">{agentName(mission.ownerAgentId)}</span> · {mission.title}</span><Button type="button" variant="ghost" size={null} className="h-auto gap-1 p-0 text-xs font-normal text-inherit hover:bg-transparent hover:text-foreground" onClick={() => onOpenConversation(mission.conversationId)}>Conversa<ArrowUpRight className="size-3" /></Button></header>
                 <MissionReply mission={mission} onNotice={onNotice} />
               </article>)}
@@ -173,7 +173,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
             <h2 id="team-title" className="ds-section-title mb-2">Equipe</h2>
             <ul className="space-y-0.5">
               {[...(chief ? [chief] : []), ...snapshot.agents.filter(agent => agent.role !== 'chief' && agent.temporaryStatus !== 'retired')].slice(0, 10).map(agent => <li key={agent.id}>
-                <Button type="button" variant="ghost" size={null} onClick={() => onOpenAgent(agent)} className="flex h-auto w-full justify-start gap-2.5 whitespace-normal rounded-lg px-2 py-1.5 text-left font-normal text-inherit transition-colors hover:bg-accent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
+                <Button type="button" variant="ghost" size={null} onClick={() => onOpenAgent(agent)} className="flex h-auto w-full justify-start gap-2.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal text-inherit transition-colors hover:bg-accent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring focus-visible:ring-0">
                   <Avatar agent={agent} size="xs" state={agentStates[agent.id] || 'idle'} />
                   <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{agent.name}</span><span className="block truncate text-[11px] text-muted-foreground">{agent.role === 'chief' ? 'Chief · coordenação' : agent.description || `@${agent.alias}`}</span></span>
                   <AgentPresence state={agentStates[agent.id] || 'idle'} />
@@ -185,7 +185,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
           <section aria-labelledby="routines-title">
             <div className="mb-2 flex items-center justify-between"><h2 id="routines-title" className="ds-section-title">Rotinas</h2><Button size="xs" variant="ghost" onClick={onOpenRoutines}>Gerenciar</Button></div>
             {routines.length ? <ul className="space-y-2">{routines.map(routine => <li key={routine.id} className="flex gap-2 px-2 text-xs"><CalendarClock className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0"><span className="block truncate font-medium">{routine.name}</span><span className="block truncate text-[11px] text-muted-foreground">{routine.nextRunAt ? `Próxima ${relativeTime(routine.nextRunAt)}` : describeTrigger(routine.trigger)}</span></span></li>)}</ul>
-              : <Button type="button" variant="ghost" size={null} onClick={onOpenRoutines} className="ds-empty block h-auto w-full whitespace-normal rounded-[calc(var(--radius)+4px)] px-3 py-3 text-left text-[11px] font-normal leading-5 text-muted-foreground transition-colors hover:border-ring/50 hover:bg-[color-mix(in_srgb,var(--muted)_55%,transparent)] hover:text-foreground">Dê responsabilidades contínuas: revisões diárias, monitoramento, reação a mudanças.</Button>}
+              : <Button type="button" variant="ghost" size={null} onClick={onOpenRoutines} className="ds-empty block h-auto w-full whitespace-normal rounded-lg px-3 py-3 text-left text-[11px] font-normal leading-5 text-muted-foreground transition-colors hover:border-ring/50 hover:bg-[color-mix(in_srgb,var(--muted)_55%,transparent)] hover:text-foreground">Dê responsabilidades contínuas: revisões diárias, monitoramento, reação a mudanças.</Button>}
           </section>
         </aside>
       </div>

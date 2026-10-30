@@ -16,7 +16,7 @@ export function UpdateReadyCallout({ onOpen }: { onOpen: () => void }) {
     return () => { active = false; off() }
   }, [])
   if (!version) return null
-  return <div className="fixed bottom-20 right-5 z-[60] flex max-w-sm items-center gap-3 rounded-xl border border-border bg-popover p-3 text-sm text-popover-foreground shadow-xl" role="status">
+  return <div className="fixed bottom-20 right-5 z-[60] flex max-w-sm items-center gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-xl" role="status">
     <span>Boobot {version} está pronto para instalar.</span>
     <Button size="sm" variant="outline" onClick={onOpen}>Ver</Button>
   </div>

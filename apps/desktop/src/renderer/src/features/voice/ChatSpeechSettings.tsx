@@ -20,7 +20,7 @@ export function ChatSpeechSettings() {
     catch (cause) { setError(errorText(cause)) }
     finally { setBusy(false) }
   }
-  return <section aria-label="Leitura das respostas" className="space-y-2 rounded-lg border border-border/60 p-3 text-xs">
+  return <section aria-label="Leitura das respostas" className="space-y-2 rounded-md border border-border/60 p-3 text-xs">
     <h4 className="font-medium">Botão Ouvir no chat</h4>
     <label className="block space-y-1 text-muted-foreground">Voz das respostas
       <Select value={status?.provider || 'realtime'} disabled={!status || busy}

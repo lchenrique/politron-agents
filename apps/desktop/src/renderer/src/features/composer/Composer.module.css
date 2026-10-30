@@ -37,7 +37,7 @@
 /* Barra de controles e botões nos tamanhos do DSH: + 28px, chips 28px, enviar/parar 34px. */
 .promptCard :global(textarea[aria-label="Message"] ~ div) { padding: 2px 2px 0 !important; }
 .promptCard :global(button[type="submit"]), .promptCard :global(button[aria-label="Parar geração"]) { width: 34px !important; height: 34px !important; min-width: 34px !important; }
-.promptCard :global(button[aria-label="Anexar arquivos"]) { width: 28px !important; height: 28px !important; }
+.promptCard :global(button[aria-label="Anexar arquivos"]) { width: 28px !important; height: 28px !important; border-radius: 999px !important; }
 /* Chips dentro do cartão de 28px: totalmente arredondados, concêntricos com o cartão e o botão redondo. */
 .promptCard :global(button[aria-label="Modo planejamento"]), .promptCard :global(button[aria-label="Selecionar modelo"]) { height: 28px !important; border-radius: 999px !important; }
 
@@ -80,7 +80,7 @@
   gap: 8px;
   padding: 0 4px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--dsw-alias-label-secondary, var(--muted-foreground));
   cursor: pointer;
@@ -118,7 +118,7 @@
   gap: 8px;
   padding: 4px 6px 4px 8px;
   border: 0.5px solid var(--dsw-alias-border-l1, var(--border));
-  border-radius: 12px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--dsw-specific-input-major, var(--card)) 72%, transparent);
   font-size: 12px;
 }

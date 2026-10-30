@@ -31,17 +31,17 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
   const [background, setBackground] = useState<'light' | 'dark' | 'grid'>('light')
   const selectedHead = agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')
   const selectedFace = agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')
-  return <div className="overflow-hidden rounded-xl border border-border/70" aria-label="Boo Studio — editor do mascote">
+  return <div className="overflow-hidden rounded-lg border border-border/70" aria-label="Boo Studio — editor do mascote">
     <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2">
       <div><h3 className="text-sm font-semibold">Boo Studio</h3><p className="text-[11px] text-muted-foreground">Personalize o seu agente em tempo real</p></div>
       <div className="flex shrink-0 items-center gap-2">
-        <Button type="button" variant="ghost" size={null} onClick={() => { onChange({ ...DEFAULT_BOO_APPEARANCE }); onReset?.() }} title="Volta ao formato Boo (ondinha) e valores visuais originais. Clique em Salvar para confirmar." className="h-auto rounded-md border border-border px-2 py-1 text-[11px] font-normal text-inherit hover:bg-accent hover:text-inherit">Restaurar aparência</Button>
+        <Button type="button" variant="ghost" size={null} onClick={() => { onChange({ ...DEFAULT_BOO_APPEARANCE }); onReset?.() }} title="Volta ao formato Boo (ondinha) e valores visuais originais. Clique em Salvar para confirmar." className="h-auto rounded-full border border-border px-2 py-1 text-[11px] font-normal text-inherit hover:bg-accent hover:text-inherit">Restaurar aparência</Button>
         <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] text-primary">SVG animado</span>
       </div>
     </div>
     <div className="grid min-h-[300px] md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
       <div className={`flex min-h-56 flex-col items-center justify-between gap-2 p-3 ${background === 'dark' ? 'bg-slate-900 text-white' : background === 'grid' ? 'bg-[linear-gradient(45deg,#a1a1aa20_25%,transparent_25%),linear-gradient(-45deg,#a1a1aa20_25%,transparent_25%)] bg-[length:18px_18px] bg-muted/50' : 'bg-primary/[.04]'}`}>
-        <div className="flex self-end gap-1">{(['light','dark','grid'] as const).map(option => <Button key={option} type="button" variant="ghost" size={null} aria-label={`Fundo ${option}`} aria-pressed={background === option} title={`Fundo ${option}`} onClick={() => setBackground(option)} className={`h-auto rounded-md border px-2 py-1 text-[10px] font-normal hover:bg-transparent ${background === option ? 'border-primary text-primary hover:text-primary' : 'border-border text-muted-foreground hover:text-muted-foreground'}`}>{option === 'light' ? '☀' : option === 'dark' ? '☾' : '▦'}</Button>)}</div>
+        <div className="flex self-end gap-1">{(['light','dark','grid'] as const).map(option => <Button key={option} type="button" variant="ghost" size={null} aria-label={`Fundo ${option}`} aria-pressed={background === option} title={`Fundo ${option}`} onClick={() => setBackground(option)} className={`h-auto rounded-full border px-2 py-1 text-[10px] font-normal hover:bg-transparent ${background === option ? 'border-primary text-primary hover:text-primary' : 'border-border text-muted-foreground hover:text-muted-foreground'}`}>{option === 'light' ? '☀' : option === 'dark' ? '☾' : '▦'}</Button>)}</div>
         <div className="flex flex-1 flex-col items-center justify-center gap-1">
           <PoliAvatar agent={agent} size={168} expression={expression} />
           <strong className="text-xs">{agent.name || 'Boo'}</strong><span className="text-[11px] opacity-70">{states.find(item => item.value === expression)?.label}</span>
@@ -67,7 +67,7 @@ export const PoliCustomizer = memo(function PoliCustomizer({ agent, onChange, on
                 {BOO_SHAPE_PRESETS.map(({ value, label }) => (
                   <Button key={value} type="button" variant="ghost" size={null} aria-pressed={(agent.pitsShape || 'ghost-wave') === value}
                     onClick={() => onChange({ pitsShape: value })}
-                    className={['flex h-auto flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-[11px] font-normal transition-colors', (agent.pitsShape || 'ghost-wave') === value ? 'border-primary bg-primary/10 text-foreground hover:bg-primary/10 hover:text-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-muted-foreground'].join(' ')}>
+                    className={['flex h-auto flex-col items-center gap-1 rounded-md border px-1.5 py-2 text-[11px] font-normal transition-colors', (agent.pitsShape || 'ghost-wave') === value ? 'border-primary bg-primary/10 text-foreground hover:bg-primary/10 hover:text-foreground' : 'border-border text-muted-foreground hover:bg-accent hover:text-muted-foreground'].join(' ')}>
                     <svg viewBox="28 0 185 200" className="size-11" aria-hidden="true">
                       <path d={BOO_BODY_PATHS[value]} fill={agent.color || '#786bea'} />
                       <ellipse cx="94" cy="94" rx="8" ry="12" fill={agent.pitsEyeColor || '#fff'} />

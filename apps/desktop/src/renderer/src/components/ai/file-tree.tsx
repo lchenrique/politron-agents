@@ -225,7 +225,7 @@ function FileTree({
           {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div
             className={cn(
-              'relative z-10 flex w-full cursor-default items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-sm transition-[color] duration-150 ease-[ease] hover:text-foreground',
+              'relative z-10 flex w-full cursor-default items-center gap-1.5 rounded-sm py-1.5 pr-2 text-left text-sm transition-[color] duration-150 ease-[ease] hover:text-foreground',
               isSelected && 'text-foreground',
             )}
             onMouseEnter={() => {
@@ -316,7 +316,7 @@ function FileTree({
       <section
         data-slot="file-tree"
         className={cn(
-          'rounded-[16px] bg-card p-2 font-sans text-sm font-[450] tracking-[-0.05px] text-muted-foreground shadow-card',
+          'rounded-lg bg-card p-2 font-sans text-sm font-[450] tracking-[-0.05px] text-muted-foreground shadow-card',
           className,
         )}
         {...props}
@@ -335,7 +335,7 @@ function FileTree({
           </ul>
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 z-0 rounded-md bg-[color-mix(in_oklch,var(--foreground)_7%,transparent)] data-[ready=true]:transition-[top,height,opacity] data-[ready=true]:duration-[220ms] data-[ready=true]:ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:data-[ready=true]:transition-opacity dark:bg-muted"
+            className="pointer-events-none absolute inset-x-0 top-0 z-0 rounded-sm bg-[color-mix(in_oklch,var(--foreground)_7%,transparent)] data-[ready=true]:transition-[top,height,opacity] data-[ready=true]:duration-[220ms] data-[ready=true]:ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:data-[ready=true]:transition-opacity dark:bg-muted"
             ref={indicatorRef}
             style={{
               height: indicator?.height ?? 0,

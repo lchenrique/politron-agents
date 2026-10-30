@@ -35,7 +35,7 @@ interface ModelPickerProps {
 }
 
 const surface =
-  'w-80 max-h-[var(--available-height)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-[16px] bg-card p-1.5 font-sans text-sm font-[450] tracking-[-0.05px] text-muted-foreground shadow-card outline-none origin-(--transform-origin) transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 motion-reduce:transition-opacity'
+  'w-80 max-h-[var(--available-height)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg bg-card p-1.5 font-sans text-sm font-[450] tracking-[-0.05px] text-muted-foreground shadow-card outline-none origin-(--transform-origin) transition-[opacity,scale] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 motion-reduce:transition-opacity'
 const row =
   'flex w-full cursor-pointer items-center gap-3 rounded-[10px] px-3 py-2 text-left outline-none data-highlighted:bg-muted data-disabled:cursor-default data-disabled:opacity-50'
 const effortLabels: Record<ModelEffort, string> = {
@@ -96,7 +96,7 @@ function ModelPicker({
             <span className="flex flex-wrap items-center gap-2 text-sm">
               {model.name}
               {(model.badge || model.family) && (
-                <span className="rounded-sm bg-muted px-1.5 text-xs leading-5">
+                <span className="rounded-full bg-muted px-1.5 text-xs leading-5">
                   {model.badge ?? model.family}
                 </span>
               )}

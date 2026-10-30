@@ -426,7 +426,7 @@ function Highlighted({ text, matches }: { text: string; matches: number[] }) {
 
 function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-zinc-200 bg-zinc-50 px-1 font-sans text-[11px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-xsborder border-zinc-200 bg-zinc-50 px-1 font-sans text-[11px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
       {children}
     </kbd>
   );
@@ -957,7 +957,7 @@ function ActionSearchBar({
       {iconOnly && <button
         aria-expanded={open}
         aria-label={label}
-        className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => {
           if (!open) {
             returnFocus.current = triggerRef.current;
@@ -988,7 +988,7 @@ function ActionSearchBar({
           {stack.map((p, i) => (
             <button
               aria-label={`Back from ${p.label}`}
-              className="inline-flex h-6 shrink-0 items-center rounded-md bg-zinc-100 px-2 font-medium text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              className="inline-flex h-6 shrink-0 items-center rounded-full bg-zinc-100 px-2 font-medium text-xs text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
               key={p.id}
               onClick={() => {
                 if (i === stack.length - 1 && !running) {

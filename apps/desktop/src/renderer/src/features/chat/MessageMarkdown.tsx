@@ -32,7 +32,7 @@ function MessageLink({ href, children }: { href?: string; children?: ReactNode }
 /** O mesmo conteúdo e os mesmos componentes no aplicativo e na PWA. */
 export const MessageMarkdown = memo(function MessageMarkdown({ children }: { children: string }) {
   const handlers = useContext(MessageLinkContext)
-  return <div className="boobot-markdown prose prose-sm min-w-0 max-w-none break-words text-[14px] leading-6 prose-p:my-2 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5">
+  return <div className="boobot-markdown prose prose-sm min-w-0 max-w-none break-words text-[14px] leading-6 prose-p:my-2 prose-code:rounded-smprose-code:bg-muted prose-code:px-1 prose-code:py-0.5">
     <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={(url, key) => {
       if (handlers && key === 'href' && (/^file:/i.test(url) || /^[a-z]:[\\/]/i.test(url) || /^[\\/]/.test(url))) return url
       return defaultUrlTransform(url)

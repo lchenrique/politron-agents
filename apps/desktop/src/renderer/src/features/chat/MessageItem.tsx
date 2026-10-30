@@ -49,7 +49,7 @@ function CopyMessageButton({ text, onNotice, className }: { text: string; onNoti
       onNotice(COPY_FAILURE_NOTICE)
     }
   }
-  return <Button type="button" size="icon" variant="ghost" className={'size-6 text-muted-foreground ' + (className || '')}
+  return <Button type="button" size="icon" variant="ghost" className={'size-6 rounded-full text-muted-foreground ' + (className || '')}
     aria-label={copied ? 'Mensagem copiada' : 'Copiar mensagem'} title="Copiar mensagem" onClick={() => void copy()}>
     {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
   </Button>
@@ -160,7 +160,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
         {message.status === 'interrupted' && <span className="font-normal text-muted-foreground">cancelada</span>}
         <span role="group" aria-label="Ações da mensagem" className="ml-auto flex items-center gap-0.5 empty:hidden">
           {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} />}
-          {canSpeak && message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 text-muted-foreground" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz configurada no host." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
+          {canSpeak && message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 rounded-full text-muted-foreground" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz configurada no host." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
         </span>
       </MessageHeader>}
       {!human && message.role === 'assistant' && !(quietProgress && message.status === 'running') && <RunProgress status={message.status} agentName={agent?.name || message.author} />}
@@ -171,7 +171,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
           {time && <time dateTime={message.createdAt} title={time.full} className="font-normal tabular-nums">{time.short}</time>}
           {message.status === 'queued' && <span className="text-muted-foreground">Na fila</span>}
           {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} />}
-          {canCancelQueued && message.status === 'queued' && <Button type="button" size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" aria-label="Cancelar mensagem na fila" title="Cancelar mensagem na fila" disabled={cancelingQueued} onClick={() => void cancelQueued()}>{cancelingQueued ? <LoaderCircle className="size-3.5 animate-spin" /> : <X className="size-3.5" />}</Button>}
+          {canCancelQueued && message.status === 'queued' && <Button type="button" size="icon" variant="ghost" className="size-6 rounded-full text-muted-foreground hover:text-destructive" aria-label="Cancelar mensagem na fila" title="Cancelar mensagem na fila" disabled={cancelingQueued} onClick={() => void cancelQueued()}>{cancelingQueued ? <LoaderCircle className="size-3.5 animate-spin" /> : <X className="size-3.5" />}</Button>}
         </MessageFooter>}</>
         : message.status === 'running' || message.status === 'waiting'
           ? <StreamingText text={message.text || ' '} />

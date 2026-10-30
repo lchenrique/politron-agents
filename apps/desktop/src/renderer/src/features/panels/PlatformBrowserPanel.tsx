@@ -69,12 +69,12 @@ export function PlatformBrowserPanel({ onNotice, workspaceId, conversationId, ag
   const current = state?.url ? safeWebUrl(state.url) : null
   return <section aria-label="Navegador" className="flex h-full min-h-0 flex-col">
     <form onSubmit={submit} className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-muted/40 px-1.5">
-      <Button type="button" size="icon" variant="ghost" className="size-7" aria-label="Voltar" disabled={!state?.canGoBack} onClick={() => void api.back()}><ArrowLeft className="size-4" /></Button>
-      <Button type="button" size="icon" variant="ghost" className="size-7" aria-label="Avançar" disabled={!state?.canGoForward} onClick={() => void api.forward()}><ArrowRight className="size-4" /></Button>
-      <Button type="button" size="icon" variant="ghost" className="size-7" aria-label="Recarregar" disabled={!state} onClick={() => void api.reload()}>{state?.loading ? <LoaderCircle className="size-4 animate-spin" /> : <RotateCw className="size-4" />}</Button>
+      <Button type="button" size="icon" variant="ghost" className="size-7 rounded-full" aria-label="Voltar" disabled={!state?.canGoBack} onClick={() => void api.back()}><ArrowLeft className="size-4" /></Button>
+      <Button type="button" size="icon" variant="ghost" className="size-7 rounded-full" aria-label="Avançar" disabled={!state?.canGoForward} onClick={() => void api.forward()}><ArrowRight className="size-4" /></Button>
+      <Button type="button" size="icon" variant="ghost" className="size-7 rounded-full" aria-label="Recarregar" disabled={!state} onClick={() => void api.reload()}>{state?.loading ? <LoaderCircle className="size-4 animate-spin" /> : <RotateCw className="size-4" />}</Button>
       <Input aria-label="Endereço" value={address} placeholder="https://" className="h-7 flex-1 text-xs" spellCheck={false}
         onFocus={() => { editing.current = true }} onBlur={() => { editing.current = false }} onChange={event => setAddress(event.target.value)} />
-      <Button type="button" size="icon" variant="ghost" className="size-7" aria-label="Abrir no navegador do sistema" title="Abrir no navegador do sistema" disabled={!current}
+      <Button type="button" size="icon" variant="ghost" className="size-7 rounded-full" aria-label="Abrir no navegador do sistema" title="Abrir no navegador do sistema" disabled={!current}
         onClick={() => { if (current) void api.openExternal(current).catch(error => onNotice(error instanceof Error ? error.message : 'Não foi possível abrir o navegador do sistema.')) }}><ExternalLink className="size-4" /></Button>
     </form>
     {(sharing || paused) && <div role="status" className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-2.5 text-xs text-muted-foreground">

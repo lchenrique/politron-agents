@@ -97,7 +97,7 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true, ta
   ] : []
 
   if (!pending) return <section aria-label="Aprovação de ferramenta"
-    className="flex min-w-0 items-center gap-2 rounded-lg border border-border/40 bg-muted/10 px-2.5 py-1.5 text-xs text-muted-foreground">
+    className="flex min-w-0 items-center gap-2 rounded-md border border-border/40 bg-muted/10 px-2.5 py-1.5 text-xs text-muted-foreground">
     <CheckCircle2 aria-hidden className="size-3.5 shrink-0" />
     <span className="shrink-0 font-medium text-foreground">{definition.title}</span>
     <span className="min-w-0 flex-1 truncate" title={description}>{description}</span>
@@ -105,7 +105,7 @@ export function PolitronToolApproval({ approval, onNotice, canApprove = true, ta
   </section>
 
   return <div ref={takeover ? keyboardScope : undefined} className={takeover ? 'contents' : undefined}>
-  <ApprovalCard aria-label="Aprovação de ferramenta" className={takeover ? styles.approvalCard : 'min-w-0 border border-border/60 !rounded-xl !p-3 shadow-none'} title={definition.title} description={description}
+  <ApprovalCard aria-label="Aprovação de ferramenta" className={takeover ? styles.approvalCard : 'min-w-0 border border-border/60 !rounded-lg !p-3 shadow-none'} title={definition.title} description={description}
     status={pending ? 'pending' : approval.status === 'approved' ? 'approved' : approval.status === 'denied' ? 'denied' : 'interrupted'}
     disabled={submitting}
     options={options} onDecision={value => value === 'approve' ? onApprove() : value === 'always' ? onAlwaysAllow() : void respond(false)}>

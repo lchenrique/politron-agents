@@ -109,7 +109,7 @@ function PromptToolsMenu({ onSelect }: { onSelect: (tool: PromptTool) => void })
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="z-50 max-h-[var(--available-height)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto rounded-[16px] bg-card p-2 font-sans text-sm font-[450] tracking-[-0.05px] text-muted-foreground shadow-card ring-0"
+        className="z-50 max-h-[var(--available-height)] w-[min(48rem,calc(100vw-2rem))] overflow-y-auto rounded-lg bg-card p-2 font-sans text-sm font-[450] tracking-[-0.05px] text-muted-foreground shadow-card ring-0"
       >
         <div id={listId} role="listbox" aria-label="Files and tools">
           {filtered.map((tool, index) => (
@@ -129,7 +129,7 @@ function PromptToolsMenu({ onSelect }: { onSelect: (tool: PromptTool) => void })
               onMouseMove={() => setActive(index)}
               onClick={() => select(tool.id)}
               className={cn(
-                'flex min-h-9 cursor-pointer items-center gap-3 rounded-md px-2 py-2',
+                'flex min-h-9 cursor-pointer items-center gap-3 rounded-sm px-2 py-2',
                 active === index && 'bg-muted',
               )}
             >

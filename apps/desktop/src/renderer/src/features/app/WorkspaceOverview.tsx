@@ -21,11 +21,11 @@ export function WorkspaceOverview({ workspace, conversations, workspaces, agents
   return <div className="min-h-0 flex-1 overflow-auto">
     <div className="ds-page max-w-3xl space-y-8">
       <header className="flex flex-wrap items-start gap-4">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-soft-foreground">{workspace.kind === 'worktree' ? <FolderGit2 className="size-6" /> : <FolderOpen className="size-6" />}</span>
+        <span className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary-soft-foreground">{workspace.kind === 'worktree' ? <FolderGit2 className="size-6" /> : <FolderOpen className="size-6" />}</span>
         <div className="min-w-0 flex-1">
           <p className="ds-eyebrow">{workspace.kind === 'free' ? 'Projeto livre' : workspace.kind === 'worktree' ? 'Worktree do projeto' : 'Projeto'}</p>
           <h1 className="ds-page-title mt-1 break-words">{workspace.name}</h1>
-          {!browserMode && workspace.kind !== 'free' && <p className="mt-2 inline-block max-w-full break-all rounded-md bg-muted px-2 py-0.5 font-mono text-[11.5px] text-muted-foreground">{workspace.path}</p>}
+          {!browserMode && workspace.kind !== 'free' && <p className="mt-2 inline-block max-w-full break-all rounded-full bg-muted px-2 py-0.5 font-mono text-[11.5px] text-muted-foreground">{workspace.path}</p>}
           {workspace.kind === 'free' && <p className="ds-page-lede mt-1">Converse sem associar uma pasta de projeto.</p>}
         </div>
         {!browserMode && <Button variant="outline" size="sm" onClick={onEdit}><Settings2 className="size-4" /> Configurar</Button>}
@@ -37,7 +37,7 @@ export function WorkspaceOverview({ workspace, conversations, workspaces, agents
           {!browserMode && <Button variant="ghost" size="sm" onClick={onEdit}><Users className="size-4" /> Gerenciar equipe</Button>}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          {team.length ? team.map(agent => <Button key={agent.id} variant="ghost" size={null} onClick={() => onOpenAgent(agent)} className="flex h-auto min-w-36 justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-background px-3 py-2 text-left font-normal text-inherit transition-colors hover:border-border-strong hover:bg-accent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0"><Avatar agent={agent} size="sm" /><span className="min-w-0"><span className="block truncate text-xs font-semibold">{agent.name}</span><span className="block truncate text-[11px] text-muted-foreground">@{agent.alias} · Conversar</span></span></Button>) : <p className="text-xs text-muted-foreground">Sem equipe fixa. Novas sessões começam com o Assistente padrão.</p>}
+          {team.length ? team.map(agent => <Button key={agent.id} variant="ghost" size={null} onClick={() => onOpenAgent(agent)} className="flex h-auto min-w-36 justify-start gap-2.5 whitespace-normal rounded-md border border-border bg-background px-3 py-2 text-left font-normal text-inherit transition-colors hover:border-border-strong hover:bg-accent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0"><Avatar agent={agent} size="sm" /><span className="min-w-0"><span className="block truncate text-xs font-semibold">{agent.name}</span><span className="block truncate text-[11px] text-muted-foreground">@{agent.alias} · Conversar</span></span></Button>) : <p className="text-xs text-muted-foreground">Sem equipe fixa. Novas sessões começam com o Assistente padrão.</p>}
         </div>
       </section>
 

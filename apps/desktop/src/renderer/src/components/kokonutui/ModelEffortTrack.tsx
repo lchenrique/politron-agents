@@ -29,14 +29,14 @@ export function ModelEffortTrack({ levels, value, onChange, labelId }: {
     }
   }
   return <div aria-labelledby={labelId} aria-valuemax={count - 1} aria-valuemin={0} aria-valuenow={value}
-    aria-valuetext={levels[value]?.label} className="h-9 cursor-pointer touch-none select-none rounded-lg bg-muted/75 p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    aria-valuetext={levels[value]?.label} className="h-9 cursor-pointer touch-none select-none rounded-md bg-muted/75 p-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     onKeyDown={onKeyDown} onLostPointerCapture={() => setDragging(false)}
     onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); setDragging(true); onChange(indexAt(event.clientX)) }}
     onPointerMove={event => { if (dragging) { const next = indexAt(event.clientX); if (next !== value) onChange(next) } }}
     onPointerUp={() => setDragging(false)} role="slider" tabIndex={0}>
     <div className="relative flex h-full" ref={trackRef}>
       <span aria-hidden="true" className={cn(
-        'absolute inset-y-0 rounded-md bg-white shadow-[0_1px_2px_rgb(0_0_0/0.08)] ring-1 ring-black/5 transition-[left,width] duration-250 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none dark:bg-zinc-700 dark:ring-white/10',
+        'absolute inset-y-0 rounded-[10px] bg-white shadow-[0_1px_2px_rgb(0_0_0/0.08)] ring-1 ring-black/5 transition-[left,width] duration-250 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none dark:bg-zinc-700 dark:ring-white/10',
         dragging && 'duration-150')}
         style={{ left: `${(value / count) * 100}%`, width: `${100 / count}%` }} />
       {levels.map((level, index) => <span aria-hidden="true" key={level.id}
