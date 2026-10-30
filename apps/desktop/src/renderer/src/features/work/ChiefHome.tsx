@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowUpRight, ChevronDown, CalendarClock, Loader2, MessageSquare, PauseCircle, SendHorizontal } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, CalendarClock, Loader2, MessageSquare, PauseCircle, ArrowUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -105,33 +105,34 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
             <p className="ds-page-lede mt-1">Descreva o objetivo. Ele planeja, monta a equipe, executa e só chama você para decisões.</p>
           </div>
         </div>
-        <form className="mt-6 rounded-3xl bg-[var(--dsw-specific-input-major,var(--card))] shadow-[var(--dsw-elevation-soft,var(--shadow-composer))] transition-shadow focus-within:shadow-[var(--dsw-elevation-prominent,var(--shadow-composer))]"
+        <form className="mt-6 rounded-[28px] bg-[var(--dsw-specific-input-major,var(--card))] shadow-[var(--dsw-elevation-soft,var(--shadow-composer))] transition-shadow focus-within:shadow-[var(--dsw-elevation-prominent,var(--shadow-composer))]"
           onSubmit={event => { event.preventDefault(); void assign() }}>
           <label htmlFor="chief-goal" className="sr-only">Objetivo para {chief?.name || 'o Chief'}</label>
           <Textarea id="chief-goal" value={goal} disabled={!canChat} onChange={event => setGoal(event.target.value)} rows={3}
             onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void assign() } }}
             placeholder="Ex.: Preciso lançar um novo produto. Monte uma equipe, pesquise o mercado e comece a executar."
             className="field-sizing-content block max-h-72 min-h-24 w-full resize-none rounded-none border-0 bg-transparent px-4 pb-2 pt-4 text-[15px] leading-6 shadow-none outline-none placeholder:text-muted-foreground/80 focus-visible:ring-0 md:text-[15px] dark:bg-transparent" />
-          <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+          {/* Barra de controles como a do composer do DSH: chips de 28px sem borda e botão redondo de 34px. */}
+          <div className="flex flex-wrap items-center gap-1 px-2 pb-1.5 pt-0.5">
             <Select value={selectedWorkspace?.id || NO_PROJECT} onValueChange={value => { const id = value === NO_PROJECT ? '' : value; setWorkspaceId(id); try { localStorage.setItem('politron.home.workspace', id) } catch { /* opcional */ } }}>
-              <SelectTrigger aria-label="Projeto" className="h-8 w-auto max-w-48 gap-1.5 bg-background px-2 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Projeto" className="max-w-48 h-7 w-auto gap-1 rounded-[8px] border-0 bg-transparent px-2 text-[13px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus:ring-0 focus-visible:ring-2 focus-visible:ring-ring/35"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NO_PROJECT}>Sem projeto (Livre)</SelectItem>
                 {projects.filter(item => !(item.kind === 'free' && item.name === 'Livre')).map(project => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={owner?.id || ''} onValueChange={setOwnerId}>
-              <SelectTrigger aria-label="Responsável" className="h-8 w-auto max-w-44 gap-1.5 bg-background px-2 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Responsável" className="max-w-44 h-7 w-auto gap-1 rounded-[8px] border-0 bg-transparent px-2 text-[13px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus:ring-0 focus-visible:ring-2 focus-visible:ring-ring/35"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {owners.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.role === 'chief' ? `${agent.name} (Chief)` : agent.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <span className="ml-auto hidden text-[11px] text-muted-foreground @md:inline">Ctrl + Enter</span>
-            <Button type="submit" size="sm" disabled={!goal.trim() || sending || !canChat}>{sending ? <Loader2 className="size-4 animate-spin" /> : <SendHorizontal className="size-4" />}Atribuir</Button>
+            <Button type="submit" size={null} aria-label="Atribuir" title="Atribuir (Ctrl + Enter)" disabled={!goal.trim() || sending || !canChat} className="size-[34px] -translate-y-0.5 rounded-full bg-[var(--dsw-alias-button-info-fill,var(--primary))] text-white hover:bg-[var(--dsw-alias-button-info-fill,var(--primary))]/90 disabled:opacity-40">{sending ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}</Button>
           </div>
         </form>
         {!goal && <div className="mt-3 flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((suggestion, index) => <Button key={suggestion} type="button" variant="outline" size={null} disabled={!canChat} onClick={() => setGoal(suggestion)} className="h-auto rounded-full border-border bg-card px-3 py-1 text-xs font-normal text-muted-foreground shadow-xs transition-colors hover:border-border-strong hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0 disabled:opacity-50">{SUGGESTION_LABELS[index]}</Button>)}
+          {SUGGESTIONS.map((suggestion, index) => <Button key={suggestion} type="button" variant="outline" size={null} disabled={!canChat} onClick={() => setGoal(suggestion)} className="h-7 rounded-[8px] border-0 bg-[var(--dsw-alias-button-tool-bar-fill,var(--muted))] px-2.5 text-[13px] font-normal text-muted-foreground shadow-none transition-colors hover:bg-[var(--dsw-alias-button-tool-bar-hover,var(--accent))] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0 disabled:opacity-50">{SUGGESTION_LABELS[index]}</Button>)}
         </div>}
       </section>
 
