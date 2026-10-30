@@ -22,39 +22,46 @@ const avatarOf = () => screen.getByRole('img').parentElement!
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Poli / avatar de agente', () => {
+  it('mantém a deformação ambiente sem hover e respeita a opção de desativar animações', () => {
+    const { container, rerender } = render(<PoliAvatar agent={agent} size={64} motionPolicy="hover" />)
+    expect(container.querySelector('svg.boo')).toHaveAttribute('data-liquid', 'true')
+    expect(container.querySelector('svg.boo')).toHaveAttribute('data-animate', 'false')
+    rerender(<PoliAvatar agent={{ ...agent, pitsAnimate: false }} size={64} motionPolicy="hover" />)
+    expect(container.querySelector('svg.boo')).toHaveAttribute('data-liquid', 'false')
+    expect(container.querySelector('.poli-avatar')).toHaveAttribute('data-motion-active', 'false')
+  })
   it('usa o rosto original SVG e altera expressão de acordo com trabalho e espera', () => {
     const { rerender } = render(<PoliAvatar agent={agent} size={48} state="working" />)
-    expect(screen.getByRole('img', { name: 'Poli — coding' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Poli — thinking' })).toBeInTheDocument()
     rerender(<PoliAvatar agent={agent} size={48} state="waiting" />)
     expect(screen.getByRole('img', { name: 'Poli — thinking' })).toBeInTheDocument()
   })
-  it('desenha o Boo com headset por padrão e mantém acessórios encaixados na cabeça nova', () => {
-    const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsShape: 'drop', pitsAccessory: 'glasses' }} size={80} />)
-    expect(container.querySelector('[data-shape="drop"]')).toBeInTheDocument()
-    expect(screen.getByLabelText('Headset do Boo')).toBeInTheDocument()
-    expect(screen.getByLabelText('Óculos do Boo')).toBeInTheDocument()
-    // Braços são caminhos separados (atrás e por cima do corpo) para posar em cada estado.
-    expect(container.querySelectorAll('.boo__arm--l path')).toHaveLength(2)
-    expect(container.querySelectorAll('.boo__arm--r path')).toHaveLength(2)
-    // Sem filtro de turbulência do visual antigo.
-    expect(container.querySelector('feTurbulence')).toBeNull()
-    rerender(<PoliAvatar agent={{ ...agent, pitsAccessory: 'horns', pitsHeadset: false }} size={80} />)
-    expect(screen.getByLabelText('Chifres do Boo')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Headset do Boo')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Óculos do Boo')).not.toBeInTheDocument()
+
+  it('anima a edição confirmada sem hover e prioriza aprovação sobre uma expressão antiga', () => {
+    const { container, rerender } = render(<PoliAvatar agent={agent} size={88} state="working" expression="coding" motionPolicy="hover" />)
+    expect(container.querySelector('svg.boo')).toHaveAttribute('data-animate', 'true')
+    expect(screen.getByRole('img', { name: 'Poli — coding' })).toBeInTheDocument()
+    rerender(<PoliAvatar agent={agent} size={88} state="waiting" expression="coding" />)
+    expect(screen.getByRole('img', { name: 'Poli — thinking' })).toBeInTheDocument()
+    expect(container.querySelector('.boo__typing')).toBeNull()
   })
-  it('expõe no Boo Studio as cores do corpo, olhos, bochechas, destaque e o headset', () => {
+  it('mantém o Boo atual sem acessórios legados e aceita os novos detalhes', () => {
+    const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsAccessory: 'glasses', pitsHeadAccessory: 'headphones', pitsHeadset: true }} size={80} />)
+    expect(container.querySelector('[data-boo-accessory]')).toBeNull()
+    expect(container.querySelectorAll('.boo__hand')).toHaveLength(0)
+    expect(container.querySelector('feTurbulence')).toBeNull()
+    rerender(<PoliAvatar agent={{ ...agent, pitsHeadAccessory: 'boo-sprout' }} size={80} />)
+    expect(screen.getByLabelText('Brotinho do Boo')).toBeInTheDocument()
+  })
+  it('mantém somente a cor do corpo no editor e preserva o rosto aprovado', () => {
     const onChange = vi.fn()
     render(<PoliCustomizer agent={agent} onChange={onChange} />)
     fireEvent.click(screen.getByRole('button', { name: 'Escolher cor #ffffff' }))
     expect(onChange).toHaveBeenCalledWith({ color: '#ffffff' })
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Usar headset' }))
-    expect(onChange).toHaveBeenCalledWith({ pitsHeadset: false })
-    for (const name of ['Cor do Boo', 'Cor dos olhos', 'Cor das bochechas', 'Cor de destaque']) expect(screen.getByRole('button', { name })).toBeInTheDocument()
-    // Olho branco era o padrão dos corpos coloridos antigos: aparece como o escuro novo.
-    expect(screen.getByRole('button', { name: 'Cor dos olhos' })).toHaveTextContent('#0d0d12')
-    expect(screen.queryByRole('group', { name: 'Formatos pré-definidos' })).toBeNull()
-    expect(screen.queryByText('Largura do corpo')).toBeNull()
+    expect(screen.getByRole('group', { name: 'Cor do Boo' })).toBeInTheDocument()
+    expect(screen.queryByText('Cor dos olhos')).not.toBeInTheDocument()
+    expect(screen.queryByText('Intensidade do rosado')).not.toBeInTheDocument()
+    expect(screen.queryByText('Largura do corpo')).not.toBeInTheDocument()
   })
   it('aplica as cores do agente pelas variáveis CSS do Boo', () => {
     const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsEyeColor: '#ffffff' }} size={120} />)
@@ -74,33 +81,29 @@ describe('Poli / avatar de agente', () => {
     const onChange = vi.fn()
     const onReset = vi.fn()
     render(<PoliCustomizer agent={{ ...agent, pitsShape: 'ghost-wave', pitsBodyWidth: 1.25, pitsMouthSize: 1.5 }} onChange={onChange} onReset={onReset} />)
-    expect(screen.getByText('Intensidade do rosado')).toBeInTheDocument()
+    expect(screen.queryByText('Intensidade do rosado')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Restaurar aparência' }))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
-      color: '#ffffff', pitsEyeColor: '#0d0d12', pitsCheekColor: '#f7a1b5', pitsAccentColor: '#3aa7ff', pitsHeadset: true,
+      color: '#ffffff', pitsEyeColor: '#0d0d12', pitsCheekColor: '#f7a1b5', pitsAccentColor: '#3aa7ff', pitsHeadset: false,
       pitsShape: 'ghost-wave', pitsBodyWidth: 1, pitsBodyHeight: 1, pitsMouthSize: 1, pitsBlushStrength: .45, pitsAccessory: 'none',
     }))
     expect(onReset).toHaveBeenCalledOnce()
   })
-  it('permite combinar fone ou chapéu com óculos, mas não dois acessórios de cabeça', () => {
-    const { rerender } = render(<PoliAvatar agent={{ ...agent, pitsHeadAccessory: 'headphones', pitsFaceAccessory: 'glasses' }} size={100} />)
-    expect(screen.getByLabelText('Fone de ouvido do Boo')).toBeInTheDocument()
-    expect(screen.getByLabelText('Óculos do Boo')).toBeInTheDocument()
-    // O fone de ouvido substitui o headset embutido.
-    expect(screen.queryByLabelText('Headset do Boo')).not.toBeInTheDocument()
-    rerender(<PoliAvatar agent={{ ...agent, pitsHeadAccessory: 'cap', pitsFaceAccessory: 'round-glasses' }} size={100} />)
-    expect(screen.getByLabelText('Boné do Boo')).toBeInTheDocument()
-    expect(screen.getByLabelText('Óculos redondos do Boo')).toBeInTheDocument()
-    expect(screen.getByLabelText('Headset do Boo')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Fone de ouvido do Boo')).not.toBeInTheDocument()
+  it('usa um único detalhe novo e não acumula acessórios antigos do rosto', () => {
+    const { container, rerender } = render(<PoliAvatar agent={{ ...agent, pitsHeadAccessory: 'boo-star', pitsFaceAccessory: 'glasses' }} size={100} />)
+    expect(screen.getByLabelText('Estrelinha do Boo')).toBeInTheDocument()
+    expect(container.querySelectorAll('[data-boo-accessory]')).toHaveLength(1)
+    rerender(<PoliAvatar agent={{ ...agent, pitsHeadAccessory: 'boo-noel', pitsFaceAccessory: 'round-glasses' }} size={100} />)
+    expect(screen.getByLabelText('Gorro de Natal do Boo')).toBeInTheDocument()
+    expect(container.querySelectorAll('[data-boo-accessory]')).toHaveLength(1)
   })
-  it('oferece cabeças e rostos separados', () => {
+  it('permite escolher e remover um pequeno detalhe', () => {
     const onChange = vi.fn()
     render(<PoliCustomizer agent={agent} onChange={onChange} />)
-    fireEvent.click(screen.getByRole('group', { name: 'Acessórios de cabeça' }).querySelector('button:nth-child(11)')!)
-    expect(onChange).toHaveBeenCalledWith({ pitsHeadAccessory: 'headphones', pitsAccessory: 'none' })
-    fireEvent.click(screen.getByRole('group', { name: 'Acessórios de rosto' }).querySelector('button:nth-child(2)')!)
-    expect(onChange).toHaveBeenCalledWith({ pitsFaceAccessory: 'glasses', pitsAccessory: 'none' })
+    fireEvent.click(screen.getByRole('button', { name: 'Estrelinha' }))
+    expect(onChange).toHaveBeenCalledWith({ pitsHeadAccessory: 'boo-star', pitsFaceAccessory: 'none', pitsAccessory: 'none' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sem detalhe' }))
+    expect(onChange).toHaveBeenCalledWith({ pitsHeadAccessory: 'none', pitsFaceAccessory: 'none', pitsAccessory: 'none' })
   })
   it('respeita opções visuais e animação desligada', () => {
     const { container } = render(<PoliAvatar agent={{ ...agent, pitsBlush: false, pitsAnimate: false }} />)
@@ -119,10 +122,8 @@ describe('Poli / avatar de agente', () => {
     render(<PoliCustomizer agent={agent} onChange={onChange} />)
     fireEvent.click(screen.getByRole('button', { name: 'Escolher cor #4098eb' }))
     expect(onChange).toHaveBeenCalledWith({ color: '#4098eb' })
-    fireEvent.click(screen.getByRole('tab', { name: 'Animação' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Ativar animações' }))
     expect(onChange).toHaveBeenCalledWith({ pitsAnimate: false })
-    fireEvent.click(screen.getByRole('tab', { name: 'Estados' }))
     fireEvent.click(screen.getByRole('button', { name: 'Concluído' }))
     expect(screen.getByRole('img', { name: 'Poli — done' })).toBeInTheDocument()
   })
@@ -246,6 +247,6 @@ describe('reações do Pits', () => {
     expect(screen.getByRole('img', { name: 'Poli — idle' })).toBeInTheDocument()
     rerender(<PoliAvatar agent={agent} size={56} state="working" />)
     fireEvent.pointerDown(avatarOf())
-    expect(screen.getByRole('img', { name: 'Poli — coding' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Poli — thinking' })).toBeInTheDocument()
   })
 })

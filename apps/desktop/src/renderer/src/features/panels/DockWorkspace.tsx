@@ -1,23 +1,18 @@
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
-import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Settings2, Terminal, UserRound, Users, X } from 'lucide-react'
+import { Code2, Columns2, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, PanelTop, Plus, RotateCcw, Terminal, UserRound, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Menu, type MenuEntry } from '@/components/dsh'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Agent, Conversation, Message, Run } from '../../../../shared/v9'
 import { ProjectExplorer } from './ProjectExplorer'
 import { FilePreview, type FileDraft, type FileDraftChange } from './FilePreview'
-import { PoliAvatar } from '../app/PoliAvatar'
-import { MascotStatusBubble } from '../app/MascotStatusBubble'
 import { DelegationOverview } from './DelegationOverview'
-import { useVoicePreferences } from '../realtime/preferences'
-import type { RealtimeMode, RealtimePhase } from '../../../../shared/realtime'
+import { BooWorkPanel, type BooWorkPanelProps } from './BooWorkPanel'
 import type { AgentAvatarState } from '../app/Avatar'
 import { changeActive, changeRatio, developmentDockLayout, deserializeDockLayout, fileTab, getGroup, groupWithTab, groups, initialDockLayout, placeTab, pruneEmpty, removeGroup, splitGroup, toolTab, type DockEdge, type DockGroup, type DockLayoutState, type DockNode, type DockTab, type DockTool, type DockZone } from './dock-layout'
 
 const TerminalPanel = lazy(() => import('@/components/ide/TerminalPanel'))
 const PlatformBrowserPanel = lazy(() => import('./PlatformBrowserPanel').then(module => ({ default: module.PlatformBrowserPanel })))
-const RealtimeCall = lazy(() => import('../realtime/RealtimeCall').then(module => ({ default: module.RealtimeCall })))
 export type { DockTool, DockZone } from './dock-layout'
 
 export interface DockWorkspaceHandle {
@@ -58,34 +53,6 @@ function DockAddMenu({ groupId, onOpen, label = 'Nova aba', browserMode = false,
 }
 
 const MASCOT_STATE_LABEL: Record<AgentAvatarState, string> = { idle: 'Ocioso', working: 'Trabalhando', waiting: 'Aguardando aprovação', speaking: 'Falando' }
-const CALL_STATUS_LABEL: Partial<Record<RealtimePhase, string>> = { connecting: 'Conectando…', listening: 'Ouvindo', hearing: 'Estou ouvindo você', transcribing: 'Entendendo…', thinking: 'Pensando…', speaking: 'Falando', error: 'Falha na ligação' }
-
-function MascotView({ assistant, agents, selectedAgents, agentStates, conversationId, voiceAgentId }: { assistant?: Agent; agents: Agent[]; selectedAgents: Agent[]; agentStates: Record<string, AgentAvatarState>; conversationId?: string; voiceAgentId?: string }) {
-  const [agentId, setAgentId] = useState(voiceAgentId || selectedAgents[0]?.id || '')
-  const { mode, headphones, refreshToken } = useVoicePreferences()
-  const [callPhase, setCallPhase] = useState<RealtimePhase>('idle')
-  const [callError, setCallError] = useState('')
-  const handleCallPhase = useCallback((phase: RealtimePhase) => { setCallPhase(phase); if (phase === 'connecting') setCallError('') }, [])
-  useEffect(() => { setAgentId(voiceAgentId || selectedAgents[0]?.id || '') }, [conversationId, voiceAgentId, selectedAgents])
-  const choices = (conversationId ? [...(assistant ? [assistant] : []), ...selectedAgents] : [...(assistant ? [assistant] : []), ...agents]).filter((agent, index, list) => list.findIndex(item => item.id === agent.id) === index)
-  const visible = choices.find(agent => agent.id === agentId) || choices[0]
-  const state: AgentAvatarState = callPhase === 'speaking' && visible?.id === agentId ? 'speaking' : visible ? agentStates[visible.id] || 'idle' : 'idle'
-  return <section aria-label="Visualização do mascote" className="flex h-full min-h-0 flex-col items-center gap-3 overflow-auto bg-card/20 p-4">
-    <div className="flex w-full max-w-xs gap-1.5">{choices.length > 0 && <Select value={visible?.id || ''} onValueChange={setAgentId}>
-      <SelectTrigger aria-label="Selecionar mascote" className="flex-1" disabled={callPhase !== 'idle'}><SelectValue placeholder="Escolha um Boo" /></SelectTrigger>
-      <SelectContent>{choices.map(agent => <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>)}</SelectContent>
-    </Select>}
-      <Button variant="outline" size="icon" className="size-9 shrink-0" aria-label="Configurar voz" title="Abrir configurações de voz do app" onClick={() => window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'voz' }))}><Settings2 className="size-4" /></Button>
-    </div>
-    <div className="flex min-h-60 flex-1 flex-col items-center justify-center gap-3 text-center">{visible ? <>
-      <MascotStatusBubble text={callError || (callPhase !== 'idle' ? CALL_STATUS_LABEL[callPhase] : MASCOT_STATE_LABEL[state])} />
-      {visible.avatar ? <img src={visible.avatar} alt={'Avatar de ' + visible.name} data-speaking={state === 'speaking'} className="mascot-custom-avatar size-52 max-w-full rounded-full object-cover" /> : <PoliAvatar agent={visible} size={215} state={state} motionPolicy="auto" />}
-      <div><h2 className="text-base font-semibold">{visible.name}</h2><p className="mt-1 max-w-xs text-xs text-muted-foreground">{visible.description || '@' + visible.alias}</p></div>
-    </> : <p className="text-sm text-muted-foreground">Crie um Boo para exibi-lo aqui.</p>}</div>
-    <Suspense fallback={null}><RealtimeCall conversationId={conversationId} agentId={visible?.id} agentName={visible?.name || 'Assistente'} mode={mode} headphones={headphones} refreshToken={refreshToken} onPhaseChange={handleCallPhase} onErrorChange={setCallError} /></Suspense>
-  </section>
-}
-
 type DropLocation = { groupId: string; edge: DockEdge | 'center' }
 export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   children: ReactNode
@@ -102,6 +69,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   conversations?: Conversation[]
   runs?: Run[]
   onOpenRelatedConversation?: (conversationId: string) => void
+  onSendMessage?: BooWorkPanelProps['onSendMessage']
   voiceAgentId?: string
   assistant?: Agent
   agents: Agent[]
@@ -112,7 +80,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   browserMode?: boolean
   canReadFiles?: boolean
   canWriteFiles?: boolean
-}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, delegationMessages = [], conversations = [], runs = [], onOpenRelatedConversation, voiceAgentId, assistant, agents, selectedAgents, agentStates = {}, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
+}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, delegationMessages = [], conversations = [], runs = [], onOpenRelatedConversation, onSendMessage, voiceAgentId, assistant, agents, selectedAgents, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
   const [layout, setLayout] = useState<DockLayoutState>(loadLayout)
   const [openOrganizeMenuId, setOpenOrganizeMenuId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, FileDraft>>({})
@@ -244,7 +212,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
       case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} readOnly={browserMode && !canWriteFiles} /> : null
       case 'terminal': return <Suspense fallback={null}><TerminalPanel workspaceId={workspaceId} conversationId={conversationId} showLogs={false} /></Suspense>
       case 'web': return <Suspense fallback={null}><PlatformBrowserPanel onNotice={onChanged} workspaceId={workspaceId} conversationId={conversationId} agents={selectedAgents} /></Suspense>
-      case 'mascot': return <MascotView assistant={assistant} agents={agents} selectedAgents={selectedAgents} agentStates={agentStates} conversationId={conversationId} voiceAgentId={voiceAgentId} />
+      case 'mascot': return <BooWorkPanel assistant={assistant} agents={agents} selectedAgents={selectedAgents} conversationId={conversationId} voiceAgentId={voiceAgentId} runs={runs} messages={delegationMessages} onSendMessage={onSendMessage} onOpenChat={() => revealTool('chat')} onOpenFile={canReadFiles && workspaceId ? path => openFile(workspaceId, path) : undefined} />
       case 'diff': return <div className="h-full overflow-auto p-4"><h2 className="mb-3 text-xs font-semibold text-muted-foreground">Alterações versus HEAD</h2><pre className="min-w-max whitespace-pre font-mono text-[11px] leading-5">{workspaceDiff || 'Nenhuma alteração rastreada.'}</pre></div>
     }
   }

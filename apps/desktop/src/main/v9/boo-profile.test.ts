@@ -10,6 +10,11 @@ const chief = {
 } as Agent
 
 describe('autoedição segura de perfil', () => {
+  it('aceita os detalhes atuais sem ampliar permissões', () => {
+    for (const pitsHeadAccessory of ['boo-sprout', 'boo-star', 'boo-noel']) {
+      expect(buildSelfProfileUpdate(chief, { pitsHeadAccessory })).toMatchObject({ pitsHeadAccessory, canWrite: false, approvalMode: 'ask' })
+    }
+  })
   it('aceita paletas seguras na autoedição sem modificar permissões', () => {
     const result = buildSelfProfileUpdate(chief, {
       pitsAccessoryColors: { cap: ['#AA3344', '#112233', '#fedeac'], glasses: ['#334455'] },

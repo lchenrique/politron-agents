@@ -7,6 +7,8 @@ import type { RealtimeMode, RealtimePhase } from '../../../../shared/realtime'
 import { emptySnapshot, errorText } from '../app/appShellShared'
 import { MascotStatusBubble } from '../app/MascotStatusBubble'
 import { PoliAvatar } from '../app/PoliAvatar'
+import { booActivity } from '../app/boo-activity'
+import { useConversationHistory } from '../chat/useConversationHistory'
 import { RealtimeCall } from '../realtime/RealtimeCall'
 
 const phaseLabels: Partial<Record<RealtimePhase, string>> = {
@@ -27,6 +29,7 @@ export default function FloatingMascotPage() {
   const [textInput, setTextInput] = useState('')
   const [textPending, setTextPending] = useState(false)
   const [textReply, setTextReply] = useState('')
+  const { messages: activityMessages, queueMessage } = useConversationHistory(conversationId, setError)
 
   useEffect(() => {
     document.documentElement.classList.add('floating-mascot-document')
@@ -72,15 +75,16 @@ export default function FloatingMascotPage() {
     }
     void refresh()
     const off = window.appAPI.onEvent(event => {
+      if (event.type === 'message') queueMessage(event.message)
       if (event.type === 'changed') scheduleRefresh()
-      else if (event.type === 'message' && event.message.runId && statuses.get(event.message.runId) !== event.message.status) {
+      else if (event.type === 'message' && event.message.runId && statuses.get(event.message.id) !== event.message.status) {
         if (statuses.size > 500) statuses.clear()
-        statuses.set(event.message.runId, event.message.status)
+        statuses.set(event.message.id, event.message.status)
         scheduleRefresh()
       }
     })
     return () => { live = false; off(); if (refreshTimer !== null) clearTimeout(refreshTimer) }
-  }, [])
+  }, [queueMessage])
   useEffect(() => {
     const syncConversation = async () => {
       if (document.visibilityState === 'hidden') return
@@ -102,9 +106,9 @@ export default function FloatingMascotPage() {
       .filter((agent, index, all) => all.findIndex(item => item.id === agent.id) === index)
   }, [conversation, snapshot.assistant, snapshot.agents])
   const visible = choices.find(agent => agent.id === agentId) || snapshot.assistant
-  const currentRun = snapshot.runs.find(run => run.agentId === visible?.id && ['queued', 'running', 'waiting'].includes(run.status))
-  const avatarState = phase === 'speaking' ? 'speaking' : currentRun?.status === 'waiting' ? 'waiting' : currentRun ? 'working' : 'idle'
-  const statusText = error ? error.slice(0, 180) : phase !== 'idle' ? phaseLabels[phase] || '' : textPending ? 'Pensando…' : textReply || (currentRun?.status === 'waiting' ? 'Aguardando aprovação' : currentRun ? 'Executando tarefa…' : '')
+  const activity = booActivity(visible.id, conversationId, snapshot.runs, activityMessages)
+  const avatarState = phase === 'speaking' ? 'speaking' : textPending && activity.state === 'idle' ? 'working' : activity.state
+  const statusText = error ? error.slice(0, 180) : phase !== 'idle' ? phaseLabels[phase] || '' : activity.detail || (textPending ? 'Pensando…' : textReply)
   const submitText = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const value = textInput.trim()
@@ -137,7 +141,7 @@ export default function FloatingMascotPage() {
         <Button type="submit" size="icon" className="size-7 shrink-0 rounded-full" aria-label="Enviar mensagem" disabled={!textInput.trim() || textPending}><Send className="size-3.5" /></Button>
       </form>}
       <div className="relative">
-        <div className="floating-mascot-no-drag">{visible?.avatar ? <img src={visible.avatar} alt={`Avatar de ${visible.name}`} data-speaking={avatarState === 'speaking'} className="mascot-custom-avatar size-40 rounded-full object-cover" /> : <PoliAvatar agent={visible} size={160} state={avatarState} motionPolicy="auto" />}</div>
+        <div className="floating-mascot-no-drag">{visible?.avatar ? <img src={visible.avatar} alt={`Avatar de ${visible.name}`} data-speaking={avatarState === 'speaking'} className="mascot-custom-avatar size-40 rounded-full object-cover" /> : <PoliAvatar agent={visible} size={160} state={avatarState} expression={activity.expression || (phase !== 'idle' ? 'thinking' : undefined)} motionPolicy="auto" />}</div>
         <div className="floating-mascot-no-drag absolute bottom-3 right-3 flex items-center gap-1">
           <RealtimeCall compact conversationId={conversationId} agentId={visible?.id} agentName={visible?.name || 'Assistente'} mode={mode} headphones={headphones} refreshToken={refreshToken} onPhaseChange={setPhase} onErrorChange={setError} />
           {phase === 'idle' && <Button variant="secondary" size="icon" className="size-7 rounded-full shadow-md" aria-label="Escrever para o agente" title="Escrever" onClick={() => setTextInputOpen(value => !value)}><MessageSquareText className="size-3" /></Button>}

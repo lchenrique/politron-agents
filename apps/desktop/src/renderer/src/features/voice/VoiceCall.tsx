@@ -27,7 +27,7 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
   const [savingPreset, setSavingPreset] = useState(false)
   const [generatingVoice, setGeneratingVoice] = useState(false)
   const preview = useRef<{ player: HTMLAudioElement; url: string } | null>(null)
-  const [phase, setPhase] = useState<'idle' | 'listening' | 'transcribing' | 'waiting' | 'speaking' | 'paused'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'listening' | 'transcribing' | 'waiting' | 'generating' | 'speaking' | 'paused'>('idle')
   const [error, setError] = useState('')
   const [level, setLevel] = useState(0)
   const [agentId, setAgentId] = useState('')
@@ -84,7 +84,7 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
 
   useEffect(() => {
     if (!open || !active.current || phase !== 'waiting') return
-    const latest = [...messages].reverse().find(item => item.role === 'assistant' && !waitingFor.current.has(item.id)
+    const latest = [...messages].reverse().find(item => item.role === 'assistant' && (!item.agentId || item.agentId === agent?.id) && !waitingFor.current.has(item.id)
       && ['completed', 'failed', 'interrupted'].includes(item.status))
     if (!latest) return
     waitingFor.current.add(latest.id)
@@ -94,11 +94,11 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
       setError('A resposta foi interrompida ou falhou. Você pode retomar a chamada.')
       return
     }
-    setPhase('speaking')
-    void speakVoice(latest.text, undefined, { agentId: latest.agentId || agent?.id, concise: true }).then(() => {
+    setPhase('generating')
+    void speakVoice(latest.text, () => { if (active.current) setPhase('speaking') }, { agentId: latest.agentId || agent?.id, concise: true }).then(() => {
       if (active.current) void listen()
     }).catch(cause => { if (active.current) { setError(errorText(cause)); active.current = false; setPhase('paused') } })
-  }, [open, phase, messages, listen])
+  }, [open, phase, messages, listen, agent?.id])
 
   const begin = () => {
     if (!status?.transcription) { setError('Instale o Whisper local para transcrever seu microfone.'); return }
@@ -224,18 +224,19 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
     listening: 'Ouvindo você…',
     transcribing: 'Transcrevendo com Whisper Small…',
     waiting: 'Aguardando a resposta do agente…',
-    speaking: agent ? 'Gerando voz do ' + agent.name + '…' : 'Gerando voz…',
+    generating: agent ? 'Preparando voz de ' + agent.name + '…' : 'Preparando voz…',
+    speaking: agent ? agent.name + ' está falando' : 'Falando…',
     paused: 'Chamada pausada',
   }
   return <Modal open={open} onClose={hangup} title="Chamada com o Boo" description="Microfone com Whisper local. Vozes dos Boos aprovadas, gratuitas e fixas por agente." closeLabel="Fechar chamada"
     className="max-h-full max-w-md" contentClassName="max-h-full overflow-y-auto">
       <div className="flex flex-col items-center gap-4 pb-2">
         {agents.length > 1 && <Select value={agent?.id || ''} onValueChange={setAgentId}>
-          <SelectTrigger aria-label="Agente da chamada" className="w-56"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Agente da chamada" className="w-56" disabled={!['idle', 'paused'].includes(phase)}><SelectValue /></SelectTrigger>
           <SelectContent>{agents.map(item => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
         </Select>}
         <div className={'relative flex size-40 items-center justify-center rounded-full bg-primary/5 transition-shadow ' + (phase === 'speaking' ? 'ring-4 ring-primary/30' : phase === 'listening' ? 'ring-4 ring-emerald-500/25' : '')} style={phase === 'listening' ? { boxShadow: '0 0 ' + Math.min(55, 8 + level * 380) + 'px rgba(16,185,129,.23)' } : undefined}>
-          {agent ? agent.avatar ? <img src={agent.avatar} alt={'Avatar de ' + agent.name} className="size-36 rounded-full object-cover" /> : <PoliAvatar agent={agent} size={142} /> : <Volume2 className="size-12 text-primary" />}
+          {agent ? agent.avatar ? <img src={agent.avatar} alt={'Avatar de ' + agent.name} className="size-36 rounded-full object-cover" /> : <PoliAvatar agent={agent} size={142} state={phase === 'speaking' ? 'speaking' : ['waiting', 'transcribing', 'generating'].includes(phase) ? 'working' : 'idle'} expression={phase === 'listening' ? 'idle' : undefined} /> : <Volume2 className="size-12 text-primary" />}
         </div>
         <div className="text-center"><p role="status" className="text-sm font-medium">{labels[phase]}</p><p className="mt-1 text-xs text-muted-foreground">{agent?.name || 'Assistente padrão'}</p></div>
         {status?.transcriptionEngine === 'whisper-small-fast' && <p className="text-[11px] text-muted-foreground">Reconhecimento: Whisper Small · português brasileiro · local</p>}
@@ -328,7 +329,7 @@ export function VoiceCall({ open, onClose, agents, messages, onSend }: {
         <div className="flex justify-center gap-3">
           {phase === 'listening' && <Button size="lg" variant="secondary" onClick={() => recorder.current?.stop()}><MicOff className="mr-2 size-4" />Enviar fala</Button>}
           {['idle', 'paused'].includes(phase) && <Button size="lg" onClick={begin} disabled={installing || !status}><Play className="mr-2 size-4" />{phase === 'paused' ? 'Retomar' : 'Ligar'}</Button>}
-          {['waiting', 'speaking', 'transcribing'].includes(phase) && <Button variant="secondary" size="lg" onClick={pause}>Pausar</Button>}
+          {['waiting', 'generating', 'speaking', 'transcribing'].includes(phase) && <Button variant="secondary" size="lg" onClick={pause}>Pausar</Button>}
           <Button variant="destructive" size="lg" onClick={hangup}><PhoneOff className="mr-2 size-4" />Desligar</Button>
         </div>
         <p className="text-center text-[11px] text-muted-foreground">Na chamada, a voz lê um trecho curto para responder mais rápido; a resposta completa permanece no chat. O Fish Audio gratuito depende de cota e conexão.</p>

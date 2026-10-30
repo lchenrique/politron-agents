@@ -11,7 +11,7 @@ export const SELF_PROFILE_FIELDS = [
 const hexColor = /^#[\da-f]{6}$/i
 const shapes = ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'] as const
 const accessories = ['none', 'antenna', 'horns', 'glasses', 'cap'] as const
-const heads = ['none', 'antenna', 'horns', 'cap', 'cap-flat', 'cap-back', 'beanie', 'bucket', 'top-hat', 'witch-hat', 'headphones', 'crown', 'party-hat', 'chef-hat', 'bow', 'flower', 'halo'] as const
+const heads = ['boo-sprout', 'boo-star', 'boo-king-crown', 'boo-halo', 'boo-noel', 'none', 'antenna', 'horns', 'cap', 'cap-flat', 'cap-back', 'beanie', 'bucket', 'top-hat', 'witch-hat', 'headphones', 'crown', 'party-hat', 'chef-hat', 'bow', 'flower', 'halo'] as const
 const faces = ['none', 'glasses', 'round-glasses', 'sunglasses', 'heart-glasses', 'star-glasses', 'monocle', 'mustache', 'star-mask'] as const
 const limits: Record<string, [number, number]> = {
   pitsEyeSize: [4, 15], pitsEyeSpacing: [16, 42],

@@ -207,11 +207,13 @@ describe('linha de atividade do agente', () => {
   const browser = (n: number) => Array.from({ length: n }, (_, index) => act(`a${index}`, `Navegador real · js · alvo https://example.com/\nawait tab.goto(${index})`, 2 + index))
   const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
 
-  it('enquanto roda, mostra uma única linha no presente e não repete o "está trabalhando"', () => {
+  it('durante uma ferramenta ativa, mostra o passo uma vez no grupo e mantém o status do turno genérico', () => {
     const calls = browser(6)
     calls[5] = { ...calls[5]!, status: 'running' }
     const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]))
-    expect(screen.getByRole('status')).toHaveTextContent(/Navegando.*js · alvo https:\/\/example\.com/)
+    expect(screen.getByRole('button', { name: /Navegando/ })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Em andamento')
+    expect(container.textContent?.match(/Navegando/g)).toHaveLength(1)
     expect(container).not.toHaveTextContent('await tab.goto')
     expect(container).not.toHaveTextContent('está trabalhando')
     expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)

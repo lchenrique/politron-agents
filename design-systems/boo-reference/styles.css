@@ -1,0 +1,8 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #151619; color: #f4f4f6; }
+body { margin: 0; }
+main { max-width: 880px; margin: 48px auto; padding: 0 24px; }
+h1 { font-size: 28px; letter-spacing: -.6px; }
+p { color: #bfc1c8; line-height: 1.6; max-width: 760px; }
+.board { display: block; max-width: 100%; height: auto; }
+nav { display: flex; flex-wrap: wrap; gap: 16px 24px; padding: 20px 0; }
+a { color: #d1c4ff; text-underline-offset: 4px; }

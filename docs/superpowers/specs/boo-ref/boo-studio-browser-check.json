@@ -1,0 +1,47 @@
+{
+  "errors": [],
+  "containerChecks": [
+    {
+      "width": 280,
+      "columns": "278px",
+      "overflow": false
+    },
+    {
+      "width": 360,
+      "columns": "358px",
+      "overflow": false
+    },
+    {
+      "width": 480,
+      "columns": "478px",
+      "overflow": false
+    },
+    {
+      "width": 520,
+      "columns": "518px",
+      "overflow": false
+    },
+    {
+      "width": 560,
+      "columns": "264.312px 293.672px",
+      "overflow": false
+    },
+    {
+      "width": 640,
+      "columns": "302.203px 335.797px",
+      "overflow": false
+    },
+    {
+      "width": 840,
+      "columns": "396.938px 441.062px",
+      "overflow": false
+    }
+  ],
+  "color": "#a8d5be",
+  "enterDidNotSubmit": true,
+  "thinkingHasAngryBrow": false,
+  "modal": {
+    "width": 565,
+    "columns": "267.625px 297.375px"
+  }
+}

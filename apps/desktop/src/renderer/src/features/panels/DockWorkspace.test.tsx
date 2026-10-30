@@ -198,7 +198,7 @@ describe('abas e painéis móveis do Politron', () => {
   it('permite fechar uma ferramenta e abrir mascote em nova aba', () => {
     const { ref } = setup()
     act(() => ref.current!.openTool('mascot', 'side'))
-    expect(screen.getByRole('region', { name: 'Visualização do mascote' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Boo ao vivo' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Fechar Mascote' }))
     expect(screen.queryByRole('region', { name: 'Painel auxiliar' })).not.toBeInTheDocument()
   })

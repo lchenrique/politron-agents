@@ -1,0 +1,22 @@
+[
+  {
+    "pose": "idle",
+    "bodyIoU": 0.9966391184573002,
+    "faceInkIoU": 0.9934687953555879
+  },
+  {
+    "pose": "focus",
+    "bodyIoU": 0.9961464354527938,
+    "faceInkIoU": 0.9876543209876543
+  },
+  {
+    "pose": "happy",
+    "bodyIoU": 0.9962216624685138,
+    "faceInkIoU": 0.98046875
+  },
+  {
+    "pose": "sleep",
+    "bodyIoU": 0.9969869794468955,
+    "faceInkIoU": 0.9663157894736842
+  }
+]

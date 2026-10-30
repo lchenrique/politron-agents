@@ -1,5 +1,6 @@
 import { lazy, Suspense, memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Agent } from '../../../../shared/v9'
+import { booDetailId } from '../../../../shared/boo-details'
 import { STARTLE_EVENT, usePoliDrowsy, usePoliGaze } from './usePoliGaze'
 import { useAvatarActivity } from './useAvatarActivity'
 import { BooFigure, type BooColors, type BooMood } from './BooFigure'
@@ -22,7 +23,7 @@ function prefersReducedMotion(): boolean {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false }
 }
 
-/** Cores do agente para as variáveis CSS do Boo (corpo, olhos, bochechas e destaque do headset). */
+/** Cores do agente para as variáveis CSS do Boo (corpo, olhos, bochechas e efeitos). */
 export function booColorsOf(agent: Agent): Partial<BooColors> {
   const accent = agent.pitsAccentColor
   return {
@@ -50,13 +51,14 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
   const cheek = agent.pitsCheekColor || '#f7a1b5'
   const eyeSize = Math.max(4, Math.min(15, agent.pitsEyeSize ?? 8))
   const eyeSpacing = Math.max(16, Math.min(42, agent.pitsEyeSpacing ?? 26))
-  const active = useAvatarActivity(ref, agent.pitsAnimate !== false && (motionPolicy !== 'never' || state === 'speaking'))
-  const animate = active && (motionPolicy === 'auto' || ((motionPolicy === 'hover' || motionPolicy === 'gaze') && hovered) || state === 'speaking')
+  const active = useAvatarActivity(ref, agent.pitsAnimate !== false && (size >= 40 || motionPolicy !== 'never' || state === 'speaking'))
+  const animate = active && (motionPolicy === 'auto' || ((motionPolicy === 'hover' || motionPolicy === 'gaze') && hovered) || state === 'speaking' || state === 'working')
+  const liquid = active && size >= 40
   const followPointer = active && (animate || motionPolicy === 'gaze')
   const showBlush = agent.pitsBlush !== false
   const showAura = agent.pitsAura !== false
-  const face = expression || (state === 'working' ? 'coding' : state === 'waiting' ? 'thinking' : 'idle')
-  const calm = !expression && face === 'idle'
+  const face = state === 'waiting' ? 'thinking' : state === 'working' ? expression === 'coding' ? 'coding' : 'thinking' : expression || 'idle'
+  const calm = state === 'idle' && !expression
   const playful = calm && animate
   const [reaction, setReaction] = useState<Reaction | null>(null)
   const reactionRef = useRef<Reaction | null>(null)
@@ -112,8 +114,8 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
   const blushOpacity = mood === 'love' ? Math.max(.85, agent.pitsBlushStrength ?? .45) : Math.max(0, Math.min(1, agent.pitsBlushStrength ?? .45))
   // Campos legados (formato e proporções) seguem salvos e alimentam só o renderer Rive experimental.
   const shape = agent.pitsShape || 'ghost-wave'
-  const headAccessory = agent.pitsHeadAccessory ?? (agent.pitsAccessory === 'glasses' ? 'none' : agent.pitsAccessory || 'none')
-  const faceAccessory = agent.pitsFaceAccessory ?? (agent.pitsAccessory === 'glasses' ? 'glasses' : 'none')
+  const headAccessory = booDetailId(agent.pitsHeadAccessory)
+  const faceAccessory = 'none'
   const bodyWidth = Math.max(.75, Math.min(1.25, agent.pitsBodyWidth ?? 1))
   const bodyHeight = Math.max(.75, Math.min(1.25, agent.pitsBodyHeight ?? 1))
   const mouthSize = Math.max(.65, Math.min(1.6, agent.pitsMouthSize ?? 1))
@@ -130,11 +132,11 @@ export const PoliAvatar = memo(function PoliAvatar({ agent, size = 36, state = '
     height: size,
   } as CSSProperties
   return (
-    <span ref={ref} className="poli-avatar relative inline-flex shrink-0 items-center justify-center" style={style} data-animate={animate} data-motion-active={animate} data-shape={shape} data-state={state} data-hover={hovered} data-mood={figureMood} data-rive-active={riveVisible} data-reduced-motion={prefersReducedMotion()}
+    <span ref={ref} className="poli-avatar relative inline-flex shrink-0 items-center justify-center" style={style} data-animate={animate} data-motion-active={animate || liquid} data-shape={shape} data-state={state} data-hover={hovered} data-mood={figureMood} data-rive-active={riveVisible} data-reduced-motion={prefersReducedMotion()}
       onPointerEnter={event => { pet.current = { x: event.clientX, direction: 0, flips: [] }; setHovered(true) }}
       onPointerLeave={() => setHovered(false)} onPointerDown={onPress} onPointerMove={onPet}>
-      <BooFigure mood={figureMood} size={size} colors={colors} label={`${agent.name || 'Boo'} — ${figureMood}`} animate={animate && !riveVisible}
-        headset={agent.pitsHeadset !== false} blush={showBlush} blushOpacity={blushOpacity}
+      <BooFigure mood={figureMood} size={size} colors={colors} label={`${agent.name || 'Boo'} — ${figureMood}`} animate={animate && !riveVisible} liquid={liquid && !riveVisible}
+        blush={showBlush} blushOpacity={blushOpacity}
         headAccessory={headAccessory} faceAccessory={faceAccessory} accessoryColors={agent.pitsAccessoryColors} hidden={riveVisible} />
       {riveEligible && <Suspense fallback={null}>
         <RiveBooAvatar shape={shape} color={color} eyeColor={eyeColor}

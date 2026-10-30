@@ -22,7 +22,7 @@ const props = {
   eyeColor: '#ffffff',
   cheekColor: '#f5a5d1',
   blushOpacity: .45,
-  headAccessory: 'cap',
+  headAccessory: 'boo-sprout',
   faceAccessory: 'none',
   speaking: false,
   expression: 'idle' as const,
@@ -35,7 +35,7 @@ const props = {
 beforeEach(() => { vi.clearAllMocks() })
 
 describe('Rive experimental: motion composite and state overlays', () => {
-  it('draws stationary shadow as a sibling of the shared float/lean (with the cap inside)', () => {
+  it('draws stationary shadow as a sibling of the shared float/lean (with the current detail inside)', () => {
     const { container } = render(<RiveBooAvatar {...props} />)
     const shadow = container.querySelector('.poli-avatar__rive-shadow')
     const float = container.querySelector('.poli-avatar__rive-float')
@@ -44,7 +44,7 @@ describe('Rive experimental: motion composite and state overlays', () => {
     expect(shadow?.parentElement).toBe(float?.parentElement)
     expect(float?.contains(shadow)).toBe(false)
     expect(lean?.contains(screen.getByTestId('rive'))).toBe(true)
-    expect(lean?.querySelector('[aria-label="Boné do Boo"]')).toBeTruthy()
+    expect(lean?.querySelector('[aria-label="Brotinho do Boo"]')).toBeTruthy()
     expect(shadow?.querySelector('ellipse')).toHaveAttribute('rx', '54')
     expect(state.onReady).toHaveBeenCalledWith(true)
     expect(state.number).toHaveBeenCalledWith('smileOpacity', 1)
@@ -62,16 +62,11 @@ describe('Rive experimental: motion composite and state overlays', () => {
     expect(screen.getByTestId('rive')).toBeInTheDocument()
   })
 
-  it('monta os mesmos acessórios do SVG com encaixe específico para formato e proporções no Rive', () => {
-    const { container } = render(<RiveBooAvatar {...props} shape="little-cat" headAccessory="horns" faceAccessory="heart-glasses" bodyWidth={1.2} bodyHeight={.85} eyeSize={12} eyeSpacing={34} />)
+  it('compartilha os detalhes atuais do SVG e ignora o rosto legado', () => {
+    const { container } = render(<RiveBooAvatar {...props} headAccessory="boo-star" faceAccessory="heart-glasses" />)
     const layer = container.querySelector('.poli-avatar__rive-accessory')
-    const head = layer?.querySelector('[data-boo-accessory="horns"]')
-    const face = layer?.querySelector('[data-boo-accessory="heart-glasses"]')
-    expect(head).toBeInTheDocument()
-    expect(face).toBeInTheDocument()
-    const position = head?.querySelector('g[transform]')?.getAttribute('transform')
-    expect(position).toMatch(/^translate\(/)
-    expect(position).not.toMatch(/NaN|Infinity/)
+    expect(layer?.querySelector('[data-boo-accessory="boo-star"]')).toBeInTheDocument()
+    expect(layer?.querySelectorAll('[data-boo-accessory]')).toHaveLength(1)
     expect(layer?.innerHTML).not.toMatch(/NaN|Infinity/)
   })
   it('mostra detalhes das reações no modo Rive sem desmontar o corpo', () => {
@@ -80,15 +75,11 @@ describe('Rive experimental: motion composite and state overlays', () => {
     expect(screen.getByTestId('rive')).toBeInTheDocument()
   })
 
-  it('colors the same head and face pieces in Rive without changing the native canvas', () => {
-    const { container } = render(<RiveBooAvatar {...props} headAccessory="cap"
-      faceAccessory="glasses"
-      accessoryColors={{ cap: ['#f01234', '#506070', '#fefefe'], glasses: ['#009977', '#aaccdd'] }} />)
-    expect(container.querySelector('.poli-avatar__rive-accessory')?.innerHTML).toContain('#f01234')
-    expect(container.querySelector('.poli-avatar__rive-accessory')?.innerHTML).toContain('#009977')
+  it('não restaura peças ou paletas antigas sobre o canvas', () => {
+    const { container } = render(<RiveBooAvatar {...props} headAccessory="cap" faceAccessory="glasses" accessoryColors={{ cap: ['#f01234'] }} />)
+    expect(container.querySelector('[data-boo-accessory]')).toBeNull()
     expect(screen.getByTestId('rive')).toBeInTheDocument()
   })
-
   it('does not show a smile behind the speaking mouth', () => {
     render(<RiveBooAvatar {...props} expression="idle" speaking />)
     expect(state.number).toHaveBeenCalledWith('smileOpacity', 0)

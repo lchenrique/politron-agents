@@ -78,7 +78,7 @@ const SELF_PROFILE_PROPERTIES: Record<string, unknown> = {
   color: { type: 'string', description: 'Cor do corpo no formato #RRGGBB.' },
   pitsShape: { type: 'string', enum: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'] },
   pitsAccessory: { type: 'string', enum: ['none', 'antenna', 'horns', 'glasses', 'cap'] },
-  pitsHeadAccessory: { type: 'string', enum: ['none', 'antenna', 'horns', 'cap', 'cap-flat', 'cap-back', 'beanie', 'bucket', 'top-hat', 'witch-hat', 'headphones', 'crown', 'party-hat', 'chef-hat', 'bow', 'flower', 'halo'] },
+  pitsHeadAccessory: { type: 'string', enum: ['boo-sprout', 'boo-star', 'boo-king-crown', 'boo-halo', 'boo-noel', 'none', 'antenna', 'horns', 'cap', 'cap-flat', 'cap-back', 'beanie', 'bucket', 'top-hat', 'witch-hat', 'headphones', 'crown', 'party-hat', 'chef-hat', 'bow', 'flower', 'halo'] },
   pitsFaceAccessory: { type: 'string', enum: ['none', 'glasses', 'round-glasses', 'sunglasses', 'heart-glasses', 'star-glasses', 'monocle', 'mustache', 'star-mask'] },
   pitsAccessoryColors: { type: 'object', description: 'Paletas personalizadas por acessório: IDs dos itens mapeados para listas de até 3 cores #RRGGBB.' },
   pitsEyeColor: { type: 'string' }, pitsCheekColor: { type: 'string' },

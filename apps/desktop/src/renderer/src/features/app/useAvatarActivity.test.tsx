@@ -17,7 +17,7 @@ it('pausa fora da tela e com a janela oculta; retoma o mascote visível sem exig
   const agent = { id: 'a', name: 'Poli', color: '#786bea' } as Agent
   render(<><PoliAvatar agent={agent} size={160} /><PoliAvatar agent={{ ...agent, name: 'Pequeno' }} size={30} state="working" motionPolicy="never" /></>)
   const element = screen.getByRole('img', { name: 'Poli — idle' }).parentElement!
-  const small = screen.getByRole('img', { name: 'Pequeno — coding' }).parentElement!
+  const small = screen.getByRole('img', { name: 'Pequeno — thinking' }).parentElement!
   expect(observe).toHaveBeenCalledTimes(1)
   expect(small.dataset.motionActive).toBe('false')
   expect(element.dataset.motionActive).toBe('true')

@@ -8,6 +8,11 @@ const teammate: Agent = { ...agent, id: 'a2', name: 'Atlas', alias: 'atlas', col
 const conversation: Conversation = { id: 'c1', kind: 'direct', name: 'Planejamento', agentIds: ['a1'], workspaceId: 'ws1', titleAuto: false, revision: 1, archived: false, createdAt: '2026-10-16T12:00:00.000Z' }
 
 describe('cabeçalho da conversa', () => {
+  it('reflete a atividade individual de cada participante também na aba compacta', () => {
+    const { container } = render(<ConversationAvatar compact selected={{ ...conversation, kind: 'group', agentIds: ['a1', 'a2'] }} agents={[agent, teammate]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} agentActivities={{ a1: { state: 'working', expression: 'coding' }, a2: { state: 'waiting', expression: 'thinking' } }} />)
+    expect(container.querySelector('svg[aria-label="Lyra — coding"]')).not.toBeNull()
+    expect(container.querySelector('svg[aria-label="Atlas — thinking"]')).not.toBeNull()
+  })
   it('abre detalhes ao clicar no avatar sem remover o agente da conversa', () => {
     const onParticipantsChange = vi.fn()
     const onOpenAgent = vi.fn()

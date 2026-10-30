@@ -10,6 +10,7 @@ import { WorkspaceOverview } from './WorkspaceOverview'
 import { PoliAvatar } from './PoliAvatar'
 import { AgentDetails } from './AgentDetails'
 import { ChatHeader, ConversationAvatar, ConversationTools, conversationIdentity, type ConversationChromeProps } from '../chat/ChatHeader'
+import { booActivity } from './boo-activity'
 import { MessageList } from '../chat/MessageList'
 import { MessageLinkContext, type MessageLinkHandlers } from '../chat/MessageMarkdown'
 import { linkFileWorkspaceId } from '../chat/message-link'
@@ -336,6 +337,7 @@ export default function AppShell() {
   const mainTabLabel = view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : activeWorkspace ? 'Projeto' : undefined
   // Mesmos dados para a faixa da conversa (chat sozinho) e para a aba do chat (com outras abas): nunca as duas ao mesmo tempo.
   const conversationChrome: ConversationChromeProps | null = selected ? {
+    agentActivities: Object.fromEntries([snapshot.assistant, ...snapshot.agents].map(agent => [agent.id, booActivity(agent.id, selected.id, snapshot.runs, messages)])),
     assistant: snapshot.assistant,
     onOpenAgent: agent => setDetailsAgentId(agent.id),
     selected,
@@ -402,7 +404,7 @@ export default function AppShell() {
       </>}
       <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 ' + (browserMode ? 'pb-1.5 pr-1.5 boobot-web-main-panel ' + (sidebarCollapsed ? 'pl-1.5' : '') : '')}>
       <div className="boobot-canvas ds-canvas flex h-full min-h-0 min-w-0">
-      <DockWorkspace ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} delegationMessages={selected ? messages : []} conversations={snapshot.conversations} runs={snapshot.runs} onOpenRelatedConversation={selectConversation} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}
+      <DockWorkspace onSendMessage={canChat ? (conversationId, agentId, text) => window.appAPI.respondToAgent(conversationId, text, agentId) : undefined} ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} delegationMessages={selected ? messages : []} conversations={snapshot.conversations} runs={snapshot.runs} onOpenRelatedConversation={selectConversation} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}
         chatHeader={conversationChrome && <ChatHeader {...conversationChrome} />}
         chatTab={conversationChrome && conversationTitle ? { label: conversationTitle.title, title: [conversationTitle.title, conversationTitle.subtitle].filter(Boolean).join(' · '), leading: <ConversationAvatar compact {...conversationChrome} />, trailing: <ConversationTools compact {...conversationChrome} /> } : mainTabLabel ? { label: mainTabLabel } : undefined}>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">

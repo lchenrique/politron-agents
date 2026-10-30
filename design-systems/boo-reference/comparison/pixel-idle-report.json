@@ -1,0 +1,14 @@
+{
+  "reference": "design-systems\\boo-reference\\comparison\\reference-idle.png",
+  "render": "design-systems\\boo-reference\\comparison\\render-idle.png",
+  "width": 200,
+  "height": 200,
+  "threshold": 12,
+  "mean_absolute_difference": 2.9633,
+  "changed_pixel_ratio": 0.013825,
+  "outputs": {
+    "side_by_side": "pixel-idle-side-by-side.png",
+    "overlay": "pixel-idle-overlay.png",
+    "diff": "pixel-idle-diff.png"
+  }
+}

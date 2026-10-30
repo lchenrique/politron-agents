@@ -4,17 +4,22 @@ import { ChromePicker, type ColorResult } from 'react-color'
 
 /** A única experiência de seleção de cores usada pelo editor do Boobot. */
 export const ReactColorField = memo(function ReactColorField({
-  label, value, onChange, compact = false,
+  label, value, onChange, compact = false, inline = false,
 }: {
   label: string
   value: string
   onChange: (hex: string) => void
   compact?: boolean
+  inline?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const accept = (color: ColorResult) => {
     if (/^#[0-9a-f]{6}$/i.test(color.hex)) onChange(color.hex.toLowerCase())
   }
+  if (inline) return <fieldset className="min-w-0" aria-label={label} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation() } }}>
+    <legend className="mb-3 text-sm font-medium">{label}</legend>
+    <ChromePicker color={value} onChange={accept} disableAlpha styles={{ default: { picker: { width: '100%', background: 'transparent', boxShadow: 'none', fontFamily: 'inherit' }, body: { padding: '14px 0 0' }, saturation: { borderRadius: '8px', paddingBottom: '43%' } } }} />
+  </fieldset>
   return <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
     <span className="min-w-0 flex-1 truncate">{label}</span>
     <Popover.Root open={open} onOpenChange={setOpen}>

@@ -6,10 +6,12 @@ import { Input } from '@/components/ui/input'
 import { Menu, MenuSurface, useAnchoredPosition, useDismissOnOutsidePointer } from '@/components/dsh'
 import type { Agent, Conversation, MessageSearchHit, Workspace } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
+import type { BooActivity } from '../app/boo-activity'
 import { assistantPlaceholder } from '../app/appShellShared'
 import { conversationDisplayName } from '../../../../shared/delegation-title'
 
 export interface ConversationChromeProps {
+  agentActivities?: Record<string, BooActivity>
   assistant?: Agent
   onOpenAgent?: (agent: Agent) => void
   selected: Conversation
@@ -44,24 +46,24 @@ export function conversationIdentity(selected: Conversation, agents: Agent[], as
 }
 
 // O avatar xs tem 30px; na aba ele é reduzido visualmente sem um tamanho novo no componente compartilhado.
-function MiniAvatar({ agent }: { agent: Agent }) {
-  return <span className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full"><span className="inline-flex scale-[0.667]"><Avatar agent={agent} size="xs" /></span></span>
+function MiniAvatar({ agent, activity }: { agent: Agent; activity?: BooActivity }) {
+  return <span className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full"><span className="inline-flex scale-[0.667]"><Avatar agent={agent} size="xs" state={activity?.state} expression={activity?.expression} /></span></span>
 }
 
 /** Avatar do Boo ou da equipe: abre os detalhes do Boo ou a edição da equipe. */
-export function ConversationAvatar({ selected, agents, assistant, onOpenAgent, onEditConversation, browserMode = false, canChat = true, compact = false }: ConversationChromeProps & { compact?: boolean }) {
+export function ConversationAvatar({ selected, agents, assistant, agentActivities, onOpenAgent, onEditConversation, browserMode = false, canChat = true, compact = false }: ConversationChromeProps & { compact?: boolean }) {
   const { identities, isGroup } = conversationIdentity(selected, agents, assistant)
   if (isGroup) return <Button type="button" variant="ghost" size={null} aria-label="Ver participantes do grupo" title={identities.map(agent => agent.name).join(', ')} onClick={onEditConversation} disabled={browserMode || !canChat}
     className={compact ? 'relative flex h-5 w-8 shrink-0 items-center justify-start gap-0 rounded-full p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-primary' : 'relative flex h-10 w-12 shrink-0 items-center justify-start gap-0 rounded-md p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-primary'}>
     {identities.slice(0, compact ? 2 : 3).map((agent, index) =>
       <span key={agent.id} className={'absolute overflow-hidden rounded-full ring-2 ring-background ' + (compact ? 'top-0' : 'top-1')} style={{ left: index * (compact ? 10 : 9), zIndex: 3 - index }}>
-        {compact ? <MiniAvatar agent={agent} /> : <Avatar agent={agent} size="xs" />}
+        {compact ? <MiniAvatar agent={agent} activity={agentActivities?.[agent.id]} /> : <Avatar agent={agent} size="xs" state={agentActivities?.[agent.id]?.state} expression={agentActivities?.[agent.id]?.expression} />}
       </span>)}
     {!compact && identities.length > 3 && <span className="absolute -bottom-0.5 right-0 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-0.5 text-[9px] font-medium ring-1 ring-background">+{identities.length - 3}</span>}
   </Button>
   return <Button type="button" variant="ghost" size={null} aria-label={`Ver detalhes de ${identities[0].name}`} title={identities[0].name} onClick={() => onOpenAgent?.(identities[0])}
     className={compact ? 'flex size-6 shrink-0 items-center justify-center rounded-full p-0 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary' : 'flex size-10 shrink-0 items-center justify-center rounded-md p-0 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary'}>
-    {compact ? <MiniAvatar agent={identities[0]} /> : <Avatar agent={identities[0]} size="xs" />}
+    {compact ? <MiniAvatar agent={identities[0]} activity={agentActivities?.[identities[0].id]} /> : <Avatar agent={identities[0]} size="xs" state={agentActivities?.[identities[0].id]?.state} expression={agentActivities?.[identities[0].id]?.expression} />}
   </Button>
 }
 

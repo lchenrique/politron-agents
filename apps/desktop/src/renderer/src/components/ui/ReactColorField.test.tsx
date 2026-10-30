@@ -8,6 +8,14 @@ vi.mock('react-color', () => ({
       onClick={() => onChange({hex:'#aabbcc'})}>React Color</button>,
 }))
 describe('React Color compartilhado',()=>{
+  it('oferece o picker diretamente no editor sem exigir um popover', () => {
+    const onChange = vi.fn()
+    render(<ReactColorField inline label="Cor do Boo" value="#123456" onChange={onChange} />)
+    expect(screen.getByRole('group', { name: 'Cor do Boo' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar no React Color' }))
+    expect(onChange).toHaveBeenCalledWith('#aabbcc')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
   it('renderiza o picker fora de ancestrais com overflow para evitar recorte',()=>{
     render(<div data-testid="clipped-container" className="overflow-hidden"><ReactColorField label="Cor do Boo" value="#123456" onChange={vi.fn()}/></div>)
     fireEvent.click(screen.getByRole('button',{name:'Cor do Boo'}))

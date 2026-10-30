@@ -109,7 +109,34 @@ describe('ligação local com os Pits', () => {
     await waitFor(() => expect(send).toHaveBeenCalledOnce())
     expect(speakVoice).not.toHaveBeenCalled()
     rerender(<VoiceCall open agents={[agent]} messages={[{ ...input, id: 'reply-old' }, input]} onSend={send} onClose={vi.fn()} />)
-    await waitFor(() => expect(speakVoice).toHaveBeenCalledExactlyOnceWith('Olá, estou aqui.', undefined, { agentId: 'agent-a', concise: true }))
+    await waitFor(() => expect(speakVoice).toHaveBeenCalledExactlyOnceWith('Olá, estou aqui.', expect.any(Function), { agentId: 'agent-a', concise: true }))
+  })
+
+  it('só move a boca depois que o áudio começa e ignora início atrasado após pausar', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    const { container, rerender } = render(<VoiceCall open agents={[agent]} messages={[]} onSend={send} onClose={vi.fn()} />)
+    await startCall()
+    await waitFor(() => expect(send).toHaveBeenCalledOnce())
+    expect(container.ownerDocument.querySelector('svg.boo')).toHaveAttribute('data-mood', 'thinking')
+    rerender(<VoiceCall open agents={[agent]} messages={[input]} onSend={send} onClose={vi.fn()} />)
+    await waitFor(() => expect(speakVoice).toHaveBeenCalledOnce())
+    expect(container.ownerDocument.querySelector('svg.boo')).toHaveAttribute('data-mood', 'thinking')
+    const started = (speakVoice.mock.calls[0] as unknown as [string, () => void])[1]
+    act(() => started())
+    expect(container.ownerDocument.querySelector('svg.boo')).toHaveAttribute('data-mood', 'speaking')
+    fireEvent.click(screen.getByRole('button', { name: 'Pausar' }))
+    act(() => started())
+    expect(container.ownerDocument.querySelector('svg.boo')).toHaveAttribute('data-mood', 'idle')
+  })
+
+  it('não reproduz uma resposta de outro agente enquanto aguarda o agente escolhido', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    const { rerender } = render(<VoiceCall open agents={[agent]} messages={[]} onSend={send} onClose={vi.fn()} />)
+    await startCall()
+    await waitFor(() => expect(send).toHaveBeenCalledOnce())
+    rerender(<VoiceCall open agents={[agent]} messages={[{ ...input, agentId: 'outro-agente' }]} onSend={send} onClose={vi.fn()} />)
+    expect(speakVoice).not.toHaveBeenCalled()
+    expect(screen.getByText('Aguardando a resposta do agente…')).toBeInTheDocument()
   })
 
   it('encerra microfone e reprodução ao desligar', async () => {

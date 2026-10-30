@@ -8,6 +8,18 @@ const dirs: string[] = []
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }) })
 
 describe('persistência do Poli Studio', () => {
+  it('persiste os novos detalhes e a cor sem mudar instruções ou permissões', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'politron-boo-details-'))
+    dirs.push(dir)
+    const store = new WorkspaceStore(dir)
+    const agent = store.saveAgent({ name: 'Boo', alias: 'boo', instructions: 'Ajudar com cuidado.', color: '#a8d5be', pitsHeadAccessory: 'boo-sprout', canWrite: false })
+    store.db.close()
+    const reopened = new WorkspaceStore(dir)
+    expect(reopened.agent(agent.id)).toMatchObject({ color: '#a8d5be', pitsHeadAccessory: 'boo-sprout', canWrite: false, instructions: 'Ajudar com cuidado.' })
+    const next = reopened.saveAgent({ ...reopened.agent(agent.id), pitsHeadAccessory: 'boo-noel' })
+    expect(next.pitsHeadAccessory).toBe('boo-noel')
+    reopened.db.close()
+  })
   it('persiste a promoção e remoção do papel Chief após reiniciar o banco', () => {
     const dir = mkdtempSync(join(tmpdir(), 'politron-chief-'))
     dirs.push(dir)

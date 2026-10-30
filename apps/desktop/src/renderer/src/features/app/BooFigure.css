@@ -1,83 +1,38 @@
-/* Boo vetorial: cores por variáveis CSS (definidas no <svg>), contorno escuro constante,
-   sombra só no barrado (tom do próprio corpo) e brilho leve apenas no headset em tamanhos grandes. */
-.boo {
-  display: block;
-  overflow: visible;
-  --boo-stroke: 4.6px;
-  --boo-hem: color-mix(in oklab, var(--boo-body) 87%, #3b2f7a);
-  --boo-visor: color-mix(in srgb, var(--boo-accent-2) 32%, #080b20);
-  --boo-cup: color-mix(in srgb, var(--boo-outline) 80%, var(--boo-accent-2));
-}
-.boo[data-size='m'] { --boo-stroke: 5.6px; }
-.boo[data-size='s'] { --boo-stroke: 9px; }
+/* Cabeça sem contorno; deformação pequena, cor chapada e mãos apenas nos gestos. */
+.boo { display: block; overflow: visible; --boo-stroke: 3.5px; }
+.boo[data-size='s'] { --boo-stroke: 5px; }
 .boo[data-size='s'] .boo__fine { display: none; }
-
-.boo__body, .boo__limb, .boo__limb-cover { fill: var(--boo-body); stroke-linejoin: round; }
-.boo__body-edge { fill: none; stroke: var(--boo-outline); stroke-width: var(--boo-stroke); stroke-linejoin: round; }
-.boo__hem { fill: var(--boo-hem); }
-/* Braço atrás do corpo com traço dobrado; a cópia por cima esconde a emenda e deixa o traço externo com a espessura certa. */
-.boo__limb { stroke: var(--boo-outline); stroke-width: calc(var(--boo-stroke) * 2); }
-.boo__arm[data-front='true'] .boo__limb { visibility: hidden; }
-.boo__arm[data-front='true'] .boo__limb-cover { stroke: var(--boo-outline); stroke-width: var(--boo-stroke); }
-
+.boo__body, .boo__hand { fill: var(--boo-body); stroke: none; }
+.boo__shine { fill: #fff; }
+.boo__thought-gaze { transform: translate(2px, -1px); }
 .boo__eye { fill: var(--boo-eye); }
-.boo__shine, .boo__blush-shine { fill: #fff; }
-.boo__blush-shine { opacity: .85; }
 .boo__blush { fill: var(--boo-blush); }
-.boo__eye-line { fill: none; stroke: var(--boo-eye); stroke-width: calc(var(--boo-stroke) * 1.05); stroke-linecap: round; }
+.boo__eye-line { fill: none; stroke: var(--boo-eye); stroke-width: max(4px, var(--boo-stroke)); stroke-linecap: round; }
 .boo__spiral-line { stroke-width: calc(var(--boo-stroke) * .7); }
-.boo__line, .boo__brow { fill: none; stroke: var(--boo-outline); stroke-width: calc(var(--boo-stroke) * .95); stroke-linecap: round; stroke-linejoin: round; }
-.boo__brow { stroke-width: calc(var(--boo-stroke) * .8); }
+.boo__line, .boo__brow { fill: none; stroke: var(--boo-outline); stroke-width: max(3.6px, var(--boo-stroke)); stroke-linecap: round; stroke-linejoin: round; }
+.boo__brow { stroke-width: 3.2px; }
 .boo__mouth { fill: var(--boo-mouth); }
 .boo__tongue { fill: var(--boo-tongue); }
 .boo__mouth-edge { fill: none; stroke: var(--boo-outline); stroke-width: calc(var(--boo-stroke) * .75); stroke-linejoin: round; }
 .boo__heart-eye, .boo__heart { fill: var(--boo-heart); stroke: var(--boo-outline); stroke-width: 2px; stroke-linejoin: round; }
 
-/* Headset */
-.boo__band { fill: none; stroke: var(--boo-cup); stroke-width: 6px; stroke-linecap: round; }
-.boo__visor { fill: var(--boo-visor); stroke: var(--boo-outline); stroke-width: var(--boo-stroke); stroke-linejoin: round; }
-.boo__visor-tint { fill: var(--boo-accent-2); opacity: .45; }
-.boo__visor-rim { fill: none; stroke: var(--boo-accent); stroke-width: 2.2px; stroke-linejoin: round; }
-.boo__prompt { fill: none; stroke: var(--boo-accent); stroke-width: 3.4px; stroke-linecap: round; stroke-linejoin: round; }
-.boo__cup { fill: var(--boo-cup); stroke: var(--boo-outline); stroke-width: var(--boo-stroke); }
-.boo__cup-ring { fill: var(--boo-visor); stroke: var(--boo-accent); stroke-width: 2.6px; }
-.boo__cup-icon { fill: none; stroke: var(--boo-accent); stroke-width: 1.8px; stroke-linecap: round; stroke-linejoin: round; }
-.boo[data-size='l'] .boo__glow { filter: drop-shadow(0 0 2px var(--boo-accent)); }
-
 /* Efeitos */
-.boo__rain { opacity: .6; }
-.boo__rain rect { fill: var(--boo-code); }
-.boo__kb-plate { fill: color-mix(in srgb, var(--boo-code) 24%, transparent); stroke: var(--boo-code); stroke-width: 2px; stroke-linejoin: round; }
-.boo__kb-keys { fill: none; stroke: var(--boo-code); stroke-width: 1.2px; opacity: .85; }
-.boo__under { fill: none; stroke: var(--boo-outline); stroke-width: 7.5px; stroke-linecap: round; stroke-linejoin: round; }
-.boo__q { fill: none; stroke: var(--boo-spark); stroke-width: 3.8px; stroke-linecap: round; }
-.boo__q-dot { fill: var(--boo-spark); stroke: var(--boo-outline); stroke-width: 1.6px; }
-.boo__bulb { fill: var(--boo-spark); stroke: var(--boo-outline); stroke-width: 2.4px; stroke-linejoin: round; }
-.boo__bulb-base { fill: #b9bdcc; stroke: var(--boo-outline); stroke-width: 2px; }
-.boo__rays { fill: none; stroke: var(--boo-spark); stroke-width: 2.8px; stroke-linecap: round; }
-.boo__check-under { fill: none; stroke: var(--boo-outline); stroke-width: 14px; stroke-linecap: round; stroke-linejoin: round; }
-.boo__check { fill: none; stroke: var(--boo-check); stroke-width: 8px; stroke-linecap: round; stroke-linejoin: round; }
-.boo__tone-0 { fill: var(--boo-accent); } .boo__tone-1 { fill: var(--boo-heart); } .boo__tone-2 { fill: var(--boo-spark); }
-.boo__tone-3 { fill: var(--boo-check); } .boo__tone-4 { fill: var(--boo-accent-2); } .boo__tone-5 { fill: var(--boo-code); }
-.boo__confetto { transform-box: fill-box; transform-origin: center; transform: rotate(var(--rot)); }
-.boo__finger { fill: #ffd9c4; stroke: var(--boo-outline); stroke-width: 2.6px; stroke-linejoin: round; }
-.boo__halo-ring { fill: none; stroke: var(--boo-spark); stroke-width: 2.2px; opacity: .85; }
-.boo__star { fill: var(--boo-spark); stroke: var(--boo-outline); stroke-width: 1.4px; stroke-linejoin: round; }
+.boo__under { fill: none; stroke: var(--boo-body); stroke-width: 7.5px; stroke-linecap: round; stroke-linejoin: round; }
+.boo__check-under { fill: none; stroke: var(--boo-body); stroke-width: 8px; stroke-linecap: round; stroke-linejoin: round; }
+.boo__check { fill: none; stroke: var(--boo-accent); stroke-width: 4px; stroke-linecap: round; stroke-linejoin: round; }
+.boo__halo-ring { fill: none; stroke: var(--boo-accent); stroke-width: 2.2px; opacity: .85; }
+.boo__star { fill: var(--boo-body); stroke: var(--boo-outline); stroke-width: 1.4px; stroke-linejoin: round; }
 .boo__orbit-x { transform: translateX(var(--sx, 0)); }
 .boo__orbit-y { transform: translateY(var(--sy, 0)); }
-.boo__spark { fill: none; stroke: var(--boo-spark); stroke-width: 4.2px; stroke-linecap: round; }
-.boo__z { fill: var(--boo-body); stroke: var(--boo-outline); stroke-width: 2.6px; paint-order: stroke; font-weight: 800; font-family: system-ui, sans-serif; }
+.boo__spark { fill: none; stroke: var(--boo-accent); stroke-width: 4.2px; stroke-linecap: round; }
 .boo__talk-lines path { fill: none; stroke: var(--boo-accent); stroke-width: 3px; stroke-linecap: round; }
 
-/* Poses: braços, corpo deitado e rosto transitam suavemente entre estados. */
-.boo__arm, .boo__arm-move { transform-box: view-box; transform-origin: 0 0; }
-.boo__arm { transition: transform .38s cubic-bezier(.3, 1.3, .5, 1); }
-.boo__pose, .boo__face { transform-box: view-box; transition: transform .5s cubic-bezier(.3, 1.15, .5, 1); }
-.boo__pose { transform-origin: 120px 104px; }
-.boo__face { transform-origin: 120px 110px; }
-.boo[data-mood='sleep'] .boo__pose { transform: translate(0, 22px) rotate(-80deg) scale(.86); }
-.boo[data-mood='sleep'] .boo__face { transform: translate(0, -14px) rotate(62deg); }
-.boo__bounce { transform-box: view-box; transform-origin: 120px 186px; }
+/* A cabeça permanece de frente ao dormir; o gesto vem da respiração e dos olhos. */
+.boo__hand-position { transform-box: view-box; transform-origin: 0 0; }
+.boo__hand { transform-box: fill-box; transform-origin: center; }
+.boo__pose, .boo__face { transform-box: view-box; transform-origin: 120px 100px; }
+.boo__bounce { transform-box: view-box; transform-origin: 120px 100px; }
+.boo__typing { fill: var(--boo-accent); }
 .boo__eyes, .boo__spiral, .boo__pop, .boo__pop-once, .boo__heart, .boo__flash, .boo__snore, .boo__talk { transform-box: fill-box; transform-origin: center; }
 .boo__talk { transform-origin: center top; }
 
@@ -85,63 +40,55 @@
 .boo[data-animate='true'] .boo__float { animation: boo-float var(--poli-speed, 3s) ease-in-out infinite; }
 .boo[data-animate='true'][data-mood='sleep'] .boo__float { animation-duration: calc(var(--poli-speed, 3s) * 2); }
 .boo[data-animate='true'] .boo__eyes { animation: boo-blink 4.6s ease-in-out infinite; }
-.boo[data-animate='true'] .boo__cursor { animation: boo-cursor 1.1s steps(1) infinite; }
-.boo[data-animate='true'][data-mood='idle'] .boo__arm--r .boo__arm-move { animation: boo-wave .9s ease-in-out infinite alternate; }
-.boo[data-animate='true'][data-mood='happy'] .boo__arm-move,
-.boo[data-animate='true'][data-mood='boop'] .boo__arm-move { animation: boo-cheer .45s ease-in-out infinite alternate; }
-.boo[data-animate='true'][data-mood='happy'] .boo__arm--l .boo__arm-move { animation-delay: -.22s; }
-.boo[data-animate='true'][data-mood='coding'] .boo__arm-move { animation: boo-type .2s ease-in-out infinite alternate; }
-.boo[data-animate='true'][data-mood='coding'] .boo__arm--r .boo__arm-move { animation-delay: -.1s; }
-.boo[data-animate='true'][data-mood='speaking'] .boo__arm--r .boo__arm-move { animation: boo-gesture 1.2s ease-in-out infinite; }
-.boo[data-animate='true'][data-mood='dizzy'] .boo__arm-move { animation: boo-cheer .5s ease-in-out infinite alternate; }
-.boo[data-animate='true'][data-mood='happy'] .boo__bounce { animation: boo-boing .5s cubic-bezier(.3, 1.6, .5, 1); }
-.boo[data-animate='true'][data-mood='boop'] .boo__bounce { animation: boo-squish .55s cubic-bezier(.3, 1.6, .5, 1); }
+.boo[data-animate='true'] .boo__thought-gaze { animation: boo-thought-gaze 4.2s ease-in-out infinite; }
+.boo[data-liquid='true'] .boo__body { animation: boo-liquid 4.8s ease-in-out infinite; }
+.boo[data-animate='true'][data-mood='sleep'] .boo__bounce { animation: boo-breathe 4s ease-in-out infinite; }
+.boo[data-animate='true'][data-mood='coding'] .boo__hand { animation: boo-type .38s ease-in-out infinite alternate; }
+.boo[data-animate='true'][data-mood='coding'] .boo__hand-position--1 .boo__hand { animation-delay: -.19s; }
+.boo[data-animate='true'][data-mood='happy'] .boo__hand { animation: boo-cheer .55s ease-in-out 2 alternate; }
+.boo[data-animate='true'][data-mood='speaking'] .boo__hand { animation: boo-gesture 1.4s ease-in-out infinite; }
+.boo[data-animate='true'] .boo__typing circle { animation: boo-fade 1s ease-in-out infinite; }
+.boo[data-animate='true'][data-mood='happy'] .boo__bounce { animation: boo-boing .5s ease-out; }
+.boo[data-animate='true'][data-mood='boop'] .boo__bounce { animation: boo-squish .5s ease-out; }
 .boo[data-animate='true'][data-mood='surprised'] .boo__bounce { animation: boo-jump .5s ease-out; }
 .boo[data-animate='true'][data-mood='dizzy'] .boo__bounce { animation: boo-wobble .9s ease-in-out infinite; }
-.boo[data-animate='true'] .boo__rain-col { animation: boo-rain 1.4s linear infinite; }
 .boo[data-animate='true'] .boo__talk { animation: boo-talk .26s ease-in-out infinite; }
 .boo[data-animate='true'] .boo__talk-lines { animation: boo-fade 1s ease-in-out infinite; }
 .boo[data-animate='true'] .boo__pop { animation: boo-pop 2.4s ease-out infinite; }
 .boo[data-animate='true'] .boo__pop-once { animation: boo-pop-once .5s cubic-bezier(.3, 1.6, .5, 1) both; }
-.boo[data-animate='true'] .boo__confetto { animation: boo-confetti 1.6s ease-out both; }
-.boo[data-animate='true'] .boo__poke { animation: boo-poke .6s ease-out both; }
 .boo[data-animate='true'] .boo__spiral { animation: boo-spin 1s linear infinite; }
 .boo[data-animate='true'] .boo__orbit-x { animation: boo-orbit-x .8s ease-in-out infinite alternate; }
 .boo[data-animate='true'] .boo__orbit-y { animation: boo-orbit-y .8s ease-in-out infinite alternate; }
 .boo[data-animate='true'] .boo__heart { animation: boo-rise 2.2s ease-out infinite; }
 .boo[data-animate='true'] .boo__flash { animation: boo-flash .5s ease-in-out infinite; }
-.boo[data-animate='true'] .boo__z { animation: boo-z 2.4s ease-in-out infinite; }
 .boo[data-animate='true'] .boo__snore { animation: boo-snore 3s ease-in-out infinite; }
 
-@keyframes boo-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(var(--poli-amplitude, -6px)); } }
+/* Mesmos comandos nos caminhos: o navegador interpola a forma sem filtros. */
+@keyframes boo-liquid {
+  0%, 100% { d: var(--boo-liquid-rest); }
+  33% { d: var(--boo-liquid-a); }
+  66% { d: var(--boo-liquid-b); }
+}
+@keyframes boo-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.015, .985); } }
+@keyframes boo-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(var(--poli-amplitude, -6px) * .35)); } }
 @keyframes boo-blink { 0%, 44%, 48%, 100% { transform: scaleY(1); } 46% { transform: scaleY(.1); } }
-@keyframes boo-cursor { 0% { opacity: 1; } 50% { opacity: 0; } }
-@keyframes boo-wave { from { transform: rotate(-14deg); } to { transform: rotate(16deg); } }
+@keyframes boo-thought-gaze { 0%, 100% { transform: translate(2px, -1px); } 45%, 65% { transform: translate(0, -2px); } }
 @keyframes boo-cheer { from { transform: rotate(-10deg); } to { transform: rotate(10deg); } }
-@keyframes boo-type { from { transform: rotate(-6deg); } to { transform: rotate(7deg); } }
+@keyframes boo-type { from { transform: translateY(-2px); } to { transform: translateY(2px); } }
 @keyframes boo-gesture { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-22deg); } }
 @keyframes boo-boing { 0% { transform: scale(1); } 35% { transform: scale(1.08, .92); } 70% { transform: scale(.96, 1.05); } 100% { transform: scale(1); } }
-@keyframes boo-squish { 0% { transform: scale(1); } 30% { transform: scale(1.12, .86); } 62% { transform: scale(.95, 1.05); } 100% { transform: scale(1); } }
+@keyframes boo-squish { 0% { transform: scale(1); } 30% { transform: scale(1.08, .92); } 62% { transform: scale(.97, 1.03); } 100% { transform: scale(1); } }
 @keyframes boo-jump { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(-16px) scale(.96, 1.05); } }
 @keyframes boo-wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-7deg); } 75% { transform: rotate(7deg); } }
-@keyframes boo-rain { from { transform: translateY(0); } to { transform: translateY(48px); } }
 @keyframes boo-talk { 0%, 100% { transform: scaleY(.45); } 50% { transform: scaleY(1.1); } }
 @keyframes boo-fade { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @keyframes boo-pop { 0% { transform: scale(.4); opacity: 0; } 15% { transform: scale(1.15); opacity: 1; } 25%, 80% { transform: scale(1); opacity: 1; } 100% { transform: scale(.85); opacity: 0; } }
 @keyframes boo-pop-once { 0% { transform: scale(0); } 100% { transform: scale(1); } }
-@keyframes boo-confetti {
-  0% { transform: translate(var(--dx), var(--dy)) scale(.2); opacity: 1; }
-  30% { transform: rotate(var(--rot)); opacity: 1; }
-  75% { opacity: 1; }
-  100% { transform: translateY(16px) rotate(calc(var(--rot) + 90deg)); opacity: 0; }
-}
-@keyframes boo-poke { 0% { transform: translateX(28px); } 40% { transform: translateX(-3px); } 60%, 100% { transform: translateX(0); } }
 @keyframes boo-spin { to { transform: rotate(360deg); } }
 @keyframes boo-orbit-x { from { transform: translateX(-46px); } to { transform: translateX(46px); } }
 @keyframes boo-orbit-y { from { transform: translateY(-10px); } to { transform: translateY(10px); } }
 @keyframes boo-rise { 0% { transform: translateY(10px) scale(.5); opacity: 0; } 20% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-34px) scale(.85); opacity: 0; } }
 @keyframes boo-flash { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.8); } }
-@keyframes boo-z { 0% { transform: translate(-6px, 8px); opacity: 0; } 25% { opacity: 1; } 100% { transform: translate(8px, -14px); opacity: 0; } }
 @keyframes boo-snore { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.35); } }
 
 /* Menos movimento: tudo parado, com os efeitos visíveis na posição final. */
@@ -149,3 +96,6 @@
   .boo *, .boo[data-animate='true'] * { animation: none !important; transition: none !important; }
 }
 [data-reduced-motion='true'] .boo * { animation: none !important; transition: none !important; }
+
+/* As curvas fechadas da referência já contêm a espessura dos traços. */
+.boo__reference-eye, .boo__reference-mouth, .boo__reference-brow { fill: var(--boo-eye); stroke: none; }

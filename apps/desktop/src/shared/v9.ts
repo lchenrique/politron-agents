@@ -23,7 +23,7 @@ export interface Agent {
   temporaryTask?: string
   pitsShape?: 'round' | 'flat' | 'long' | 'drop' | 'squircle' | 'bean' | 'ghost-wave' | 'ghost-puff' | 'ghost-peak' | 'cute-squid' | 'soft-square' | 'little-cat'
   pitsAccessory?: 'none' | 'antenna' | 'horns' | 'glasses' | 'cap'
-  pitsHeadAccessory?: 'none' | 'antenna' | 'horns' | 'cap' | 'cap-flat' | 'cap-back' | 'beanie' | 'bucket' | 'top-hat' | 'witch-hat' | 'headphones' | 'crown' | 'party-hat' | 'chef-hat' | 'bow' | 'flower' | 'halo'
+  pitsHeadAccessory?: 'boo-sprout' | 'boo-star' | 'boo-king-crown' | 'boo-halo' | 'boo-noel' | 'none' | 'antenna' | 'horns' | 'cap' | 'cap-flat' | 'cap-back' | 'beanie' | 'bucket' | 'top-hat' | 'witch-hat' | 'headphones' | 'crown' | 'party-hat' | 'chef-hat' | 'bow' | 'flower' | 'halo'
   pitsFaceAccessory?: 'none' | 'glasses' | 'round-glasses' | 'sunglasses' | 'heart-glasses' | 'star-glasses' | 'monocle' | 'mustache' | 'star-mask'
   /** Cores por peça e acessório; continuam salvas ao alternar o item. */
   pitsAccessoryColors?: BooAccessoryColors

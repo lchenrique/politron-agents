@@ -1,0 +1,38 @@
+{
+  "errors": [],
+  "states": [
+    {
+      "label": "Leitura",
+      "actual": "thinking",
+      "expected": "thinking"
+    },
+    {
+      "label": "Edição",
+      "actual": "coding",
+      "expected": "coding"
+    },
+    {
+      "label": "Comando",
+      "actual": "thinking",
+      "expected": "thinking"
+    },
+    {
+      "label": "Aprovação",
+      "actual": "thinking",
+      "expected": "thinking"
+    },
+    {
+      "label": "Concluído",
+      "actual": "idle",
+      "expected": "idle"
+    },
+    {
+      "label": "Interrompido",
+      "actual": "idle",
+      "expected": "idle"
+    }
+  ],
+  "overflow": false,
+  "reducedMotion": true,
+  "source": "Galeria com eventos declaradamente simulados; sem execução de motor ou áudio real."
+}

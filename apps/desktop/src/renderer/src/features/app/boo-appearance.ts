@@ -38,7 +38,7 @@ export const DEFAULT_BOO_APPEARANCE: Partial<Agent> = {
   pitsEyeColor: '#0d0d12',
   pitsCheekColor: '#f7a1b5',
   pitsAccentColor: '#3aa7ff',
-  pitsHeadset: true,
+  pitsHeadset: false,
   pitsEyeSize: 8,
   pitsEyeSpacing: 26,
   pitsMouthSize: 1,

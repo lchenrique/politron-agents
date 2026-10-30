@@ -116,6 +116,17 @@ describe('novo projeto por origem', () => {
 })
 
 describe('editor de agentes com Poli Studio', () => {
+  it('salva a cor e o detalhe do editor novo sem alterar as permissões do agente', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<Editor kind="agent" agents={[]} models={[]} initial={agent('boo-custom', 'Boo')} onClose={vi.fn()} onSave={onSave} onPickFolder={vi.fn()} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Aparência' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Escolher cor #a8d5be' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Brotinho' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'boo-custom', color: '#a8d5be', pitsHeadAccessory: 'boo-sprout', pitsFaceAccessory: 'none', canWrite: false, approvalMode: 'ask',
+    })))
+  })
   it('marca edição de arquivos ao cadastrar Boo novo sem sobrescrever escolhas de existentes', () => {
     render(<Editor kind="agent" agents={[]} models={[]} onClose={vi.fn()} onSave={vi.fn()} onPickFolder={vi.fn()} />)
     fireEvent.click(screen.getByRole('tab', { name: 'Modelo e permissões' }))
@@ -245,7 +256,6 @@ describe('editor de agentes com Poli Studio', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Aparência' }))
     expect(screen.getByText('Boo Studio')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Escolher cor #4098eb' }))
-    fireEvent.click(screen.getByRole('tab', { name: 'Animação' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Ativar animações' }))
     fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
