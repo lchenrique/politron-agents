@@ -1,5 +1,33 @@
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { isTransientDatabaseError, retryTransient } from './startup'
+import { isTransientDatabaseError, retryTransient, setAsideStaleWalIndex } from './startup'
+
+describe('índice WAL antigo', () => {
+  const files = (wal: string | null) => {
+    const database = join(mkdtempSync(join(tmpdir(), 'boobot-wal-')), 'politron-v9.sqlite')
+    writeFileSync(database, 'db'); writeFileSync(database + '-shm', 'shm')
+    if (wal !== null) writeFileSync(database + '-wal', wal)
+    return database
+  }
+
+  it('põe de lado o -shm quando o WAL está vazio ou ausente, sem apagar', () => {
+    for (const wal of ['', null]) {
+      const database = files(wal)
+      const moved = setAsideStaleWalIndex(database, 42)
+      expect(moved).toBe(database + '-shm.stale-42')
+      expect(existsSync(database + '-shm')).toBe(false)
+      expect(existsSync(moved!)).toBe(true)
+    }
+  })
+
+  it('não toca em nada quando o WAL tem dados pendentes', () => {
+    const database = files('frames')
+    expect(setAsideStaleWalIndex(database)).toBeNull()
+    expect(existsSync(database + '-shm')).toBe(true)
+  })
+})
 
 describe('abertura do banco na inicialização', () => {
   it('repete erro transitório do SQLite e devolve a abertura que deu certo', async () => {

@@ -21,7 +21,7 @@ import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
 import { PwaGateway } from './pwa/gateway'
 import { initAutoUpdater } from './v9/auto-updater'
-import { retryTransient } from './startup'
+import { retryTransient, setAsideStaleWalIndex } from './startup'
 
 process.on('uncaughtException', (error) => {
   console.error('[Main] uncaughtException', error)
@@ -264,7 +264,11 @@ app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.boobot.desktop')
 
   // Outro processo do Boobot fechando o mesmo banco pode causar "malformed" passageiro; tenta de novo antes de desistir.
-  appService = await retryTransient(() => new AppService(app.getPath('userData')), { onRetry: (error, attempt) => diagnostic('startup-db-retry', { attempt, error: String(error) }) })
+  appService = await retryTransient(() => new AppService(app.getPath('userData')), { onRetry: (error, attempt) => {
+    // Somos a única instância (trava de instância única): um -shm com WAL vazio é resto de outra execução.
+    const setAside = shouldUseSingleInstanceLock && attempt === 1 && /malformed/i.test(String(error)) ? setAsideStaleWalIndex(join(app.getPath('userData'), 'politron-v9.sqlite')) : null
+    diagnostic('startup-db-retry', { attempt, error: String(error), ...(setAside ? { staleWalIndex: setAside } : {}) })
+  } })
   appService.store.applyAutonomyDefaults()
   hosts = new HostManager(new HostStore(app.getPath('userData')), () => realtimeService?.stop())
   registerV9Ipc(appService, hosts)
