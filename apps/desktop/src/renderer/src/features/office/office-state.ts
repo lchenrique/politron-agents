@@ -10,6 +10,8 @@ export interface Desk {
   conversationId?: string
   /** A execução ativa foi pedida por um Chief (delegação). */
   fromChief: boolean
+  /** A execução mais recente terminou em falha (para a reação na sala). */
+  failed?: boolean
 }
 
 const ACTIVE: Run['status'][] = ['queued', 'running', 'waiting']
@@ -37,7 +39,8 @@ export function officeDesks(snapshot: Pick<Snapshot, 'agents' | 'runs' | 'messag
         ? { state: 'working', detail: tool.text.split('\n')[0]!.slice(0, 140), conversationId: run.conversationId, fromChief }
         : { state: 'thinking', detail: 'Pensando…', conversationId: run.conversationId, fromChief }
     }).sort((a, b) => RANK[a.state] - RANK[b.state])
-    return { agent, ...(desks[0] || { state: 'idle' as const, detail: 'Livre', fromChief: false }) }
+    const latest = snapshot.runs.filter(run => run.agentId === agent.id).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0]
+    return { agent, ...(desks[0] || { state: 'idle' as const, detail: 'Livre', fromChief: false }), ...(latest?.status === 'failed' ? { failed: true } : {}) }
   })
 }
 

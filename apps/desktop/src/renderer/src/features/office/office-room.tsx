@@ -101,8 +101,15 @@ export function buildLayout(agentIds: string[], chiefId?: string): OfficeLayout 
   const desks: OfficeLayout['desks'] = {}
   if (chiefId) desks[chiefId] = { x: width / 2 + 0.6, y: 2.4 }
   others.forEach((id, index) => { desks[id] = { x: [3.3, 5.9, 8.5][index % 3]!, y: 5 + Math.floor(index / 3) * 2.4 } })
+  // Obstáculos para o caminho: mesas, cafeteira, estante, plantas e sofá (mesmas medidas do desenho).
+  const blocked = [
+    ...Object.entries(desks).map(([id, at]) => { const w = id === chiefId ? 1.9 : 1.5; return { x: at.x - w / 2, y: at.y - 0.4, w, d: 0.8 } }),
+    { x: width - 1.3, y: 0.15, w: 0.9, d: 0.6 }, { x: 1.4, y: 0.1, w: 1.6, d: 0.4 },
+    ...[[0.55, 0.55], [width - 0.6, depth - 0.6], [0.55, depth * 0.62]].map(([x, y]) => ({ x: x! - 0.25, y: y! - 0.25, w: 0.5, d: 0.5 })),
+    { x: 0.5, y: depth - 1.7, w: 2.2, d: 0.9 },
+  ]
   return {
-    width, depth, desks, chiefId,
+    width, depth, desks, chiefId, blocked,
     pois: [
       { id: 'coffee', kind: 'coffee', at: { x: width - 0.9, y: 1.25 } },
       { id: 'window', kind: 'window', at: { x: width * 0.72, y: 0.9 } },

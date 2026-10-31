@@ -20,7 +20,9 @@ function moodOf(actor: Actor, desk: Desk): BooMood {
   if (actor.mode === 'desk') return DESK_MOOD[desk.state === 'working' ? 'thinking' : desk.state]
   if (actor.mode === 'sleep') return 'sleep'
   if (actor.mode === 'talk') return 'speaking'
-  if (actor.mode === 'errand') return actor.badge === 'check' ? 'done' : 'happy'
+  if (actor.mode === 'celebrate') return 'happy'
+  if (actor.mode === 'dizzy') return 'dizzy'
+  if (actor.mode === 'errand') return actor.badge === 'check' ? 'done' : actor.badge === 'eyes' ? 'thinking' : 'happy'
   return 'idle'
 }
 
@@ -45,7 +47,7 @@ export function OfficePage({ snapshot, onOpenAgent, onOpenConversation }: { snap
     let frame = 0, last = performance.now(), painted = 0
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000); last = now
-      stepSim(sim.current, layout, desksRef.current.map(desk => ({ id: desk.agent.id, active: desk.state !== 'idle', fromChief: desk.fromChief })), reduced ? 0.1 : dt)
+      stepSim(sim.current, layout, desksRef.current.map(desk => ({ id: desk.agent.id, active: desk.state !== 'idle', fromChief: desk.fromChief, failed: desk.failed })), reduced ? 0.1 : dt)
       // Movimento reduzido: cada Boo vai direto ao destino, sem caminhar.
       if (reduced) for (const actor of sim.current.actors.values()) if (actor.path.length) { actor.pos = { ...actor.path.at(-1)! }; actor.path = [] }
       if (now - painted > (reduced ? 1000 : 33)) { painted = now; setClock(now / 1000) }
@@ -55,7 +57,7 @@ export function OfficePage({ snapshot, onOpenAgent, onOpenConversation }: { snap
     return () => cancelAnimationFrame(frame)
   }, [layout])
 
-  const simDesks = desks.map(desk => ({ id: desk.agent.id, active: desk.state !== 'idle', fromChief: desk.fromChief }))
+  const simDesks = desks.map(desk => ({ id: desk.agent.id, active: desk.state !== 'idle', fromChief: desk.fromChief, failed: desk.failed }))
   // Primeiro quadro já com todos na sala, antes do laço de animação começar.
   if (simDesks.some(desk => !sim.current.actors.has(desk.id))) stepSim(sim.current, layout, simDesks, 0)
   const byId = new Map(desks.map(desk => [desk.agent.id, desk]))
@@ -109,7 +111,8 @@ export function OfficePage({ snapshot, onOpenAgent, onOpenConversation }: { snap
         {/* Etiquetas por cima de tudo, em camadas: balões, nomes e, no topo, os alertas de aprovação. */}
         <g className="office__labels" pointerEvents="none">
           {labels.map(({ actor, desk, x, head }) => {
-            const bubble = actor.badge === 'paper' ? '📄 Nova tarefa' : actor.badge === 'check' ? '✓ Concluído' : actor.mode === 'desk' && desk.state === 'working' ? desk.detail.replace(/^[^·]*·\s*/, '') : ''
+            const bubble = actor.badge === 'paper' ? '📄 Nova tarefa' : actor.badge === 'check' ? '✓ Concluído' : actor.badge === 'help' ? '🤝 Posso ajudar?' : actor.badge === 'eyes' ? '👀 Como está indo?'
+              : actor.mode === 'celebrate' ? '🎉 Pronto!' : actor.mode === 'dizzy' ? 'Algo deu errado…' : actor.mode === 'talk' && actor.facing > 0 ? '💬' : actor.mode === 'desk' && desk.state === 'working' ? desk.detail.replace(/^[^·]*·\s*/, '') : ''
             return bubble ? <foreignObject key={`bubble-${actor.id}`} x={x - 90} y={head - 28} width={180} height={26}><div className="office__bubble">{bubble}</div></foreignObject> : null
           })}
           {labels.map(({ actor, desk, x, name }) => <foreignObject key={`name-${actor.id}`} x={x - 60} y={name} width={120} height={22}><div className="office__name" data-state={desk.state}>{desk.agent.name}</div></foreignObject>)}
