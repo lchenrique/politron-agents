@@ -80,7 +80,7 @@ export function deriveDelegations(snapshot: Snapshot): PwaDelegation[] {
       const agent = agentId === ASSISTANT_ID ? snapshot.assistant : snapshot.agents.find(candidate => candidate.id === agentId)
       return {
         id: item.id, conversationId: item.id, title: item.name, agent, agentName: agent?.name || 'Boo',
-        state: stateOfRun(latest?.status), at: latest?.createdAt || item.updatedAt || item.createdAt,
+        state: latest ? stateOfRun(latest.status) : 'done', at: latest?.createdAt || item.updatedAt || item.createdAt,
       }
     })
     .sort((a, b) => b.at.localeCompare(a.at))

@@ -47,7 +47,7 @@ function safeAgent(input: unknown): Agent {
   }
 }
 
-function normalizeSnapshot(input: unknown): Snapshot {
+export function normalizeSnapshot(input: unknown): Snapshot {
   const value = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const agents = Array.isArray(value.agents) ? value.agents.map(safeAgent) : []
   const assistant = value.assistant ? safeAgent(value.assistant) : assistantPlaceholder
