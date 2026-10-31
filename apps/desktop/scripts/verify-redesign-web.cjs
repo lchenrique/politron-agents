@@ -76,6 +76,13 @@ async function main() {
     assert.equal(await activity.getAttribute('aria-expanded'), 'true')
     await page.locator('section[aria-label="Boo ao vivo"]').screenshot({ path: path.join(shots, 'voice-panel.png') })
 
+    // Escritório: mesas isométricas com Boo trabalhando e linha de delegação do Chief.
+    await open('/office-gallery', '.office-desk__plate')
+    assert.ok(await page.locator('.office-desk').count() >= 5, 'mesas do escritório')
+    assert.ok(await page.locator('.office-desk svg.boo-work').count() >= 1, 'Boo trabalhando no escritório')
+    assert.ok(await page.locator('.office__link').count() >= 1, 'delegação do Chief')
+    await page.locator('[data-office-gallery]').screenshot({ path: path.join(shots, 'office.png') })
+
     assert.deepEqual(errors, [], 'sem erros de página')
     console.log('Redesign verificado. Capturas em ' + shots)
   } finally {

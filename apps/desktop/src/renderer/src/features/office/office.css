@@ -1,0 +1,53 @@
+/* Escritório isométrico: cores do tema; o Boo e a mesa usam as variáveis do app. */
+.office { display: flex; height: 100%; min-height: 0; flex-direction: column; background: var(--background); color: var(--foreground); }
+.office__header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 24px; padding: 24px 32px 8px; }
+.office__title { margin: 0; font-size: 22px; font-weight: 600; }
+.office__summary { margin: 4px 0 0; color: var(--muted-foreground); font-size: 13px; }
+.office__hint { margin: 0; color: var(--muted-foreground); font-size: 12px; }
+.office__viewport { flex: 1; min-height: 0; overflow: auto; padding: 8px 16px 32px; }
+.office__scene { position: relative; margin: 0 auto; }
+.office__floor { position: absolute; inset: 0; overflow: visible; }
+.office__floor-base { fill: color-mix(in srgb, var(--muted) 55%, var(--background)); stroke: color-mix(in srgb, var(--border) 80%, transparent); stroke-width: 1.5; }
+.office__tile { fill: none; stroke: color-mix(in srgb, var(--border) 55%, transparent); stroke-width: 1; }
+.office__link-line { fill: none; stroke: var(--primary); stroke-width: 2; stroke-dasharray: 6 8; opacity: .55; animation: office-dash 1.2s linear infinite; }
+.office__envelope rect { fill: var(--primary); }
+.office__envelope path { fill: none; stroke: var(--primary-foreground); stroke-width: 1.4; stroke-linejoin: round; }
+@keyframes office-dash { to { stroke-dashoffset: -28; } }
+
+/* Mesa: ponto de ancoragem no centro do tampo. Sem z-index no botão, mesa e Boo empilham pela profundidade (--office-z)
+   e nomes/balões ficam numa camada acima de todas as mesas. */
+.office-desk { position: absolute; display: flex; width: 0; height: 0; flex-direction: column; align-items: center; border: 0; padding: 0; background: none; color: inherit; cursor: pointer; }
+.office-desk__box { z-index: var(--office-z); position: absolute; left: 50%; top: 0; transform: translate(-50%, -50%); overflow: visible; filter: drop-shadow(0 10px 12px rgb(0 0 0 / .18)); }
+.office-desk__top { fill: color-mix(in srgb, var(--card) 70%, #a98b6a); }
+.office-desk__side-l { fill: color-mix(in srgb, var(--card) 45%, #6f5a44); }
+.office-desk__side-r { fill: color-mix(in srgb, var(--card) 35%, #5a4836); }
+.office-desk[data-chief] .office-desk__top { fill: color-mix(in srgb, var(--primary) 22%, color-mix(in srgb, var(--card) 70%, #a98b6a)); }
+.office-desk__figure { position: absolute; left: 50%; bottom: 6px; z-index: calc(var(--office-z) + 1); transform: translateX(-50%); display: flex; align-items: flex-end; justify-content: center; }
+.office-desk[data-state='working'] .office-desk__figure { bottom: -18px; }
+.office-desk__avatar { width: 72px; height: 72px; border-radius: 999px; object-fit: cover; }
+.office-desk__alert {
+  position: absolute; top: -6px; right: -10px; display: grid; width: 22px; height: 22px; place-items: center;
+  border-radius: 999px; background: var(--warning, #f59e0b); color: #111; font-size: 13px; font-weight: 800; animation: office-pulse 1.2s ease-in-out infinite;
+}
+@keyframes office-pulse { 50% { transform: scale(1.15); } }
+.office-desk__plate {
+  position: absolute; left: 50%; top: 60px; z-index: 100000; display: flex; transform: translateX(-50%); flex-direction: column; align-items: center; gap: 1px;
+  padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); white-space: nowrap; font-size: 12px; line-height: 16px;
+  box-shadow: 0 4px 10px rgb(0 0 0 / .12);
+}
+.office-desk__plate span { color: var(--muted-foreground); font-size: 11px; }
+.office-desk[data-state='working'] .office-desk__plate span { color: var(--primary); }
+.office-desk[data-state='waiting'] .office-desk__plate span { color: var(--warning, #f59e0b); }
+.office-desk__bubble {
+  position: absolute; left: 50%; bottom: 128px; z-index: 100001; max-width: 220px; overflow: hidden; transform: translateX(-50%);
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--popover, var(--card)); color: var(--foreground);
+  font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; box-shadow: 0 6px 14px rgb(0 0 0 / .14);
+}
+.office-desk[data-chief] .office-desk__bubble { bottom: 150px; }
+.office-desk:hover .office-desk__plate, .office-desk:focus-visible .office-desk__plate { border-color: var(--primary); }
+.office-desk:focus-visible { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .office__link-line, .office-desk__alert { animation: none; }
+  .office__envelope { display: none; }
+}

@@ -15,7 +15,7 @@ const snapshot: Snapshot = { ...emptySnapshot, agents, workspaces, conversations
 const noop = () => undefined
 
 export default function SidebarGallery() {
-  const [view, setView] = useState<'home' | 'routines' | 'board' | null>(null)
+  const [view, setView] = useState<'home' | 'routines' | 'board' | 'office' | null>(null)
   return <div className="flex h-dvh bg-chrome text-foreground" data-sidebar-gallery>
     <div className="h-full w-[280px] shrink-0">
       <Sidebar snapshot={snapshot} selected={conversations[0]} activeWorkspaceId={null} unreadCounts={{ c2: 2 }} agentStates={{ atlas: 'working', examen: 'waiting' }}

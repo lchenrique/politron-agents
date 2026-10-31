@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, CalendarClock, Check, ChevronRight, CirclePlus, ClipboardList, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
+import { Archive, ArrowLeft, Building2, CalendarClock, Check, ChevronRight, CirclePlus, ClipboardList, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Menu, Modal, type MenuEntry, type MenuItem } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
@@ -44,8 +44,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   onDeleteAgent: (id: string) => void | Promise<void>
   onSetChief: (agent: Agent, chief: boolean) => void | Promise<void>
   onNotice: (value: string) => void
-  view?: 'home' | 'routines' | 'board' | null
-  onOpenHome?: (view: 'home' | 'routines' | 'board') => void
+  view?: 'home' | 'routines' | 'board' | 'office' | null
+  onOpenHome?: (view: 'home' | 'routines' | 'board' | 'office') => void
   section?: 'projects' | 'agents'
   onSectionChange?: (section: 'projects' | 'agents') => void
   attentionCount?: number
@@ -412,6 +412,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     else moveProject(workspace, to.group ?? null, containerIds(to.group ?? null).indexOf(String(over.id)))
   }
 
+  const workingCount = new Set(snapshot.runs.filter(run => run.status === 'running' || run.status === 'waiting').map(run => run.agentId)).size
   // A navegação faz parte do chrome da janela: mesma superfície da barra superior, sem bordas internas.
   return <aside className="boobot-sidebar flex h-full min-w-0 flex-col" aria-label="Barra lateral do Boobot">
     <header className="space-y-2">
@@ -447,6 +448,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         <span className="dsh-glyph"><ClipboardList /></span>
         <span className="min-w-0 flex-1 truncate">Board da empresa</span>
         {!!snapshot.board?.tasks.filter(item => !['done', 'cancelled'].includes(item.status)).length && <span className="ds-count">{snapshot.board.tasks.filter(item => !['done', 'cancelled'].includes(item.status)).length}</span>}
+      </Button>
+      <Button type="button" variant={null} size={null} aria-current={view === 'office' ? 'page' : undefined} onClick={() => onOpenHome('office')} className="dsh-panel-row">
+        <span className="dsh-glyph"><Building2 /></span>
+        <span className="min-w-0 flex-1 truncate">Escritório</span>
+        {!!workingCount && <span className="ds-count" aria-label={`${workingCount} trabalhando`}>{workingCount}</span>}
       </Button>
       {!browserMode && <Button type="button" variant={null} size={null} aria-current={view === 'routines' ? 'page' : undefined} onClick={() => onOpenHome('routines')} className="dsh-panel-row">
         <span className="dsh-glyph"><CalendarClock /></span>
