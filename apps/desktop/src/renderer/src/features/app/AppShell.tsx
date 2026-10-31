@@ -28,6 +28,9 @@ import { replaceEqualDeep } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPwaCapabilities, onPwaCapabilitiesChanged } from '../../pwa/remote-api'
 import { ChiefHome } from '../work/ChiefHome'
+import { PwaAgentStrip, PwaBoosPage, PwaBottomNav, PwaWorkingNow } from '../pwa/PwaAgentFirst'
+import { usePwaDelegationNotices } from '../pwa/use-pwa-delegation-notices'
+import { booOverview, chiefConversation, chiefOf, deriveDelegations, tabForConversation, type PwaTab } from '../pwa/pwa-agent-model'
 import { RoutinesPage } from '../work/RoutinesPage'
 import { MissionStrip } from '../work/MissionStrip'
 import { BoardPage } from '../board/BoardPage'
@@ -39,6 +42,8 @@ const UpdateReadyCallout = lazy(() => import('./UpdateReadyCallout').then(module
 export default function AppShell() {
   const browserMode = !('vibeAPI' in window)
   const isMobile = useIsMobile()
+  // No celular a PWA abre na conversa com o Chief e navega por Chief, Boos e Projetos.
+  const pwaMobile = browserMode && isMobile
   const [pwaCapabilities, setPwaCapabilities] = useState<string[]>(getPwaCapabilities)
   const canChat = !browserMode || pwaCapabilities.includes('chat')
   const canApprove = !browserMode || pwaCapabilities.includes('approvals')
@@ -58,7 +63,8 @@ export default function AppShell() {
   const setSelectedEffort = useCallback((effort: Agent['effort']) => { setSelectedEffortState(effort); try { localStorage.setItem('politron.composer.effort', effort || 'medium') } catch { /* preferência opcional */ } }, [])
   const [selectedId, setSelectedId] = useState('')
   // A Central do Chief é a tela inicial; conversas e projetos continuam a um clique.
-  const [view, setView] = useState<'home' | 'routines' | 'board' | null>('home')
+  const [view, setView] = useState<'home' | 'routines' | 'board' | 'boos' | null>('home')
+  const [pwaStarted, setPwaStarted] = useState(false)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const activeWorkspaceIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
@@ -320,21 +326,46 @@ export default function AppShell() {
   }
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
-  const openHome = useCallback((next: 'home' | 'routines' | 'board') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
+  const openHome = useCallback((next: 'home' | 'routines' | 'board' | 'boos') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
   const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
+  const pwaBoos = useMemo(() => booOverview(snapshot, agentStates), [snapshot, agentStates])
+  const pwaDelegations = useMemo(() => deriveDelegations(snapshot), [snapshot])
+  const pwaChiefConversation = useMemo(() => chiefConversation(snapshot), [snapshot])
+  const pwaTab: PwaTab = view === 'boos' ? 'boos' : view || activeWorkspaceId ? 'projects' : !sidebarCollapsed ? 'projects' : tabForConversation(snapshot, selected)
+  usePwaDelegationNotices(pwaMobile ? pwaDelegations : [], setNotice)
+  useEffect(() => {
+    if (!pwaMobile || pwaStarted || loading) return
+    const chief = chiefOf(snapshot)
+    if (!chief) { setView('home'); setPwaStarted(true); return }
+    if (pwaChiefConversation) { selectConversation(pwaChiefConversation.id); setPwaStarted(true); return }
+    if (!canChat) { setView('boos'); setPwaStarted(true); return }
+    setPwaStarted(true)
+    void openAgent(chief)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pwaMobile, pwaStarted, loading, snapshot, pwaChiefConversation, canChat])
+  const selectPwaTab = (tab: PwaTab) => {
+    if (tab === 'chief') {
+      const chief = chiefOf(snapshot)
+      if (pwaChiefConversation) selectConversation(pwaChiefConversation.id)
+      else if (chief && canChat) void openAgent(chief)
+      else openHome('home')
+    } else if (tab === 'boos') openHome('boos')
+    else { setSidebarSection('projects'); setSidebarCollapsed(current => !current) }
+  }
+  const pwaAttention = { chief: pwaDelegations.filter(item => item.state === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length, boos: pwaBoos.filter(item => item.state === 'waiting').length }
   const conversationRuns = snapshot.runs.filter(run => run.conversationId === selected?.id && !run.parentId && ['queued', 'running', 'waiting'].includes(run.status))
   const queuedMessages = useMemo(() => messages.filter(message => message.role === 'user' && message.status === 'queued'), [messages])
   // A barra da janela diz onde se está; quem participa e as ações da conversa ficam na faixa da conversa.
   const chiefName = snapshot.agents.find(agent => agent.role === 'chief')?.name
   const contextWorkspace = activeWorkspace || selectedWorkspace
   const parentWorkspace = contextWorkspace?.kind === 'worktree' ? snapshot.workspaces.find(item => item.id === contextWorkspace.parentWorkspaceId) : undefined
-  const windowLocation = view === 'home' ? { label: `Central do ${chiefName || 'Chief'}` }
+  const windowLocation = view === 'boos' ? { label: 'Boos' } : view === 'home' ? { label: `Central do ${chiefName || 'Chief'}` }
     : view === 'routines' ? { label: 'Rotinas' }
     : view === 'board' ? { label: 'Board da empresa' }
     : contextWorkspace && (parentWorkspace?.name || contextWorkspace.name) ? { label: parentWorkspace?.name || contextWorkspace.name, detail: contextWorkspace.kind === 'worktree' ? contextWorkspace.branch || contextWorkspace.name : undefined }
     : undefined
-  const mainTabLabel = view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : activeWorkspace ? 'Projeto' : undefined
+  const mainTabLabel = view === 'boos' ? 'Boos' : view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : activeWorkspace ? 'Projeto' : undefined
   // Mesmos dados para a faixa da conversa (chat sozinho) e para a aba do chat (com outras abas): nunca as duas ao mesmo tempo.
   const conversationChrome: ConversationChromeProps | null = selected ? {
     agentActivities: Object.fromEntries([snapshot.assistant, ...snapshot.agents].map(agent => [agent.id, booActivity(agent.id, selected.id, snapshot.runs, messages)])),
@@ -385,7 +416,7 @@ export default function AppShell() {
         }}
         onOpenEditor={setEditor}
         onOpenSettings={() => setSettingsOpen(true)}
-        view={view}
+        view={view === "boos" ? null : view}
         onOpenHome={openHome}
         section={sidebarSection}
         onSectionChange={setSidebarSection}
@@ -408,10 +439,16 @@ export default function AppShell() {
         chatHeader={conversationChrome && <ChatHeader {...conversationChrome} />}
         chatTab={conversationChrome && conversationTitle ? { label: conversationTitle.title, title: [conversationTitle.title, conversationTitle.subtitle].filter(Boolean).join(' · '), leading: <ConversationAvatar compact {...conversationChrome} />, trailing: <ConversationTools compact {...conversationChrome} /> } : mainTabLabel ? { label: mainTabLabel } : undefined}>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} canChat={canChat} />
+        {pwaMobile && !pwaStarted ? <div className="flex-1" aria-busy="true" />
+        : view === 'boos' ? <PwaBoosPage boos={pwaBoos} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} />
+        : view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} canChat={canChat} />
         : view === 'routines' ? <RoutinesPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
         : view === 'board' ? <BoardPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} readOnly={browserMode} />
         : selected ? <>
+          {pwaMobile && pwaTab === 'chief' && <>
+            <PwaAgentStrip boos={pwaBoos} onOpenAgent={agent => { if (agent.id === chiefOf(snapshot)?.id) return; if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} />
+            <PwaWorkingNow delegations={pwaDelegations} onOpenConversation={selectConversation} />
+          </>}
           {selectedMission && <MissionStrip mission={selectedMission} runs={snapshot.runs} approvals={snapshot.approvals} onNotice={setNotice} />}
           <div className="flex min-h-0 flex-1 flex-col">
             <MessageLinkContext.Provider value={messageLinks}>
@@ -472,6 +509,7 @@ export default function AppShell() {
       </ResizablePanelGroup>
       </div>
     </div>
+    {pwaMobile && <PwaBottomNav tab={pwaTab} attention={pwaAttention} onSelect={selectPwaTab} />}
     <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} browserMode={browserMode} />
     {!browserMode && <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} /></Suspense>}
     {/* No celular o composer ocupa toda a largura: o aviso sobe para não cobrir o botão de enviar. */}

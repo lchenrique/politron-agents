@@ -70,6 +70,8 @@ function normalizeSnapshot(input: unknown): Snapshot {
       responseMode: oneOf(item.responseMode, ['broadcast', 'leader', 'auto', 'discussion'] as const, 'leader'),
       leaderAgentId: typeof item.leaderAgentId === 'string' ? item.leaderAgentId : null,
       revision: number(item.revision, 1), archived: bool(item.archived), createdAt: text(item.createdAt),
+      ...(typeof item.parentConversationId === 'string' && item.parentConversationId ? { parentConversationId: item.parentConversationId } : {}),
+      ...(typeof item.updatedAt === 'string' ? { updatedAt: item.updatedAt } : {}),
     }
   }) : []
   const runs = Array.isArray(value.runs) ? value.runs.map(raw => {

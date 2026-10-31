@@ -13,5 +13,7 @@ body {background:var(--chrome);color:var(--foreground)}
   [data-pwa-shell="true"] .boobot-web-sidebar-panel>.boobot-sidebar {position:fixed;top:40px;bottom:0;left:0;z-index:50;width:min(88vw,360px);max-width:none;background:var(--chrome);border-right:1px solid var(--border);transform:translateX(-105%);transition:transform 180ms ease;box-shadow:var(--shadow-xl)}
   [data-pwa-shell="true"][data-sidebar-collapsed="false"] .boobot-web-sidebar-panel>.boobot-sidebar {transform:translateX(0)}
   [data-pwa-shell="true"] textarea {font-size:16px}
+  /* Com o teclado aberto o campo de mensagem ganha a altura da barra inferior. */
+  [data-pwa-shell="true"]:has(textarea:focus) .pwa-bottom-nav {display:none}
 }
 @media(prefers-reduced-motion:reduce){[data-pwa-shell="true"] *,[data-pwa-shell="true"] *::before,[data-pwa-shell="true"] *::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}

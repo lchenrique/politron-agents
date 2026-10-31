@@ -400,6 +400,8 @@ export class PwaGateway {
           const conversations = Array.isArray(value.conversations) ? value.conversations.map((c: Record<string, unknown>) => ({
             id: c.id, workspaceId: c.workspaceId, name: c.name, kind: c.kind, archived: c.archived, agentIds: c.agentIds,
             responseMode: c.responseMode, leaderAgentId: c.leaderAgentId, titleAuto: c.titleAuto, revision: c.revision, createdAt: c.createdAt,
+            parentConversationId: typeof c.parentConversationId === 'string' ? c.parentConversationId : undefined,
+            updatedAt: typeof c.updatedAt === 'string' ? c.updatedAt : undefined,
           })) : []
           const runs = Array.isArray(value.runs) ? value.runs.slice(-80).map((r: Record<string, unknown>) => ({
             id: r.id, workspaceId: r.workspaceId, conversationId: r.conversationId,
