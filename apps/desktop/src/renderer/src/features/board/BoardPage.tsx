@@ -2,11 +2,14 @@ import { useMemo, useState } from 'react'
 import { Check, GitBranch, MessageSquare, Plus, Search, ShieldCheck, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { BoardTask, BoardTaskInput, BoardTeam, Snapshot } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
+import { BoardCard } from './BoardCard'
+import { shortTaskId } from './boardTaskId'
 
 const field = 'h-9 w-full rounded-md border-[0.5px] border-input bg-card px-3 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
 const statuses: { id: BoardTask['status'] | 'queue'; label: string }[] = [
@@ -43,6 +46,7 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice, readOnly }: 
   const [integrationEvidence, setIntegrationEvidence] = useState<Record<string, string>>({})
   const [evidenceDraft, setEvidenceDraft] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const agents = snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired')
   const selectedTeam = teams.find(team => team.id === draft.teamId)
   const teamAgents = agents.filter(agent => selectedTeam?.agentIds.includes(agent.id))
@@ -67,27 +71,60 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice, readOnly }: 
     return !normalized || `${task.title} ${task.description} ${task.acceptanceCriteria}`.toLocaleLowerCase('pt-BR').includes(normalized)
   }
   const renderTaskCard = (task: BoardTask) => {
+    const reviewMission = task.currentReviewMissionId ? missionById.get(task.currentReviewMissionId) : undefined
+    return <BoardCard
+      key={task.id}
+      task={task}
+      worker={snapshot.agents.find(agent => agent.id === task.assigneeAgentId)}
+      reviewer={snapshot.agents.find(agent => agent.id === task.reviewerAgentId)}
+      waitingPosition={queueInfo(task)?.position ?? null}
+      evidenceCount={board.evidence.filter(item => item.taskId === task.id).length}
+      reviewReady={task.status === 'review' && reviewMission?.status === 'completed'}
+      selected={task.id === selectedTaskId}
+      onOpen={setSelectedTaskId}
+    />
+  }
+  const detailLabel = 'text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'
+  const detailText = 'whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]'
+  const renderDetails = (task: BoardTask) => {
     const worker = snapshot.agents.find(agent => agent.id === task.assigneeAgentId)
     const reviewer = snapshot.agents.find(agent => agent.id === task.reviewerAgentId)
     const team = teams.find(item => item.id === task.teamId)
     const reviewMission = task.currentReviewMissionId ? missionById.get(task.currentReviewMissionId) : undefined
     const workerMission = task.currentMissionId ? missionById.get(task.currentMissionId) : undefined
     const waiting = queueInfo(task)
-    const events = board.events.filter(event => event.taskId === task.id).slice(-4).reverse()
+    const events = board.events.filter(event => event.taskId === task.id).slice(-10).reverse()
     const evidence = board.evidence.filter(item => item.taskId === task.id)
-    return <article key={task.id} className="ds-card min-w-0 p-3" aria-label={`Tarefa ${task.title}`}>
-      <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold">{task.title}</h3><span className="ds-meta mt-1 inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px]">{waiting ? `Aguardando vaga · posição ${waiting.position}` : statusLabel(task.status)}</span></div><span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">{task.kind === 'code' ? <GitBranch className="size-3" /> : <Users className="size-3" />}{task.kind === 'code' ? task.branch || 'Código' : 'Geral'}</span></div>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">{task.description}</p>
-      {waiting && <p className="mt-2 rounded-mdbg-muted/50 px-2 py-1.5 text-[11px] text-muted-foreground">Aguardando o limite global de duas execuções ou a liberação do mesmo workspace. Posição estimada: {waiting.position}.</p>}
-      <p className="mt-2 text-xs"><span className="text-muted-foreground">Equipe</span> · {team?.name || 'Equipe removida'}{worker && <> · <span className="text-muted-foreground">Responsável</span> <span className="inline-flex items-center gap-1"><Avatar agent={worker} size="xxs" />{worker.name}</span></>}{reviewer && <> · <span className="text-muted-foreground">Revisor</span> <span className="inline-flex items-center gap-1"><Avatar agent={reviewer} size="xxs" />{reviewer.name}</span></>}</p>
-      {task.status === 'review' && <div className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-xs"><p className="font-medium">{reviewMission?.status === 'completed' ? 'Parecer do revisor' : 'Revisão em andamento'}</p>{reviewMission?.result && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{reviewMission.result}</p>}</div>}
-      {task.status === 'doing' && workerMission?.updates?.length ? <p className="mt-2 text-xs text-muted-foreground">Progresso: {workerMission.updates[workerMission.updates.length - 1]?.text}</p> : null}
-      {task.blockedReason && <p className="mt-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">Bloqueio: {task.blockedReason}</p>}
-      {task.integrationEvidence && <p className="mt-2 text-xs text-muted-foreground">Integração: {task.integrationEvidence}</p>}
-      <details className="mt-2 rounded-md border border-border/70 px-2.5 py-2 text-xs"><summary className="cursor-pointer font-medium">Critérios, atividade e evidências · {evidence.length}</summary><p className="mt-2 whitespace-pre-wrap text-muted-foreground">{task.acceptanceCriteria}</p>{evidence.length > 0 && <ul className="mt-2 space-y-1">{evidence.map(item => <li key={item.id}><span className="font-medium">{item.label}:</span> <span className="text-muted-foreground">{item.summary}</span></li>)}</ul>}{events.length > 0 && <ol className="mt-2 space-y-1 border-t border-border/70 pt-2">{events.map(event => <li key={event.id} className="text-muted-foreground">{new Date(event.createdAt).toLocaleString('pt-BR')} · {event.note}</li>)}</ol>}</details>
-      {!readOnly && !['done', 'cancelled'].includes(task.status) && <div className="mt-2 flex gap-2"><Input aria-label={`Nova evidência ${task.title}`} value={evidenceDraft[task.id] || ''} onChange={event => setEvidenceDraft(current => ({ ...current, [task.id]: event.target.value }))} placeholder="Registrar evidência ou decisão" maxLength={20_000} /><Button type="button" size="sm" variant="outline" disabled={!evidenceDraft[task.id]?.trim()} onClick={() => void saveEvidence(task)}>Anexar evidência</Button></div>}
-      {renderActions(task)}
-    </article>
+    const progress = task.status === 'doing' ? workerMission?.updates?.[workerMission.updates.length - 1]?.text : undefined
+    return <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-xl" data-testid="board-task-details" onCloseAutoFocus={event => { event.preventDefault(); document.querySelector<HTMLElement>(`[data-task-id="${task.id}"]`)?.focus() }}>
+      <SheetHeader className="shrink-0 gap-2 border-b border-border p-4 pr-12">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="tabular-nums">{shortTaskId(task.id)}</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px]">{statusLabel(task.status)}</span>
+          <span className="inline-flex min-w-0 items-center gap-1">{task.kind === 'code' ? <GitBranch className="size-3 shrink-0" /> : <Users className="size-3 shrink-0" />}<span className="truncate">{task.kind === 'code' ? task.branch || 'Código' : 'Geral'}</span></span>
+        </div>
+        <SheetTitle className="break-words text-base leading-6 [overflow-wrap:anywhere]">{task.title}</SheetTitle>
+        <SheetDescription className="sr-only">Detalhes, critérios de aceite, atividade e ações da tarefa.</SheetDescription>
+      </SheetHeader>
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-xs">
+          <dt className="text-muted-foreground">Equipe</dt><dd className="truncate">{team?.name || 'Equipe removida'}</dd>
+          {worker && <><dt className="text-muted-foreground">Responsável</dt><dd className="inline-flex min-w-0 items-center gap-1.5"><Avatar agent={worker} size="xxs" /><span className="truncate">{worker.name}</span></dd></>}
+          {reviewer && <><dt className="text-muted-foreground">Revisor</dt><dd className="inline-flex min-w-0 items-center gap-1.5"><Avatar agent={reviewer} size="xxs" /><span className="truncate">{reviewer.name}</span></dd></>}
+        </dl>
+        {waiting && <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">Aguardando o limite global de duas execuções ou a liberação do mesmo workspace. Posição estimada: {waiting.position}.</p>}
+        {task.blockedReason && <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">Bloqueio: {task.blockedReason}</p>}
+        <section className="space-y-1.5"><h3 className={detailLabel}>Descrição</h3><p className={detailText}>{task.description}</p></section>
+        <section className="space-y-1.5"><h3 className={detailLabel}>Critérios de aceite</h3><p className={detailText}>{task.acceptanceCriteria}</p></section>
+        {task.status === 'review' && <section className="space-y-1.5"><h3 className={detailLabel}>{reviewMission?.status === 'completed' ? 'Parecer do revisor' : 'Revisão em andamento'}</h3>{reviewMission?.result && <p className={cn(detailText, 'text-muted-foreground')}>{reviewMission.result}</p>}</section>}
+        {progress && <section className="space-y-1.5"><h3 className={detailLabel}>Progresso</h3><p className={cn(detailText, 'text-muted-foreground')}>{progress}</p></section>}
+        {task.integrationEvidence && <section className="space-y-1.5"><h3 className={detailLabel}>Integração</h3><p className={cn(detailText, 'text-muted-foreground')}>{task.integrationEvidence}</p></section>}
+        <section className="space-y-1.5"><h3 className={detailLabel}>Evidências · {evidence.length}</h3>{evidence.length > 0 ? <ul className="space-y-1 text-xs">{evidence.map(item => <li key={item.id} className="[overflow-wrap:anywhere]"><span className="font-medium">{item.label}:</span> <span className="text-muted-foreground">{item.summary}</span></li>)}</ul> : <p className="text-xs text-muted-foreground">Nenhuma evidência registrada.</p>}</section>
+        {events.length > 0 && <section className="space-y-1.5"><h3 className={detailLabel}>Atividade</h3><ol className="space-y-1 text-xs text-muted-foreground">{events.map(event => <li key={event.id} className="[overflow-wrap:anywhere]">{new Date(event.createdAt).toLocaleString('pt-BR')} · {event.note}</li>)}</ol></section>}
+        {!readOnly && !['done', 'cancelled'].includes(task.status) && <div className="flex gap-2"><Input aria-label={`Nova evidência ${task.title}`} value={evidenceDraft[task.id] || ''} onChange={event => setEvidenceDraft(current => ({ ...current, [task.id]: event.target.value }))} placeholder="Registrar evidência ou decisão" maxLength={20_000} /><Button type="button" size="sm" variant="outline" disabled={!evidenceDraft[task.id]?.trim()} onClick={() => void saveEvidence(task)}>Anexar evidência</Button></div>}
+      </div>
+      {!readOnly && <div className="shrink-0 border-t border-border p-4 pt-0">{renderActions(task)}</div>}
+    </SheetContent>
   }
 
   const createTeam = async (event: React.FormEvent) => {
@@ -141,7 +178,7 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice, readOnly }: 
     return <div className="mt-3 flex flex-wrap items-center gap-2">
       {workerLink && <Button type="button" size="sm" variant="outline" onClick={() => onOpenConversation(workerLink.conversationId)}><MessageSquare className="size-3.5" />Conversa da execução</Button>}
       {reviewLink && <Button type="button" size="sm" variant="outline" onClick={() => onOpenConversation(reviewLink.conversationId)}><ShieldCheck className="size-3.5" />Abrir conversa do revisor</Button>}
-      {task.status === 'backlog' && <Button type="button" size="sm" variant="outline" onClick={() => { setEditTaskId(task.id); setDraft({ title: task.title, description: task.description, acceptanceCriteria: task.acceptanceCriteria, kind: task.kind, teamId: task.teamId, workspaceId: task.workspaceId || '', assigneeAgentId: '', reviewerAgentId: '' }); setTaskForm(true); setTeamForm(false) }}>Editar tarefa</Button>}
+      {task.status === 'backlog' && <Button type="button" size="sm" variant="outline" onClick={() => { setEditTaskId(task.id); setDraft({ title: task.title, description: task.description, acceptanceCriteria: task.acceptanceCriteria, kind: task.kind, teamId: task.teamId, workspaceId: task.workspaceId || '', assigneeAgentId: '', reviewerAgentId: '' }); setTaskForm(true); setTeamForm(false); setSelectedTaskId(null) }}>Editar tarefa</Button>}
       {task.status === 'queued' && <Button type="button" size="sm" onClick={() => void action(task.id, 'start')}>Iniciar</Button>}
       {['backlog', 'ready', 'blocked'].includes(task.status) && <Button type="button" size="sm" variant="outline" onClick={() => { setAssignmentTaskId(assignmentTaskId === task.id ? null : task.id); setAssignment({ assigneeAgentId: task.assigneeAgentId || '', reviewerAgentId: task.reviewerAgentId || '' }) }}>{task.status === 'blocked' ? 'Reatribuir' : 'Atribuir'}</Button>}
       {assignmentTaskId === task.id && ['backlog', 'ready', 'blocked'].includes(task.status) && <div className="grid w-full gap-2 rounded-md border border-border p-3 sm:grid-cols-2" aria-label={`Atribuir ${task.title}`}>
@@ -161,8 +198,9 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice, readOnly }: 
   }
 
   const empty = !board.tasks.length
-  return <div className="min-h-0 flex-1 overflow-auto">
-    <div className="ds-page max-w-6xl space-y-7">
+  const selectedTask = board.tasks.find(task => task.id === selectedTaskId)
+  return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="max-h-[55%] shrink-0 space-y-4 overflow-y-auto px-4 pb-3 pt-6 sm:px-8 sm:pt-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0"><p className="ds-eyebrow mb-2">Trabalho da empresa</p><h1 className="ds-page-title">Board da empresa</h1><p className="ds-page-lede max-w-2xl">Organize responsabilidades, execução e revisão em um fluxo visível. Conversas e missões continuam funcionando do mesmo jeito, fora do board.</p></div>
         {!readOnly && <div className="flex gap-2">{teams.length > 0 && <Button type="button" variant="outline" onClick={() => { setTaskForm(value => !value); setTeamForm(false); setEditTaskId(null); setDraft(blankTask(teams[0]?.id)) }}><Plus className="size-4" />Nova tarefa</Button>}<Button type="button" onClick={() => { setTeamForm(value => !value); setTaskForm(false) }}><Users className="size-4" />Nova equipe</Button></div>}
@@ -187,15 +225,18 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice, readOnly }: 
         <div className="flex justify-end gap-2 sm:col-span-2"><Button type="button" variant="ghost" onClick={() => { setTaskForm(false); setEditTaskId(null) }}>Cancelar</Button><Button type="submit" disabled={saving || !draft.title.trim() || !draft.description.trim() || !draft.acceptanceCriteria.trim() || !draft.teamId || draft.kind === 'code' && !draft.workspaceId || !editTaskId && !!draft.assigneeAgentId !== !!draft.reviewerAgentId}>{editTaskId ? 'Salvar alterações' : `Criar ${draft.assigneeAgentId ? 'e iniciar' : 'tarefa'}`}</Button></div>
       </form>}
       {!teams.length && !teamForm && <div className="ds-empty px-6 py-10 text-center"><p className="text-sm font-medium">Nenhuma tarefa no board ainda</p><p className="mt-1 text-xs font-medium text-muted-foreground">Nenhuma equipe ainda</p><p className="mx-auto mt-1 max-w-lg text-xs leading-5 text-muted-foreground">Crie uma equipe e selecione os agentes que podem receber tarefas. Cada trabalho terá um responsável e outro agente fará a revisão.</p>{!readOnly && <Button type="button" className="mt-4" onClick={() => setTeamForm(true)}><Plus className="size-4" />Criar primeira equipe</Button>}</div>}
-      {!!teams.length && <>
-        <div className="flex flex-wrap items-center gap-2"><label className="relative min-w-48 flex-1 sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Buscar tarefas" className="pl-8" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar tarefas" /></label><select aria-label="Filtrar equipe" className={cn(field, 'w-auto min-w-40')} value={teamFilter} onChange={event => setTeamFilter(event.target.value)}><option value="all">Todas as equipes</option>{teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select><select aria-label="Filtrar responsável" className={cn(field, 'w-auto min-w-40')} value={assigneeFilter} onChange={event => setAssigneeFilter(event.target.value)}><option value="all">Todos os responsáveis</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select><select aria-label="Filtrar projeto" className={cn(field, 'w-auto min-w-40')} value={workspaceFilter} onChange={event => setWorkspaceFilter(event.target.value)}><option value="all">Todos os projetos</option>{snapshot.workspaces.filter(workspace => !workspace.archived && workspace.kind !== 'worktree').map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name || workspace.path}</option>)}</select><select aria-label="Filtrar tipo" className={cn(field, 'w-auto min-w-32')} value={kindFilter} onChange={event => setKindFilter(event.target.value)}><option value="all">Todos os tipos</option><option value="general">Geral</option><option value="code">Código</option></select><select aria-label="Filtrar status" className={cn(field, 'w-auto min-w-36')} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">Todos os status</option>{statuses.map(status => <option key={status.id} value={status.id}>{status.label}</option>)}</select></div>
-        {empty ? <div className="ds-empty px-6 py-10 text-center"><p className="text-sm font-medium">Nenhuma tarefa no board ainda</p><p className="mt-1 text-xs text-muted-foreground">O board só recebe tarefas criadas aqui; mensagens comuns continuam nas conversas.</p></div>
-          : <div className="flex gap-3 overflow-x-auto pb-3" aria-label="Colunas do board">{statuses.map(column => {
-            const cards = board.tasks.filter(taskMatches).filter(task => taskColumn(task) === column.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-            return <section key={column.id} className="ds-column flex w-[min(84vw,20rem)] shrink-0 flex-col gap-3 p-3" aria-label={`Coluna ${column.label}`}><header className="flex items-center justify-between"><h2 className="text-xs font-semibold">{column.label}</h2><span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{cards.length}</span></header><div className="flex flex-col gap-3">{cards.map(renderTaskCard)}</div>{cards.length === 0 && <p className="px-1 py-2 text-xs text-muted-foreground">Sem tarefas</p>}</section>
-          })}</div>}
-        {!empty && !board.tasks.some(taskMatches) && <div className="ds-empty px-6 py-10 text-center text-sm">Nenhuma tarefa corresponde aos filtros.</div>}
-      </>}
+      {!!teams.length && <div className="flex flex-wrap items-center gap-2"><label className="relative min-w-48 flex-1 sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Buscar tarefas" className="pl-8" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar tarefas" /></label><select aria-label="Filtrar equipe" className={cn(field, 'w-auto min-w-40')} value={teamFilter} onChange={event => setTeamFilter(event.target.value)}><option value="all">Todas as equipes</option>{teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select><select aria-label="Filtrar responsável" className={cn(field, 'w-auto min-w-40')} value={assigneeFilter} onChange={event => setAssigneeFilter(event.target.value)}><option value="all">Todos os responsáveis</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select><select aria-label="Filtrar projeto" className={cn(field, 'w-auto min-w-40')} value={workspaceFilter} onChange={event => setWorkspaceFilter(event.target.value)}><option value="all">Todos os projetos</option>{snapshot.workspaces.filter(workspace => !workspace.archived && workspace.kind !== 'worktree').map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name || workspace.path}</option>)}</select><select aria-label="Filtrar tipo" className={cn(field, 'w-auto min-w-32')} value={kindFilter} onChange={event => setKindFilter(event.target.value)}><option value="all">Todos os tipos</option><option value="general">Geral</option><option value="code">Código</option></select><select aria-label="Filtrar status" className={cn(field, 'w-auto min-w-36')} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">Todos os status</option>{statuses.map(status => <option key={status.id} value={status.id}>{status.label}</option>)}</select></div>}
+      {!empty && !board.tasks.some(taskMatches) && <div className="ds-empty px-6 py-6 text-center text-sm">Nenhuma tarefa corresponde aos filtros.</div>}
     </div>
+    {!!teams.length && (empty
+      ? <div className="ds-empty mx-4 mb-4 px-6 py-10 text-center sm:mx-8"><p className="text-sm font-medium">Nenhuma tarefa no board ainda</p><p className="mt-1 text-xs text-muted-foreground">O board só recebe tarefas criadas aqui; mensagens comuns continuam nas conversas.</p></div>
+      : <div role="region" tabIndex={0} aria-label="Colunas do board" className="flex min-h-[18rem] min-w-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden px-4 pb-4 sm:px-8">{statuses.map(column => {
+        const cards = board.tasks.filter(taskMatches).filter(task => taskColumn(task) === column.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        return <section key={column.id} className="ds-column flex h-full min-h-0 w-[18.5rem] shrink-0 flex-col" aria-label={`Coluna ${column.label}`}>
+          <header className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-3"><h2 className="truncate text-xs font-semibold">{column.label}</h2><span className="shrink-0 rounded-full bg-background/70 px-2 py-0.5 text-[10px] tabular-nums text-muted-foreground">{cards.length}</span></header>
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2">{cards.map(renderTaskCard)}{cards.length === 0 && <p className="rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">Sem tarefas</p>}</div>
+        </section>
+      })}</div>)}
+    <Sheet open={!!selectedTask} onOpenChange={open => { if (!open) setSelectedTaskId(null) }}>{selectedTask && renderDetails(selectedTask)}</Sheet>
   </div>
 }
