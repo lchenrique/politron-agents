@@ -107,7 +107,7 @@ export interface Approval {
 }
 export interface Run {
   id: string; conversationId: string; agentId: string; rootId: string; parentId: string | null
-  ancestry: string[]; status: RunStatus; threadId: string | null; turnId: string | null
+  ancestry: string[]; /** Notificações automáticas encadeadas desde a última mensagem do usuário (limita o laço Chief↔Boo). */ continuationDepth?: number; status: RunStatus; threadId: string | null; turnId: string | null
   messageId: string; input: string; inputMessageId?: string; planMode?: boolean; agent: Agent; modelOptions?: ModelRuntimeOptions; workspaceId: string; workspacePath: string; createdAt: string
 }
 export interface Delegation {

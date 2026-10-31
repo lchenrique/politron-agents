@@ -105,6 +105,8 @@ const SELF_PROFILE_PROPERTIES: Record<string, unknown> = {
 /** Como e onde habilitar cada permissão do Chief, para a mensagem de recusa orientar o usuário em vez de só negar. */
 const howToEnablePermission = (label: string) => ` Para habilitar, abra o menu (⋯) deste workspace, escolha Editar e marque "${label}" em Permissões do workspace.`
 
+/** Notificações automáticas seguidas (Boo terminou → Chief acordado → nova delegação...) permitidas por mensagem do usuário. */
+export const MAX_CONTINUATION_DEPTH = 8
 export class AppService extends EventEmitter {
   readonly store: WorkspaceStore
   readonly runtime: AgentRuntime
@@ -1826,6 +1828,9 @@ export class AppService extends EventEmitter {
   private async continueAfterDelegation(parent: RunContext, delegation: Delegation, result: string, failed = false): Promise<void> {
     const latest = this.store.delegation(delegation.id)
     if (!latest || latest.continuationRunId) return
+    // Cada notificação acordada herda a profundidade do pai; a mensagem do usuário recomeça em 0. Sem teto, Chief e Boo poderiam delegar e se acordar para sempre.
+    const continuationDepth = (parent.run.continuationDepth ?? 0) + 1
+    if (continuationDepth > MAX_CONTINUATION_DEPTH) return
     delegation = latest
     const conversation = this.store.conversation(delegation.sourceConversationId)
     if (conversation.archived || (conversation.agentIds.length && !conversation.agentIds.includes(delegation.requesterAgentId))) return
@@ -1838,7 +1843,7 @@ export class AppService extends EventEmitter {
       ? `Notificação automática (não é uma mensagem do usuário): o pedido delegado a ${recipient.name} falhou ou ficou bloqueado. Motivo:\n\n${result.slice(0, 12000)}\n\nInforme o usuário de forma breve e decida o próximo passo: reenviar com ajustes, delegar a outro Boo ou resolver você mesmo. Não repita o mesmo pedido sem mudar algo. Esta continuação pertence somente a você nesta conversa.`
       : `Notificação automática (não é uma mensagem do usuário): o pedido delegado a ${recipient.name} foi concluído. Resultado:\n\n${result.slice(0, 12000)}\n\nContinue a solicitação original do usuário usando esse resultado. Esta continuação pertence somente a você nesta conversa.`
     const message: Message = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, author: requester.name, role: 'assistant', text: '', status: 'queued', runId: null, delegationId: delegation.id, relatedConversationId: delegation.targetConversationId, createdAt: now }
-    const run: Run = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: parent.run.ancestry, status: 'queued', threadId: null, turnId: null, messageId: message.id, input, inputMessageId: message.id, agent: requester, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now }
+    const run: Run = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: parent.run.ancestry, continuationDepth, status: 'queued', threadId: null, turnId: null, messageId: message.id, input, inputMessageId: message.id, agent: requester, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now }
     message.runId = run.id
     const updated = { ...delegation, continuationRunId: run.id, updatedAt: now }
     this.store.db.exec('BEGIN IMMEDIATE')

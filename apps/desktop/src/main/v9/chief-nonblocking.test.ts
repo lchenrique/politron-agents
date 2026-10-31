@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false } }))
 
-import { AppService } from './workspace'
+import { AppService, MAX_CONTINUATION_DEPTH } from './workspace'
 import { WorkspaceQueue, chiefLaneKey } from './routing'
 import type { Agent, Run } from '../../shared/v9'
 
@@ -43,6 +43,8 @@ class FakeRuntime extends EventEmitter {
 }
 
 type Internals = { active: Map<string, AbortController>; callTool(context: unknown, name: string, args: Record<string, unknown>, callId: string): Promise<string> }
+// Cada teste sobe um AppService com SQLite; sob a suíte inteira em paralelo 5 s é pouco.
+vi.setConfig({ testTimeout: 30000 })
 const dirs: string[] = []
 const services: AppService[] = []
 afterEach(async () => {
@@ -121,6 +123,26 @@ describe('Chief com delegação sem bloqueio', () => {
     await vi.waitFor(() => expect(service.store.delegation(delegation.id)?.continuationRunId).toBeTruthy())
     expect(service.store.delegation(delegation.id)).toMatchObject({ status: 'failed' })
     await vi.waitFor(() => expect(runtime.inputs.some(item => item.agent === 'Chefe' && item.input.includes('falhou ou ficou bloqueado') && item.input.includes('Falha simulada do Boo.'))).toBe(true))
+    // Espera a continuação do Chief terminar antes do teardown, senão o dispose fecha o banco com o turno ainda ativo.
+    await vi.waitFor(() => expect(service.store.run(service.store.delegation(delegation.id)!.continuationRunId!)?.status).toBe('completed'))
+  })
+
+  it('notificações encadeadas têm teto: após MAX_CONTINUATION_DEPTH o Chief não é mais acordado (sem laço Chief↔Boo)', async () => {
+    const runtime = new FakeRuntime()
+    const { service, context, ask } = setup(runtime)
+    // Cada continuação herda a profundidade do pai + 1.
+    await ask({ task: 'Rodada 1', mode: 'background' }, 'call-depth-1')
+    const first = service.store.delegations()[0]
+    await vi.waitFor(() => expect(service.store.delegation(first.id)?.continuationRunId).toBeTruthy())
+    expect(service.store.run(service.store.delegation(first.id)!.continuationRunId!)?.continuationDepth).toBe(1)
+    // No teto: o Boo ainda executa e conclui, mas ninguém é acordado de novo.
+    context.run.continuationDepth = MAX_CONTINUATION_DEPTH
+    await ask({ task: 'Rodada no teto', mode: 'background' }, 'call-depth-cap')
+    const capped = service.store.delegations().find(item => item.id !== first.id)!
+    await vi.waitFor(() => expect(service.store.delegation(capped.id)?.status).toBe('completed'))
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(service.store.delegation(capped.id)?.continuationRunId).toBeUndefined()
+    expect(runtime.inputs.filter(item => item.input.includes('Notificação automática'))).toHaveLength(1)
   })
 
   it('cancelar a delegação não acorda o Chief', async () => {
