@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false }, safeStorage: { isEncryptionAvailable: () => false } }))
 import { nativeToolCall } from './workspace'
-import { codexRuntimePermissions, claudeRuntimePermissions, hasFullAccess } from './runtime-permissions'
+import { codexRuntimePermissions, claudeRuntimePermissions, effectiveRuntimeAgent, hasFullAccess } from './runtime-permissions'
 
 describe('ferramentas nativas no Acesso total', () => {
   it('traduz itens do Codex e do Claude para as ferramentas que o chat já exibe', () => {
@@ -24,6 +24,21 @@ describe('ferramentas nativas no Acesso total', () => {
 })
 
 describe('Acesso total no Codex', () => {
+  it.each([{ planMode: true }, { boardReview: true }])('desliga ferramentas nativas no Codex com escopo %j, inclusive ao retomar', async scope => {
+    const { CodexRuntime } = await import('./codex')
+    const { ASSISTANT } = await import('./store')
+    const runtime = new CodexRuntime()
+    const request = vi.fn(async () => ({ thread: { id: 't1' } }))
+    Object.assign(runtime, { start: async () => undefined, request })
+    const full = { ...ASSISTANT, runtimePermissionMode: 'bypass' as const }
+    await runtime.thread(effectiveRuntimeAgent(full, scope), process.cwd(), [], 'existing')
+    expect(request).toHaveBeenCalledWith('thread/resume', expect.objectContaining({
+      sandbox: 'read-only', approvalPolicy: 'on-request', threadId: 'existing',
+      config: expect.objectContaining({ 'features.shell_tool': false, 'features.unified_exec': false, 'features.apply_patch_freeform': false }),
+    }))
+    expect(full.runtimePermissionMode).toBe('bypass')
+  })
+
   it('liga shell e edição nativos só no Acesso total, mantendo navegador e computer use desligados', async () => {
     const { CodexRuntime } = await import('./codex')
     const { ASSISTANT } = await import('./store')

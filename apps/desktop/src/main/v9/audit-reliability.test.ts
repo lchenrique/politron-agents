@@ -12,10 +12,12 @@ import { AppService } from './workspace'
 class ControlledRuntime extends EventEmitter {
   threads: string[] = []
   inputs: string[] = []
+  agents: Agent[] = []
+  resumes: Array<string | undefined> = []
+  respond = vi.fn()
   async models() { return [] }
-  async thread() { const id = `thread-${this.threads.length}`; this.threads.push(id); return { id, history: 'empty' as const } }
+  async thread(agent: Agent, _directory: string, _tools: unknown[], threadId?: string) { this.agents.push(agent); this.resumes.push(threadId); const id = `thread-${this.threads.length}`; this.threads.push(id); return { id, history: 'empty' as const } }
   async send(_threadId: string, input: string) { this.inputs.push(input); return { turn: { id: 'shared-turn', status: 'inProgress' } } }
-  respond() {}
   async interrupt() {}
   close() {}
   complete(threadId: string) { this.emit('event', { method: 'turn/completed', params: { threadId, turn: { id: 'shared-turn', status: 'completed' } } }) }
@@ -51,6 +53,40 @@ afterEach(async () => {
 })
 
 describe('auditoria de permissões por agente', () => {
+  it.each(['plan', 'review', 'normal'] as const)('aplica permissões nativas por execução: %s', async mode => {
+    const { service, codex, conversation, sends } = setup()
+    const agent = service.saveAgent({ instructions: 'Teste de escopo.', name: 'Escopo', alias: 'escopo', canWrite: true, runtimePermissionMode: 'bypass' })
+    const chat = conversation(agent)
+    const reviewers = (service as unknown as { boardReviewerConversations: Set<string> }).boardReviewerConversations
+    // Primeiro cria uma sessão irrestrita, para verificar a transição de política.
+    const first = service.send(chat.id, 'Execução normal')
+    sends.push(first)
+    await vi.waitFor(() => expect(codex.inputs).toHaveLength(1))
+    codex.complete(codex.threads[0])
+    await first
+    if (mode === 'review') reviewers.add(chat.id)
+    const second = service.send(chat.id, 'Segundo turno', undefined, undefined, undefined, false, true, mode === 'plan')
+    sends.push(second)
+    await vi.waitFor(() => expect(codex.inputs).toHaveLength(2))
+    expect(codex.agents[1].runtimePermissionMode).toBe(mode === 'normal' ? 'bypass' : 'managed')
+    expect(service.store.agent(agent.id).runtimePermissionMode).toBe('bypass')
+    expect(codex.resumes[1]).toBe(mode === 'normal' ? codex.threads[0] : undefined)
+    for (const method of ['execCommandApproval', 'commandExecutionRequestApproval', 'applyPatchApproval', 'item/permissions/requestApproval']) {
+      codex.emit('event', { id: method, method, params: { threadId: codex.threads[1] } })
+      expect(codex.respond).toHaveBeenLastCalledWith(method, { decision: mode === 'normal' ? 'accept' : 'decline' })
+    }
+    codex.complete(codex.threads[1])
+    await second
+    reviewers.delete(chat.id)
+    const third = service.send(chat.id, 'Voltar à execução')
+    sends.push(third)
+    await vi.waitFor(() => expect(codex.inputs).toHaveLength(3))
+    expect(codex.agents[2].runtimePermissionMode).toBe('bypass')
+    expect(codex.resumes[2]).toBe(codex.threads[mode === 'normal' ? 1 : 0])
+    codex.complete(codex.threads[2])
+    await third
+  })
+
   it('Acesso total libera aprovações, mudanças no Boobot, perguntas e plano sem criar pendência', async () => {
     const { service, conversation } = setup()
     const agent = service.saveAgent({ instructions: 'Fixture de acesso total.', name: 'Total', alias: 'total', runtimePermissionMode: 'bypass', approvalMode: 'ask' })

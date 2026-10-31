@@ -12,7 +12,7 @@ import { delegationEligibility } from './delegation-eligibility'
 import { createCommandEvidence, formatCommandEvidence } from './command-evidence'
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
-import { hasFullAccess } from './runtime-permissions'
+import { effectiveRuntimeAgent, hasFullAccess } from './runtime-permissions'
 import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type BoardEvidence, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
@@ -1037,12 +1037,15 @@ export class AppService extends EventEmitter {
       const workspaceInstructions = this.store.workspace(run.workspaceId).instructions
       const workspaceContext = createHash('sha256').update(workspaceInstructions).digest('hex').slice(0, 16)
       const tools = this.tools(context)
+      const boardReview = this.boardReviewerConversations.has(conversation.id)
+      const runtimeAgent = effectiveRuntimeAgent(agent, { planMode: run.planMode, boardReview })
       // Retomar uma sessão existente não atualiza as ferramentas do Codex/Claude: se a lista mudou (permissão, papel, ou código), força uma sessão nova em vez de reaproveitar uma com ferramentas desatualizadas.
       const permissions = this.store.workspace(run.workspaceId).permissions
       const permissionKey = createHash('sha256').update(JSON.stringify({
         agentCanWrite: agent.canWrite, workspaceFilesWrite: permissions?.filesWrite || 'inherit',
         agentComputerUse: agent.computerUse, workspaceComputerUse: permissions?.computerUse || 'deny',
         approvalMode: agent.approvalMode, terminalEnabled: this.store.terminalEnabled(), planMode: run.planMode === true,
+        boardReview, runtimePermissionMode: runtimeAgent.runtimePermissionMode, nativePolicyVersion: 1,
       })).digest('hex').slice(0, 12)
       const toolsKey = fingerprintTools(tools, TOOL_BROKER_VERSION).slice(0, 16)
       // Codex/Claude recebem o proxy mesmo sem autorização, para que aprovar external_browser_request valha nesta execução.
@@ -1053,11 +1056,11 @@ export class AppService extends EventEmitter {
       if (binding?.runtime && binding.runtime !== agent.runtime) { this.store.deleteSessionBinding(bindingKey); binding = undefined }
       let thread: RuntimeThread
       let didRetryUnavailable = false
-      try { thread = await runtime.thread(agent, directory, tools, binding?.threadId, workspaceInstructions, externalBrowser) }
+      try { thread = await runtime.thread(runtimeAgent, directory, tools, binding?.threadId, workspaceInstructions, externalBrowser) }
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || !binding?.threadId) throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
-        thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions, externalBrowser)
+        thread = await runtime.thread(runtimeAgent, directory, tools, undefined, workspaceInstructions, externalBrowser)
       }
       const makeTurnContext = () => buildTurnContext({
         history: this.store.history(conversation.id), checkpoint: this.store.latestCheckpoint(conversation.id, agent.id),
@@ -1079,7 +1082,7 @@ export class AppService extends EventEmitter {
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || didRetryUnavailable || !binding?.threadId || thread.history !== 'resume-pending') throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
-        thread = await runtime.thread(agent, directory, tools, undefined, workspaceInstructions, externalBrowser)
+        thread = await runtime.thread(runtimeAgent, directory, tools, undefined, workspaceInstructions, externalBrowser)
         threadId = thread.id; run.threadId = threadId; this.store.putRun(run)
         turnContext = makeTurnContext()
         result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000, runtimeOptions)
@@ -1321,7 +1324,7 @@ export class AppService extends EventEmitter {
     }
     if (['execCommandApproval', 'commandExecutionRequestApproval', 'applyPatchApproval', 'item/permissions/requestApproval'].includes(event.method)) {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId)
-      runtime.respond(event.id, { decision: context && hasFullAccess(context.agent) ? 'accept' : 'decline' })
+      runtime.respond(event.id, { decision: context && hasFullAccess(effectiveRuntimeAgent(context.agent, { planMode: context.run.planMode, boardReview: this.boardReviewerConversations.has(context.conversation.id) })) ? 'accept' : 'decline' })
     }
     // Ferramentas nativas (Acesso total): Codex manda commandExecution/fileChange; Claude manda nativeTool.
     if ((event.method === 'item/started' || event.method === 'item/completed') && ['commandExecution', 'fileChange', 'nativeTool'].includes(params.item?.type)) {
