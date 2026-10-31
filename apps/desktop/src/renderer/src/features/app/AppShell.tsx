@@ -333,7 +333,8 @@ export default function AppShell() {
   const pwaBoos = useMemo(() => booOverview(snapshot, agentStates), [snapshot, agentStates])
   const pwaDelegations = useMemo(() => deriveDelegations(snapshot), [snapshot])
   const pwaChiefConversation = useMemo(() => chiefConversation(snapshot), [snapshot])
-  const pwaTab: PwaTab = view === 'boos' ? 'boos' : view || activeWorkspaceId ? 'projects' : !sidebarCollapsed ? 'projects' : tabForConversation(snapshot, selected)
+  // A Central é a casa do Chief: no celular ela acende a aba Chief, não Projetos.
+  const pwaTab: PwaTab = view === 'boos' ? 'boos' : view === 'home' ? 'chief' : view || activeWorkspaceId ? 'projects' : !sidebarCollapsed ? 'projects' : tabForConversation(snapshot, selected)
   usePwaDelegationNotices(pwaMobile ? pwaDelegations : [], setNotice)
   useEffect(() => {
     if (!pwaMobile || pwaStarted || loading) return
