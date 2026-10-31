@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
+import type { spawn } from 'node:child_process'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -113,5 +116,129 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
       expect((events.at(-1) as any).params.turn.status).toBe('completed')
       runtime.close()
     }
+  })
+})
+
+describe('Antigravity: falhas do CLI chegam ao usuário em vez de "pensando" infinito', () => {
+  type Ev = { method?: string; params: { turn?: { status: string; error: { message: string } }; item?: { text: string } } }
+  const withBinary = (runtime: HeadlessCliRuntime) => { (runtime as unknown as { binary: string }).binary = 'agy' }
+  const antigravityAgent = { ...agent, runtime: 'antigravity', model: 'gemini-3.8-flash-low' } satisfies Agent
+  type Fake = ReturnType<typeof fakeChild>
+  function fakeChild() {
+    const child = new EventEmitter() as EventEmitter & { stdout: PassThrough; stderr: PassThrough; stdin: EventEmitter & { write: Mock; end: Mock }; kill: Mock }
+    child.stdout = new PassThrough(); child.stderr = new PassThrough()
+    child.stdin = Object.assign(new EventEmitter(), { write: vi.fn(), end: vi.fn() })
+    child.kill = vi.fn()
+    return child
+  }
+  async function run(script: (child: Fake) => void, inactivityMs = 60_000) {
+    const child = fakeChild()
+    const spawnMock = vi.fn(() => { setTimeout(() => script(child), 5); return child })
+    const runtime = new HeadlessCliRuntime('antigravity', tmpdir(), { spawn: spawnMock as unknown as typeof spawn, inactivityMs })
+    ;withBinary(runtime)
+    const events: Ev[] = []
+    const done = new Promise<NonNullable<Ev['params']['turn']>>(resolve => runtime.on('event', event => { events.push(event); if (event.method === 'turn/completed') resolve(event.params.turn!) }))
+    const thread = await runtime.thread(antigravityAgent, tmpdir(), [])
+    await runtime.send(thread.id, 'oi', antigravityAgent.model)
+    const turn = await done
+    runtime.close()
+    return { turn, events, child, args: (spawnMock.mock.calls[0] as unknown as [string, string[]])[1] }
+  }
+
+  it('responde normalmente: entrega o texto e conclui o turno', async () => {
+    const { turn, events, args } = await run(child => {
+      child.stdout.write(JSON.stringify({ event: 'init', init: { model: 'gemini-3.8-flash-low' } }) + '\n')
+      child.stdout.write(JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'ok' } }) + '\n')
+      child.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'ok\n' } }) + '\n')
+    })
+    expect(turn.status).toBe('completed')
+    expect(events.find(event => event.method === 'item/completed')?.params.item?.text).toBe('ok')
+    expect(args).toEqual(expect.arrayContaining(['--model', 'gemini-3.8-flash-low', '--output-format', 'stream-json']))
+  })
+
+  it('processo que trava: falha por inatividade com mensagem clara e encerra o CLI', async () => {
+    const { turn, child } = await run(() => { /* nenhuma saída */ }, 80)
+    expect(turn.status).toBe('failed')
+    expect(turn.error.message).toMatch(/Antigravity ficou \d+s sem responder/)
+    expect(turn.error.message).toContain('instalado, autenticado')
+    expect(child.kill).toHaveBeenCalled()
+  })
+
+  it('travado depois de avisar no stderr: a mensagem inclui o que o CLI escreveu', async () => {
+    const { turn } = await run(child => child.stderr.write('please sign in at https://example.test/login'), 80)
+    expect(turn.status).toBe('failed')
+    expect(turn.error.message).toContain('please sign in')
+  })
+
+  it('saída com código diferente de zero mostra o stderr', async () => {
+    const { turn } = await run(child => { child.stderr.write('error: not logged in\n'); setTimeout(() => child.emit('close', 1), 5) })
+    expect(turn.status).toBe('failed')
+    expect(turn.error.message).toBe('error: not logged in')
+  })
+
+  it('código zero sem resposta mostra o texto não-JSON recebido no stdout', async () => {
+    const { turn } = await run(child => { child.stdout.write('Login required\n'); setTimeout(() => child.emit('close', 0), 5) })
+    expect(turn.status).toBe('failed')
+    expect(turn.error.message).toContain('O CLI encerrou sem produzir uma resposta.')
+    expect(turn.error.message).toContain('Login required')
+  })
+
+  it('resultado de erro do CLI (ex.: modelo inválido) é propagado', async () => {
+    const { turn } = await run(child => child.stdout.write(JSON.stringify({ event: 'result', result: { status: 'ERROR', error: 'invalid model selection' } }) + '\n'))
+    expect(turn.status).toBe('failed')
+    expect(turn.error.message).toBe('invalid model selection')
+  })
+
+  it('não dispara a inatividade enquanto aguarda o resultado de uma ferramenta do Boobot', async () => {
+    const child = fakeChild()
+    const runtime = new HeadlessCliRuntime('antigravity', tmpdir(), { spawn: vi.fn(() => child) as unknown as typeof spawn, inactivityMs: 40 })
+    ;withBinary(runtime)
+    const events: Ev[] = []
+    runtime.on('event', event => events.push(event))
+    const tools = [{ type: 'function', name: 'group_members', description: '', inputSchema: { type: 'object' } }] as never
+    const thread = await runtime.thread(antigravityAgent, tmpdir(), tools)
+    await runtime.send(thread.id, 'oi', antigravityAgent.model)
+    child.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', structured_output: { action: 'tool', tool: 'group_members', arguments: '{}', text: '' } } }) + '\n')
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(events.some(event => event.method === 'item/tool/call')).toBe(true)
+    expect(events.some(event => event.method === 'turn/completed')).toBe(false)
+    runtime.close()
+  })
+
+  it('turno longo que continua emitindo saída não é morto pelo vigia', async () => {
+    const { turn } = await run(child => {
+      let n = 0
+      const tick = setInterval(() => {
+        child.stdout.write(JSON.stringify({ event: 'step_update', step_update: { step_type: 'agent_response', text_delta: '.' } }) + '\n')
+        if (++n === 6) { clearInterval(tick); child.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: '......' } }) + '\n') }
+      }, 40)
+    }, 120)
+    expect(turn.status).toBe('completed')
+  })
+
+  it('limpa o vigia ao concluir, interromper e falhar (sem timers pendentes)', async () => {
+    const idleOf = (runtime: HeadlessCliRuntime, id: string) => (runtime as unknown as { sessions: Map<string, { idle?: unknown }> }).sessions.get(id)?.idle
+    const make = () => {
+      const child = fakeChild()
+      const runtime = new HeadlessCliRuntime('antigravity', tmpdir(), { spawn: vi.fn(() => child) as unknown as typeof spawn, inactivityMs: 60_000 })
+      withBinary(runtime)
+      return { child, runtime }
+    }
+    const completed = make()
+    const t1 = await completed.runtime.thread(antigravityAgent, tmpdir(), [])
+    const sent = await completed.runtime.send(t1.id, 'oi', antigravityAgent.model)
+    expect(idleOf(completed.runtime, t1.id)).toBeDefined()
+    completed.child.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'ok' } }) + '\n')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(idleOf(completed.runtime, t1.id)).toBeUndefined()
+    completed.runtime.close()
+    const interrupted = make()
+    const t2 = await interrupted.runtime.thread(antigravityAgent, tmpdir(), [])
+    const turn = await interrupted.runtime.send(t2.id, 'oi', antigravityAgent.model)
+    await interrupted.runtime.interrupt(t2.id, turn.turn.id)
+    expect(idleOf(interrupted.runtime, t2.id)).toBeUndefined()
+    expect(interrupted.child.kill).toHaveBeenCalled()
+    interrupted.runtime.close()
+    expect(sent.turn.status).toBe('inProgress')
   })
 })
