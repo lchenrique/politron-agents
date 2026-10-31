@@ -36,6 +36,7 @@ import { RoutinesPage } from '../work/RoutinesPage'
 import { MissionStrip } from '../work/MissionStrip'
 import { BoardPage } from '../board/BoardPage'
 import { OfficePage } from '../office/OfficePage'
+import { MarketplacePage } from '../marketplace/MarketplacePage'
 
 const Editor = lazy(() => import('../editors/Editor').then(module => ({ default: module.Editor })))
 const SettingsPage = lazy(() => import('./SettingsPage').then(module => ({ default: module.SettingsPage })))
@@ -69,7 +70,7 @@ export default function AppShell() {
   const setSelectedEffort = useCallback((effort: Agent['effort']) => { setSelectedEffortState(effort); try { localStorage.setItem('politron.composer.effort', effort || 'medium') } catch { /* preferência opcional */ } }, [])
   const [selectedId, setSelectedId] = useState('')
   // A Central do Chief é a tela inicial; conversas e projetos continuam a um clique.
-  const [view, setView] = useState<'home' | 'routines' | 'board' | 'office' | 'boos' | null>('home')
+  const [view, setView] = useState<'home' | 'routines' | 'board' | 'office' | 'marketplace' | 'boos' | null>('home')
   const [pwaStarted, setPwaStarted] = useState(false)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const activeWorkspaceIdRef = useRef<string | null>(null)
@@ -333,7 +334,7 @@ export default function AppShell() {
   }
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
-  const openHome = useCallback((next: 'home' | 'routines' | 'board' | 'office' | 'boos') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
+  const openHome = useCallback((next: 'home' | 'routines' | 'board' | 'office' | 'marketplace' | 'boos') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
   const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
   const pwaBoos = useMemo(() => booOverview(snapshot, agentStates), [snapshot, agentStates])
@@ -360,9 +361,10 @@ export default function AppShell() {
     : view === 'routines' ? { label: 'Rotinas' }
     : view === 'board' ? { label: 'Board da empresa' }
     : view === 'office' ? { label: 'Escritório' }
+    : view === 'marketplace' ? { label: 'Marketplace' }
     : contextWorkspace && (parentWorkspace?.name || contextWorkspace.name) ? { label: parentWorkspace?.name || contextWorkspace.name, detail: contextWorkspace.kind === 'worktree' ? contextWorkspace.branch || contextWorkspace.name : undefined }
     : undefined
-  const mainTabLabel = view === 'boos' ? 'Boos' : view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : view === 'office' ? 'Escritório' : activeWorkspace ? 'Projeto' : undefined
+  const mainTabLabel = view === 'boos' ? 'Boos' : view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : view === 'office' ? 'Escritório' : view === 'marketplace' ? 'Marketplace' : activeWorkspace ? 'Projeto' : undefined
   // Mesmos dados para a faixa da conversa (chat sozinho) e para a aba do chat (com outras abas): nunca as duas ao mesmo tempo.
   const conversationChrome: ConversationChromeProps | null = selected ? {
     agentActivities: Object.fromEntries([snapshot.assistant, ...snapshot.agents].map(agent => [agent.id, booActivity(agent.id, selected.id, snapshot.runs, messages)])),
@@ -446,6 +448,7 @@ export default function AppShell() {
         : view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} canChat={canChat} />
         : view === 'routines' ? <RoutinesPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
         : view === 'office' ? <OfficePage snapshot={snapshot} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} />
+        : view === 'marketplace' ? <MarketplacePage snapshot={snapshot} models={models} onNotice={setNotice} onHired={conversationId => { void refresh().then(() => selectConversation(conversationId)) }} />
         : view === 'board' ? <BoardPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} readOnly={browserMode} />
         : selected ? <>
           {pwaMobile && <PwaChatTopBar snapshot={snapshot} conversation={selected} onBack={backToChats}

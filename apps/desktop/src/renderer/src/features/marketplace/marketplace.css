@@ -1,0 +1,37 @@
+.market { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 20px; overflow-y: auto; padding: 24px 28px 32px; }
+.market__header { display: flex; flex-direction: column; gap: 4px; }
+.market__title { margin: 0; font-size: 22px; font-weight: 600; }
+.market__summary { margin: 0; color: var(--muted-foreground); font-size: 13px; }
+.market__empty { display: flex; align-items: center; gap: 8px; color: var(--muted-foreground); font-size: 13px; }
+.market__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 16px; align-items: start; }
+
+.market-card { display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--card, var(--background)); padding: 18px; }
+.market-card__top { display: flex; flex-direction: column; gap: 6px; }
+.market-card__area { align-self: flex-start; border-radius: 999px; background: var(--muted); color: var(--muted-foreground); font-size: 11px; font-weight: 600; padding: 2px 8px; }
+.market-card__name { margin: 0; font-size: 16px; font-weight: 600; }
+.market-card__description { margin: 0; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }
+.market-card__members { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.market-card__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.market-card__details { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+
+.market-member { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.market-member > span { display: flex; flex-direction: column; }
+.market-member__role { color: var(--muted-foreground); font-size: 12px; }
+.market-member__lead { margin-left: 6px; color: var(--primary); font-size: 11px; font-weight: 600; }
+
+.market-detail p { margin: 0; font-size: 13px; }
+.market-detail__text { margin-top: 2px !important; color: var(--muted-foreground); }
+.market-detail__skills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px !important; }
+.market-skill { border-radius: 6px; background: var(--muted); font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; padding: 1px 6px; }
+
+.market-hire { display: flex; flex-direction: column; gap: 16px; }
+.market-hire__where { display: flex; flex-direction: column; gap: 6px; margin: 0; border: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+.market-hire__where legend { margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.market-hire__option { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 13px; padding: 8px 10px; }
+.market-hire__option:has(input:checked) { border-color: var(--primary); }
+.market-hire__option input { margin-top: 3px; accent-color: var(--primary); }
+.market-hire__option > span { display: flex; flex-direction: column; }
+.market-hire__option > span > span { color: var(--muted-foreground); font-size: 12px; }
+.market-hire__warn { margin: 0; color: var(--destructive); font-size: 13px; }
+
+@media (max-width: 640px) { .market { padding: 16px; } }

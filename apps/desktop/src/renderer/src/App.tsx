@@ -22,6 +22,7 @@ const BooStudioGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev
 const SidebarGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/SidebarGallery")) : null;
 const BoardGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/BoardGallery")) : null;
 const OfficeGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/OfficeGallery")) : null;
+const MarketplaceGallery = import.meta.env.DEV ? lazy(() => import("@/features/dev/MarketplaceGallery")) : null;
 const RemoteFolderDialog = lazy(() => import("@/features/hosts/RemoteFolderDialog").then(module => ({ default: module.RemoteFolderDialog })));
 
 const queryClient = new QueryClient();
@@ -47,6 +48,7 @@ const App = () => (
               {BooGallery && <Route path="/boo-gallery" element={<Suspense fallback={null}><BooGallery /></Suspense>} />}
               {BooWorkGallery && <Route path="/boo-work-gallery" element={<Suspense fallback={null}><BooWorkGallery /></Suspense>} />}
               {OfficeGallery && <Route path="/office-gallery" element={<Suspense fallback={null}><OfficeGallery /></Suspense>} />}
+              {MarketplaceGallery && <Route path="/marketplace-gallery" element={<Suspense fallback={null}><MarketplaceGallery /></Suspense>} />}
               {BoardGallery && <Route path="/board-gallery" element={<Suspense fallback={null}><BoardGallery /></Suspense>} />}
               {SidebarGallery && <Route path="/sidebar-gallery" element={<Suspense fallback={null}><SidebarGallery /></Suspense>} />}
               {BooStudioGallery && <Route path="/boo-studio-gallery" element={<Suspense fallback={null}><BooStudioGallery /></Suspense>} />}

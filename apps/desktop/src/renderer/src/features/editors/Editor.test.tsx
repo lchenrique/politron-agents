@@ -187,10 +187,10 @@ describe('editor de agentes com Poli Studio', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-1', name: 'Atlas', role: 'chief' })))
   })
 
-  it('organiza o drawer em três seções com painel rolável e rodapé fora da rolagem', () => {
+  it('organiza o drawer em quatro seções com painel rolável e rodapé fora da rolagem', () => {
     render(<Editor kind="agent" agents={[]} models={[]} initial={agent('atlas', 'Atlas')} onClose={vi.fn()} onSave={vi.fn()} onPickFolder={vi.fn()} />)
     const tablist = screen.getByRole('tablist', { name: 'Seções do agente' })
-    expect(within(tablist).getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Identidade', 'Aparência', 'Modelo e permissões'])
+    expect(within(tablist).getAllByRole('tab').map(tab => tab.textContent)).toEqual(['Identidade', 'Aparência', 'Skills', 'Modelo e permissões'])
     const panel = screen.getByRole('tabpanel', { name: 'Identidade' })
     expect(panel).toHaveClass('overflow-y-auto', 'min-h-0')
     expect(within(panel).getByRole('region', { name: 'Como aparece na conversa' })).toContainElement(screen.getByLabelText('Menção'))

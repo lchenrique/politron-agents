@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, Building2, CalendarClock, Check, ChevronRight, CirclePlus, ClipboardList, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Trash2, Triangle, Users } from 'lucide-react'
+import { Archive, ArrowLeft, Building2, CalendarClock, Check, ChevronRight, CirclePlus, ClipboardList, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Store, Trash2, Triangle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Menu, Modal, type MenuEntry, type MenuItem } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
@@ -44,8 +44,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   onDeleteAgent: (id: string) => void | Promise<void>
   onSetChief: (agent: Agent, chief: boolean) => void | Promise<void>
   onNotice: (value: string) => void
-  view?: 'home' | 'routines' | 'board' | 'office' | null
-  onOpenHome?: (view: 'home' | 'routines' | 'board' | 'office') => void
+  view?: 'home' | 'routines' | 'board' | 'office' | 'marketplace' | null
+  onOpenHome?: (view: 'home' | 'routines' | 'board' | 'office' | 'marketplace') => void
   section?: 'projects' | 'agents'
   onSectionChange?: (section: 'projects' | 'agents') => void
   attentionCount?: number
@@ -454,6 +454,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         <span className="min-w-0 flex-1 truncate">Escritório</span>
         {!!workingCount && <span className="ds-count" aria-label={`${workingCount} trabalhando`}>{workingCount}</span>}
       </Button>
+      {!browserMode && <Button type="button" variant={null} size={null} aria-current={view === 'marketplace' ? 'page' : undefined} onClick={() => onOpenHome('marketplace')} className="dsh-panel-row">
+        <span className="dsh-glyph"><Store /></span>
+        <span className="min-w-0 flex-1 truncate">Marketplace</span>
+      </Button>}
       {!browserMode && <Button type="button" variant={null} size={null} aria-current={view === 'routines' ? 'page' : undefined} onClick={() => onOpenHome('routines')} className="dsh-panel-row">
         <span className="dsh-glyph"><CalendarClock /></span>
         <span className="min-w-0 flex-1 truncate">Rotinas</span>

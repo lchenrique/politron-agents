@@ -1,5 +1,5 @@
 import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { Folder, FolderGit2, FolderOpen, FolderPlus, Loader2, Palette, ShieldCheck, TriangleAlert, UserRound, X } from 'lucide-react'
+import { Folder, FolderGit2, FolderOpen, FolderPlus, Loader2, Palette, ShieldCheck, Sparkles, TriangleAlert, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -10,15 +10,17 @@ import { Avatar } from '../app/Avatar'
 import { PoliCustomizer } from '../app/PoliCustomizer'
 import { ModelSelector } from '../composer/ModelSelector'
 import { ApprovalGrantList } from './ApprovalGrantList'
+import { AgentSkills } from './AgentSkills'
 import { EFFORT_LABELS, EFFORT_LEVELS, aliasFor, errorText } from '../app/appShellShared'
 
 export type EditorKind = 'agent' | 'conversation' | 'workspace'
 export type EditorData = (Partial<Agent> | Partial<Conversation> | Partial<Workspace>) & { workspacePath?: string | null; path?: string | null }
 
-type AgentSection = 'identity' | 'appearance' | 'execution'
+type AgentSection = 'identity' | 'appearance' | 'skills' | 'execution'
 const AGENT_SECTIONS: { id: AgentSection; label: string; description: string; icon: typeof UserRound }[] = [
   { id: 'identity', label: 'Identidade', description: 'Nome, menção, instruções e papel do agente na equipe.', icon: UserRound },
   { id: 'appearance', label: 'Aparência', description: 'Mascote ou imagem que representa o agente nas conversas.', icon: Palette },
+  { id: 'skills', label: 'Skills', description: 'Skills do Marketplace que este Boo usa no trabalho.', icon: Sparkles },
   { id: 'execution', label: 'Modelo e permissões', description: 'Com qual modelo o agente trabalha e o que pode fazer sem perguntar.', icon: ShieldCheck },
 ]
 
@@ -56,6 +58,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
   const [role, setRole] = useState((initial as Agent | undefined)?.role || 'agent')
   const [temporary, setTemporary] = useState((initial as Agent | undefined)?.temporary === true)
   const [effort, setEffort] = useState((initial as Agent | undefined)?.effort || 'medium')
+  const [skillIds, setSkillIds] = useState<string[]>((initial as Agent | undefined)?.skillIds || [])
   const runtimeModels = models.filter(item => item.runtime === runtime)
   const selectedModel = model
     ? runtimeModels.find(item => item.id === `${runtime}:${model}` || item.id === model)
@@ -123,7 +126,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
     setSaving(true); setProblem('')
     try {
       if (kind === 'agent' && !instructions.trim()) { setAgentSection('identity'); throw new Error('Escreva as instruções de trabalho do agente para continuar.') }
-      if (kind === 'agent') await onSave({ ...(initial ? { id: initial.id } : {}), name, alias: alias || aliasFor(name), description, instructions, model, effort: selectedEffort, role, color, avatar, pitsShape, ...pits, temporary, canWrite, computerUse, approvalMode, runtimePermissionMode, runtime })
+      if (kind === 'agent') await onSave({ ...(initial ? { id: initial.id } : {}), name, alias: alias || aliasFor(name), description, instructions, model, effort: selectedEffort, role, color, avatar, pitsShape, ...pits, temporary, canWrite, computerUse, approvalMode, runtimePermissionMode, runtime, skillIds })
       else if (kind === 'workspace') {
         let path: string | null = directory || null
         if (creatingProject && origin === 'free') path = null
@@ -196,6 +199,7 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
             </EditorGroup>
           </>}
           {agentSection === 'appearance' && <><p className="text-sm text-muted-foreground">Escolha a cor do Boo e, se quiser, um pequeno detalhe.</p><PoliCustomizer agent={previewAgent} onChange={onCustomizePoli} onReset={() => setAvatar('')} /><EditorGroup title="Imagem própria"><div className="flex flex-wrap items-center gap-3"><Button type="button" variant="ghost" size={null} onClick={() => uploadRef.current?.click()} className="rounded-md border border-border px-3 py-2 text-sm font-normal text-inherit hover:bg-accent hover:text-inherit">{avatar ? "Trocar imagem" : "Escolher imagem própria"}</Button><input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => chooseAvatar(event.target.files?.[0])} />{avatar && <Button type="button" variant="ghost" size={null} className="rounded-md border border-border px-3 py-2 text-sm font-normal text-inherit hover:bg-accent hover:text-inherit" onClick={() => setAvatar("")}>Usar Boo</Button>}<span className="text-xs text-muted-foreground">PNG, JPG ou WebP · até 1,4 MB</span></div></EditorGroup></>}
+          {agentSection === 'skills' && <AgentSkills value={skillIds} onChange={setSkillIds} />}
           {agentSection === 'execution' && <>
             <EditorGroup title="Modelo" description="Motor, modelo e esforço usados quando este agente responde.">
             <label className="block space-y-1.5 text-sm">Perfil rápido<Select value="" onValueChange={profile => { if (profile === 'codex-balanced' || profile === 'codex-focused') { setRuntime('codex'); setModel(''); setEffort(profile === 'codex-focused' ? 'high' : 'medium') } else if (profile.startsWith('claude-')) { setRuntime('claude'); const desired = profile === 'claude-opus' ? /opus/i : /sonnet/i; setModel(models.find(item => item.runtime === 'claude' && desired.test(item.name))?.id.replace(/^claude:/, '') || ''); setEffort(profile === 'claude-opus' ? 'high' : 'medium') } }}><SelectTrigger aria-label="Perfil rápido"><SelectValue placeholder="Escolha uma base…" /></SelectTrigger><SelectContent><SelectItem value="codex-balanced">Codex equilibrado</SelectItem><SelectItem value="codex-focused">Codex focado</SelectItem><SelectItem value="claude-sonnet">Claude Sonnet equilibrado</SelectItem><SelectItem value="claude-opus">Claude Opus avançado</SelectItem></SelectContent></Select></label>
