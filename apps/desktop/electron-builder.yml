@@ -19,6 +19,8 @@ extraResources:
     to: update-feed.json
   - from: src/main/pwa/assets
     to: pwa
+  - from: src/main/marketplace/catalog
+    to: marketplace
 # As dependências nativas devem ser validadas no Electron empacotado.
 # O rebuild automático de node-pty falha no caminho original com espaços.
 npmRebuild: false

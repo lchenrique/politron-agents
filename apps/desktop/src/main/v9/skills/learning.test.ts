@@ -29,11 +29,11 @@ describe('skillsPromptBlock', () => {
     const block = skillsPromptBlock(skills)
     expect(block.split('\n')[1]).toContain('Corrigir build (slug corrigir-build)')
     expect(block.split('\n').length).toBeLessThanOrEqual(31)
-    expect(block.length).toBeLessThanOrEqual(2000)
+    expect(block.length).toBeLessThanOrEqual(3000)
   })
   it('corta pelo tamanho mesmo com poucos itens de descrição longa', () => {
     const block = skillsPromptBlock(Array.from({ length: 30 }, (_, index) => skill(`s${index}`, 'custom', 'x'.repeat(400))))
-    expect(block.length).toBeLessThanOrEqual(2000)
+    expect(block.length).toBeLessThanOrEqual(3000)
   })
   it('fica vazio sem skills', () => { expect(skillsPromptBlock([])).toBe('') })
 })

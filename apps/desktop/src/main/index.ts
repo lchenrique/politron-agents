@@ -17,6 +17,7 @@ import { ProviderRegistry } from './v9/providers/registry'
 import { readOpenCodeModels } from './v9/opencode-models'
 import { AntigravityRuntime } from './v9/antigravity'
 import { SkillsService, registerSkillsIpc } from './v9/skills/service'
+import { marketplaceRoot } from './marketplace/catalog'
 import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
 import { PwaGateway } from './pwa/gateway'
@@ -300,7 +301,7 @@ app.whenReady().then(async () => {
   void providerRegistry.list().catch(error => console.error('[Providers] Falha ao carregar catálogo', error))
     // Missões e rotinas dependem do catálogo de modelos; retoma depois dele, com o chat aberto ou não.
     .finally(() => setTimeout(() => appService?.resumeAutonomy(), 3_000))
-  registerSkillsIpc(new SkillsService(app.getPath('userData')), hosts)
+  registerSkillsIpc(new SkillsService(app.getPath('userData'), join(marketplaceRoot(), 'skills')), hosts)
   await hosts.initialize()
   hosts.registerIpc()
 

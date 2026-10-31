@@ -14,11 +14,12 @@ export function shouldReflect(input: { status: string; planMode: boolean; delega
   return input.toolCalls >= REFLECTION_MIN_TOOL_CALLS || input.recoveredFromError
 }
 
-const ORDER: Record<SkillInfo['source'], number> = { learned: 0, custom: 1, claude: 2, codex: 3 }
+// Skills da função do Boo (Marketplace) vêm antes de todas: são o motivo de ele existir.
+const ORDER: Record<SkillInfo['source'], number> = { marketplace: -1, learned: 0, custom: 1, claude: 2, codex: 3 }
 const oneLine = (value: string, max: number) => { const line = value.replace(/\s+/g, ' ').trim(); return line.length > max ? `${line.slice(0, max - 1)}…` : line }
 
-/** Lista curta (até 30 itens, ~2 mil caracteres) para o prompt; aprendidas primeiro, com o slug que save_skill usa no update. */
-export function skillsPromptBlock(skills: SkillInfo[], maxItems = 30, maxChars = 2000): string {
+/** Lista curta (até 30 itens, ~3 mil caracteres) para o prompt; aprendidas primeiro, com o slug que save_skill usa no update. */
+export function skillsPromptBlock(skills: SkillInfo[], maxItems = 30, maxChars = 3000): string {
   if (!skills.length) return ''
   const header = 'Skills disponíveis (leia com read_skill pelo nome antes de seguir; list_skills mostra todas):'
   const lines = [header]

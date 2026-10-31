@@ -27,6 +27,8 @@ import { PiRuntime } from './pi'
 import { HeadlessCliRuntime } from './headless-cli'
 import { OpenCodeServerRuntime } from './opencode-server'
 import { chooseBooIdentity } from './boo-identity'
+import { loadTeams, marketplaceRoot } from '../marketplace/catalog'
+import type { HireTeamInput, HireTeamResult } from '../../shared/marketplace'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
 import { agentModelInput, CHIEF_READ_TOOLS, CHIEF_TOOLS, chiefToolDefinitions, runChiefTool, type ChiefCall } from './chief-control'
 import { SessionUnavailableError, type AgentInput, type AgentRuntime, type RuntimeThread } from './agent-runtime'
@@ -238,7 +240,7 @@ export class AppService extends EventEmitter {
       : new OpenCodeServerRuntime(join(dataDirectory, 'opencode-server'))
     this.antigravityRuntime = new HeadlessCliRuntime('antigravity', join(dataDirectory, 'antigravity-chat'))
     this.gitWorkspaces = new GitWorkspaceService(join(dataDirectory, 'worktrees'))
-    this.skills = new SkillsService(dataDirectory)
+    this.skills = new SkillsService(dataDirectory, join(marketplaceRoot(), 'skills'))
     this.missions = new MissionEngine({
       store: this.store,
       send: (conversationId, input, model, agentId) => this.send(conversationId, input, model, undefined, agentId, false, false),
@@ -343,6 +345,33 @@ export class AppService extends EventEmitter {
     if (owner && !this.canShareBrowser(owner)) this.platformBrowser?.revokeSharing()
   }
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return agent }
+  marketplaceTeams() { return loadTeams() }
+  /**
+   * Contrata uma equipe pronta: cria Boos novos (nunca toca nos existentes; menção repetida ganha -2, -3…),
+   * liga ao projeto escolhido ou deixa global, e abre a conversa em grupo liderada pelo líder da equipe. Tudo ou nada.
+   */
+  async hireTeam(input: HireTeamInput): Promise<HireTeamResult> {
+    const team = (await loadTeams()).find(item => item.id === input.teamId)
+    if (!team) throw new Error('Equipe não encontrada no Marketplace.')
+    const target = input.workspaceId ? this.store.workspace(input.workspaceId) : undefined
+    if (target?.archived) throw new Error('Este projeto está arquivado.')
+    if (target && target.defaultAgentIds.length + team.members.length > 10) throw new Error(`O projeto ${target.name} já tem ${target.defaultAgentIds.length} Boos na equipe padrão e cabem até 10. Tire alguns de lá ou contrate a equipe como global.`)
+    const taken = new Set(this.store.agents().map(agent => agent.alias.toLowerCase()))
+    const freeAlias = (alias: string) => { let candidate = alias; for (let index = 2; taken.has(candidate); index++) candidate = `${alias}-${index}`; taken.add(candidate); return candidate }
+    this.store.db.exec('BEGIN IMMEDIATE')
+    let result: HireTeamResult
+    try {
+      const saved = team.members.map(member => this.store.saveAgent({ name: member.name, alias: freeAlias(member.alias.toLowerCase()), description: member.description.slice(0, 500), instructions: member.instructions, color: member.color, pitsHeadAccessory: member.pitsHeadAccessory as Agent['pitsHeadAccessory'], skillIds: member.skills, runtime: input.runtime, model: input.model || '' }))
+      const agentIds = saved.map(agent => agent.id)
+      if (target) this.store.saveWorkspace({ id: target.id, defaultAgentIds: [...target.defaultAgentIds, ...agentIds] })
+      const leader = saved[team.members.findIndex(member => member.key === team.leader)] ?? saved[0]!
+      const conversation = this.store.saveConversation({ workspaceId: target?.id, name: team.name, titleAuto: false, agentIds, kind: 'group', responseMode: 'leader', leaderAgentId: leader.id })
+      this.store.db.exec('COMMIT')
+      result = { agentIds, conversationId: conversation.id }
+    } catch (error) { this.store.db.exec('ROLLBACK'); throw error }
+    this.emitEvent({ type: 'changed' })
+    return result
+  }
   saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return assistant }
   approvalGrants(agentId: string) { this.store.agent(agentId); return this.store.approvalGrants(agentId).map(grant => ({ ...grant, workspaceName: this.store.workspace(grant.workspaceId).name || basename(this.store.workspace(grant.workspaceId).path) })) }
   removeApprovalGrant(grantId: string, agentId: string) {
@@ -1080,7 +1109,7 @@ export class AppService extends EventEmitter {
       })
       let turnContext = makeTurnContext()
       // Lista curta de skills no turno (não no prompt de sistema, que fica fixo numa sessão retomada).
-      const skillsBlock = skillsPromptBlock(await this.skills.list().catch(() => []))
+      const skillsBlock = skillsPromptBlock(await this.skills.forAgent(agent.skillIds).catch(() => []))
       const withSkills = (value: string) => skillsBlock ? `${skillsBlock}\n\n${value}` : value
       let threadId = thread.id
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
@@ -1173,7 +1202,7 @@ export class AppService extends EventEmitter {
     const timeout = new AbortController()
     const timer = setTimeout(() => timeout.abort(), REFLECTION_TIMEOUT_MS)
     try {
-      const block = skillsPromptBlock(await this.skills.list().catch(() => []))
+      const block = skillsPromptBlock(await this.skills.forAgent(context.agent.skillIds).catch(() => []))
       const result = await runtime.send(threadId, reflectionPrompt(block), context.agent.model || undefined, REFLECTION_TIMEOUT_MS)
       turnId = result.turn?.id
       if (!turnId || result.turn?.status === 'failed' || result.turn?.status === 'interrupted') return
@@ -1252,10 +1281,10 @@ export class AppService extends EventEmitter {
       tool('search_history', 'Busca mensagens nesta conversa para recuperar o pedido e o contexto antes de responder a um follow-up curto ou ambíguo, como “encaminha”, “faz isso” ou “continua”. Consulte o histórico antes de pedir ao usuário que repita algo já explicado. A busca é limitada à conversa atual.', { query: { type: 'string', description: 'Termos concretos do pedido anterior, da correção ou do assunto citado pelo usuário.' } }, ['query']),
       tool('save_context_checkpoint', 'Salva um resumo de continuidade deste trabalho para uma futura sessão nova. Use em trabalhos longos ou antes de uma troca de contexto; não substitui os registros originais nem repete ações.', { summary: { type: 'string', description: 'Objetivo, progresso com evidências e próximos passos.' }, decisions: { type: 'array', items: { type: 'string' }, maxItems: 20 }, pending: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, ['summary']),
       tool('list_skills', 'Lista as skills disponíveis (nome e quando usar cada uma): as já instaladas no Codex/Claude Code desta máquina, as que o usuário adicionou e as que você ou outro agente já aprenderam. Use antes de uma tarefa para ver se já existe um procedimento conhecido; chame read_skill para ler o conteúdo completo de uma antes de segui-la.', {}, []),
-      tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id devolvido por list_skills.', { id: { type: 'string' } }, ['id']),
+      tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id ou nome devolvido por list_skills. Com file, lê um arquivo auxiliar dentro da pasta da skill (ex.: references/social.md).', { id: { type: 'string' }, file: { type: 'string', description: 'Opcional: caminho relativo de um arquivo auxiliar dentro da pasta da skill.' } }, ['id']),
       ...(!planning ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
       ...(context.agent.role === 'chief' && !planning ? [
-        tool('agent_create', 'Cria 1 a 5 Boos de uma vez, direto, sem pedir confirmação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Herda as permissões e o modo de aprovação do Chief, sem ampliar seu acesso; runtime, model e effort são opcionais (padrão: os seus). Para purpose=team, exige chiefManageTeam e associa os Boos à equipe padrão e à conversa atual na mesma operação; sem essa permissão, falha antes de criar qualquer Boo. Continue com ask_agent se o pedido incluir trabalho para o time.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário criado espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' }, runtime: { type: 'string', enum: ['codex', 'claude', 'pi', 'opencode', 'antigravity'] }, model: { type: 'string' }, effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'] } }, required: ['instructions'] } } }, ['agents']),
+        tool('agent_create', 'Cria 1 a 5 Boos de uma vez, direto, sem pedir confirmação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Herda as permissões e o modo de aprovação do Chief, sem ampliar seu acesso; runtime, model e effort são opcionais (padrão: os seus). Para purpose=team, exige chiefManageTeam e associa os Boos à equipe padrão e à conversa atual na mesma operação; sem essa permissão, falha antes de criar qualquer Boo. Continue com ask_agent se o pedido incluir trabalho para o time.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário criado espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' }, skillIds: { type: 'array', items: { type: 'string' }, description: 'Opcional: slugs de skills do Marketplace para este Boo (ids marketplace:<slug> de list_skills, sem o prefixo).' }, runtime: { type: 'string', enum: ['codex', 'claude', 'pi', 'opencode', 'antigravity'] }, model: { type: 'string' }, effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'] } }, required: ['instructions'] } } }, ['agents']),
       ] : []),
       tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. A delegação do Chief nunca prende a conversa: sempre roda em segundo plano, mesmo com mode=wait; você recebe um recibo na hora, deve encerrar o turno e será acionado automaticamente quando o Boo terminar (sucesso ou falha). Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
@@ -1543,10 +1572,11 @@ export class AppService extends EventEmitter {
       return `Checkpoint salvo (${checkpoint.id}). Será recuperado quando uma sessão nova deste agente for iniciada nesta conversa.`
     }
     if (name === 'list_skills') {
-      const skills = await this.skills.list()
+      // O Chief enxerga também as skills do Marketplace para poder atribuí-las com agent_create.
+      const skills = context.agent.role === 'chief' ? await this.skills.list() : await this.skills.forAgent(context.agent.skillIds)
       return skills.length ? JSON.stringify(skills.map(skill => ({ id: skill.id, name: skill.name, description: skill.description, source: skill.source }))) : 'Nenhuma skill encontrada.'
     }
-    if (name === 'read_skill') return this.skills.readContent(text(args.id, 500))
+    if (name === 'read_skill') return this.skills.readContent(text(args.id, 500), typeof args.file === 'string' && args.file.trim() ? text(args.file, 300) : undefined, context.agent.role === 'chief' ? undefined : await this.skills.forAgent(context.agent.skillIds))
     if (name === 'save_skill') {
       // Skill fica na pasta de dados do app, não no projeto: não depende da permissão de escrita de arquivos.
       const operation = args.operation === 'update' ? 'update' : args.operation === 'create' ? 'create' : null
@@ -1599,7 +1629,7 @@ export class AppService extends EventEmitter {
         if (existingAgents.some(agent => agent.name.toLocaleLowerCase('pt-BR') === identity.name.toLocaleLowerCase('pt-BR')) && typeof input.name === 'string' && input.name.trim()) throw new Error('Já existe um Boo com esse nome. Reutilize-o ou escolha outro.')
         if (input.temporary !== undefined && typeof input.temporary !== 'boolean') throw new Error('temporary deve ser verdadeiro ou falso.')
         const temporary = typeof input.temporary === 'boolean' ? input.temporary : purpose === 'task'
-        proposed.push({ ...identity, description, instructions, temporary, temporaryStatus: temporary ? 'available' : undefined, temporaryWorkspaceId: temporary ? workspace.id : undefined, temporaryTask: temporary ? description || instructions.slice(0, 500) : undefined, runtime: context.agent.runtime, model: context.agent.model, effort: context.agent.effort, ...agentModelInput(input), role: 'agent', canWrite: context.agent.canWrite, computerUse: context.agent.computerUse, approvalMode: context.agent.approvalMode })
+        proposed.push({ ...identity, description, instructions, temporary, temporaryStatus: temporary ? 'available' : undefined, temporaryWorkspaceId: temporary ? workspace.id : undefined, temporaryTask: temporary ? description || instructions.slice(0, 500) : undefined, runtime: context.agent.runtime, model: context.agent.model, effort: context.agent.effort, ...agentModelInput(input), role: 'agent', canWrite: context.agent.canWrite, computerUse: context.agent.computerUse, approvalMode: context.agent.approvalMode, ...(Array.isArray(input.skillIds) ? { skillIds: input.skillIds.filter((id): id is string => typeof id === 'string').map(id => id.replace(/^marketplace:/, '')) } : {}) })
       }
       if (currentTemp + proposed.filter(item => item.temporary).length > 10) throw new Error('Limite de dez Boos temporários ativos por workspace.')
       const attachTeam = purpose === 'team'

@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { promises as fs } from 'node:fs'
-import { join, sep } from 'node:path'
+import { join, relative, resolve, sep, isAbsolute } from 'node:path'
 import type { SkillInfo } from '../../../shared/skills'
 import { discoverSkills, parseSkillFrontmatter } from './discover'
 import { containsSecret } from './learning'
@@ -11,7 +11,8 @@ const SLUG = /^[a-z0-9][a-z0-9-]{1,63}$/
 export class SkillsService {
   private readonly registryPath: string
   private readonly learnedDir: string
-  constructor(private readonly root: string) {
+  /** `marketplaceDir`: pasta `skills` do catálogo do Marketplace (só leitura). */
+  constructor(private readonly root: string, private readonly marketplaceDir?: string) {
     this.registryPath = join(root, 'skills-external.json')
     this.learnedDir = join(root, 'skills-learned')
   }
@@ -29,8 +30,14 @@ export class SkillsService {
   }
 
   async list(): Promise<SkillInfo[]> {
-    const skills = await discoverSkills(await this.customPaths(), this.learnedDir)
+    const skills = await discoverSkills(await this.customPaths(), this.learnedDir, this.marketplaceDir)
     return skills.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  }
+
+  /** O que um Boo enxerga: todas as skills globais e só as do Marketplace que estão em `skillIds` (slugs desconhecidos são ignorados). */
+  async forAgent(skillIds: readonly string[] = []): Promise<SkillInfo[]> {
+    const own = new Set(skillIds.map(id => `marketplace:${id}`))
+    return (await this.list()).filter(skill => skill.source !== 'marketplace' || own.has(skill.id))
   }
 
   /**
@@ -75,15 +82,26 @@ export class SkillsService {
       await fs.rm(dir, { recursive: true, force: true })
       return
     }
+    if (source === 'marketplace') throw new Error('Skills do Marketplace vêm com o Boobot; para tirar uma de um Boo, edite as skills dele.')
     if (source !== 'custom') throw new Error('Só skills adicionadas ou aprendidas pelo Boobot podem ser removidas por aqui; as demais vêm do Codex ou do Claude Code na sua máquina.')
     await this.saveCustomPaths((await this.customPaths()).filter(path => path !== dir))
   }
 
-  async readContent(id: string): Promise<string> {
-    const skills = await this.list()
-    const skill = skills.find(item => item.id === id) || skills.find(item => item.name === id)
+  /**
+   * Lê o SKILL.md ou, com `file`, um arquivo auxiliar dentro da pasta da skill (ex.: references/social.md).
+   * `skills` limita a busca ao que o Boo enxerga; sem ele, procura em todas.
+   */
+  async readContent(id: string, file?: string, skills?: SkillInfo[]): Promise<string> {
+    const pool = skills ?? await this.list()
+    const skill = pool.find(item => item.id === id) || pool.find(item => item.name === id) || pool.find(item => item.source === 'marketplace' && item.id === `marketplace:${id}`)
     if (!skill) throw new Error('Skill não encontrada.')
-    return fs.readFile(join(skill.path, 'SKILL.md'), 'utf8')
+    if (!file) return fs.readFile(join(skill.path, 'SKILL.md'), 'utf8')
+    const target = resolve(skill.path, file)
+    const inside = relative(skill.path, target)
+    if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('O arquivo precisa estar dentro da pasta da skill.')
+    const content = await fs.readFile(target, 'utf8').catch(() => { throw new Error(`Arquivo "${file}" não existe nessa skill. Pasta da skill: ${skill.path}`) })
+    return content.length > 60_000 ? `${content.slice(0, 60_000)}
+…(cortado)` : content
   }
 }
 

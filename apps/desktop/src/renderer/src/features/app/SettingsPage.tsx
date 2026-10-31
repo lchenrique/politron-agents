@@ -31,7 +31,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof Palette; description:
   { id: 'conexoes', label: 'Conexões', icon: Monitor, description: 'Acesso a este computador pelos seus outros dispositivos e pelo navegador.' },
   { id: 'atualizacoes', label: 'Atualizações', icon: Download, description: 'Versão instalada, canal de atualização e instalação de novas versões.' },
 ]
-const SOURCE_LABEL: Record<SkillInfo['source'], string> = { codex: 'Codex', claude: 'Claude Code', custom: 'Adicionada aqui', learned: 'Aprendida por um agente' }
+const SOURCE_LABEL: Record<SkillInfo['source'], string> = { codex: 'Codex', claude: 'Claude Code', custom: 'Adicionada aqui', learned: 'Aprendida por um agente', marketplace: 'Marketplace' }
 
 function Field({ icon: Icon, title, description, children }: { icon?: typeof Palette; title: string; description: string; children: React.ReactNode }) {
   const titleId = useId()
