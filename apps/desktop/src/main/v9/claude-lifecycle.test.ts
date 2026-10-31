@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { Query, SDKMessage, query } from '@anthropic-ai/claude-agent-sdk'
 import { ASSISTANT } from './store'
 import { ClaudeRuntime } from './claude'
+import { effectiveRuntimeAgent } from './runtime-permissions'
 import { AppService } from './workspace'
 
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false }, safeStorage: { isEncryptionAvailable: () => false } }))
@@ -151,6 +152,21 @@ describe('ciclo de vida do turno Claude', () => {
 })
 
 describe('Acesso total no Claude', () => {
+  it.each([{ planMode: true }, { boardReview: true }])('bloqueia ferramentas nativas no Claude com escopo %j, inclusive ao retomar', async scope => {
+    const directory = await mkdtemp(join(tmpdir(), 'politron-claude-restricted-'))
+    directories.push(directory)
+    const querySdk = vi.fn<typeof query>(() => (async function* () { yield initialized; yield success })() as unknown as Query)
+    const runtime = new ClaudeRuntime(directory, async () => null, querySdk)
+    Object.assign(runtime, { executable: 'claude' })
+    runtimes.push(runtime)
+    const agent = effectiveRuntimeAgent({ ...ASSISTANT, runtimePermissionMode: 'bypass' as const }, scope)
+    const thread = await runtime.thread(agent, directory, [], 'existing-session')
+    await runtime.send(thread.id, 'Analise')
+    const options = querySdk.mock.calls[0][0].options
+    expect(options).toMatchObject({ permissionMode: 'default', allowDangerouslySkipPermissions: false, tools: [], resume: 'existing-session' })
+    expect(options?.disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'Bash', 'NotebookEdit', 'MultiEdit']))
+  })
+
   it('libera as ferramentas nativas com bypass e mostra Bash como atividade', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'politron-claude-full-'))
     directories.push(directory)
