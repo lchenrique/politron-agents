@@ -5,7 +5,7 @@
  */
 export const MENU_SURFACE_INSET_CLASS = "p-1.5";
 
-export const MENU_SURFACE_CLASS = `z-50 min-w-32 overflow-hidden rounded-lg border border-border bg-popover shadow-[0_4px_16px_0_rgb(0_0_0/0.08),0_0_24px_0_rgb(0_0_0/0.04)] ${MENU_SURFACE_INSET_CLASS} text-popover-foreground`;
+export const MENU_SURFACE_CLASS = `z-[1200] min-w-32 overflow-hidden rounded-lg border border-border bg-popover shadow-[0_4px_16px_0_rgb(0_0_0/0.08),0_0_24px_0_rgb(0_0_0/0.04)] ${MENU_SURFACE_INSET_CLASS} text-popover-foreground`;
 
 export const MENU_ITEM_CLASS =
   "relative flex cursor-default select-none items-center rounded-[10px] py-1.5 text-sm outline-hidden data-disabled:pointer-events-none data-disabled:opacity-50 focus:bg-accent focus:text-accent-foreground";
