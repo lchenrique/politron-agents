@@ -1,53 +1,49 @@
-/* Escritório isométrico: cores do tema; o Boo e a mesa usam as variáveis do app. */
-.office { display: flex; height: 100%; min-height: 0; flex-direction: column; background: var(--background); color: var(--foreground); }
-.office__header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 24px; padding: 24px 32px 8px; }
+/* Escritório vivo: a sala tem paleta própria (ilustração); moldura, textos e etiquetas seguem o tema. */
+.office {
+  --office-desk-top: #c9a27a; --office-desk-left: #a17b57; --office-desk-right: #8a6646; --office-desk-chief: #d9b285;
+  --office-sofa: #6f86c9; --office-sofa-dark: #5a6fae; --office-sofa-darker: #4b5d95;
+  display: flex; height: 100%; min-height: 0; flex-direction: column; background: var(--background); color: var(--foreground);
+}
+.office__header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 24px; padding: 20px 28px 4px; }
 .office__title { margin: 0; font-size: 22px; font-weight: 600; }
 .office__summary { margin: 4px 0 0; color: var(--muted-foreground); font-size: 13px; }
 .office__hint { margin: 0; color: var(--muted-foreground); font-size: 12px; }
-.office__viewport { flex: 1; min-height: 0; overflow: auto; padding: 8px 16px 32px; }
-.office__scene { position: relative; margin: 0 auto; }
-.office__floor { position: absolute; inset: 0; overflow: visible; }
-.office__floor-base { fill: color-mix(in srgb, var(--muted) 55%, var(--background)); stroke: color-mix(in srgb, var(--border) 80%, transparent); stroke-width: 1.5; }
-.office__tile { fill: none; stroke: color-mix(in srgb, var(--border) 55%, transparent); stroke-width: 1; }
-.office__link-line { fill: none; stroke: var(--primary); stroke-width: 2; stroke-dasharray: 6 8; opacity: .55; animation: office-dash 1.2s linear infinite; }
-.office__envelope rect { fill: var(--primary); }
-.office__envelope path { fill: none; stroke: var(--primary-foreground); stroke-width: 1.4; stroke-linejoin: round; }
-@keyframes office-dash { to { stroke-dashoffset: -28; } }
+.office__viewport { flex: 1; min-height: 0; padding: 4px 16px 16px; }
+.office__scene { display: block; width: 100%; height: 100%; overflow: visible; }
 
-/* Mesa: ponto de ancoragem no centro do tampo. Sem z-index no botão, mesa e Boo empilham pela profundidade (--office-z)
-   e nomes/balões ficam numa camada acima de todas as mesas. */
-.office-desk { position: absolute; display: flex; width: 0; height: 0; flex-direction: column; align-items: center; border: 0; padding: 0; background: none; color: inherit; cursor: pointer; }
-.office-desk__box { z-index: var(--office-z); position: absolute; left: 50%; top: 0; transform: translate(-50%, -50%); overflow: visible; filter: drop-shadow(0 10px 12px rgb(0 0 0 / .18)); }
-.office-desk__top { fill: color-mix(in srgb, var(--card) 70%, #a98b6a); }
-.office-desk__side-l { fill: color-mix(in srgb, var(--card) 45%, #6f5a44); }
-.office-desk__side-r { fill: color-mix(in srgb, var(--card) 35%, #5a4836); }
-.office-desk[data-chief] .office-desk__top { fill: color-mix(in srgb, var(--primary) 22%, color-mix(in srgb, var(--card) 70%, #a98b6a)); }
-.office-desk__figure { position: absolute; left: 50%; bottom: 6px; z-index: calc(var(--office-z) + 1); transform: translateX(-50%); display: flex; align-items: flex-end; justify-content: center; }
-.office-desk[data-state='working'] .office-desk__figure { bottom: -18px; }
-.office-desk__avatar { width: 72px; height: 72px; border-radius: 999px; object-fit: cover; }
-.office-desk__alert {
-  position: absolute; top: -6px; right: -10px; display: grid; width: 22px; height: 22px; place-items: center;
-  border-radius: 999px; background: var(--warning, #f59e0b); color: #111; font-size: 13px; font-weight: 800; animation: office-pulse 1.2s ease-in-out infinite;
-}
-@keyframes office-pulse { 50% { transform: scale(1.15); } }
-.office-desk__plate {
-  position: absolute; left: 50%; top: 60px; z-index: 100000; display: flex; transform: translateX(-50%); flex-direction: column; align-items: center; gap: 1px;
-  padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); white-space: nowrap; font-size: 12px; line-height: 16px;
-  box-shadow: 0 4px 10px rgb(0 0 0 / .12);
-}
-.office-desk__plate span { color: var(--muted-foreground); font-size: 11px; }
-.office-desk[data-state='working'] .office-desk__plate span { color: var(--primary); }
-.office-desk[data-state='waiting'] .office-desk__plate span { color: var(--warning, #f59e0b); }
-.office-desk__bubble {
-  position: absolute; left: 50%; bottom: 128px; z-index: 100001; max-width: 220px; overflow: hidden; transform: translateX(-50%);
-  padding: 4px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--popover, var(--card)); color: var(--foreground);
-  font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; box-shadow: 0 6px 14px rgb(0 0 0 / .14);
-}
-.office-desk[data-chief] .office-desk__bubble { bottom: 150px; }
-.office-desk:hover .office-desk__plate, .office-desk:focus-visible .office-desk__plate { border-color: var(--primary); }
-.office-desk:focus-visible { outline: none; }
+.office-room__floor { fill: #d8b48c; }
+.office-room__plank { stroke: #c49f78; stroke-width: 1; }
+.office-room__seam { stroke: #cba882; stroke-width: .6; }
+.office-room__wall-back { fill: #e9e1d4; }
+.office-room__wall-left { fill: #d9cfbf; }
+.office-room__skirting { fill: #b89a78; }
+.office-room__skirting-left { fill: #a88a69; }
+.office-room__window-frame { fill: #f7f3ec; }
+.office-room__sky { fill: #9fd3f2; }
+.office-room__mullion { stroke: #f7f3ec; stroke-width: 3; }
+.office-room__board { fill: #fbfaf7; stroke: #b9b2a5; stroke-width: 2; }
+.office-room__note--0 { fill: #ffe58a; } .office-room__note--1 { fill: #ffb3c1; } .office-room__note--2 { fill: #a7e3c4; }
+.office-room__poster { fill: #7f97d6; stroke: #f7f3ec; stroke-width: 3; }
+.office-room__rug { fill: #c96f5a; opacity: .55; }
+.office-room__leaf { fill: #5fae6e; stroke: #4c9259; stroke-width: 1.5; }
 
-@media (prefers-reduced-motion: reduce) {
-  .office__link-line, .office-desk__alert { animation: none; }
-  .office__envelope { display: none; }
+.office-boo { cursor: pointer; outline: none; }
+.office-boo__shadow { fill: rgb(0 0 0 / .18); }
+.office-boo foreignObject { overflow: visible; }
+.office-boo__figure { display: flex; align-items: flex-end; justify-content: center; }
+.office-boo__avatar { width: 80%; height: 80%; border-radius: 999px; object-fit: cover; }
+.office-boo:focus-visible .office-boo__shadow { fill: var(--primary); opacity: .5; }
+
+.office__labels foreignObject { overflow: visible; }
+.office__bubble, .office__name {
+  display: flex; width: fit-content; max-width: 100%; margin: 0 auto; overflow: hidden; align-items: center; justify-content: center;
+  padding: 2px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--foreground);
+  font-size: 11px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; box-shadow: 0 3px 8px rgb(0 0 0 / .15);
 }
+.office__name { font-weight: 600; }
+.office__name[data-state='working'] { border-color: color-mix(in srgb, var(--primary) 60%, var(--border)); }
+.office__name[data-state='waiting'] { border-color: var(--warning, #f59e0b); }
+.office__alert { fill: var(--warning, #f59e0b); }
+.office__alert-text { fill: #111; font-size: 12px; font-weight: 800; }
+
+@media (prefers-reduced-motion: reduce) { .office-boo * { animation: none !important; } }
