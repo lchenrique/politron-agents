@@ -226,7 +226,7 @@ describe('delegação entre conversas V9', () => {
     await (service as any).callTool(context, 'ask_agent', args, 'tool-auto-once')
     expect(service.store.delegation(delegation.id)?.continuationRunId).toBeTruthy()
     expect(service.store.runs().filter(run => run.parentId === context.run.id && run.agentId === context.agent.id)).toHaveLength(1)
-    expect(runtime.started).toBe(2)
+    await vi.waitFor(() => expect(runtime.started).toBe(2))
     await vi.waitFor(() => expect(service.store.run(service.store.delegation(delegation.id)!.continuationRunId!)?.status).toBe('completed'))
   })
 

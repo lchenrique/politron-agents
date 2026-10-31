@@ -62,6 +62,15 @@ describe('missões autônomas', () => {
     void broker
   }, 25_000)
 
+  it('nota de "aguardando" sem mudar o plano não conta como progresso e não vira laço de consultas', async () => {
+    const waiting = async (context: any, b: any) => { await call(b, context, 'mission_update', { note: 'Aguardando os Boos terminarem.' }) }
+    const { service, workspace, inputs } = setup([waiting, waiting, waiting, waiting, waiting])
+    const mission = service.startMission({ goal: 'Acompanhe a equipe.', workspaceId: workspace.id })
+    await vi.waitFor(() => expect(service.store.mission(mission.id)!.status).toBe('waiting'), { timeout: 15_000, interval: 100 })
+    expect(service.store.mission(mission.id)!.question).toMatch(/progresso/)
+    expect(inputs.length).toBeLessThanOrEqual(2)
+  }, 20_000)
+
   it('pausa ao bloquear por decisão e o chat também retoma a missão', async () => {
     const { service, workspace, inputs } = setup([
       async (context, b) => { await call(b, context, 'mission_block', { question: 'Qual público-alvo?', options: ['B2B', 'B2C'] }) },

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -194,5 +195,28 @@ describe('WorkspaceQueue: faixa do Chief e prioridade', () => {
     const all = [push('notificação', false), push('usuário 1', true), push('usuário 2', true)]
     release(); await Promise.all([first, ...all])
     expect(order).toEqual(['usuário 1', 'usuário 2', 'notificação'])
+  })
+})
+
+describe('delegação em worktree própria', () => {
+  it('em projeto git, cada Boo delegado em segundo plano ganha uma worktree e os dois rodam ao mesmo tempo', async () => {
+    const runtime = new FakeRuntime(); runtime.holdAgents.add('Operário'); runtime.holdAgents.add('Revisor')
+    const { service, chief, conversation, context } = setup(runtime)
+    const repo = conversation.workspaceId ? service.store.workspace(conversation.workspaceId).path : ''
+    for (const args of [['init', '-q', '-b', 'main'], ['config', 'user.email', 'qa@boobot.test'], ['config', 'user.name', 'QA']]) execFileSync('git', args, { cwd: repo })
+    writeFileSync(join(repo, 'README.md'), 'teste'); execFileSync('git', ['add', '.'], { cwd: repo }); execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: repo })
+    const reviewer = service.saveAgent({ name: 'Revisor', alias: 'revisor', instructions: 'Revisa.', canWrite: false })
+    const internals = service as unknown as Internals
+    await internals.callTool(context, 'ask_agent', { agent: 'operario', task: 'Tarefa A' }, 'call-a')
+    await internals.callTool(context, 'ask_agent', { agent: reviewer.alias, task: 'Tarefa B' }, 'call-b')
+    // Os dois Boos começam sem esperar um pelo outro, cada um na sua worktree.
+    await vi.waitFor(() => expect(runtime.inputs.filter(item => item.agent !== chief.name)).toHaveLength(2), { timeout: 20000 })
+    const children = service.store.runs().filter(run => run.agentId !== chief.id)
+    expect(new Set(children.map(run => run.workspacePath)).size).toBe(2)
+    for (const run of children) {
+      expect(run.workspacePath).not.toBe(repo)
+      expect(service.store.workspace(run.workspaceId).kind).toBe('worktree')
+      expect(run.input).toMatch(/^\[Worktree isolada: branch boo\//)
+    }
   })
 })

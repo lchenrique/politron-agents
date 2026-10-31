@@ -1762,7 +1762,23 @@ export class AppService extends EventEmitter {
     const source = this.store.conversation(previous.sourceConversationId)
     const target = this.store.conversation(previous.targetConversationId)
     const workspace = this.store.workspace(context.run.workspaceId)
-    if (source.archived || target.archived || workspace.archived || source.workspaceId !== context.run.workspaceId || target.workspaceId !== context.run.workspaceId || source.workspaceId !== target.workspaceId || target.kind !== 'direct' || target.agentIds.length !== 1 || target.agentIds[0] !== recipient.id) throw new Error('O workspace ou a conversa privada mudou; não é possível elevar o escopo da delegação.')
+    if (source.archived || target.archived || workspace.archived || source.workspaceId !== context.run.workspaceId || !this.delegationWorkspaceOf(target.workspaceId, context.run.workspaceId) || target.kind !== 'direct' || target.agentIds.length !== 1 || target.agentIds[0] !== recipient.id) throw new Error('O workspace ou a conversa privada mudou; não é possível elevar o escopo da delegação.')
+  }
+  /** A conversa da delegação usa a pasta de quem pediu ou uma worktree isolada criada a partir dela. */
+  private delegationWorkspaceOf(targetWorkspaceId: string, parentWorkspaceId: string): boolean {
+    if (targetWorkspaceId === parentWorkspaceId) return true
+    try { const target = this.store.workspace(targetWorkspaceId); return target.kind === 'worktree' && target.parentWorkspaceId === parentWorkspaceId } catch { return false }
+  }
+  /**
+   * Delegação em segundo plano num projeto git roda numa worktree própria: Boos não esperam um ao outro na fila da pasta
+   * nem editam os mesmos arquivos. Sem git (ou se a worktree falhar), segue na pasta de quem pediu.
+   */
+  private async isolatedDelegationWorkspace(parent: RunContext, recipient: Agent): Promise<Workspace | undefined> {
+    const source = this.store.workspace(parent.run.workspaceId)
+    if (source.kind === 'free') return undefined
+    try { await this.gitWorkspaces.inspect(source.path) } catch { return undefined }
+    const slug = (recipient.alias || recipient.name).toLocaleLowerCase('en-US').normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'boo'
+    try { return await this.createWorktree({ sourceWorkspaceId: source.id, branch: `boo/${slug}-${randomUUID().slice(0, 8)}` }) } catch { return undefined }
   }
   private async delegate(parent: RunContext, recipient: Agent, task: string, idempotencyKey: string, inheritLease = false, previousDelegation?: Delegation): Promise<string> {
     const now = new Date().toISOString()
@@ -1773,7 +1789,7 @@ export class AppService extends EventEmitter {
     targetConversation = previousDelegation
       ? this.store.conversation(previousDelegation.targetConversationId)
       : this.store.saveConversation({ kind: 'direct', name: delegatedConversationName(recipient.name, task), agentIds: [recipient.id], workspaceId: parent.run.workspaceId })
-    if (previousDelegation && (targetConversation.archived || targetConversation.workspaceId !== parent.run.workspaceId || targetConversation.agentIds.length !== 1 || targetConversation.agentIds[0] !== recipient.id)) throw new Error('A conversa privada da delegação mudou; a continuação foi cancelada.')
+    if (previousDelegation && (targetConversation.archived || !this.delegationWorkspaceOf(targetConversation.workspaceId, parent.run.workspaceId) || targetConversation.agentIds.length !== 1 || targetConversation.agentIds[0] !== recipient.id)) throw new Error('A conversa privada da delegação mudou; a continuação foi cancelada.')
     request = { id: randomUUID(), conversationId: targetConversation.id, agentId: parent.agent.id, author: `Pedido de ${parent.agent.name}`, role: 'activity', text: task, status: 'queued', runId: null, createdAt: now }
     resultMessage = { id: randomUUID(), conversationId: targetConversation.id, agentId: recipient.id, author: recipient.name, role: 'assistant', text: '', status: 'queued', runId: null, createdAt: now }
     originMessage = { id: randomUUID(), conversationId: parent.conversation.id, agentId: recipient.id, author: recipient.name, role: 'activity', text: `Pedido para ${recipient.name}: ${task}\nAguardando execução na conversa privada do agente.`, status: 'queued', runId: null, relatedConversationId: targetConversation.id, delegationTask: task, createdAt: now }
@@ -1799,6 +1815,14 @@ export class AppService extends EventEmitter {
     else parentController?.signal.addEventListener('abort', abortFromParent, { once: true })
     this.active.set(child.id, controller)
     const signal = controller.signal
+    // Pedido novo em segundo plano num projeto git: a conversa do Boo passa para uma worktree própria antes de entrar na fila.
+    const isolated = !inheritLease && !previousDelegation && !signal.aborted ? await this.isolatedDelegationWorkspace(parent, recipient) : undefined
+    if (isolated && !signal.aborted) {
+      targetConversation = this.store.saveConversation({ ...targetConversation, workspaceId: isolated.id })
+      child.workspaceId = isolated.id; child.workspacePath = isolated.path
+      child.input = `[Worktree isolada: branch ${isolated.branch} em ${isolated.path}. Outros Boos trabalham em paralelo em outras worktrees. Ao terminar, faça commit nessa branch e informe a branch no resultado para quem pediu integrar.]\n\n${task}`
+      this.store.putRun(child); this.emitEvent({ type: 'changed' })
+    }
     const context: RunContext = { run: child, message: resultMessage, conversation: targetConversation, agent: recipient }
     try { await this.queue.enqueueDelegation(child.workspacePath, signal, async lease => {
       context.lease = lease

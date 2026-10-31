@@ -160,7 +160,10 @@ export class MissionEngine {
     const now = new Date().toISOString()
     if (name === 'mission_update') {
       if (args.steps === undefined && args.note === undefined) throw new Error('Envie steps e/ou note.')
-      let next: Mission = { ...mission, lastProgressAt: now, ...(args.steps !== undefined ? { steps: normalizeSteps(args.steps, mission.steps) } : {}) }
+      const steps = args.steps !== undefined ? normalizeSteps(args.steps, mission.steps) : mission.steps
+      // Só mudança real no plano conta como progresso; nota de "aguardando" não reinicia o ciclo da missão.
+      const planChanged = JSON.stringify(steps.map(step => [step.title, step.status])) !== JSON.stringify(mission.steps.map(step => [step.title, step.status]))
+      let next: Mission = { ...mission, steps, ...(planChanged ? { lastProgressAt: now } : {}) }
       if (args.note !== undefined) next = this.note(next, 'progress', text(args.note, 'Nota', 2000), context.agentId)
       this.save(next)
       return 'Progresso registrado. Continue executando.'

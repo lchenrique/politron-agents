@@ -205,6 +205,35 @@ describe('Antigravity: falhas do CLI chegam ao usuário em vez de "pensando" inf
     runtime.close()
   })
 
+  it('fecha o stdin a cada turno e devolve o resultado da ferramenta num processo que retoma a conversa do agy', async () => {
+    const children = [fakeChild(), fakeChild()]
+    const spawnMock = vi.fn(() => children[spawnMock.mock.calls.length - 1]!)
+    const runtime = new HeadlessCliRuntime('antigravity', tmpdir(), { spawn: spawnMock as unknown as typeof spawn, inactivityMs: 60_000 })
+    ;withBinary(runtime)
+    const events: Ev[] = []
+    const done = new Promise<NonNullable<Ev['params']['turn']>>(resolve => runtime.on('event', event => { events.push(event); if (event.method === 'turn/completed') resolve(event.params.turn!) }))
+    const tools = [{ type: 'function', name: 'group_members', description: '', inputSchema: { type: 'object' } }] as never
+    const thread = await runtime.thread(antigravityAgent, tmpdir(), tools)
+    await runtime.send(thread.id, 'oi', antigravityAgent.model)
+    const first = children[0]!
+    // Sem o fim do stdin o agy no Windows não processa a mensagem.
+    expect(first.stdin.end).toHaveBeenCalledWith(expect.stringContaining('"event":"user"'))
+    first.stdout.write(JSON.stringify({ event: 'init', conversation_id: 'conv-1' }) + '\n')
+    first.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', structured_output: { action: 'tool', tool: 'group_members', arguments: '{}', text: '' } } }) + '\n')
+    await vi.waitFor(() => expect(events.some(event => event.method === 'item/tool/call')).toBe(true))
+    first.emit('close', 0)
+    const call = events.find(event => event.method === 'item/tool/call') as unknown as { id: string }
+    runtime.respond(call.id, { success: true, contentItems: [{ type: 'inputText', text: '[]' }] })
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(2))
+    const args = (spawnMock.mock.calls[1] as unknown as [string, string[]])[1]
+    expect(args).toEqual(expect.arrayContaining(['--conversation', 'conv-1']))
+    const second = children[1]!
+    expect(second.stdin.end).toHaveBeenCalledWith(expect.stringContaining('Resultado real da ferramenta'))
+    second.stdout.write(JSON.stringify({ event: 'result', result: { status: 'SUCCESS', structured_output: { action: 'final', tool: 'none', arguments: '{}', text: 'pronto' } } }) + '\n')
+    expect((await done).status).toBe('completed')
+    runtime.close()
+  })
+
   it('turno longo que continua emitindo saída não é morto pelo vigia', async () => {
     const { turn } = await run(child => {
       let n = 0
