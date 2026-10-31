@@ -18,6 +18,13 @@ export function setAsideStaleWalIndex(database: string, now = Date.now()): strin
   return target
 }
 
+/** Diagnóstico da falha de abertura: código estendido do SQLite e estado dos arquivos do banco. */
+export function databaseFailureDetails(error: unknown, database: string): Record<string, unknown> {
+  const sqlite = error as { code?: unknown; errcode?: unknown; errstr?: unknown }
+  const file = (path: string) => { try { const stat = statSync(path); return { size: stat.size, modified: stat.mtime.toISOString() } } catch { return null } }
+  return { code: sqlite?.code, errcode: sqlite?.errcode, errstr: sqlite?.errstr, db: file(database), wal: file(database + '-wal'), shm: file(database + '-shm') }
+}
+
 /** Repete a abertura só para erros transitórios; qualquer outro erro sobe na hora. */
 export async function retryTransient<T>(open: () => T, { attempts = 4, delayMs = 750, onRetry }: { attempts?: number; delayMs?: number; onRetry?: (error: unknown, attempt: number) => void } = {}): Promise<T> {
   for (let attempt = 1; ; attempt++) {

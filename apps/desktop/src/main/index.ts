@@ -21,7 +21,7 @@ import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
 import { PwaGateway } from './pwa/gateway'
 import { initAutoUpdater } from './v9/auto-updater'
-import { retryTransient, setAsideStaleWalIndex } from './startup'
+import { databaseFailureDetails, retryTransient, setAsideStaleWalIndex } from './startup'
 
 process.on('uncaughtException', (error) => {
   console.error('[Main] uncaughtException', error)
@@ -267,7 +267,7 @@ app.whenReady().then(async () => {
   appService = await retryTransient(() => new AppService(app.getPath('userData')), { onRetry: (error, attempt) => {
     // Somos a única instância (trava de instância única): um -shm com WAL vazio é resto de outra execução.
     const setAside = shouldUseSingleInstanceLock && attempt === 1 && /malformed/i.test(String(error)) ? setAsideStaleWalIndex(join(app.getPath('userData'), 'politron-v9.sqlite')) : null
-    diagnostic('startup-db-retry', { attempt, error: String(error), ...(setAside ? { staleWalIndex: setAside } : {}) })
+    diagnostic('startup-db-retry', { attempt, error: String(error), ...databaseFailureDetails(error, join(app.getPath('userData'), 'politron-v9.sqlite')), exe: process.execPath, ...(setAside ? { staleWalIndex: setAside } : {}) })
   } })
   appService.store.applyAutonomyDefaults()
   hosts = new HostManager(new HostStore(app.getPath('userData')), () => realtimeService?.stop())
