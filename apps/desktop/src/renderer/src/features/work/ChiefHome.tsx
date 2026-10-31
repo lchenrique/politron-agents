@@ -9,6 +9,7 @@ import { describeTrigger } from '../../../../shared/missions'
 import { Avatar, AgentPresence } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 import { PolitronToolApproval } from '../chat/PolitronToolApproval'
+import { deriveDelegations, isDelegationActive } from '../pwa/pwa-agent-model'
 import { MissionControls, MissionReply, PhaseLabel, ProgressBar, StepList, missionPhase, missionProgress, relativeTime } from './mission-ui'
 
 const SUGGESTIONS = [
@@ -39,6 +40,8 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
   const [expanded, setExpanded] = useState<string | null>(null)
   const missions = snapshot.missions || []
   const open = missions.filter(mission => ['active', 'paused'].includes(mission.status)).reverse()
+  // Delegações do Chief ainda ativas também são trabalho em andamento, mesmo sem missão aberta.
+  const delegations = useMemo(() => deriveDelegations(snapshot).filter(isDelegationActive), [snapshot])
   const waiting = missions.filter(mission => mission.status === 'waiting').reverse()
   const finished = missions.filter(mission => ['completed', 'failed', 'cancelled'].includes(mission.status)).sort((a, b) => (b.completedAt || b.updatedAt).localeCompare(a.completedAt || a.updatedAt)).slice(0, 6)
   const approvals = snapshot.approvals.filter(approval => approval.status === 'pending')
@@ -154,11 +157,15 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
 
           <section aria-labelledby="active-title">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 id="active-title" className="ds-section-title flex items-center gap-2">Em andamento {!!open.length && <span className="ds-count">{open.length}</span>}</h2>
+              <h2 id="active-title" className="ds-section-title flex items-center gap-2">Em andamento {!!(open.length + delegations.length) && <span className="ds-count">{open.length + delegations.length}</span>}</h2>
               {open.some(item => item.status === 'active') && <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => void pauseAll()}><PauseCircle className="size-3.5" />Pausar tudo</Button>}
             </div>
-            {open.length
-              ? <ul className="ds-list">{open.map(missionRow)}</ul>
+            {open.length || delegations.length
+              ? <ul className="ds-list">{open.map(missionRow)}{delegations.map(delegation => <li key={delegation.id} className="flex items-center gap-3 px-4 py-3" data-delegation-row>
+                <Avatar agent={delegation.agent} size="xs" state={delegation.state === 'waiting' ? 'waiting' : 'working'} />
+                <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{delegation.title}</p><p className="text-xs text-muted-foreground">{delegation.agentName} · {delegation.state === 'waiting' ? 'aguardando você' : 'trabalhando'} · delegado pelo Chief</p></div>
+                <Button size="xs" variant="outline" onClick={() => onOpenConversation(delegation.conversationId)}><MessageSquare className="size-3.5" />Abrir</Button>
+              </li>)}</ul>
               : <div className="ds-empty px-5 py-8 text-sm leading-6">Nenhum trabalho em andamento. Atribua um objetivo acima: o responsável registra o plano, executa com as ferramentas e continua sozinho até concluir ou precisar de você. Tudo fica salvo e é retomado se o Boobot reiniciar.</div>}
           </section>
 

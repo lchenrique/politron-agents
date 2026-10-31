@@ -26,3 +26,15 @@ describe('deriveDelegations', () => {
     expect(isDelegationActive(delegation)).toBe(false)
   })
 })
+
+describe('títulos das tarefas delegadas', () => {
+  it('tiram o nome do Boo repetido no começo e mantêm o resto', async () => {
+    const { taskTitle } = await import('./pwa-agent-model')
+    expect(taskTitle('Freya · Redesenhar o board', 'Freya')).toBe('Redesenhar o board')
+    expect(taskTitle('Board · Corrigir selects', 'Freya')).toBe('Board · Corrigir selects')
+    const running = { id: 'r1', agentId: 'luna', conversationId: 'old-task', status: 'running', createdAt: '2026-10-30T11:00:00Z' } as Run
+    const base = snapshot([running])
+    const [delegation] = deriveDelegations({ ...base, conversations: base.conversations.map(item => item.id === 'old-task' ? { ...item, name: 'Luna · Revisar login' } : item) })
+    expect(delegation).toMatchObject({ title: 'Revisar login', agentName: 'Luna', state: 'working' })
+  })
+})

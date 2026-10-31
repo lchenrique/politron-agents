@@ -34,6 +34,12 @@ export function tabForConversation(snapshot: Snapshot, conversation: Conversatio
   return 'projects'
 }
 
+/** Título da tarefa sem o prefixo "Nome do Boo · " que as conversas delegadas recebem. */
+export function taskTitle(name: string, agentName: string): string {
+  const prefix = agentName.trim() + ' · '
+  return name.startsWith(prefix) ? name.slice(prefix.length).trim() || name : name
+}
+
 export interface PwaBoo { agent: Agent; state: PwaPresence; detail: string }
 
 /** Boos da equipe (Chief primeiro) com o que cada um faz agora, a partir das execuções ativas do snapshot. */
@@ -46,7 +52,7 @@ export function booOverview(snapshot: Snapshot, agentStates: Record<string, PwaP
     const active = snapshot.runs.filter(run => run.agentId === agent.id && ACTIVE_RUN_STATUSES.includes(run.status)).at(-1)
     const detail = state === 'idle' ? 'Disponível'
       : state === 'waiting' ? 'Aguardando você'
-      : `Trabalhando em ${(active && conversationName(active.conversationId)) || 'uma tarefa'}`
+      : `Trabalhando em ${(active && taskTitle(conversationName(active.conversationId) || '', agent.name)) || 'uma tarefa'}`
     return { agent, state, detail }
   })
 }
@@ -79,7 +85,7 @@ export function deriveDelegations(snapshot: Snapshot): PwaDelegation[] {
       const agentId = latest?.agentId || item.agentIds[0]
       const agent = agentId === ASSISTANT_ID ? snapshot.assistant : snapshot.agents.find(candidate => candidate.id === agentId)
       return {
-        id: item.id, conversationId: item.id, title: item.name, agent, agentName: agent?.name || 'Boo',
+        id: item.id, conversationId: item.id, title: taskTitle(item.name, agent?.name || ''), agent, agentName: agent?.name || 'Boo',
         state: latest ? stateOfRun(latest.status) : 'done', at: latest?.createdAt || item.updatedAt || item.createdAt,
       }
     })

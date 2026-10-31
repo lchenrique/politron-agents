@@ -62,3 +62,18 @@ describe('ChiefHome', () => {
     await waitFor(() => expect(window.appAPI.startMission).toHaveBeenCalledWith({ goal: 'Pesquisar', workspaceId: null, agentId: 'agent-chief' }))
   })
 })
+
+describe('ChiefHome: delegações em andamento', () => {
+  it('lista a delegação ativa do Chief em "Em andamento" e abre a conversa do Boo', () => {
+    const onOpenConversation = vi.fn()
+    const withDelegation = { ...snapshot,
+      conversations: [{ id: 'chief-chat', name: 'Chefe', kind: 'direct', agentIds: ['agent-chief'] }, { id: 'ana-task', name: 'Ana · Revisar login', kind: 'direct', agentIds: ['agent-ana'], parentConversationId: 'chief-chat' }],
+      runs: [{ id: 'r1', agentId: 'agent-ana', conversationId: 'ana-task', status: 'running', createdAt: '2026-10-31T00:00:00Z' }] } as unknown as Snapshot
+    render(<ChiefHome snapshot={withDelegation} agentStates={{}} onOpenConversation={onOpenConversation} onOpenAgent={vi.fn()} onOpenRoutines={vi.fn()} onNotice={vi.fn()} />)
+    expect(screen.queryByText(/Nenhum trabalho em andamento/)).not.toBeInTheDocument()
+    expect(screen.getByText('Revisar login')).toBeInTheDocument()
+    expect(screen.getByText(/Ana · trabalhando · delegado pelo Chief/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir' }))
+    expect(onOpenConversation).toHaveBeenCalledWith('ana-task')
+  })
+})
