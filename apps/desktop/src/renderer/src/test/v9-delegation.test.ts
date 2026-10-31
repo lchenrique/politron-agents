@@ -160,12 +160,15 @@ describe('delegação entre conversas V9', () => {
     const teamConversation = service.saveConversation({ id: source.id, agentIds: [chief.id, recipient.id] })
     const chiefContext = { ...context, agent: chief, conversation: teamConversation, run: { ...context.run, agentId: chief.id, agent: chief } }
     const approve = vi.spyOn(service as any, 'requestApproval')
+    // Delegação do Chief é sempre em segundo plano: o recibo volta na hora e o complemento só vale após a conclusão.
     await (service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Pedido inicial' }, 'tool-chief-first')
     const previous = service.store.delegations()[0]
+    await vi.waitFor(() => expect(service.store.delegation(previous.id)?.status).toBe('completed'))
     await (service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Complemento', delegation_id: previous.id }, 'tool-chief-followup')
+    await vi.waitFor(() => expect(service.store.delegations()).toHaveLength(2))
     expect(approve).not.toHaveBeenCalled()
-    expect(runtime.started).toBe(2)
     expect(service.store.delegations()[1].previousDelegationId).toBe(previous.id)
+    await vi.waitFor(() => expect(service.store.delegations().every(item => item.status === 'completed' && item.continuationRunId)).toBe(true))
   })
 
   it('registra falha e não mascara o erro do destinatário', async () => {

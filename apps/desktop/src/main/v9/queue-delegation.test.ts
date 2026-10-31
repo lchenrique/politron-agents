@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { WorkspaceQueue, type WorkspaceLease } from './routing'
+import { WorkspaceQueue, chiefLaneKey, parseConcurrencyLimit, sessionLockKey, type WorkspaceLease } from './routing'
 
 const signal = () => new AbortController().signal
 const delegate = (queue: WorkspaceQueue, key: string, parent: WorkspaceLease, task: (lease: WorkspaceLease) => Promise<void>) => queue.enqueueDelegation(key, signal(), task, parent)
 
 describe('concessões de execução para delegação', () => {
-  it('dois pais aguardam seus filhos sem consumir uma terceira vaga global', async () => {
-    const queue = new WorkspaceQueue(), trace: string[] = []
+  it('dois pais aguardam seus filhos sem consumir uma terceira vaga global (limite 2)', async () => {
+    const queue = new WorkspaceQueue({ maxConcurrent: 2 }), trace: string[] = []
     let release!: () => void, started = 0
     const both = new Promise<void>(resolve => { release = resolve })
     await Promise.all(['a', 'b'].map(key => queue.enqueue(key, signal(), async lease => {
@@ -97,5 +97,83 @@ describe('concessões de execução para delegação', () => {
     })
     await background
     expect(trace).toEqual(['origem','background'])
+  })
+})
+
+describe('serialização por pasta de trabalho, não por Boo', () => {
+  const tick = () => new Promise<void>(resolve => setTimeout(resolve, 5))
+  it('dois Boos em worktrees diferentes rodam ao mesmo tempo, sem fila nem limite global', async () => {
+    const queue = new WorkspaceQueue(), trace: string[] = []
+    let running = 0, peak = 0
+    const work = (name: string) => async () => { peak = Math.max(peak, ++running); trace.push(name + ':inicio'); await tick(); running--; trace.push(name + ':fim') }
+    await Promise.all(['wt-a', 'wt-b', 'wt-c', 'wt-d', 'wt-e'].map(key => queue.enqueue(key, signal(), work(key))))
+    expect(peak).toBe(5)
+  })
+  it('o mesmo Boo roda em worktrees diferentes ao mesmo tempo, cada um com a sua sessão', async () => {
+    const queue = new WorkspaceQueue()
+    let running = 0, peak = 0
+    const work = async () => { peak = Math.max(peak, ++running); await tick(); running-- }
+    await Promise.all([
+      queue.enqueue('wt-a', signal(), work, { session: sessionLockKey('conversa-1', 'boo') }),
+      queue.enqueue('wt-b', signal(), work, { session: sessionLockKey('conversa-2', 'boo') }),
+    ])
+    expect(peak).toBe(2)
+  })
+  it('duas tarefas no mesmo cwd continuam serializadas, inclusive com caminho escrito de outro jeito', async () => {
+    const queue = new WorkspaceQueue(), trace: string[] = []
+    let running = 0, peak = 0
+    const work = (name: string) => async () => { peak = Math.max(peak, ++running); trace.push(name + ':inicio'); await tick(); running--; trace.push(name + ':fim') }
+    await Promise.all([queue.enqueue('C:\\repo\\wt', signal(), work('a')), queue.enqueue('c:/repo/wt/', signal(), work('b'))])
+    if (process.platform === 'win32') { expect(peak).toBe(1); expect(trace).toEqual(['a:inicio', 'a:fim', 'b:inicio', 'b:fim']) }
+    await Promise.all([queue.enqueue('/repo/x', signal(), work('c')), queue.enqueue('/repo/x/', signal(), work('d'))])
+    expect(peak).toBe(1)
+  })
+  it('a mesma sessão não recebe turnos concorrentes nem em pastas diferentes', async () => {
+    const queue = new WorkspaceQueue(), trace: string[] = []
+    const work = (name: string) => async () => { trace.push(name + ':inicio'); await tick(); trace.push(name + ':fim') }
+    const session = sessionLockKey('conversa', 'boo')
+    await Promise.all([queue.enqueue('wt-a', signal(), work('a'), { session }), queue.enqueue('wt-b', signal(), work('b'), { session })])
+    expect(trace).toEqual(['a:inicio', 'a:fim', 'b:inicio', 'b:fim'])
+  })
+  it('limite global opcional: 0 desliga e um valor positivo limita entre pastas diferentes', async () => {
+    const queue = new WorkspaceQueue({ maxConcurrent: 2 })
+    let running = 0, peak = 0
+    const work = async () => { peak = Math.max(peak, ++running); await tick(); running-- }
+    await Promise.all(['a', 'b', 'c', 'd', 'e'].map(key => queue.enqueue(key, signal(), work)))
+    expect(peak).toBe(2)
+    queue.setMaxConcurrent(0); peak = 0
+    await Promise.all(['a', 'b', 'c', 'd', 'e'].map(key => queue.enqueue(key, signal(), work)))
+    expect(peak).toBe(5)
+    expect([parseConcurrencyLimit(undefined), parseConcurrencyLimit('0'), parseConcurrencyLimit('abc'), parseConcurrencyLimit('-1'), parseConcurrencyLimit('3')]).toEqual([0, 0, 0, 0, 3])
+  })
+  it('pai, filho e neto em pastas diferentes não travam, mesmo com limite global 1', async () => {
+    const queue = new WorkspaceQueue({ maxConcurrent: 1 }), trace: string[] = []
+    await queue.enqueue('pai', signal(), async parent => {
+      await delegate(queue, 'filho', parent, async child => {
+        await delegate(queue, 'neto', child, async () => { trace.push('neto') })
+        trace.push('filho')
+      })
+      trace.push('pai')
+    })
+    expect(trace).toEqual(['neto', 'filho', 'pai'])
+  })
+  it('dois pais com o limite cheio aguardam filhos de outras pastas: o pai devolve a vaga enquanto espera', async () => {
+    const queue = new WorkspaceQueue({ maxConcurrent: 2 }), trace: string[] = []
+    let release!: () => void, started = 0
+    const both = new Promise<void>(resolve => { release = resolve })
+    await Promise.all(['a', 'b'].map(key => queue.enqueue(key, signal(), async lease => {
+      if (++started === 2) release()
+      await both
+      await delegate(queue, key + '-filho', lease, async () => { trace.push(key + '-filho') })
+    })))
+    expect(trace.sort()).toEqual(['a-filho', 'b-filho'])
+  })
+  it('Chief (faixa própria) aguarda o filho sem ocupar vaga nem pasta', async () => {
+    const queue = new WorkspaceQueue({ maxConcurrent: 1 }), trace: string[] = []
+    await queue.enqueue(chiefLaneKey('repo', 'conversa'), signal(), async chief => {
+      await delegate(queue, 'repo', chief, async () => { trace.push('boo') })
+      trace.push('chief')
+    }, { lane: true })
+    expect(trace).toEqual(['boo', 'chief'])
   })
 })

@@ -49,7 +49,9 @@ describe('autonomia do Chief e acesso à pasta', () => {
       service.store.putRun({ ...child.run, status: 'completed' })
       service.store.putMessage({ ...child.message, text: 'LP criada.', status: 'completed' })
     })
-    await expect(broker.callTool(context, 'ask_agent', { agent: 'Hermes', task: 'Crie index.html.', mode: 'wait' }, 'delegate')).resolves.toContain('LP criada.')
+    // Chief delega sempre em segundo plano, mesmo com mode=wait: recibo imediato e escrita feita pelo Boo depois.
+    await expect(broker.callTool(context, 'ask_agent', { agent: 'Hermes', task: 'Crie index.html.', mode: 'wait' }, 'delegate')).resolves.toContain('segundo plano')
+    await vi.waitFor(() => expect(service.store.delegations()[0]).toMatchObject({ status: 'completed', result: 'LP criada.' }))
     expect(readFileSync(join(root, 'index.html'), 'utf8')).toContain('Criskelly')
     expect(service.store.delegations()).toHaveLength(1)
     expect(service.store.approvals()).toEqual([])

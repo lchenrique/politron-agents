@@ -62,6 +62,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   const [planMode, setPlanMode] = useState(false)
   const [pendingSends, setPendingSends] = useState(0)
   const pendingCount = useRef(0)
+  const inFlight = useRef(new Set<string>())
   const retryRequest = useRef<{ signature: string; id: string } | null>(null)
   const submissionGeneration = useRef(0)
   const isImageFile = (file: File) => file.type.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name)
@@ -180,11 +181,14 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
 
   const submit = async (rawValue = value, chosenFiles = files, delivery: 'queue' | 'now' = 'queue') => {
     const message = rawValue.trim()
-    if ((!message && chosenFiles.length === 0) || pendingCount.current > 0) return
+    if (!message && chosenFiles.length === 0) return
     const submittedConversation = conversationId
     const submittedGeneration = submissionGeneration.current
     const submittedFiles = chosenFiles
     const signature = JSON.stringify([submittedConversation, message, delivery, submittedFiles.map(file => [file.name, file.size, file.type, file.lastModified])])
+    // O campo nunca trava: só um duplo envio idêntico ainda em andamento é ignorado (o host também deduplica por requestId).
+    if (inFlight.current.has(signature)) return
+    inFlight.current.add(signature)
     const requestId = retryRequest.current?.signature === signature ? retryRequest.current.id : crypto.randomUUID()
     const selectedModelOptions = {
       ...(selectedServiceTier ? { serviceTier: selectedServiceTier } : {}),
@@ -204,7 +208,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
       if (retryRequest.current?.id === requestId) retryRequest.current = null
     } catch (cause) {
       if (activeConversation.current === submittedConversation) { setValue(current => current || message); setFiles(current => current.length ? current : submittedFiles); setPlanMode(planMode); notify(cause) }
-    } finally { if (submissionGeneration.current === submittedGeneration) { pendingCount.current--; setPendingSends(pendingCount.current) } }
+    } finally { inFlight.current.delete(signature); if (submissionGeneration.current === submittedGeneration) { pendingCount.current--; setPendingSends(pendingCount.current) } }
   }
 
   const runQueued = async (action: () => Promise<void>) => { try { await action() } catch (cause) { notify(cause) } }
@@ -265,7 +269,7 @@ ${message.text}` : message.text)
         onFilesChange={setFiles}
         showModelPicker={false}
         pending={false}
-        submitDisabled={pendingSends > 0}
+        submitDisabled={false}
         accept={`${canAttachImages ? 'image/png,image/jpeg,image/webp,' : ''}text/*,.md,.txt,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml`}
         onStop={onStop}
         submitLabel={working ? 'Adicionar à fila' : 'Enviar mensagem'}
