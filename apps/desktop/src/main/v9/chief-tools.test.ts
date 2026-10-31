@@ -192,10 +192,11 @@ describe('visibilidade de agentes pelo group_members', () => {
 
     const approval = vi.spyOn(service as any, 'requestApproval')
     const delegate = vi.spyOn(service as any, 'delegate').mockResolvedValue('Tarefa concluída.')
-    await expect(call('ask_agent', { agent: worker.alias, task: 'Revisão curta.' })).resolves.toBe('Tarefa concluída.')
-    await expect(call('ask_agent', { agent: outsider.alias, task: 'Outra revisão.' })).resolves.toBe('Tarefa concluída.')
+    // Delegação do Chief nunca espera: recibo imediato, sem herdar a concessão da pasta.
+    await expect(call('ask_agent', { agent: worker.alias, task: 'Revisão curta.' })).resolves.toContain('segundo plano')
+    await expect(call('ask_agent', { agent: outsider.alias, task: 'Outra revisão.' })).resolves.toContain('segundo plano')
     expect(approval).not.toHaveBeenCalled()
-    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ agent: chief }), worker, 'Revisão curta.', expect.any(String), true, undefined)
+    expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ agent: chief }), worker, 'Revisão curta.', expect.any(String), false, undefined)
     // Quem recebe entra no time da conversa, com o Chief como líder; o pedido sai mesmo sem confirmação.
     expect(service.store.conversation(conversation.id)).toMatchObject({ kind: 'group', agentIds: [chief.id, worker.id, outsider.id], leaderAgentId: chief.id })
   })
@@ -292,7 +293,8 @@ describe('Boos temporários do Chief', () => {
       run: { id: 'parent', rootId: 'parent', ancestry: [], workspaceId: workspace.id, workspacePath: workspace.path },
       conversation,
     }, 'ask_agent', { agent: boo.alias, task: 'Pesquise.' })
-    expect(response).toBe('Pesquisa concluída.')
+    expect(response).toContain('segundo plano')
+    await vi.waitFor(() => expect(service.store.agent(boo.id)).toMatchObject({ temporaryStatus: 'retired' }))
     expect(service.store.agent(boo.id)).toMatchObject({ temporary: true, temporaryStatus: 'retired' })
     expect(service.store.snapshot().agents.some(item => item.id === boo.id)).toBe(true)
     const members = await propose('group_members', {}) as { alias: string }[]

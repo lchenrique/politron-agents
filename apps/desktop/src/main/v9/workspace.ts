@@ -19,7 +19,7 @@ import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } fro
 import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
 import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPreview, type NodeReplServer } from './external-browser-proxy'
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
-import { WorkspaceQueue, mentionedRecipients, recipients, type WorkspaceLease } from './routing'
+import { WorkspaceQueue, chiefLaneKey, mentionedRecipients, parseConcurrencyLimit, recipients, sessionLockKey, type WorkspaceLease } from './routing'
 import { OpenRouterDecisionService } from './decision-routing'
 import { CodexRuntime, type DynamicTool } from './codex'
 import { ClaudeRuntime } from './claude'
@@ -203,7 +203,8 @@ export class AppService extends EventEmitter {
   readonly missions: MissionEngine
   readonly board: BoardService
   private readonly boardReviewerConversations = new Set<string>()
-  private readonly queue = new WorkspaceQueue()
+  /** Serializa só por pasta (cwd/worktree) e por sessão do motor; BOOBOT_MAX_PARALLEL_RUNS liga um limite global opcional (padrão: sem limite). */
+  private readonly queue = new WorkspaceQueue({ maxConcurrent: parseConcurrencyLimit(process.env.BOOBOT_MAX_PARALLEL_RUNS) })
   private readonly active = new Map<string, AbortController>()
   private readonly contexts = new Map<string, RunContext>()
   private readonly completedTurns = new WeakMap<AgentRuntime, Map<string, { status: string; error?: string }>>()
@@ -805,7 +806,8 @@ export class AppService extends EventEmitter {
       this.active.set(run.id, controller)
       const abortRound = () => controller.abort()
       roundSignal?.signal.addEventListener('abort', abortRound, { once: true })
-      const task = this.queue.enqueue(workspace.path, controller.signal, lease => {
+      const chiefLane = agent.role === 'chief'
+      const task = this.queue.enqueue(chiefLane ? chiefLaneKey(workspace.path, conversationId) : workspace.path, controller.signal, lease => {
         if (!message) {
           this.dispatchQueuedInput(userMessage.id)
           message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
@@ -813,7 +815,7 @@ export class AppService extends EventEmitter {
           this.store.putRun(run)
         }
         return this.execute({ run, message, conversation, agent: runAgent, lease, voiceReply }, controller.signal)
-      })
+      }, { session: sessionLockKey(conversationId, agent.id), ...(chiefLane ? { lane: true, priority: recordInput } : {}) })
         if (mode === 'discussion') {
           try { await task } finally { roundSignal?.signal.removeEventListener('abort', abortRound) }
           roundTranscript.push(`${agent.name}: ${this.store.history(conversationId).filter(item => item.runId === run.id && item.role === 'assistant' && item.text.trim()).map(item => item.text).join('\n\n') || '(sem resposta)'}`)
@@ -1244,7 +1246,7 @@ export class AppService extends EventEmitter {
       ...(context.agent.role === 'chief' && !planning ? [
         tool('agent_create', 'Cria 1 a 5 Boos de uma vez, direto, sem pedir confirmação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Herda as permissões e o modo de aprovação do Chief, sem ampliar seu acesso; runtime, model e effort são opcionais (padrão: os seus). Para purpose=team, exige chiefManageTeam e associa os Boos à equipe padrão e à conversa atual na mesma operação; sem essa permissão, falha antes de criar qualquer Boo. Continue com ask_agent se o pedido incluir trabalho para o time.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário criado espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' }, runtime: { type: 'string', enum: ['codex', 'claude', 'pi', 'opencode', 'antigravity'] }, model: { type: 'string' }, effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'] } }, required: ['instructions'] } } }, ['agents']),
       ] : []),
-      tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
+      tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. A delegação do Chief nunca prende a conversa: sempre roda em segundo plano, mesmo com mode=wait; você recebe um recibo na hora, deve encerrar o turno e será acionado automaticamente quando o Boo terminar (sucesso ou falha). Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
     ]
     return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill'].includes(item.name)) : available
@@ -1678,11 +1680,15 @@ export class AppService extends EventEmitter {
     if (name === 'ask_agent') {
       const requested = text(args.agent, 100).replace(/^@/, '').toLocaleLowerCase('pt-BR')
       const task = text(args.task, 5000)
-      const mode = args.mode === undefined ? 'wait' : text(args.mode, 20)
-      if (mode !== 'wait' && mode !== 'background') throw new Error('Modo de delegação inválido. Use wait ou background.')
+      const requestedMode = args.mode === undefined ? 'wait' : text(args.mode, 20)
+      if (requestedMode !== 'wait' && requestedMode !== 'background') throw new Error('Modo de delegação inválido. Use wait ou background.')
+      // Chief nunca segura o turno esperando um Boo: delegação sempre em segundo plano, com notificação ao terminar.
+      const chiefAsync = context.agent.role === 'chief'
+      const mode = chiefAsync ? 'background' : requestedMode
       const continueOnResult = args.continue_on_result === true
       if (args.continue_on_result !== undefined && typeof args.continue_on_result !== 'boolean') throw new Error('continue_on_result precisa ser verdadeiro ou falso.')
-      if (continueOnResult && mode !== 'background') throw new Error('continue_on_result só pode ser usado com mode=background.')
+      if (continueOnResult && requestedMode !== 'background' && !chiefAsync) throw new Error('continue_on_result só pode ser usado com mode=background.')
+      const wakeOnResult = continueOnResult || chiefAsync
       const eligibilityContext = { agentId: context.agent.id, role: context.agent.role, workspaceId: context.run.workspaceId, ancestry: context.run.ancestry || [context.agent.id] }
       const candidate = this.store.agents().find(agent => agent.alias.toLocaleLowerCase('pt-BR') === requested || agent.name.toLocaleLowerCase('pt-BR') === requested)
       if (!candidate) throw new Error('Esse agente não existe no catálogo.')
@@ -1696,7 +1702,7 @@ export class AppService extends EventEmitter {
       const existing = this.store.delegationByKey(idempotencyKey)
       if (existing) {
         if (existing.status === 'completed') {
-          if (continueOnResult && !existing.continuationRunId) await this.continueAfterDelegation(context, existing, existing.result)
+          if (continueOnResult && !chiefAsync && !existing.continuationRunId) await this.continueAfterDelegation(context, existing, existing.result)
           return this.delegationReceipt(existing.id, existing.result)
         }
         if (existing.status === 'failed' || existing.status === 'interrupted') throw new Error(existing.error || `O pedido anterior terminou como ${existing.status}.`)
@@ -1721,13 +1727,17 @@ export class AppService extends EventEmitter {
       })
       this.delegationTasks.set(idempotencyKey, pending)
       if (mode === 'background') {
-        void pending.then(async result => {
-          if (continueOnResult) {
-            const delegation = this.store.delegationByKey(idempotencyKey)
-            if (delegation && !delegation.continuationRunId) await this.continueAfterDelegation(context, delegation, result)
-          }
+        // Sucesso ou falha: quem pediu é notificado uma única vez (continuationRunId); cancelamento do usuário não acorda ninguém.
+        void pending.then(
+          result => ({ result, failed: false }),
+          (error: unknown) => ({ result: error instanceof Error ? error.message : String(error), failed: true }),
+        ).then(async outcome => {
+          if (!wakeOnResult) return
+          const delegation = this.store.delegationByKey(idempotencyKey)
+          if (delegation && !delegation.continuationRunId && (delegation.status === 'completed' || delegation.status === 'failed')) await this.continueAfterDelegation(context, delegation, outcome.result, outcome.failed)
         }).catch(() => undefined).finally(() => this.delegationTasks.delete(idempotencyKey))
         const delegation = this.store.delegationByKey(idempotencyKey)
+        if (chiefAsync) return `Pedido ${delegation?.id || ''} enviado para ${candidate.name} em segundo plano${requestedMode === 'wait' ? ' (a delegação do Chief nunca espera)' : ''}. A conversa continua livre para o usuário. Encerre este turno: quando ${candidate.name} terminar, com sucesso ou falha, você receberá uma notificação nesta conversa e continuará a partir dela.`
         return `Pedido ${delegation?.id || ''} enviado para ${candidate.name}. Vou continuar e publicarei o resultado nesta conversa quando terminar.`.trim()
       }
       try { return this.delegationReceipt(this.store.delegationByKey(idempotencyKey)?.id || '', await pending) } finally { this.delegationTasks.delete(idempotencyKey) }
@@ -1796,7 +1806,7 @@ export class AppService extends EventEmitter {
       this.store.putMessage(runningOrigin); this.emitEvent({ type: 'message', message: runningOrigin })
       this.store.putMessage(runningRequest); this.emitEvent({ type: 'message', message: runningRequest })
       await this.execute(context, signal)
-    }, inheritLease ? parent.lease : undefined) }
+    }, inheritLease ? parent.lease : undefined, { session: sessionLockKey(child.conversationId, recipient.id) }) }
     finally { parentController?.signal.removeEventListener('abort', abortFromParent); this.active.delete(child.id) }
     if (signal.aborted && child.status === 'queued') {
       child.status = 'interrupted'; this.store.putRun(child)
@@ -1813,17 +1823,20 @@ export class AppService extends EventEmitter {
     if (completed.status !== 'completed') throw new Error(delegation.error || `${recipient.name} não concluiu o pedido.`)
     return result
   }
-  private async continueAfterDelegation(parent: RunContext, delegation: Delegation, result: string): Promise<void> {
+  private async continueAfterDelegation(parent: RunContext, delegation: Delegation, result: string, failed = false): Promise<void> {
     const latest = this.store.delegation(delegation.id)
     if (!latest || latest.continuationRunId) return
     delegation = latest
     const conversation = this.store.conversation(delegation.sourceConversationId)
-    if (conversation.agentIds.length && !conversation.agentIds.includes(delegation.requesterAgentId)) return
+    if (conversation.archived || (conversation.agentIds.length && !conversation.agentIds.includes(delegation.requesterAgentId))) return
     const workspace = this.store.workspace(conversation.workspaceId)
+    if (workspace.archived) return
     const recipient = this.store.agent(delegation.recipientAgentId)
     const requester = this.store.agent(delegation.requesterAgentId)
     const now = new Date().toISOString()
-    const input = `O pedido delegado a ${recipient.name} foi concluído. Resultado:\n\n${result.slice(0, 12000)}\n\nContinue a solicitação original do usuário usando esse resultado. Esta continuação pertence somente a você nesta conversa.`
+    const input = failed
+      ? `Notificação automática (não é uma mensagem do usuário): o pedido delegado a ${recipient.name} falhou ou ficou bloqueado. Motivo:\n\n${result.slice(0, 12000)}\n\nInforme o usuário de forma breve e decida o próximo passo: reenviar com ajustes, delegar a outro Boo ou resolver você mesmo. Não repita o mesmo pedido sem mudar algo. Esta continuação pertence somente a você nesta conversa.`
+      : `Notificação automática (não é uma mensagem do usuário): o pedido delegado a ${recipient.name} foi concluído. Resultado:\n\n${result.slice(0, 12000)}\n\nContinue a solicitação original do usuário usando esse resultado. Esta continuação pertence somente a você nesta conversa.`
     const message: Message = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, author: requester.name, role: 'assistant', text: '', status: 'queued', runId: null, delegationId: delegation.id, relatedConversationId: delegation.targetConversationId, createdAt: now }
     const run: Run = { id: randomUUID(), conversationId: conversation.id, agentId: requester.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: parent.run.ancestry, status: 'queued', threadId: null, turnId: null, messageId: message.id, input, inputMessageId: message.id, agent: requester, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now }
     message.runId = run.id
@@ -1833,7 +1846,8 @@ export class AppService extends EventEmitter {
     catch (error) { this.store.db.exec('ROLLBACK'); throw error }
     this.emitEvent({ type: 'message', message }); this.emitEvent({ type: 'changed' })
     const controller = new AbortController(); this.active.set(run.id, controller)
-    await this.queue.enqueue(workspace.path, controller.signal, lease => this.execute({ run, message, conversation, agent: requester, lease }, controller.signal))
+    const chiefLane = requester.role === 'chief'
+    await this.queue.enqueue(chiefLane ? chiefLaneKey(workspace.path, conversation.id) : workspace.path, controller.signal, lease => this.execute({ run, message, conversation, agent: requester, lease }, controller.signal), { session: sessionLockKey(conversation.id, requester.id), ...(chiefLane ? { lane: true } : {}) })
   }
   agentTerminalSessions(conversationId: string, workspaceId: string) { return this.agentTerminals.list(this.terminalScope(conversationId, workspaceId)) }
   agentTerminalStop(sessionId: string, conversationId: string, workspaceId: string) { return this.agentTerminals.stop(text(sessionId, 100), this.terminalScope(conversationId, workspaceId)) }

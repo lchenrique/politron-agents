@@ -14,7 +14,7 @@ O Electron foi aberto em uma segunda instância com `appData` exclusivo. Não h�
 
 Renderer React → preload `window.appAPI` → IPC V9 → `AppService` → runtimes/ferramentas. `WorkspaceStore` persiste agentes, conversas, runs, aprovações, delegações, diffs, sessões e checkpoints no SQLite. Codex usa app-server; Claude usa Agent SDK; Pi possui adaptador próprio; OpenCode/Antigravity usam `HeadlessCliRuntime`.
 
-O broker aplica aprovações antes das ferramentas. `WorkspaceQueue` admite duas execuções globais: raízes usam a pasta como chave; delegações usam `delegation:<id>`. `BrowserService` usa Chromium headless e contextos não persistentes separados por conversa/agente.
+O broker aplica aprovações antes das ferramentas. `WorkspaceQueue` serializa apenas por pasta de trabalho (cwd/worktree, caminho canônico) e por sessão do motor (conversa + agente); pastas ou worktrees diferentes rodam em paralelo, inclusive para o mesmo Boo, sem limite global por padrão. `BOOBOT_MAX_PARALLEL_RUNS` (inteiro positivo) liga um limite global opcional; o pai que só aguarda um filho de outra pasta devolve a vaga enquanto espera, e o Chief usa faixa própria que não ocupa vaga nem pasta (o texto anterior, com duas vagas globais, vale só como histórico da auditoria). `BrowserService` usa Chromium headless e contextos não persistentes separados por conversa/agente.
 
 A suíte Vitest combina React Testing Library, runtimes simulados e SQLite/arquivos/Git reais em fixtures. Integrações externas são condicionais. Foram analisados contratos e testes de Chief, delegação, permissões, aprovação, workspaces, runtimes e navegador antes de editar.
 
