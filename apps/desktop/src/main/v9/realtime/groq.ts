@@ -57,7 +57,7 @@ export async function* chatStream(key: string, model: string, messages: ChatMess
     for (const line of lines) {
       const data = line.startsWith('data:') ? line.slice(5).trim() : ''
       if (!data || data === '[DONE]') continue
-      let parsed: any
+      let parsed: { choices?: Array<{ delta?: { content?: string; tool_calls?: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }> } }> }
       try { parsed = JSON.parse(data) } catch { continue }
       const delta = parsed.choices?.[0]?.delta
       if (delta?.content) yield { type: 'text', delta: delta.content }

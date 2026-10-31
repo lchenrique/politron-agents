@@ -10,6 +10,7 @@ const OPENROUTER_DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions'
 // Aliases dinâmicos do OpenRouter começam com ~ (ex.: ~typesafe/jev-latest).
 const MODEL_ID = /^~?[a-z0-9][a-z0-9._/-]{1,119}(?::free)?$/i
 
+type DecisionCatalogEntry = { id?: unknown; name?: unknown; architecture?: { output_modalities?: unknown }; pricing?: { prompt?: unknown; completion?: unknown; request?: unknown } }
 export type DecisionModel = { id: string; name: string; free?: boolean }
 export type DecisionModelCatalog = { source: 'openrouter'; models: DecisionModel[] }
 type SecretStore = { has(): Promise<boolean>; load(): Promise<string | null>; save(value: string): Promise<void>; clear(): Promise<void> }
@@ -22,7 +23,7 @@ class EncryptedDecisionKey implements SecretStore {
     try {
       if (!safeStorage.isEncryptionAvailable()) throw new Error('O armazenamento seguro do sistema está indisponível.')
       return safeStorage.decryptString(await fs.readFile(this.path))
-    } catch (error: any) { if (error?.code === 'ENOENT') return null; throw error }
+    } catch (error: unknown) { if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return null; throw error }
   }
   async save(value: string) {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('O armazenamento seguro do sistema está indisponível.')
@@ -34,8 +35,9 @@ class EncryptedDecisionKey implements SecretStore {
 function validModelId(value: unknown): value is string { return typeof value === 'string' && MODEL_ID.test(value) }
 
 export function decisionModelsFromCatalog(body: unknown): DecisionModel[] | null {
-  if (!body || typeof body !== 'object' || !Array.isArray((body as any).data)) return null
+  if (!body || typeof body !== 'object' || !Array.isArray((body as { data?: DecisionCatalogEntry[] }).data)) return null
   const result = new Map<string, DecisionModel>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- resposta din�mica do servidor/protocolo; tipar exigiria refatorar os chamadores
   for (const item of (body as any).data) {
     if (!item || typeof item !== 'object' || !validModelId(item.id)) continue
     const modalities = item.architecture?.output_modalities
@@ -56,7 +58,7 @@ export function decisionModelsFromCatalog(body: unknown): DecisionModel[] | null
 
 export function parseRoutingDecision(body: unknown, validChoices: string[], minimumConfidence = 0.6): { choice: string; confidence: number } | null {
   if (!body || typeof body !== 'object') return null
-  const answers = (body as any).answers
+  const answers = (body as { answers?: { routing?: { choice: string; probabilities?: Record<string, unknown> } } }).answers
   const answer = answers?.routing
   if (!answer || typeof answer !== 'object' || !validChoices.includes(answer.choice)) return null
   const probabilities = answer.probabilities

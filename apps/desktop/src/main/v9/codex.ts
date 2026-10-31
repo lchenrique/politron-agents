@@ -11,7 +11,7 @@ import { buildAgentSystemPrompt } from './agent-prompt'
 import { spawnCli } from './cli-launch'
 import { codexRuntimePermissions, hasFullAccess } from './runtime-permissions'
 
-type RpcMessage = { id?: number | string; method?: string; params?: Record<string, any>; result?: any; error?: { code?: number | string; message: string } }
+type RpcMessage = { id?: number | string; method?: string; params?: Record<string, unknown>; result?: unknown; error?: { code?: number | string; message: string } }
 export interface DynamicTool { type: 'function'; name: string; description: string; inputSchema: Record<string, unknown> }
 export class CodexRuntime extends EventEmitter implements AgentRuntime {
   readonly supportsImages = true
@@ -19,7 +19,7 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
   private process: ChildProcessWithoutNullStreams | null = null
   private ready: Promise<void> | null = null
   private nextId = 0
-  private pending = new Map<number, { method: string; resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  private pending = new Map<number, { method: string; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
   private stderr = ''
   private async configuredMcpNames(file: string): Promise<string[]> {
     try {
@@ -60,11 +60,11 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     this.write({ method: 'initialized', params: {} })
   }
   private write(message: RpcMessage): void { if (!this.process?.stdin.writable) throw new Error('Codex não está conectado.'); this.process.stdin.write(JSON.stringify(message) + '\n') }
-  request(method: string, params: Record<string, unknown> = {}, timeout = 30000): Promise<any> {
+  request<T = unknown>(method: string, params: Record<string, unknown> = {}, timeout = 30000): Promise<T> {
     const id = ++this.nextId
-    return new Promise((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Codex não respondeu a ${method}.`)) }, timeout)
-      this.pending.set(id, { method, resolve, reject, timer })
+      this.pending.set(id, { method, resolve: value => resolve(value as T), reject, timer })
       try { this.write({ id, method, params }) } catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error) }
     })
   }
@@ -150,15 +150,16 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     // que preserva aprovações, limites do workspace e diffs auditáveis.
     const params = { cwd: directory, model: agent.model || null, ...(agent.effort ? { reasoningEffort: agent.effort } : {}), ...runtimePermissions, config, developerInstructions: buildAgentSystemPrompt(agent, projectInstructions, tools) }
     const result = threadId
-      ? await this.request('thread/resume', { ...params, threadId })
-      : await this.request('thread/start', { ...params, dynamicTools: tools })
+      ? await this.request<import('./agent-runtime').RuntimeSendResult>('thread/resume', { ...params, threadId })
+      : await this.request<import('./agent-runtime').RuntimeSendResult>('thread/start', { ...params, dynamicTools: tools })
     if (typeof result?.thread?.id !== 'string' || !result.thread.id) throw new Error('O Codex não confirmou a sessão solicitada.')
     return { id: result.thread.id, history: threadId ? 'retained' : 'empty' }
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- resposta din�mica do servidor/protocolo; tipar exigiria refatorar os chamadores
   async send(threadId: string, input: string | { text: string; images: Array<{ path: string; mimeType: string }> }, model?: string, timeout = 600000, options: { effort?: Agent['effort']; serviceTier?: string } = {}): Promise<any> {
     const text = typeof input === 'string' ? input : input.text
     const images = typeof input === 'string' ? [] : input.images
-    return this.request('turn/start', { threadId, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'localImage', path: image.path }))], ...(model ? { model } : {}), ...(options.effort ? { effort: options.effort } : {}), ...(options.serviceTier ? { serviceTierForTurn: options.serviceTier } : {}) }, timeout)
+    return this.request<import('./agent-runtime').RuntimeSendResult>('turn/start', { threadId, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'localImage', path: image.path }))], ...(model ? { model } : {}), ...(options.effort ? { effort: options.effort } : {}), ...(options.serviceTier ? { serviceTierForTurn: options.serviceTier } : {}) }, timeout)
   }
   async interrupt(threadId: string, turnId: string): Promise<void> { await this.request('turn/interrupt', { threadId, turnId }) }
   async steer(threadId: string, turnId: string, input: string): Promise<void> {

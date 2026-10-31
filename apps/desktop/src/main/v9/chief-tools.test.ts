@@ -1,3 +1,4 @@
+import type { ServiceInternals, RunContext } from './test-support'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -51,12 +52,12 @@ describe('delegação no workspace correto', () => {
     const { service, chief, workspace } = setup()
     const worker = service.saveAgent({ name: 'Revisor', alias: 'revisor', instructions: 'Revise código.' })
     const conversation = service.store.saveConversation({ name: 'Projeto', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
-    vi.spyOn(service as any, 'execute').mockImplementation(async (context: any) => {
+    vi.spyOn(service as unknown as ServiceInternals, 'execute').mockImplementation(async (context: RunContext) => {
       service.store.putRun({ ...context.run, status: 'completed' })
       service.store.putMessage({ ...context.message, status: 'completed', text: 'Revisão concluída.' })
     })
     const parent = { agent: chief, conversation, run: { id: 'run-original', rootId: 'run-original', ancestry: [], workspaceId: workspace.id, workspacePath: workspace.path } }
-    const result = await (service as any).delegate(parent, worker, 'Revise o projeto.', 'run-original:revisor')
+    const result = await (service as unknown as ServiceInternals).delegate(parent, worker, 'Revise o projeto.', 'run-original:revisor')
     expect(result).toBe('Revisão concluída.')
     const delegated = service.store.delegationByKey('run-original:revisor')!
     expect(service.store.conversation(delegated.targetConversationId).workspaceId).toBe(workspace.id)
@@ -118,7 +119,7 @@ describe('autoedição do Chief', () => {
     expect(names(worker)).not.toContain('self_update')
     const approval = spyOnApproval(service).mockResolvedValue(true)
     const conversation = service.store.saveConversation({ workspaceId: workspace.id, agentIds: [worker.id] })
-    await (service as any).callTool({ agent: worker, run: { id: 'w', workspaceId: workspace.id, workspacePath: workspace.path }, conversation }, 'propose_self_profile', { description: 'Revisora' })
+    await (service as unknown as ServiceInternals).callTool({ agent: worker, run: { id: 'w', workspaceId: workspace.id, workspacePath: workspace.path }, conversation }, 'propose_self_profile', { description: 'Revisora' })
     expect(approval).toHaveBeenCalledOnce()
     expect(service.store.agent(worker.id).description).toBe('Revisora')
   })
@@ -182,16 +183,16 @@ describe('visibilidade de agentes pelo group_members', () => {
     const worker = service.saveAgent({ name: 'Nina', alias: 'nina', instructions: 'Revise o projeto.' })
     const outsider = service.saveAgent({ name: 'Verati', alias: 'verati', instructions: 'Outra equipe.' })
     service.store.saveWorkspace({ id: workspace.id, defaultAgentIds: [worker.id] })
-    service.store.putRun({ id: 'worker-busy', agentId: worker.id, status: 'running' } as any)
+    service.store.putRun({ id: 'worker-busy', agentId: worker.id, status: 'running' } as unknown as import('../../shared/v9').Run)
     const conversation = service.store.saveConversation({ name: 'Chief', workspaceId: workspace.id, agentIds: [chief.id] })
     const context = { agent: chief, conversation, run: { id: 'run-chief', ancestry: [chief.id], workspaceId: workspace.id, workspacePath: workspace.path } }
-    const call = (name: string, args: Record<string, unknown>) => (service as any).callTool(context, name, args, 'call-' + name)
+    const call = (name: string, args: Record<string, unknown>) => (service as unknown as ServiceInternals).callTool(context, name, args, 'call-' + name)
     const members = await call('group_members', {}) as { alias: string; canDelegate: boolean; reason?: string }[]
     expect(members.find(item => item.alias === '@nina')).toMatchObject({ canDelegate: true, availability: 'busy' })
     expect(members.find(item => item.alias === '@verati')).toMatchObject({ canDelegate: true })
 
-    const approval = vi.spyOn(service as any, 'requestApproval')
-    const delegate = vi.spyOn(service as any, 'delegate').mockResolvedValue('Tarefa concluída.')
+    const approval = vi.spyOn(service as unknown as ServiceInternals, 'requestApproval')
+    const delegate = vi.spyOn(service as unknown as ServiceInternals, 'delegate').mockResolvedValue('Tarefa concluída.')
     await expect(call('ask_agent', { agent: worker.alias, task: 'Revisão curta.' })).resolves.toBe('Tarefa concluída.')
     await expect(call('ask_agent', { agent: outsider.alias, task: 'Outra revisão.' })).resolves.toBe('Tarefa concluída.')
     expect(approval).not.toHaveBeenCalled()
@@ -229,7 +230,7 @@ describe('Boos temporários do Chief', () => {
   it.each(['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const)('cria equipe direto e preserva escopo em qualquer motor: %s', async runtime => {
     const { service, workspace, propose, names } = setup(runtime)
     expect(names()).toEqual(expect.arrayContaining(['group_members', 'agent_create', 'team_set', 'ask_agent']))
-    const approval = vi.spyOn(service as any, 'requestApproval')
+    const approval = vi.spyOn(service as unknown as ServiceInternals, 'requestApproval')
     const reply = await propose('agent_create', { agents: [
       { description: 'Arquitetura do projeto', instructions: 'Planeje a arquitetura.' },
       { description: 'Implementação frontend', instructions: 'Implemente o frontend.' },
@@ -281,11 +282,11 @@ describe('Boos temporários do Chief', () => {
 
   it('aposenta Boo temporário após delegação sem apagar registro e histórico de identidade', async () => {
     const { service, chief, workspace, propose } = setup()
-    vi.spyOn(service as any, 'requestApproval').mockResolvedValue(true)
+    vi.spyOn(service as unknown as ServiceInternals, 'requestApproval').mockResolvedValue(true)
     await propose('agent_create', { purpose: 'task', agents: [{ name: 'Thoth', instructions: 'Pesquise.' }] })
     const boo = service.store.agents().find(item => item.name === 'Thoth')!
     const conversation = service.store.saveConversation({ name: 'Chief', kind: 'direct', workspaceId: workspace.id, agentIds: [chief.id] })
-    vi.spyOn(service as any, 'delegate').mockResolvedValue('Pesquisa concluída.')
+    vi.spyOn(service as unknown as ServiceInternals, 'delegate').mockResolvedValue('Pesquisa concluída.')
     const call = (service as unknown as { callTool: (context: unknown, name: string, args: Record<string, unknown>) => Promise<unknown> }).callTool.bind(service)
     const response = await call({
       agent: chief,

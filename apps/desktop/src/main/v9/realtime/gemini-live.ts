@@ -69,7 +69,11 @@ export async function openGeminiLive(options: {
     })
     socket.addEventListener('message', async event => {
       const raw = typeof event.data === 'string' ? event.data : Buffer.from(event.data as ArrayBuffer).toString('utf8')
-      let message: any
+      let message: {
+        setupComplete?: unknown; goAway?: unknown
+        serverContent?: { interrupted?: boolean; turnComplete?: boolean; inputTranscription?: { text?: string }; outputTranscription?: { text?: string }; modelTurn?: { parts?: Array<{ inlineData?: { data?: string; mimeType?: string } }> } }
+        toolCall?: { functionCalls?: Array<{ id: string; name: string; args?: Record<string, unknown> }> }
+      }
       try { message = JSON.parse(raw) } catch { return }
       if (message.setupComplete && !ready) { ready = true; clearTimeout(timer); resolve(); emit({ type: 'phase', phase: 'listening' }); return }
       const content = message.serverContent

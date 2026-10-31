@@ -5,10 +5,10 @@ import type { ProvidersAPI } from '../shared/providers'
 import type { SkillsAPI } from '../shared/skills'
 import type { UpdatesAPI } from '../shared/updates'
 
-type EventCallback = (data: any) => void
+type EventCallback<T> = (data: T) => void
 
-function onChannel(channel: string, callback: EventCallback): () => void {
-  const listener = (_event: IpcRendererEvent, data: any) => callback(data)
+function onChannel<T>(channel: string, callback: EventCallback<T>): () => void {
+  const listener = (_event: IpcRendererEvent, data: T) => callback(data)
   ipcRenderer.on(channel, listener)
   return () => {
     ipcRenderer.removeListener(channel, listener)
@@ -36,8 +36,8 @@ const api = {
       ipcRenderer.send('vibe:terminal:write', data),
     resize: (input: { cols: number; rows: number }) =>
       ipcRenderer.send('vibe:terminal:resize', input),
-    onData: (callback: EventCallback) => onChannel('vibe:terminal:data', callback),
-    onExit: (callback: EventCallback) => onChannel('vibe:terminal:exit', callback)
+    onData: (callback: EventCallback<string>) => onChannel('vibe:terminal:data', callback),
+    onExit: (callback: EventCallback<{ exitCode: number; signal?: number }>) => onChannel('vibe:terminal:exit', callback)
   },
 }
 

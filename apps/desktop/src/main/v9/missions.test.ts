@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { ServiceInternals, RunContext } from './test-support'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,14 +11,14 @@ const resources: { service: AppService; root: string }[] = []
 afterEach(() => { for (const { service, root } of resources.splice(0)) { service.dispose(); rmSync(root, { recursive: true, force: true }) } })
 
 /** Turnos simulados: cada função recebe o contexto real do run e chama ferramentas reais do Boobot. */
-function setup(turns: ((context: any, broker: any) => Promise<void>)[]) {
+function setup(turns: ((context: RunContext, broker: ServiceInternals) => Promise<void>)[]) {
   const root = mkdtempSync(join(tmpdir(), 'boobot-missions-'))
   const service = new AppService(join(root, 'profile')); resources.push({ service, root })
   const chief = service.saveAgent({ name: 'Atlas', role: 'chief', instructions: 'Coordene.', canWrite: true, approvalMode: 'automatic' })
   const workspace = service.store.saveWorkspace({ name: 'Produto', path: root })
-  const broker = service as any
+  const broker = service as unknown as ServiceInternals
   const inputs: string[] = []
-  vi.spyOn(broker, 'execute').mockImplementation(async (context: any) => {
+  vi.spyOn(broker, 'execute').mockImplementation(async (context: RunContext) => {
     inputs.push(context.run.input)
     broker.contexts.set(context.run.id, context)
     const turn = turns[inputs.length - 1]
@@ -27,7 +28,7 @@ function setup(turns: ((context: any, broker: any) => Promise<void>)[]) {
   })
   return { service, chief, workspace, broker, inputs }
 }
-const call = (broker: any, context: any, name: string, args: Record<string, unknown>) => broker.callTool(context, name, args)
+const call = (broker: ServiceInternals, context: unknown, name: string, args: Record<string, unknown>) => broker.callTool(context, name, args)
 
 describe('missões autônomas', () => {
   it('continua os turnos sozinho até o agente concluir com evidência', async () => {

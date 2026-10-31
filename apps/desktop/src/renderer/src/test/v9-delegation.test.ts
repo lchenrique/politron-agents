@@ -1,3 +1,4 @@
+import type { ServiceInternals } from './service-internals'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -52,7 +53,7 @@ afterEach(() => { for (const service of services.splice(0)) { try { service.disp
 
 function setup(runtime: FakeRuntime) {
   const directory = tempDirectory()
-  const service = new AppService(directory, runtime as any)
+  const service = new AppService(directory, runtime)
   services.push(service)
   const requester = service.saveAgent({ name: 'Agente A', alias: 'agente-a', instructions: 'Instruções de A', canWrite: true })
   const recipient = service.saveAgent({ name: 'Agente B', alias: 'agente-b', instructions: 'Instruções próprias de B', canWrite: false })
@@ -61,7 +62,7 @@ function setup(runtime: FakeRuntime) {
   const run: Run = { id: 'run-root', conversationId: source.id, agentId: requester.id, rootId: 'run-root', parentId: null, ancestry: [requester.id], status: 'running', threadId: null, turnId: null, messageId: 'source-run-message', input: 'Trabalho de A', agent: requester, workspaceId: sourceWorkspace.id, workspacePath: sourceWorkspace.path, createdAt: new Date().toISOString() }
   service.store.putRun(run)
   const controller = new AbortController()
-  ;(service as any).active.set(run.id, controller)
+  ;(service as unknown as ServiceInternals).active.set(run.id, controller)
   const context = { run, conversation: source, agent: requester, message: { id: run.messageId, conversationId: source.id, agentId: requester.id, author: requester.name, role: 'assistant', text: '', status: 'running', runId: run.id, createdAt: run.createdAt } }
   return { service, context, requester, recipient, source, controller }
 }
@@ -86,7 +87,7 @@ describe('delegação entre conversas V9', () => {
   it('executa em conversa privada, retorna e grava os vínculos nos dois históricos; repetição não executa de novo', async () => {
     const runtime = new FakeRuntime()
     const { service, context, source, recipient } = setup(runtime)
-    const result = await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Analise apenas este pedido' }, 'tool-1')
+    const result = await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Analise apenas este pedido' }, 'tool-1')
     expect(result).toContain('Resultado do agente destinatário.')
     expect(result).toContain('ID da delegação:')
     expect(runtime.started).toBe(1)
@@ -97,14 +98,14 @@ describe('delegação entre conversas V9', () => {
     expect(service.store.message(delegation.resultMessageId)?.runId).toBe(delegation.childRunId)
     expect(service.store.history(source.id).find(message => message.delegationId === delegation.id)).toMatchObject({ status: 'completed', relatedConversationId: delegation.targetConversationId })
     expect(service.store.history(delegation.targetConversationId).map(message => message.delegationId)).toEqual([delegation.id, delegation.id])
-    await expect((service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Analise apenas este pedido' }, 'tool-1')).resolves.toBe(result)
+    await expect((service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Analise apenas este pedido' }, 'tool-1')).resolves.toBe(result)
     expect(runtime.started).toBe(1)
   })
 
   it('consulta resultado e stdout/código e continua no privado com a solicitação anterior, sem repetir o comando', async () => {
     const runtime = new FakeRuntime()
     const { service, context, requester, recipient, source } = setup(runtime)
-    const receipt = await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Execute o comando e confira a versão.' }, 'tool-initial') as string
+    const receipt = await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Execute o comando e confira a versão.' }, 'tool-initial') as string
     const previous = service.store.delegations()[0]
     expect(receipt).toContain(`ID da delegação: ${previous.id}`)
     const child = service.store.run(previous.childRunId)!
@@ -112,12 +113,12 @@ describe('delegação entre conversas V9', () => {
     const commandResult = await runCommand('node --version', child.workspacePath)
     const evidence = createCommandEvidence({ runId: child.id, toolCallId: 'shell-call', agentId: recipient.id, conversationId: previous.targetConversationId, workspaceId: child.workspaceId, command: 'node --version', cwd: child.workspacePath }, commandResult, new Date().toISOString(), 'command-proof')
     service.store.putCommandEvidence(evidence)
-    const queried = await (service as any).callTool(context, 'delegation_result', { delegation_id: previous.id })
+    const queried = await (service as unknown as ServiceInternals).callTool(context, 'delegation_result', { delegation_id: previous.id })
     expect(queried).toMatchObject({ result: previous.result, commandEvidence: [evidence] })
     const recipientContext = { run: { workspaceId: child.workspaceId }, conversation: service.store.conversation(previous.targetConversationId), agent: recipient }
-    await expect((service as any).callTool(recipientContext, 'delegation_result', { delegation_id: previous.id })).resolves.toMatchObject({ delegationId: previous.id, commandEvidence: [evidence] })
+    await expect((service as unknown as ServiceInternals).callTool(recipientContext, 'delegation_result', { delegation_id: previous.id })).resolves.toMatchObject({ delegationId: previous.id, commandEvidence: [evidence] })
 
-    const nextReceipt = await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Informe o stdout e o código da versão anterior, sem reexecutar o comando.', delegation_id: previous.id }, 'tool-followup') as string
+    const nextReceipt = await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Informe o stdout e o código da versão anterior, sem reexecutar o comando.', delegation_id: previous.id }, 'tool-followup') as string
     const next = service.store.delegations().find(item => item.previousDelegationId === previous.id)!
     expect(nextReceipt).toContain(`ID da delegação: ${next.id}`)
     expect(next).toMatchObject({ status: 'completed', targetConversationId: previous.targetConversationId, requesterAgentId: requester.id, recipientAgentId: recipient.id })
@@ -133,23 +134,23 @@ describe('delegação entre conversas V9', () => {
   it('nega consulta e continuação por uma conversa não autorizada', async () => {
     const runtime = new FakeRuntime()
     const { service, context, recipient, source } = setup(runtime)
-    await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Pedido privado' }, 'tool-private')
+    await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Pedido privado' }, 'tool-private')
     const previous = service.store.delegations()[0]
     const stranger = service.saveAgent({ name: 'Agente estranho', alias: 'estranho', instructions: 'Sem acesso.' })
     const otherSource = service.saveConversation({ kind: 'group', name: 'Outra origem', agentIds: [stranger.id], workspaceId: source.workspaceId })
     const otherWorkspace = await service.saveWorkspace({ name: 'Outro workspace' })
     const wrongContext = { ...context, agent: stranger, conversation: otherSource, run: { ...context.run, workspaceId: source.workspaceId } }
-    const denied = await (service as any).callTool(wrongContext, 'delegation_result', { delegation_id: previous.id }).catch((error: Error) => error)
+    const denied = await (service as unknown as ServiceInternals).callTool(wrongContext, 'delegation_result', { delegation_id: previous.id }).catch((error: Error) => error)
     expect(denied).toMatchObject({ message: expect.stringContaining('não tem acesso') })
-    await expect((service as any).callTool(wrongContext, 'ask_agent', { agent: recipient.alias, task: 'Tente continuar', delegation_id: previous.id }, 'tool-unauthorized')).rejects.toThrow('não pode ser continuada')
+    await expect((service as unknown as ServiceInternals).callTool(wrongContext, 'ask_agent', { agent: recipient.alias, task: 'Tente continuar', delegation_id: previous.id }, 'tool-unauthorized')).rejects.toThrow('não pode ser continuada')
     const wrongFolderContext = { ...wrongContext, conversation: { ...otherSource, workspaceId: otherWorkspace.id }, run: { ...context.run, workspaceId: otherWorkspace.id } }
-    const wrongFolder = await (service as any).callTool(wrongFolderContext, 'delegation_result', { delegation_id: previous.id }).catch((error: Error) => error)
+    const wrongFolder = await (service as unknown as ServiceInternals).callTool(wrongFolderContext, 'delegation_result', { delegation_id: previous.id }).catch((error: Error) => error)
     expect(wrongFolder).toMatchObject({ message: expect.stringContaining('não tem acesso') })
     const wrongWorkspaceContext = { ...context, run: { ...context.run, workspaceId: otherWorkspace.id } }
-    await expect((service as any).callTool(wrongWorkspaceContext, 'ask_agent', { agent: recipient.alias, task: 'Tente expandir a pasta', delegation_id: previous.id }, 'tool-cross-workspace')).rejects.toThrow('workspace ou a conversa privada mudou')
+    await expect((service as unknown as ServiceInternals).callTool(wrongWorkspaceContext, 'ask_agent', { agent: recipient.alias, task: 'Tente expandir a pasta', delegation_id: previous.id }, 'tool-cross-workspace')).rejects.toThrow('workspace ou a conversa privada mudou')
     service.saveAgent({ id: recipient.id, name: recipient.name, alias: recipient.alias, instructions: recipient.instructions, temporary: true, temporaryWorkspaceId: source.workspaceId, temporaryStatus: 'retired' })
-    await expect((service as any).callTool(context, 'delegation_result', { delegation_id: previous.id })).resolves.toMatchObject({ delegationId: previous.id, status: 'completed' })
-    await expect((service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Reative sem autorização', delegation_id: previous.id }, 'tool-retired')).rejects.toThrow('aposentado')
+    await expect((service as unknown as ServiceInternals).callTool(context, 'delegation_result', { delegation_id: previous.id })).resolves.toMatchObject({ delegationId: previous.id, status: 'completed' })
+    await expect((service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Reative sem autorização', delegation_id: previous.id }, 'tool-retired')).rejects.toThrow('aposentado')
     expect(runtime.started).toBe(1)
   })
 
@@ -159,10 +160,10 @@ describe('delegação entre conversas V9', () => {
     const chief = service.saveAgent({ id: requester.id, name: requester.name, alias: requester.alias, instructions: requester.instructions, role: 'chief' })
     const teamConversation = service.saveConversation({ id: source.id, agentIds: [chief.id, recipient.id] })
     const chiefContext = { ...context, agent: chief, conversation: teamConversation, run: { ...context.run, agentId: chief.id, agent: chief } }
-    const approve = vi.spyOn(service as any, 'requestApproval')
-    await (service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Pedido inicial' }, 'tool-chief-first')
+    const approve = vi.spyOn(service as unknown as ServiceInternals, 'requestApproval')
+    await (service as unknown as ServiceInternals).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Pedido inicial' }, 'tool-chief-first')
     const previous = service.store.delegations()[0]
-    await (service as any).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Complemento', delegation_id: previous.id }, 'tool-chief-followup')
+    await (service as unknown as ServiceInternals).callTool(chiefContext, 'ask_agent', { agent: recipient.alias, task: 'Complemento', delegation_id: previous.id }, 'tool-chief-followup')
     expect(approve).not.toHaveBeenCalled()
     expect(runtime.started).toBe(2)
     expect(service.store.delegations()[1].previousDelegationId).toBe(previous.id)
@@ -171,7 +172,7 @@ describe('delegação entre conversas V9', () => {
   it('registra falha e não mascara o erro do destinatário', async () => {
     const runtime = new FakeRuntime(); runtime.fail = true
     const { service, context, recipient } = setup(runtime)
-    await expect((service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Falhe de forma controlada' }, 'tool-fail')).rejects.toThrow('Falha simulada do destinatário.')
+    await expect((service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Falhe de forma controlada' }, 'tool-fail')).rejects.toThrow('Falha simulada do destinatário.')
     expect(service.store.delegations()[0].status).toBe('failed')
     expect(service.store.delegations()[0].error).toContain('Falha simulada')
   })
@@ -179,7 +180,7 @@ describe('delegação entre conversas V9', () => {
   it('cancelamento da origem interrompe somente a cadeia compartilhada', async () => {
     const runtime = new FakeRuntime(); runtime.hold = true
     const { service, context, recipient, source } = setup(runtime)
-    const pending = (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Pedido cancelável' }, 'tool-cancel')
+    const pending = (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Pedido cancelável' }, 'tool-cancel')
     while (!runtime.started) await new Promise(resolve => setTimeout(resolve, 5))
     await service.stop(source.id)
     await expect(pending).rejects.toThrow()
@@ -190,7 +191,7 @@ describe('delegação entre conversas V9', () => {
   it('cancela delegação em background sem iniciar continuação ou repetir o trabalho', async () => {
     const runtime = new FakeRuntime(); runtime.hold = true
     const { service, context, recipient } = setup(runtime)
-    const receipt = await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Trabalho cancelável', mode: 'background', continue_on_result: true }, 'tool-background-cancel')
+    const receipt = await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Trabalho cancelável', mode: 'background', continue_on_result: true }, 'tool-background-cancel')
     const delegation = service.store.delegations()[0]
     expect(receipt).toContain(delegation.id)
     await vi.waitFor(() => expect(runtime.startedTurns).toBe(1))
@@ -203,7 +204,7 @@ describe('delegação entre conversas V9', () => {
   it('não ressuscita o recibo nem inicia continuação automática se a origem for excluída', async () => {
     const runtime = new FakeRuntime(); runtime.hold = true
     const { service, context, recipient, source } = setup(runtime)
-    await (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Trabalho que perderá a origem', mode: 'background', continue_on_result: true }, 'tool-delete-origin')
+    await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Trabalho que perderá a origem', mode: 'background', continue_on_result: true }, 'tool-delete-origin')
     const delegation = service.store.delegations()[0]
     await vi.waitFor(() => expect(runtime.startedTurns).toBe(1))
     await service.deleteConversation(source.id)
@@ -217,10 +218,10 @@ describe('delegação entre conversas V9', () => {
     const runtime = new FakeRuntime()
     const { service, context, recipient } = setup(runtime)
     const args = { agent: recipient.alias, task: 'Pedido com continuação automática', mode: 'background', continue_on_result: true }
-    await (service as any).callTool(context, 'ask_agent', args, 'tool-auto-once')
+    await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', args, 'tool-auto-once')
     const delegation = service.store.delegations()[0]
     await vi.waitFor(() => expect(service.store.delegation(delegation.id)?.continuationRunId).toBeTruthy())
-    await (service as any).callTool(context, 'ask_agent', args, 'tool-auto-once')
+    await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', args, 'tool-auto-once')
     expect(service.store.delegation(delegation.id)?.continuationRunId).toBeTruthy()
     expect(service.store.runs().filter(run => run.parentId === context.run.id && run.agentId === context.agent.id)).toHaveLength(1)
     expect(runtime.started).toBe(2)
@@ -230,8 +231,8 @@ describe('delegação entre conversas V9', () => {
   it('cancelar um pedido não interrompe o agente solicitante nem outra delegação', async () => {
     const runtime = new FakeRuntime(); runtime.hold = true
     const { service, context, recipient, controller } = setup(runtime)
-    const first = (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Primeiro pedido' }, 'tool-first')
-    const second = (service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Segundo pedido' }, 'tool-second')
+    const first = (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Primeiro pedido' }, 'tool-first')
+    const second = (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Segundo pedido' }, 'tool-second')
     await vi.waitFor(() => expect(runtime.startedTurns).toBe(1))
     // A mesma pasta serializa os dois pedidos. Cancelar o primeiro deve liberar o segundo.
     expect(service.store.delegationByKey('run-root:tool-second')?.status).toBe('queued')
@@ -302,7 +303,7 @@ describe('delegação entre conversas V9', () => {
     const runtime = new FakeRuntime()
     const { service, context, recipient } = setup(runtime)
     context.run.ancestry.push(recipient.id)
-    await expect((service as any).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Ciclo' }, 'tool-cycle')).rejects.toThrow('ciclo')
+    await expect((service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: recipient.alias, task: 'Ciclo' }, 'tool-cycle')).rejects.toThrow('ciclo')
     expect(service.store.delegations()).toHaveLength(0)
     expect(service.snapshot().conversations).toHaveLength(1)
   })

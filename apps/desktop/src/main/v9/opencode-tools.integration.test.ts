@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { HeadlessInternals } from './test-support'
 import { createServer } from 'node:http'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -53,10 +54,9 @@ async function runTransport(tryNative: boolean) {
   process.env.OPENCODE_CONFIG = config
   const service = new AppService(directory)
   let nativeDiagnostic = ''
-  const adapter = service.openCodeRuntime as any
+  const adapter = service.openCodeRuntime as unknown as HeadlessInternals
   const launch = adapter.launch.bind(adapter)
-  vi.spyOn(adapter, 'launch').mockImplementation(async (...args: unknown[]) => {
-    const [session, prompt] = args as [any, string]
+  vi.spyOn(adapter, 'launch').mockImplementation(async (session, prompt) => {
     await launch(session, prompt)
     const collect = (chunk: Buffer | string) => { nativeDiagnostic = (nativeDiagnostic + chunk.toString()).slice(-4000) }
     session.child?.stdout.on('data', collect)

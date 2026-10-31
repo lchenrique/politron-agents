@@ -10,7 +10,7 @@ const tools = [{
 describe('Ponte nativa autenticada para ferramentas do Boobot', () => {
   it('exige token, sessão e ferramenta autorizada; encaminha apenas chamada válida', async () => {
     let active = true
-    const calls: any[] = []
+    const calls: { name: string; args: Record<string, unknown>; callId: string }[] = []
     const bridge = new OpenCodeToolBridge(session => session === 'active'
       ? { active, tools, invoke: async (name, args, callId) => {
         calls.push({ name, args, callId })

@@ -18,8 +18,8 @@ export class ClaudeCredentialStore {
     try {
       if (!safeStorage.isEncryptionAvailable()) throw new Error('O armazenamento seguro do sistema está indisponível.')
       return safeStorage.decryptString(await fs.readFile(this.path))
-    } catch (error: any) {
-      if (error?.code === 'ENOENT') return null
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return null
       throw error
     }
   }

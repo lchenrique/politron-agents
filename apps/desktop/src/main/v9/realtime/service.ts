@@ -262,11 +262,11 @@ export class RealtimeService {
 
 export function registerRealtimeIpc(service: RealtimeService, isRemote = () => false): () => void {
   const requireLocal = () => { if (isRemote()) throw new Error('Ligações de voz ainda não estão disponíveis no host remoto. Use o chat ou selecione este computador.') }
-  const handle = (channel: string, handler: (...args: any[]) => unknown) => ipcMain.handle(`realtime:${channel}`, (event, ...args) => {
+  const handle = <K extends keyof RealtimeService>(channel: K, handler: (...args: RealtimeService[K] extends (...args: infer A) => unknown ? A : never) => unknown) => ipcMain.handle(`realtime:${channel}`, (event, ...args) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
     if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
     requireLocal()
-    return handler(...args)
+    return handler(...args as RealtimeService[K] extends (...args: infer A) => unknown ? A : never)
   })
   handle('status', () => service.status())
   handle('saveKey', (provider, key) => service.saveKey(provider, key))

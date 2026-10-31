@@ -15,6 +15,7 @@ import { OpenCodeToolBridge } from './opencode-tool-bridge'
 import bridgePlugin from './opencode-bridge-plugin.bundle.mjs?raw'
 
 const execFileAsync = promisify(execFile)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- resposta dinâmica do servidor/protocolo; tipar exigiria refatorar os chamadores
 type Data = Record<string, any>
 type Session = { id: string; cwd: string; agent: Agent; instructions: string; tools: DynamicTool[];
   turn?: string; model?: string; variant?: string; waiting?: string; text: string; steps: number; parts: Map<string, string>;
@@ -141,6 +142,7 @@ export class OpenCodeServerRuntime extends EventEmitter implements AgentRuntime 
     await this.http('GET', '/global/health', undefined, undefined, 12000)
     void this.listenEvents()
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- resposta dinâmica do servidor/protocolo; tipar exigiria refatorar os chamadores
   private async http(method: string, path: string, cwd?: string, body?: unknown, timeout = 600000, signal?: AbortSignal): Promise<any> {
     const url = new URL(path, this.base)
     if (cwd) url.searchParams.set('directory', cwd)

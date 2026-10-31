@@ -1,3 +1,4 @@
+import type { HeadlessInternals, RuntimeEvent } from './test-support'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -28,10 +29,10 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
     const runtime = new HeadlessCliRuntime(kind, tmpdir())
     const write = vi.fn()
     const session = { id: 'thread', agent, history: [], tools: [{ type: 'function', name: 'propose_boos', description: 'Propõe Boos.', inputSchema: { type: 'object' } }], instructions: '', text: '', raw: '', steps: 0, turnId: 'turn', finished: false, stopping: false, child: { stdin: { write }, kill: vi.fn() } }
-    const events: any[] = []
+    const events: RuntimeEvent[] = []
     runtime.on('event', event => events.push(event))
-    const internal = runtime as any
-    internal.sessions.set(session.id, session)
+    const internal = runtime as unknown as HeadlessInternals
+    internal.sessions.set(session.id, session as unknown as Parameters<typeof internal.sessions.set>[1])
     const action = { action: 'tool', tool: 'propose_boos', arguments: JSON.stringify({ agents: [{ name: 'Íris', instructions: 'Revise a interface.' }] }), text: '' }
     if (kind === 'antigravity') internal.receive(session, { event: 'result', result: { status: 'SUCCESS', structured_output: action } })
     else { internal.receive(session, { type: 'text', part: { text: JSON.stringify(action) } }); internal.receive(session, { type: 'step_finish' }) }
@@ -48,20 +49,20 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
 
   it('recusa ferramenta que não foi oferecida, sem interpretar uma resposta livre como execução', () => {
     const runtime = new HeadlessCliRuntime('antigravity', tmpdir())
-    const events: any[] = []
+    const events: RuntimeEvent[] = []
     runtime.on('event', event => events.push(event))
     const state = { id: 'thread', agent, tools: [{ name: 'group_members' }], text: '', raw: '', history: [], steps: 0, turnId: 'turn', finished: false, stopping: false }
-    ;(runtime as any).receive(state, { event: 'result', result: { status: 'SUCCESS', structured_output: { action: 'tool', tool: 'propose_boos', arguments: '{}', text: '' } } })
+    ;(runtime as unknown as HeadlessInternals).receive(state, { event: 'result', result: { status: 'SUCCESS', structured_output: { action: 'tool', tool: 'propose_boos', arguments: '{}', text: '' } } })
     expect(events.some(event => event.method === 'item/tool/call')).toBe(false)
-    expect(events.at(-1).params.turn.status).toBe('failed')
+    expect(events.at(-1)!.params.turn!.status).toBe('failed')
     runtime.close()
   })
 
   it.each(['opencode', 'antigravity'] as const)('cancelamento invalida respostas tardias de ferramenta: %s', async kind => {
     const runtime = new HeadlessCliRuntime(kind, tmpdir())
-    const internal = runtime as any
+    const internal = runtime as unknown as HeadlessInternals
     const session = { id: 'thread', agent, tools: [{ name: 'group_members' }], text: '', raw: '', history: [], steps: 0, turnId: 'turn', finished: false, stopping: false }
-    internal.sessions.set(session.id, session)
+    internal.sessions.set(session.id, session as unknown as Parameters<typeof internal.sessions.set>[1])
     internal.structuredResult(session, { action: 'tool', tool: 'group_members', arguments: '{}', text: '' })
     const pending = [...internal.pendingTools.keys()][0]
     internal.resumeTool = vi.fn()
@@ -74,13 +75,13 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
 
   it('resposta livre não é considerada execução quando há ferramentas', () => {
     const runtime = new HeadlessCliRuntime('antigravity', tmpdir())
-    const events: any[] = []
+    const events: RuntimeEvent[] = []
     runtime.on('event', event => events.push(event))
     const session = { id: 'thread', agent, tools: [{ name: 'propose_boos' }], text: '', raw: '', history: [], steps: 0, turnId: 'turn', finished: false, stopping: false }
-    ;(runtime as any).receive(session, { event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'Criei a equipe.' } })
-    ;(runtime as any).receive(session, { event: 'result', result: { status: 'SUCCESS', response: 'Criei a equipe.' } })
+    ;(runtime as unknown as HeadlessInternals).receive(session, { event: 'step_update', step_update: { step_type: 'agent_response', text_delta: 'Criei a equipe.' } })
+    ;(runtime as unknown as HeadlessInternals).receive(session, { event: 'result', result: { status: 'SUCCESS', response: 'Criei a equipe.' } })
     expect(events.some(event => event.method === 'item/agentMessage/delta')).toBe(false)
-    expect(events.at(-1).params.turn.status).toBe('failed')
+    expect(events.at(-1)!.params.turn!.status).toBe('failed')
     runtime.close()
   })
 
@@ -98,7 +99,7 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
   it('traduz eventos de texto e fim de turno de ambos os protocolos para o Politron', () => {
     for (const kind of ['opencode', 'antigravity'] as const) {
       const runtime = new HeadlessCliRuntime(kind, tmpdir())
-      const events: Record<string, unknown>[] = []
+      const events: RuntimeEvent[] = []
       runtime.on('event', event => events.push(event))
       const session = { id: 'thread', agent, history: [], text: '', turnId: 'turn', finished: false, stopping: false }
       const internal = runtime as unknown as { receive(s: typeof session, p: Record<string, unknown>): void; finish(s: typeof session, status: 'completed'): void }
@@ -110,7 +111,7 @@ describe('adaptação segura dos CLIs em modo conversa', () => {
         internal.receive(session, { event: 'result', result: { status: 'SUCCESS' } })
       }
       expect(events.map(event => event.method)).toEqual(['item/agentMessage/delta', 'item/completed', 'turn/completed'])
-      expect((events.at(-1) as any).params.turn.status).toBe('completed')
+      expect(events.at(-1)!.params.turn!.status).toBe('completed')
       runtime.close()
     }
   })

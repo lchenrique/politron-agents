@@ -181,6 +181,7 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
     const hasPersistedHistory = (await readdir(sessionDirectory)).some(name => name !== 'bridge.mjs')
     const extension = join(sessionDirectory, 'bridge.mjs')
     await writeFile(extension, BRIDGE_EXTENSION, { encoding: 'utf8', mode: 0o600 })
+    // eslint-disable-next-line prefer-const -- atribuída depois de ser capturada pelos callbacks acima
     let context: Thread | undefined
     const bridge = new CliToolBridge(tools, (name, args) => context ? this.callTool(context, name, args) : Promise.resolve({ success: false }))
     await bridge.start()

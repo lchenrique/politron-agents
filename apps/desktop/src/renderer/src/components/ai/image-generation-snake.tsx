@@ -10,7 +10,7 @@ interface Cell {
   y: number
 }
 
-interface Direction extends Cell {}
+type Direction = Cell
 
 interface GameState {
   direction: Direction

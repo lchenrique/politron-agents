@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { ServiceInternals } from './test-support'
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
@@ -23,7 +24,7 @@ afterEach(async () => {
 
 class NoopRuntime extends EventEmitter { close() {} }
 async function toolContext(root: string, approvalMode: Agent['approvalMode']) {
-  const service = new AppService(root, new NoopRuntime() as any)
+  const service = new AppService(root, new NoopRuntime() as unknown as ConstructorParameters<typeof AppService>[1])
   services.push(service)
   const agent = service.saveAgent({ name: 'Escritor', alias: 'escritor', instructions: 'Escreva apenas quando solicitado.', canWrite: true, approvalMode })
   const conversation = service.saveConversation({ kind: 'group', name: 'Projeto', agentIds: [agent.id], workspacePath: root })
@@ -43,7 +44,7 @@ describe('escrita protegida por versão do arquivo', () => {
     await writeFile(join(root, 'large.txt'), original)
 
     const { service, context } = await toolContext(root, 'automatic')
-    const result = await (service as any).callTool(context, 'workspace_write', { path: 'large.txt', content: proposed.toString('utf8') }, 'write-large')
+    const result = await (service as unknown as ServiceInternals).callTool(context, 'workspace_write', { path: 'large.txt', content: proposed.toString('utf8') }, 'write-large')
 
     expect(result).toBe('Arquivo salvo: large.txt')
     expect(await readFile(join(root, 'large.txt'))).toEqual(proposed)
@@ -54,12 +55,12 @@ describe('escrita protegida por versão do arquivo', () => {
     const path = join(root, 'notes.txt')
     await writeFile(path, 'conteúdo aprovado')
     const { service, context } = await toolContext(root, 'ask')
-    vi.spyOn(service as any, 'requestApproval').mockImplementation(async () => {
+    vi.spyOn(service as unknown as ServiceInternals, 'requestApproval').mockImplementation(async () => {
       await writeFile(path, 'edição humana mais recente')
       return true
     })
 
-    await expect((service as any).callTool(context, 'workspace_write', { path: 'notes.txt', content: 'proposta aprovada' }, 'write-conflict')).rejects.toThrow(/alterado no disco/)
+    await expect((service as unknown as ServiceInternals).callTool(context, 'workspace_write', { path: 'notes.txt', content: 'proposta aprovada' }, 'write-conflict')).rejects.toThrow(/alterado no disco/)
     expect(await readFile(path, 'utf8')).toBe('edição humana mais recente')
   })
 

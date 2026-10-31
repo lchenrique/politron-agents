@@ -20,7 +20,13 @@ type State = {
   timeout?: ReturnType<typeof setTimeout>; stopping: boolean; finished: boolean
   tools: DynamicTool[]; raw: string; steps: number; waiting?: string; prompt?: string; model?: string
 }
-type Packet = Record<string, any>
+type Packet = {
+  type?: string; event?: string; action?: string; text?: string; tool?: string; arguments?: string
+  part?: { text?: string }
+  error?: { data?: { message?: string }; message?: string }
+  step_update?: { step_type?: string; text_delta?: string }
+  result?: { status?: string; structured_output?: unknown; response?: unknown; error?: unknown }
+}
 const cleanError = (value: string) => value.replace(/(?:sk-[a-zA-Z0-9_-]{12,}|Bearer\s+[^\s]+)/g, '[redacted]').slice(0, 400)
 const config = JSON.stringify({
   permission: { '*': 'ask' },
@@ -174,7 +180,7 @@ export class HeadlessCliRuntime extends EventEmitter implements AgentRuntime {
     child.on('error', (error) => { if (session.child === child) this.finish(session, 'failed', cleanError(error.message)) })
     child.on('close', (code) => {
       if (session.child !== child) return
-      if (pending.trim()) { try { this.receive(session, JSON.parse(pending) as Packet) } catch {} }
+      if (pending.trim()) { try { this.receive(session, JSON.parse(pending) as Packet) } catch { /* Ignora o diagnóstico final fora do protocolo JSON. */ } }
       if (session.finished) return
       if (code === 0 && this.kind === 'opencode' && session.tools.length && !session.waiting) this.structuredResult(session, undefined)
       if (session.finished) return

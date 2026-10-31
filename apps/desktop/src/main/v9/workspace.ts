@@ -258,10 +258,15 @@ export class AppService extends EventEmitter {
     })
     this.statusTimer = setInterval(() => void this.refreshWorkspaceStatuses(), 5000)
     this.statusTimer.unref?.()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     this.runtime.on('event', (event: any) => void this.onRuntimeEvent(event, this.runtime))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     this.claudeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.claudeRuntime))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     this.piRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.piRuntime))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     this.openCodeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.openCodeRuntime))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     this.antigravityRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.antigravityRuntime))
     this.agentTerminals.on('event', (event: WorkspaceEvent) => this.emitEvent(event))
     for (const [name, runtime] of [['Codex', this.runtime], ['Claude', this.claudeRuntime], ['Pi', this.piRuntime], ['OpenCode', this.openCodeRuntime], ['Antigravity', this.antigravityRuntime]] as const) {
@@ -1106,6 +1111,7 @@ export class AppService extends EventEmitter {
         }
         if (turn.status === 'failed') { reject(new Error(turn.error?.message || 'O runtime não conseguiu iniciar a resposta.')); return }
         if (turn.status === 'interrupted') { reject(new Error('Execução interrompida pelo runtime.')); return }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
         const done = (event: any) => {
           if (event.method !== 'turn/completed') return
           if (event.params?.threadId !== run.threadId) return
@@ -1249,6 +1255,7 @@ export class AppService extends EventEmitter {
     ]
     return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill'].includes(item.name)) : available
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
     const params = event?.params || {}
     if (event.method === 'turn/completed' && params.threadId && params.turn?.id) {
