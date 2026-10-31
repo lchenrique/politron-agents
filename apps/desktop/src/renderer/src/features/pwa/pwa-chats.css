@@ -1,0 +1,31 @@
+/* Lista de conversas do PWA no estilo de mensageiro, nas cores do tema. */
+.pwa-chats { display: flex; height: 100%; min-height: 0; flex-direction: column; background: var(--background); color: var(--foreground); }
+.pwa-chats__header { display: flex; min-height: 56px; align-items: center; gap: 2px; padding: 8px 8px 8px 16px; border-bottom: 1px solid var(--border); background: var(--card); padding-top: max(8px, env(safe-area-inset-top)); }
+.pwa-chats__title { flex: 1; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
+.pwa-chats__search { display: flex; flex: 1; align-items: center; gap: 8px; height: 40px; padding: 0 4px 0 12px; border-radius: 999px; background: var(--muted); color: var(--muted-foreground); }
+.pwa-chats__search > svg { width: 16px; height: 16px; flex: none; }
+.pwa-chats__search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--foreground); font: inherit; font-size: 15px; outline: none; }
+.pwa-chats__list { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.pwa-chats__empty { padding: 32px 24px; color: var(--muted-foreground); font-size: 14px; text-align: center; }
+
+.pwa-chat { display: flex; width: 100%; align-items: center; gap: 12px; padding: 10px 16px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pwa-chat:hover { background: color-mix(in srgb, var(--muted) 60%, transparent); }
+.pwa-chat[aria-current='true'] { background: var(--muted); }
+.pwa-chat:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.pwa-chat__avatar { display: inline-flex; flex: none; align-items: center; justify-content: center; min-width: 42px; }
+.pwa-chat__body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; padding-bottom: 10px; margin-bottom: -10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.pwa-chat__top, .pwa-chat__bottom { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pwa-chat__name { overflow: hidden; flex: 1; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.pwa-chat__subtitle { color: var(--muted-foreground); font-weight: 400; font-size: 14px; }
+.pwa-chat__time { flex: none; color: var(--muted-foreground); font-size: 12px; }
+.pwa-chat__time[data-unread] { color: var(--primary); font-weight: 600; }
+.pwa-chat__preview { overflow: hidden; flex: 1; color: var(--muted-foreground); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.pwa-chat__preview[data-status='typing'] { color: var(--primary); font-style: italic; }
+.pwa-chat__preview[data-status='waiting'] { color: var(--warning, #f59e0b); }
+.pwa-chat__pin { width: 14px; height: 14px; flex: none; color: var(--muted-foreground); transform: rotate(45deg); }
+.pwa-chat__unread { display: inline-flex; min-width: 20px; height: 20px; flex: none; align-items: center; justify-content: center; padding: 0 6px; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); font-size: 12px; font-weight: 700; }
+
+.pwa-chat-top { display: flex; min-height: 56px; align-items: center; gap: 8px; padding: 6px 12px 6px 4px; border-bottom: 1px solid var(--border); background: var(--card); padding-top: max(6px, env(safe-area-inset-top)); }
+.pwa-chat-top__name { display: block; overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.pwa-chat-top__status { display: block; overflow: hidden; color: var(--muted-foreground); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.pwa-chat-top__status[data-status='active'] { color: var(--primary); font-style: italic; }

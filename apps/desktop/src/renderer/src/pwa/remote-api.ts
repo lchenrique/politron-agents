@@ -72,6 +72,10 @@ export function normalizeSnapshot(input: unknown): Snapshot {
       revision: number(item.revision, 1), archived: bool(item.archived), createdAt: text(item.createdAt),
       ...(typeof item.parentConversationId === 'string' && item.parentConversationId ? { parentConversationId: item.parentConversationId } : {}),
       ...(typeof item.updatedAt === 'string' ? { updatedAt: item.updatedAt } : {}),
+      // Prévia da última mensagem para a lista de conversas; só texto curto e campos conhecidos.
+      ...(item.lastMessage && typeof item.lastMessage === 'object' && typeof (item.lastMessage as Record<string, unknown>).text === 'string' ? { lastMessage: (last => ({
+        text: String(last.text).slice(0, 140), author: typeof last.author === 'string' ? last.author : '', role: last.role === 'user' ? 'user' as const : 'assistant' as const, createdAt: typeof last.createdAt === 'string' ? last.createdAt : '',
+      }))(item.lastMessage as Record<string, unknown>) } : {}),
     }
   }) : []
   const runs = Array.isArray(value.runs) ? value.runs.map(raw => {

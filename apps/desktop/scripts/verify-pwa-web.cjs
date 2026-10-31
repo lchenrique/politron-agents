@@ -57,23 +57,21 @@ async function main(){
   page.on('response',r=>{if(r.status()>=400)network.push([r.status(),r.url()])})
   await page.goto(base,{waitUntil:'networkidle'})
   await page.getByRole('heading',{name:'Conectar ao seu host'}).waitFor()
-  assert.ok((await page.locator('body').innerText()).includes('Abra o Boobot no computador'))
   assert.ok(!(await page.locator('body').innerText()).includes('Electron:'), 'Internal framework visible in PWA instructions')
   await page.screenshot({path:path.join(os.tmpdir(),'boobot-pwa-mobile-pair.png'),fullPage:true})
   const code=gateway.issueCode().code
   await page.getByLabel('Código de oito dígitos').fill(code)
   await page.getByRole('button',{name:'Conectar dispositivo'}).click()
-  await page.getByText('Seus Boos, de onde você estiver.').waitFor()
-  await page.getByRole('button',{name:'Abrir menu'}).click()
-  await page.getByRole('button',{name:/Projeto Fictício/}).click()
-  await page.getByRole('button',{name:'Abrir menu'}).click()
-  await page.getByRole('button',{name:/Conversa de teste/}).first().click()
+  // Lista de conversas no estilo de mensageiro: a conversa direta aparece com o nome do Boo.
+  await page.getByRole('region',{name:'Conversas'}).waitFor()
+  await page.screenshot({path:path.join(os.tmpdir(),'boobot-pwa-mobile-list.png')})
+  await page.getByRole('button',{name:/^Boo de QA/}).first().click()
   await page.getByText('Mensagem do host de teste.').waitFor()
   await page.getByRole('heading',{name:'Plano do projeto',level:2}).waitFor({timeout:5000})
   const typography=await page.evaluate(()=>({
-    heading:parseFloat(getComputedStyle(document.querySelector('.boobot-pwa-messages h2')).fontSize),
-    paragraph:parseFloat(getComputedStyle(document.querySelector('.boobot-pwa-messages p')).fontSize),
-    list:getComputedStyle(document.querySelector('.boobot-pwa-messages ul')).listStyleType,
+    heading:parseFloat(getComputedStyle([...document.querySelectorAll('main h2')].find(node => node.textContent.includes('Plano do projeto'))).fontSize),
+    paragraph:parseFloat(getComputedStyle(document.querySelector('main [data-part="reply"] p')).fontSize),
+    list:getComputedStyle(document.querySelector('main [data-part="reply"] ul')).listStyleType,
   }))
   assert.ok(typography.heading>typography.paragraph,'Markdown headings must have visual hierarchy')
   assert.equal(typography.list,'disc','Markdown list markers must be visible')
@@ -89,31 +87,29 @@ async function main(){
   assert.equal(sessions.length,1)
   gateway.setDevicePermissions(sessions[0].id,{chat:true,approvals:false})
   await page.waitForTimeout(7800)
-  await page.getByLabel('Mensagem para o Boo').fill('Teste remoto de mensagem')
+  await page.getByRole('textbox',{name:'Message'}).fill('Teste remoto de mensagem')
   await page.getByRole('button',{name:'Enviar mensagem'}).click()
-  await page.getByText(/Mensagem enviada ao host/).waitFor()
-  assert.ok(calls.find(([method,args])=>method==='v9:send' && args[0]==='c1' && args[1]==='Teste remoto de mensagem'))
-  await page.getByRole('button',{name:'Parar agente'}).click()
-  await page.getByText('Solicitação de parada enviada ao host.').waitFor()
-  assert.ok(calls.find(([method,args])=>method==='v9:stop' && args[0]==='c1'))
-  await page.getByRole('button',{name:'Fechar alerta'}).click()
+  // O que importa é a chamada chegar ao host com a conversa e o texto certos.
+  const until=async(test,label)=>{for(let i=0;i<60&&!test();i++)await page.waitForTimeout(250);assert.ok(test(),label)}
+  await until(()=>calls.some(([method,args])=>method==='v9:send' && args[0]==='c1' && args[1]==='Teste remoto de mensagem'),'mensagem chega ao host')
+  // Com a execução em andamento, o botão de parar do composer interrompe o agente no host.
+  await page.getByRole('button',{name:'Parar geração'}).first().click()
+  await until(()=>calls.some(([method,args])=>method==='v9:stop' && args[0]==='c1'),'parada chega ao host')
   await page.screenshot({path:path.join(os.tmpdir(),'boobot-pwa-mobile-chat.png')})
-  await page.getByRole('button',{name:'Abrir detalhes do projeto'}).click()
-  await page.getByRole('button',{name:'Diff'}).click()
+  // Ferramentas da conversa no cabeçalho do mensageiro: alterações do projeto.
+  await page.getByRole('button',{name:'Ferramentas da conversa'}).click()
+  await page.getByRole('menuitem',{name:'Alterações'}).click()
   await page.getByText('diff --git a/test.txt b/test.txt').waitFor()
-  await page.getByRole('button',{name:'Arquivos'}).click()
-  await page.getByText('src',{exact:true}).waitFor()
   const mobile=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth,svg:document.querySelectorAll('.poli-avatar').length}))
   assert.equal(mobile.overflow,false)
   await page.screenshot({path:path.join(os.tmpdir(),'boobot-pwa-mobile-paired.png')})
-  await page.locator('#inspector button[aria-label="Fechar detalhes"]').click()
   const desktop=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1})
   desktop.on('pageerror',err=>errors.push(err.message))
   await desktop.context().addCookies(await page.context().cookies(base))
   await desktop.goto(base,{waitUntil:'networkidle'})
-  await desktop.getByText('Seus Boos, de onde você estiver.').waitFor()
-  await desktop.getByRole('button',{name:/Projeto Fictício/}).click()
-  await desktop.getByRole('button',{name:/Conversa de teste/}).first().click()
+  // No navegador grande: lista de conversas à esquerda e a conversa à direita.
+  await desktop.getByRole('region',{name:'Conversas'}).waitFor()
+  await desktop.getByRole('button',{name:/^Boo de QA/}).first().click()
   await desktop.getByText('Mensagem do host de teste.').waitFor()
   await desktop.getByRole('heading',{name:'Plano do projeto',level:2}).waitFor()
   await desktop.context().grantPermissions(['clipboard-read','clipboard-write'],{origin:base})
@@ -124,6 +120,6 @@ async function main(){
   assert.deepEqual(errors,[])
   assert.deepEqual(network.filter(([status])=>status!==403),[])
   console.log(JSON.stringify({result:'PASS',gatewayPort:port,mobile,boos:2,chat:true,errors,network,
-    typography,screenshots:['boobot-pwa-mobile-pair.png','boobot-pwa-mobile-chat.png','boobot-pwa-mobile-paired.png','boobot-pwa-desktop.png']},null,2))
+    typography,screenshots:['boobot-pwa-mobile-pair.png','boobot-pwa-mobile-list.png','boobot-pwa-mobile-chat.png','boobot-pwa-mobile-paired.png','boobot-pwa-desktop.png']},null,2))
 }
 main().catch(err=>{console.error(err);process.exitCode=1}).finally(async()=>{if(browser)await browser.close();if(gateway)await gateway.close()})

@@ -28,9 +28,10 @@ import { replaceEqualDeep } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getPwaCapabilities, onPwaCapabilitiesChanged } from '../../pwa/remote-api'
 import { ChiefHome } from '../work/ChiefHome'
-import { PwaAgentStrip, PwaBoosPage, PwaBottomNav, PwaWorkingNow } from '../pwa/PwaAgentFirst'
+import { PwaBoosPage } from '../pwa/PwaAgentFirst'
+import { PwaChatList, PwaChatTopBar, type PwaMenuAction } from '../pwa/PwaChatList'
 import { usePwaDelegationNotices } from '../pwa/use-pwa-delegation-notices'
-import { booOverview, chiefConversation, chiefOf, deriveDelegations, tabForConversation, type PwaTab } from '../pwa/pwa-agent-model'
+import { booOverview, deriveDelegations } from '../pwa/pwa-agent-model'
 import { RoutinesPage } from '../work/RoutinesPage'
 import { MissionStrip } from '../work/MissionStrip'
 import { BoardPage } from '../board/BoardPage'
@@ -45,6 +46,10 @@ export default function AppShell() {
   const isMobile = useIsMobile()
   // No celular a PWA abre na conversa com o Chief e navega por Chief, Boos e Projetos.
   const pwaMobile = browserMode && isMobile
+  // No celular "nenhuma conversa aberta" é a lista de conversas: não escolher a primeira sozinho.
+  // A detecção de celular chega depois do primeiro carregamento; a largura da tela já vale desde o início.
+  const pwaListRef = useRef(false)
+  pwaListRef.current = pwaMobile || (browserMode && typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches === true)
   const [pwaCapabilities, setPwaCapabilities] = useState<string[]>(getPwaCapabilities)
   const canChat = !browserMode || pwaCapabilities.includes('chat')
   const canApprove = !browserMode || pwaCapabilities.includes('approvals')
@@ -109,7 +114,8 @@ export default function AppShell() {
   const [mascotAgentId, setMascotAgentId] = useState<string | null>(null)
   useEffect(() => { selectedIdRef.current = selectedId; if (selectedId) setUnreadCounts(current => { if (!current[selectedId]) return current; const next = { ...current }; delete next[selectedId]; return next }) }, [selectedId])
   useEffect(() => { localStorage.setItem('politron-unread-counts', JSON.stringify(unreadCounts)) }, [unreadCounts])
-  const selected = view || activeWorkspaceId ? undefined : snapshot.conversations.find(item => item.id === selectedId && !item.archived) || (!activeWorkspaceId ? snapshot.conversations.find(item => !item.archived) : undefined)
+  // No celular, sem conversa escolhida mostra a lista de conversas em vez de abrir a primeira.
+  const selected = view || activeWorkspaceId ? undefined : snapshot.conversations.find(item => item.id === selectedId && !item.archived) || (!activeWorkspaceId && !pwaListRef.current ? snapshot.conversations.find(item => !item.archived) : undefined)
   const activeWorkspace = snapshot.workspaces.find(item => item.id === activeWorkspaceId && !item.archived)
   useEffect(() => { setDetailsAgentId(null); setMascotAgentId(null) }, [selected?.id])
   const selectConversation = useCallback((id: string) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(null); setSelectedId(id); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
@@ -157,7 +163,7 @@ export default function AppShell() {
     blocked: () => setNotice('Link não aberto: somente HTTP/HTTPS ou arquivos dentro da pasta do projeto são permitidos.'),
   }, [browserMode, linkWorkspaceId, linkWorkspaceRoot])
   // O IPC recria os objetos: conservar os dados iguais evita invalidar os memos do chat e dos Boos.
-  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
+  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : pwaListRef.current && !current ? '' : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => {
     void refresh()
     const applyProviders = (catalog: ProviderSnapshot) => {
@@ -251,7 +257,7 @@ export default function AppShell() {
           setSnapshot(current => replaceEqualDeep(current, updated))
           selectConversation(conversation.id)
         }
-      } else if (!data.conversations.some(item => item.id === selectedId && !item.archived)) setSelectedId(data.conversations.find(item => !item.archived)?.id || '')
+      } else if (!(pwaListRef.current && !selectedId) && !data.conversations.some(item => item.id === selectedId && !item.archived)) setSelectedId(data.conversations.find(item => !item.archived)?.id || '')
     } catch (error) { setNotice(errorText(error)) }
   }
   const deleteConversation = async (id: string) => {
@@ -332,30 +338,18 @@ export default function AppShell() {
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
   const pwaBoos = useMemo(() => booOverview(snapshot, agentStates), [snapshot, agentStates])
   const pwaDelegations = useMemo(() => deriveDelegations(snapshot), [snapshot])
-  const pwaChiefConversation = useMemo(() => chiefConversation(snapshot), [snapshot])
-  // A Central é a casa do Chief: no celular ela acende a aba Chief, não Projetos.
-  const pwaTab: PwaTab = view === 'boos' ? 'boos' : view === 'home' ? 'chief' : view || activeWorkspaceId ? 'projects' : !sidebarCollapsed ? 'projects' : tabForConversation(snapshot, selected)
   usePwaDelegationNotices(pwaMobile ? pwaDelegations : [], setNotice)
-  useEffect(() => {
-    if (!pwaMobile || pwaStarted || loading) return
-    const chief = chiefOf(snapshot)
-    if (!chief) { setView('home'); setPwaStarted(true); return }
-    if (pwaChiefConversation) { selectConversation(pwaChiefConversation.id); setPwaStarted(true); return }
-    if (!canChat) { setView('boos'); setPwaStarted(true); return }
-    setPwaStarted(true)
-    void openAgent(chief)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pwaMobile, pwaStarted, loading, snapshot, pwaChiefConversation, canChat])
-  const selectPwaTab = (tab: PwaTab) => {
-    if (tab === 'chief') {
-      const chief = chiefOf(snapshot)
-      if (pwaChiefConversation) selectConversation(pwaChiefConversation.id)
-      else if (chief && canChat) void openAgent(chief)
-      else openHome('home')
-    } else if (tab === 'boos') openHome('boos')
-    else { setSidebarSection('projects'); setSidebarCollapsed(current => !current) }
+  useEffect(() => { if (pwaMobile && !pwaStarted && !loading) { setView(null); setPwaStarted(true) } }, [pwaMobile, pwaStarted, loading])
+  // Projetos no PWA: a barra lateral antiga aparece no lugar da lista até voltar às conversas.
+  const [pwaProjects, setPwaProjects] = useState(false)
+  const backToChats = useCallback(() => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setSelectedId(''); setView(null); setPwaProjects(false); if (isMobile) setSidebarCollapsed(true) }, [isMobile])
+  const pwaMenu = (action: PwaMenuAction) => {
+    if (action === 'projects') { setSidebarSection('projects'); setPwaProjects(true); if (isMobile) setSidebarCollapsed(false); return }
+    openHome(action)
   }
-  const pwaAttention = { chief: pwaDelegations.filter(item => item.state === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length, boos: pwaBoos.filter(item => item.state === 'waiting').length }
+  const pwaChatList = <PwaChatList snapshot={snapshot} unreadCounts={unreadCounts} selectedId={selected?.id} canChat={canChat} onSelect={selectConversation}
+    onNewChat={agent => { if (canChat) void openAgent(agent) }} onMenu={pwaMenu} />
+  const pwaList = pwaMobile && !selected && !view && !activeWorkspaceId
   const conversationRuns = snapshot.runs.filter(run => run.conversationId === selected?.id && !run.parentId && ['queued', 'running', 'waiting'].includes(run.status))
   const queuedMessages = useMemo(() => messages.filter(message => message.role === 'user' && message.status === 'queued'), [messages])
   // A barra da janela diz onde se está; quem participa e as ações da conversa ficam na faixa da conversa.
@@ -393,8 +387,8 @@ export default function AppShell() {
   const conversationTitle = selected ? conversationIdentity(selected, snapshot.agents, snapshot.assistant) : null
 
   return <div data-pwa-shell={browserMode ? 'true' : undefined} data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-chrome font-sans text-foreground">
-    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} browserMode={browserMode} browserCanReadFiles={canReadFiles} location={windowLocation}
-      search={!browserMode && <WorkspaceSearch snapshot={snapshot} canChat={canChat} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} onSectionChange={setSidebarSection} />} />
+    {!(pwaMobile && !view) && <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} browserMode={browserMode} browserCanReadFiles={canReadFiles} location={windowLocation}
+      search={!browserMode && <WorkspaceSearch snapshot={snapshot} canChat={canChat} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} onSectionChange={setSidebarSection} />} />}
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
       {browserMode && isMobile && !sidebarCollapsed && <Button type="button" variant="ghost" size={null} className="boobot-web-sidebar-backdrop h-auto rounded-none p-0" aria-label="Fechar navegação" onClick={() => setSidebarCollapsed(true)} />}
@@ -404,6 +398,8 @@ export default function AppShell() {
         className="boobot-web-layout min-h-0 min-w-0">
       {!sidebarCollapsed && <>
       <ResizablePanel id="sidebar" defaultSize={`${sidebarSize}%`} minSize="240px" maxSize="400px" className={'min-w-0 ' + (browserMode ? 'boobot-web-sidebar-panel' : '')}>
+      {browserMode && !isMobile && !pwaProjects ? pwaChatList : <>
+      {browserMode && <Button type="button" variant="ghost" size="sm" className="m-2 justify-start" onClick={backToChats}>← Conversas</Button>}
       <Sidebar
         snapshot={snapshot}
         selected={selected}
@@ -432,6 +428,7 @@ export default function AppShell() {
         browserMode={browserMode}
         canChat={canChat}
       />
+      </>}
       </ResizablePanel>
       {/* Alça invisível de 8px centrada na borda, como no DSH: o canvas encosta na barra lateral. */}
       <ResizableHandle aria-label="Redimensionar barra lateral" className="z-10 w-0 bg-transparent after:w-2 hover:bg-transparent" />
@@ -439,20 +436,20 @@ export default function AppShell() {
       <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 ' + (browserMode ? 'pb-1.5 pr-1.5 boobot-web-main-panel ' + (sidebarCollapsed ? 'pl-1.5' : '') : '')}>
       <div className="boobot-canvas ds-canvas flex h-full min-h-0 min-w-0">
       <DockWorkspace onSendMessage={canChat ? (conversationId, agentId, text) => window.appAPI.respondToAgent(conversationId, text, agentId) : undefined} ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} delegationMessages={selected ? messages : []} conversations={snapshot.conversations} runs={snapshot.runs} onOpenRelatedConversation={selectConversation} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}
-        chatHeader={conversationChrome && <ChatHeader {...conversationChrome} />}
+        chatHeader={conversationChrome && !pwaMobile && <ChatHeader {...conversationChrome} />}
         chatTab={conversationChrome && conversationTitle ? { label: conversationTitle.title, title: [conversationTitle.title, conversationTitle.subtitle].filter(Boolean).join(' · '), leading: <ConversationAvatar compact {...conversationChrome} />, trailing: <ConversationTools compact {...conversationChrome} /> } : mainTabLabel ? { label: mainTabLabel } : undefined}>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {pwaMobile && view && <header className="pwa-chat-top"><Button variant="ghost" size="sm" onClick={backToChats}>← Conversas</Button></header>}
         {pwaMobile && !pwaStarted ? <div className="flex-1" aria-busy="true" />
+        : pwaList ? pwaChatList
         : view === 'boos' ? <PwaBoosPage boos={pwaBoos} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} />
         : view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} canChat={canChat} />
         : view === 'routines' ? <RoutinesPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
         : view === 'office' ? <OfficePage snapshot={snapshot} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} />
         : view === 'board' ? <BoardPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} readOnly={browserMode} />
         : selected ? <>
-          {pwaMobile && pwaTab === 'chief' && <>
-            <PwaAgentStrip boos={pwaBoos} onOpenAgent={agent => { if (agent.id === chiefOf(snapshot)?.id) return; if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} />
-            <PwaWorkingNow delegations={pwaDelegations} onOpenConversation={selectConversation} />
-          </>}
+          {pwaMobile && <PwaChatTopBar snapshot={snapshot} conversation={selected} onBack={backToChats}
+            tools={[{ id: 'diff', label: 'Alterações' }, ...(canReadFiles ? [{ id: 'files', label: 'Arquivos' }] : [])]} onTool={id => openTool(id as DockTool)} />}
           {selectedMission && <MissionStrip mission={selectedMission} runs={snapshot.runs} approvals={snapshot.approvals} onNotice={setNotice} />}
           <div className="flex min-h-0 flex-1 flex-col">
             <MessageLinkContext.Provider value={messageLinks}>
@@ -485,6 +482,7 @@ export default function AppShell() {
               working={conversationRuns.length > 0}
               queued={queuedMessages}
               canAttachImages={canAttachImages}
+              canAttachFiles={!browserMode || canAttachImages}
               conversationId={selected.id}
               reviewChanges={latestReview}
               reviewKey={finishedWithChanges?.runId || ''}
@@ -513,7 +511,6 @@ export default function AppShell() {
       </ResizablePanelGroup>
       </div>
     </div>
-    {pwaMobile && <PwaBottomNav tab={pwaTab} attention={pwaAttention} onSelect={selectPwaTab} />}
     <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} browserMode={browserMode} />
     {!browserMode && <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} /></Suspense>}
     {/* No celular o composer ocupa toda a largura: o aviso sobe para não cobrir o botão de enviar. */}

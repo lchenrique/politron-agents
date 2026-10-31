@@ -55,6 +55,8 @@ export interface Conversation {
   parentConversationId?: string
   /** Só no snapshot: criação da última mensagem (derivado de v9_messages); ausente sem mensagens. */
   updatedAt?: string
+  /** Só no snapshot do PWA: prévia curta da última mensagem, para a lista de conversas sem enviar o histórico. */
+  lastMessage?: { text: string; author: string; role: 'user' | 'assistant'; createdAt: string }
 }
 export interface Message {
   id: string; conversationId: string; agentId: string | null; author: string

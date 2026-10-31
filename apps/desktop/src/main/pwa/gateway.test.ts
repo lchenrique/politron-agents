@@ -171,6 +171,26 @@ describe('PWA gateway / read-only security', () => {
   })
 })
 
+describe('PWA gateway / prévia da lista de conversas', () => {
+  it('envia só a prévia curta da última mensagem de cada conversa, nunca o histórico', async () => {
+    const { request, pair, dispatch } = await make()
+    const long = 'x'.repeat(400)
+    dispatch.mockImplementation((async (method: string) => method === 'v9:snapshot' ? {
+      agents: [], workspaces: [], conversations: [{ id: 'c1', name: 'Chief', agentIds: [] }, { id: 'c2', name: 'Vazia', agentIds: [] }],
+      messages: [
+        { id: 'a', conversationId: 'c1', role: 'user', author: 'Você', text: 'primeira', createdAt: '2026-10-31T10:00:00Z' },
+        { id: 'b', conversationId: 'c1', role: 'assistant', author: 'Chief', text: long, createdAt: '2026-10-31T11:00:00Z' },
+        { id: 'c', conversationId: 'c1', role: 'activity', author: 'Chief', text: 'Terminal · segredo', createdAt: '2026-10-31T12:00:00Z' },
+      ] } : null) as never)
+    const cookie = await pair(false)
+    const { json } = await request('/api/rpc', { method: 'v9:snapshot', args: [] }, { cookie })
+    expect(json.result.messages).toEqual([])
+    expect(json.result.conversations[0].lastMessage).toEqual({ text: 'x'.repeat(140), author: 'Chief', role: 'assistant', createdAt: '2026-10-31T11:00:00Z' })
+    expect(json.result.conversations[1].lastMessage).toBeUndefined()
+    expect(JSON.stringify(json)).not.toContain('segredo')
+  })
+})
+
 describe('PWA gateway / image attachments', () => {
   it('requires a paired device with chat grant and same-origin CSRF headers', async () => {
     const { upload, pair, dispatch } = await make()

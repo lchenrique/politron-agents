@@ -73,3 +73,10 @@ describe('contrato do painel de delegações do PWA', () => {
     ])
   })
 })
+
+describe('contrato da prévia de conversa: gateway → normalizeSnapshot', () => {
+  it('a prévia da última mensagem sobrevive à normalização do PWA, sem campos extras', () => {
+    const snapshot = normalizeSnapshot({ agents: [], workspaces: [], conversations: [{ id: 'c1', name: 'Chief', kind: 'direct', agentIds: [], archived: false, lastMessage: { text: 'Pronto ✓', author: 'Chief', role: 'assistant', createdAt: '2026-10-31T10:00:00Z', extra: 'x' } }], messages: [], runs: [], approvals: [] })
+    expect(snapshot.conversations[0]!.lastMessage).toEqual({ text: 'Pronto ✓', author: 'Chief', role: 'assistant', createdAt: '2026-10-31T10:00:00Z' })
+  })
+})

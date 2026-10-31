@@ -6,6 +6,8 @@ import { emptySnapshot } from './appShellShared'
 
 const observed = vi.hoisted(() => ({ snapshots: [] as Snapshot[], sidebarSizes: [] as (number | undefined)[] }))
 vi.mock('../sidebar/Sidebar', () => ({ Sidebar: ({ snapshot }: { snapshot: Snapshot }) => { observed.snapshots.push(snapshot); return null } }))
+// No modo navegador a lista de conversas (estilo mensageiro) ocupa o lugar da barra lateral.
+vi.mock('../pwa/PwaChatList', () => ({ PwaChatList: ({ snapshot }: { snapshot: Snapshot }) => { observed.snapshots.push(snapshot); return null }, PwaChatTopBar: () => null }))
 vi.mock('@/components/ide/TitleBar', () => ({ default: () => null }))
 vi.mock('../panels/DockWorkspace', () => ({ DockWorkspace: ({ children }: { children: ReactNode }) => children }))
 vi.mock('@/components/ui/resizable', () => ({ ResizablePanelGroup: ({ children, defaultLayout }: { children: ReactNode; defaultLayout?: { sidebar?: number } }) => { observed.sidebarSizes.push(defaultLayout?.sidebar); return children }, ResizablePanel: ({ children }: { children: ReactNode }) => children, ResizableHandle: () => null }))

@@ -397,11 +397,19 @@ export class PwaGateway {
             id: w.id, name: w.name, kind: w.kind, branch: w.branch, archived: w.archived,
             parentWorkspaceId: w.parentWorkspaceId, defaultAgentIds: w.defaultAgentIds, changes: w.changes, createdAt: w.createdAt,
           })) : []
+          // Só a prévia da última mensagem de cada conversa (texto curto), para a lista de conversas do PWA.
+          const latest = new Map<string, Record<string, unknown>>()
+          if (Array.isArray(value.messages)) for (const m of value.messages as Record<string, unknown>[]) {
+            if ((m.role !== 'user' && m.role !== 'assistant') || typeof m.text !== 'string' || !m.text.trim() || typeof m.conversationId !== 'string') continue
+            const previous = latest.get(m.conversationId)
+            if (!previous || String(previous.createdAt) <= String(m.createdAt)) latest.set(m.conversationId, m)
+          }
           const conversations = Array.isArray(value.conversations) ? value.conversations.map((c: Record<string, unknown>) => ({
             id: c.id, workspaceId: c.workspaceId, name: c.name, kind: c.kind, archived: c.archived, agentIds: c.agentIds,
             responseMode: c.responseMode, leaderAgentId: c.leaderAgentId, titleAuto: c.titleAuto, revision: c.revision, createdAt: c.createdAt,
             parentConversationId: typeof c.parentConversationId === 'string' ? c.parentConversationId : undefined,
             updatedAt: typeof c.updatedAt === 'string' ? c.updatedAt : undefined,
+            ...(latest.has(String(c.id)) ? { lastMessage: (m => ({ text: String(m.text).replace(/\s+/g, ' ').trim().slice(0, 140), author: String(m.author || ''), role: m.role, createdAt: String(m.createdAt || '') }))(latest.get(String(c.id))!) } : {}),
           })) : []
           const runs = Array.isArray(value.runs) ? value.runs.slice(-80).map((r: Record<string, unknown>) => ({
             id: r.id, workspaceId: r.workspaceId, conversationId: r.conversationId,
