@@ -32,7 +32,7 @@ export const ReactColorField = memo(function ReactColorField({
         </button>
       } />
       <Popover.Portal>
-        <Popover.Positioner align="end" collisionPadding={16} side="top" sideOffset={8} className="isolate z-[80]">
+        <Popover.Positioner align="end" collisionPadding={16} side="top" sideOffset={8} className="isolate z-[1200]">
           <Popover.Popup aria-label={`Selecionar ${label}`}
             className="rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-2xl outline-none"
             initialFocus={(type) => type === 'keyboard'}>
