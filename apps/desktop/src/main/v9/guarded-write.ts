@@ -20,12 +20,12 @@ async function resolveWriteTarget(root: string, relativePath: string) {
   assertInside(canonicalRoot, candidate)
   let parent: string
   try { parent = await fs.realpath(dirname(candidate)) }
-  catch (error: any) { if (error?.code === 'ENOENT') throw new Error('A pasta de destino precisa existir antes de salvar.'); throw error }
+  catch (error: unknown) { if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') throw new Error('A pasta de destino precisa existir antes de salvar.'); throw error }
   assertInside(canonicalRoot, parent)
   const target = join(parent, basename(candidate))
   let info: Awaited<ReturnType<typeof fs.lstat>> | undefined
   try { info = await fs.lstat(target) }
-  catch (error: any) { if (error?.code !== 'ENOENT') throw error }
+  catch (error: unknown) { if ((error as NodeJS.ErrnoException | null)?.code !== 'ENOENT') throw error }
   if (info?.isSymbolicLink()) throw new Error('O destino não pode ser um link simbólico.')
   if (info && !info.isFile()) throw new Error('Selecione um arquivo comum.')
   return { canonicalRoot, target, info }

@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import type { RealtimeEvent } from '../../../shared/realtime'
 import type { PiperVoice, RealtimeTranscriptionModel } from '../../../shared/realtime'
 import { SentenceBuffer, float32ToInt16, int16ToBase64, int16ToFloat32, isLikelyHallucination, speakable, wavFromFloat32 } from './audio-text'
@@ -9,7 +10,8 @@ const SAMPLE_RATE = 16000
 const WINDOW = 512
 
 // sherpa-onnx-node é addon nativo: require dinâmico impede o bundler de tentar empacotá-lo.
-const nativeRequire = (name: string) => require(require.resolve(name))
+const requireNative = createRequire(__filename)
+const nativeRequire = (name: string): unknown => requireNative(requireNative.resolve(name))
 
 type Sherpa = {
   Vad: new (config: Record<string, unknown>, seconds: number) => { acceptWaveform(samples: Float32Array): void; isEmpty(): boolean; isDetected(): boolean; front(enableExternalBuffer?: boolean): { samples: Float32Array }; pop(): void; flush(): void }

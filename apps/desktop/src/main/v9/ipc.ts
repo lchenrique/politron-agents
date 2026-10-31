@@ -7,6 +7,7 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   const voice = new VoiceService()
   // Carrega o reconhecedor de portugues em paralelo com a inicializacao do app.
   void voice.prewarmTranscription().catch(() => undefined)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   const invoke = (channel: string, handler: (...args: any[]) => unknown) => {
     routing?.register(`v9:${channel}`, handler)
     ipcMain.handle(`v9:${channel}`, (event, ...args) => {
@@ -18,12 +19,14 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     return result
   })
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   const invokeLocal = (channel: string, handler: (...args: any[]) => unknown) => ipcMain.handle(`v9:${channel}`, (event, ...args) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
     if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
     if (routing?.remote) throw new Error('Anexos de imagem ainda não são transferidos para hosts remotos.')
     return handler(...args)
   })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   const invokeDesktopOnly = (channel: string, handler: (...args: any[]) => unknown) => ipcMain.handle(`v9:${channel}`, (event, ...args) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
     if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')

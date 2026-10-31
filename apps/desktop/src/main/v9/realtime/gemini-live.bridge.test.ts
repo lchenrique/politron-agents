@@ -8,9 +8,9 @@ class FakeSocket {
   readyState = 1
   binaryType = 'blob'
   sent: Record<string, unknown>[] = []
-  private listeners = new Map<string, (event: any) => void>()
+  private listeners = new Map<string, (event: { data?: string; code?: number; reason?: string }) => void>()
   constructor(_url: string) { FakeSocket.instance = this }
-  addEventListener(name: string, callback: (event: any) => void) { this.listeners.set(name, callback) }
+  addEventListener(name: string, callback: (event: { data?: string; code?: number; reason?: string }) => void) { this.listeners.set(name, callback) }
   send(value: string) { this.sent.push(JSON.parse(value)) }
   message(value: unknown) { this.listeners.get('message')?.({ data: JSON.stringify(value) }) }
   open() { this.listeners.get('open')?.({}) }

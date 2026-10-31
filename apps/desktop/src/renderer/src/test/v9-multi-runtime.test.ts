@@ -1,3 +1,4 @@
+import type { ServiceInternals } from './service-internals'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,7 +17,7 @@ class FakeRuntime extends EventEmitter {
   turns: Array<{ threadId: string; text: string }> = []
   async models() { return [] }
   async thread(agent: Agent, directory: string, _tools: unknown, threadId?: string) { const id = threadId || `${agent.runtime}-thread-${this.threads.length + 1}`; this.threads.push({ id, agent, directory }); return { id, history: 'empty' as const } }
-  async request(_method: string, params: any) {
+  async request(_method: string, params: { threadId: string; input: { text: string }[] }) {
     const threadId = params.threadId as string; const turnId = `${threadId}-turn-${this.turns.length + 1}`; const text = params.input[0].text as string
     this.turns.push({ threadId, text })
     setTimeout(() => { this.emit('event', { method: 'item/agentMessage/delta', params: { threadId, turnId, delta: `Resposta simulada: ${text}` } }); this.emit('event', { method: 'turn/completed', params: { threadId, turnId, turn: { id: turnId, status: 'completed' } } }) })
@@ -43,7 +44,7 @@ describe('motores múltiplos', () => {
 
   it('roteia conversa, diff e delegação pelo motor de cada agente', async () => {
     const codex = new FakeRuntime(); const claude = new FakeRuntime()
-    const service = new AppService(temp(), codex as any, claude as any); services.push(service)
+    const service = new AppService(temp(), codex, claude); services.push(service)
     const reviewer = service.saveAgent({ name: 'Claude revisora', alias: 'claude-revisora', instructions: 'Revise em português.', runtime: 'claude', model: 'sonnet', effort: 'high', canWrite: true, approvalMode: 'automatic' })
     expect(service.store.agent(reviewer.id)).toMatchObject({ runtime: 'claude', model: 'sonnet', effort: 'high' })
     const coder = service.saveAgent({ name: 'Codex executor', alias: 'codex-executor', instructions: 'Responda brevemente.' })
@@ -54,20 +55,21 @@ describe('motores múltiplos', () => {
 
     const run = service.store.runs().find(item => item.agentId === reviewer.id)!
     const context = { run, message: service.store.message(run.messageId), conversation, agent: reviewer, signal: new AbortController().signal }
-    await (service as any).callTool(context, 'workspace_write', { path: 'review.md', content: 'Revisado.' }, 'tool-write')
+    await (service as unknown as ServiceInternals).callTool(context, 'workspace_write', { path: 'review.md', content: 'Revisado.' }, 'tool-write')
     expect(readFileSync(join(context.run.workspacePath, 'review.md'), 'utf8')).toBe('Revisado.')
     expect(service.store.fileChangesForRun(run.id)[0]).toMatchObject({ agentId: reviewer.id, status: 'applied' })
 
-    await (service as any).callTool(context, 'ask_agent', { agent: coder.alias, task: 'Faça uma checagem curta.' }, 'tool-delegate')
+    await (service as unknown as ServiceInternals).callTool(context, 'ask_agent', { agent: coder.alias, task: 'Faça uma checagem curta.' }, 'tool-delegate')
     expect(codex.turns).toHaveLength(1)
     expect(service.store.delegations()[0]).toMatchObject({ requesterAgentId: reviewer.id, recipientAgentId: coder.id, status: 'completed' })
   })
 
   it('normaliza uma sessão Claude simulada e retoma o id real do SDK', async () => {
-    const captured: any[] = []
-    const sdk = ((request: any) => {
+    type QuerySdk = NonNullable<ConstructorParameters<typeof ClaudeRuntime>[2]>
+    const captured: Parameters<QuerySdk>[0][] = []
+    const sdk = ((request: Parameters<QuerySdk>[0]) => {
       captured.push(request)
-      const id = request.options.resume || 'claude-session-real'
+      const id = request.options?.resume || 'claude-session-real'
       return {
         async *[Symbol.asyncIterator]() {
           yield { type: 'system', subtype: 'init', session_id: id }
@@ -77,19 +79,19 @@ describe('motores múltiplos', () => {
         async supportedModels() { return [{ value: 'sonnet', displayName: 'Claude Sonnet' }] },
         close() {}
       }
-    }) as any
+    }) as unknown as QuerySdk
     const runtime = new ClaudeRuntime(temp(), async () => 'test-api-key', sdk)
     const agent = { id: 'claude-1', name: 'Claude', alias: 'claude', instructions: 'Ajude.', runtime: 'claude', model: 'sonnet', effort: 'medium' } as Agent
     const models = await runtime.models()
     expect(models).toContainEqual({ id: 'sonnet', name: 'Claude Sonnet', description: undefined, runtime: 'claude', isDefault: true, supportedEfforts: [] })
     const threadId = (await runtime.thread(agent, temp(), [])).id
-    const events: any[] = []; runtime.on('event', event => events.push(event))
+    const events: { method: string; params: { delta?: string } }[] = []; runtime.on('event', event => events.push(event))
     const first = await runtime.send(threadId, 'Primeira')
-    expect(first.thread.id).toBe('claude-session-real')
+    expect(first.thread?.id).toBe('claude-session-real')
     await vi.waitFor(() => expect(events.some(event => event.method === 'turn/completed')).toBe(true))
     expect((await runtime.thread(agent, temp(), [], 'claude-session-real')).history).toBe('resume-pending')
     await runtime.send('claude-session-real', 'Continuação')
-    expect(captured.at(-1).options.resume).toBe('claude-session-real')
+    expect(captured.at(-1)?.options?.resume).toBe('claude-session-real')
     expect(events.some(event => event.method === 'item/agentMessage/delta' && event.params.delta === 'Primeira')).toBe(true)
     runtime.close()
   })
@@ -98,7 +100,7 @@ describe('motores múltiplos', () => {
     const codex = new FakeRuntime()
     const dataDirectory = temp()
     const claude = new ClaudeRuntime(dataDirectory, async () => process.env.ANTHROPIC_API_KEY || null)
-    const service = new AppService(dataDirectory, codex as any, claude); services.push(service)
+    const service = new AppService(dataDirectory, codex, claude); services.push(service)
     const reviewer = service.saveAgent({ name: 'Claude integração', alias: 'claude-integracao', instructions: 'Siga exatamente a solicitação, use workspace_write para arquivos e ask_agent para delegar a conferência.', runtime: 'claude', model: process.env.POLITRON_CLAUDE_MODEL || '', effort: 'medium', canWrite: true, approvalMode: 'automatic' })
     const coder = service.saveAgent({ name: 'Codex conferência', alias: 'codex-conferencia', instructions: 'Confirme a conferência de forma breve.' })
     const conversation = service.saveConversation({ kind: 'direct', name: 'Integração Claude', agentIds: [reviewer.id], workspacePath: temp() })

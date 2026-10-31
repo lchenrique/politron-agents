@@ -121,7 +121,7 @@ export function HoverCard({
   const groupVisible = open && positioned
   useLayoutEffect(() => {
     if (!groupVisible || group === null) return
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- The visible portal's ref is attached before layout effects.
+    // A ref do portal visível é anexada antes dos efeitos de layout.
     group.shown(groupOwner, dismissImmediately, portalRef.current!)
     return () => { group.release(groupOwner) }
   }, [group, groupOwner, groupVisible, dismissImmediately])

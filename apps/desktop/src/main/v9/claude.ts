@@ -74,7 +74,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
     const controller = new AbortController()
     let finish!: () => void
     const ended = new Promise<void>(resolve => { finish = resolve })
-    const prompt: AsyncIterable<never> = { async *[Symbol.asyncIterator]() { await ended } }
+    const prompt: AsyncIterable<never> = { async *[Symbol.asyncIterator]() { await ended; yield* [] } }
     const session = this.querySdk({ prompt, options: {
       cwd: this.dataDirectory, env: safeProcessEnvironment(apiKey), settingSources: [],
       pathToClaudeCodeExecutable: this.executable, persistSession: false,
@@ -99,12 +99,12 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
     return { id, history: threadId ? 'resume-pending' : 'empty' }
   }
 
-  async send(threadId: string, input: string, model?: string, timeout = 600000, options: { effort?: Agent['effort']; fastMode?: boolean } = {}): Promise<any> {
+  async send(threadId: string, input: string, model?: string, timeout = 600000, options: { effort?: Agent['effort']; fastMode?: boolean } = {}): Promise<import("./agent-runtime").RuntimeSendResult> {
     void timeout
     return this.request('turn/start', { threadId, input: [{ type: 'text', text: input }], ...(model ? { model } : {}), ...(options.effort ? { effort: options.effort } : {}), ...(options.fastMode ? { fastMode: true } : {}) })
   }
 
-  async request(method: string, params: Record<string, unknown> = {}): Promise<any> {
+  async request(method: string, params: Record<string, unknown> = {}): Promise<import("./agent-runtime").RuntimeSendResult> {
     if (method !== 'turn/start') throw new Error(`Método Claude não suportado: ${method}`)
     const threadId = String(params.threadId || '')
     const context = this.threads.get(threadId)
@@ -196,7 +196,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
       }
       if (message.type === 'result') {
         const status = message.subtype === 'success' && !message.is_error ? 'completed' : 'failed'
-        const detail = Array.isArray((message as any).errors) ? (message as any).errors.filter((item: unknown) => typeof item === 'string').join('\n') : ''
+        const detail = 'errors' in message && Array.isArray(message.errors) ? message.errors.filter((item: unknown) => typeof item === 'string').join('\n') : ''
         const missingResume = !didInit && !!context.sessionId && /no conversation found with session id|session (?:id )?[^\s]+ (?:was )?not found/i.test(detail)
         const error = status === 'completed' ? undefined : missingResume
           ? new SessionUnavailableError(detail)

@@ -171,15 +171,20 @@ export class WorkspaceStore {
     return version
   }
   private migrateWorkspaces(fromVersion: number): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     const legacyConversations = this.all<Record<string, any>>('v9_conversations')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     const legacyRuns = this.all<Record<string, any>>('v9_runs')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     const workspaceRecords = new Map<string, Record<string, any>>()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     for (const workspace of this.all<Record<string, any>>('v9_workspaces')) workspaceRecords.set(workspace.id, workspace)
     const legacyPath = (value: unknown): string | null => {
       if (typeof value !== 'string' || !value.trim()) return null
       const candidate = isAbsolute(value) ? value : resolve(this.dataDirectory, value)
       try { return canonicalDirectory(candidate) || resolve(candidate) } catch { return resolve(candidate) }
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     const makePrivateWorkspace = (name: string): Record<string, any> => {
       const id = randomUUID()
       const dir = join(this.dataDirectory, 'workspaces', id)
@@ -190,8 +195,10 @@ export class WorkspaceStore {
     }
     // Esquemas abaixo de 4 guardavam "directory" direto em projetos/conversas/runs, sem workspaces próprios.
     if (fromVersion < 4) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
       const legacyProjects = this.all<Record<string, any>>('v9_projects')
       const pathKey = (projectId: string | null, path: string) => `${projectId || ''}\0${path.toLocaleLowerCase()}`
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
       const makeWorkspace = (projectId: string | null, path: string, branch: string | null = null): Record<string, any> => {
         const key = pathKey(projectId, path)
         const existing = [...workspaceRecords.values()].find(item => pathKey(item.legacyProjectId ?? null, item.path) === key)
@@ -200,6 +207,7 @@ export class WorkspaceStore {
         workspaceRecords.set(workspace.id, workspace)
         return workspace
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
       const projectWorkspaces = new Map<string, Record<string, any>>()
       for (const project of legacyProjects) {
         const path = legacyPath(project.directory)
@@ -211,10 +219,12 @@ export class WorkspaceStore {
         const projectId = conversation.projectId || null
         const path = legacyPath(conversation.directory)
         const projectWorkspace = projectId ? projectWorkspaces.get(projectId) : undefined
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
         let workspace: Record<string, any> | undefined = path
           ? projectWorkspace?.path === path ? projectWorkspace : makeWorkspace(projectId, path)
           : projectWorkspace
         if (!workspace) workspace = makePrivateWorkspace('')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
         if (projectId) { const project = legacyProjects.find((item: any) => item.id === projectId); if (project && !workspace.name) { workspace.name = project.name; workspace.instructions = project.instructions || ''; workspace.defaultAgentIds = project.defaultAgentIds || [] } }
         delete conversation.directory
         conversation.workspaceId = workspace.id
@@ -232,6 +242,7 @@ export class WorkspaceStore {
       this.db.exec('DROP TABLE IF EXISTS v9_projects')
     } else {
       // Esquema 4: projetos e workspaces já existiam separados; funde um no outro.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
       const legacyProjects = this.all<Record<string, any>>('v9_projects')
       for (const project of legacyProjects) {
         let primary = project.defaultWorkspaceId ? workspaceRecords.get(project.defaultWorkspaceId) : undefined

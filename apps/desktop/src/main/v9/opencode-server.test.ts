@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { OpenCodeInternals, RuntimeEvent } from './test-support'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createServer, type Server } from 'node:http'
 import { once } from 'node:events'
@@ -19,15 +20,15 @@ afterEach(async () => {
 })
 
 async function fakeOpenCode() {
-  const calls: Array<{ method: string; path: string; json: any; auth?: string }> = []
+  const calls: Array<{ method: string; path: string; json: { agent?: string; model?: unknown; parts: { text: string }[] } | undefined; auth?: string }> = []
   let turns = 0
   server = createServer((req, res) => {
     const chunks: Buffer[] = []
     req.on('data', chunk => chunks.push(Buffer.from(chunk)))
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8')
-      let json: any
-      try { json = raw ? JSON.parse(raw) : undefined } catch {}
+      let json: { agent?: string; model?: unknown; parts: { text: string }[] } | undefined
+      try { json = raw ? JSON.parse(raw) : undefined } catch { /* O servidor falso ignora JSON inválido. */ }
       calls.push({ method: req.method || '', path: req.url || '', json, auth: req.headers.authorization })
       const url = new URL(req.url || '/', 'http://localhost')
       const send = (value: unknown, code = 200) => {
@@ -81,25 +82,25 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
     const tools = [{ type: 'function' as const, name: 'group_members', description: 'Lista equipe', inputSchema: { type: 'object' } }]
     const thread = await app.thread(agent, 'D:/workspace-isolado', tools)
     expect(thread).toEqual({ id: 'sess-1', history: 'empty' })
-    const events: any[] = []
+    const events: RuntimeEvent[] = []
     app.on('event', event => {
       events.push(event)
       if (event.method === 'item/tool/call') app.respond(event.id, { success: true, contentItems: [{ type: 'inputText', text: '2 agentes' }] })
     })
-    const completed = new Promise<any>(resolve => {
+    const completed = new Promise<RuntimeEvent>(resolve => {
       app.on('event', event => { if (event.method === 'turn/completed') resolve(event) })
     })
     const accepted = await app.send(thread.id, 'Liste os agentes.', 'test/free')
     expect(accepted.turn.status).toBe('inProgress')
     const terminal = await completed
-    expect(terminal.params.turn.status).toBe('completed')
+    expect(terminal.params.turn!.status).toBe('completed')
     expect(events.some(event => event.method === 'item/tool/call')).toBe(true)
     expect(events.some(event => event.method === 'item/agentMessage/delta' && event.params.delta === 'Equipe consultada.')).toBe(true)
     const messages = calls.filter(call => call.path.startsWith('/session/sess-1/message'))
     expect(messages).toHaveLength(2)
-    expect(messages.every(call => call.json.agent === 'politron-safe' && !('tools' in call.json))).toBe(true)
-    expect(messages[0].json.model).toEqual({ providerID: 'test', modelID: 'free' })
-    expect(messages[1].json.parts[0].text).toContain('2 agentes')
+    expect(messages.every(call => call.json!.agent === 'politron-safe' && !('tools' in call.json!))).toBe(true)
+    expect(messages[0].json!.model).toEqual({ providerID: 'test', modelID: 'free' })
+    expect(messages[1].json!.parts[0].text).toContain('2 agentes')
     expect(messages[0].auth).toMatch(/^Basic /)
     expect((await app.thread(agent, 'D:/workspace-isolado', tools, 'sess-1')).history).toBe('retained')
   })
@@ -107,8 +108,8 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
   it('rejeita pedidos de ferramenta nativa por HTTP, sem aprovação implícita', async () => {
     const { runtime: app, calls } = await fakeOpenCode()
     const thread = await app.thread(agent, 'D:/workspace-isolado', [])
-    const internal = app as any
-    internal.sessions.get(thread.id).turn = 'turn-permission'
+    const internal = app as unknown as OpenCodeInternals
+    internal.sessions.get(thread.id)!.turn = 'turn-permission'
     internal.onStreamEvent({ type: 'permission.asked', properties: {
       id: 'per-1', sessionID: thread.id, permission: 'bash', patterns: ['*'] } })
     for (let attempt = 0; attempt < 30 && !calls.some(c => c.path.includes('/permissions/per-1')); attempt++)
@@ -122,13 +123,13 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
   it('relata claramente tentativa de ferramenta nativa sem texto', async () => {
     const { runtime: app } = await fakeOpenCode()
     const thread = await app.thread(agent, 'D:/workspace-isolado', [])
-    const finished = new Promise<any>(resolve => {
+    const finished = new Promise<RuntimeEvent>(resolve => {
       app.on('event', event => { if (event.method === 'turn/completed') resolve(event) })
     })
     await app.send(thread.id, 'TEST_NATIVE_REJECTED', 'test/free')
     const turn = await finished
-    expect(turn.params.turn.status).toBe('failed')
-    expect(turn.params.turn.error.message).toContain('ferramenta nativa bash')
+    expect(turn.params.turn!.status).toBe('failed')
+    expect(turn.params.turn!.error.message).toContain('ferramenta nativa bash')
   })
 
   it('encaminha ferramenta nativa ao evento do broker e devolve resposta real', async () => {
@@ -136,10 +137,10 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
     const schema = [{ type: 'function' as const, name: 'workspace_read', description: 'Leitura',
       inputSchema: { type: 'object', properties: { path: { type: 'string' } } } }]
     const thread = await app.thread(agent, 'D:/workspace-isolado', schema)
-    const internal = app as any
-    internal.sessions.get(thread.id).turn = 'bridge-turn'
+    const internal = app as unknown as OpenCodeInternals
+    internal.sessions.get(thread.id)!.turn = 'bridge-turn'
     const bridge = await internal.bridge.start()
-    const events: any[] = []
+    const events: RuntimeEvent[] = []
     app.on('event', event => {
       events.push(event)
       if (event.method === 'item/tool/call') {
@@ -157,7 +158,7 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
     expect(reply.success).toBe(true)
     expect(reply.result.contentItems[0].text).toBe('texto verificado')
     expect(events.filter(e => e.method === 'item/tool/call')).toHaveLength(1)
-    internal.finish(internal.sessions.get(thread.id), 'interrupted')
+    internal.finish(internal.sessions.get(thread.id)!, 'interrupted')
     expect((await invoke('workspace_read')).status).toBe(404)
   })
 
@@ -171,8 +172,8 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
     const schema = [{ type: 'function' as const, name: 'workspace_read', description: 'Leitura',
       inputSchema: { type: 'object', properties: { path: { type: 'string' } } } }]
     const thread = await app.thread(agent, 'D:/workspace-isolado', schema)
-    const internal = app as any
-    internal.sessions.get(thread.id).turn = 'turn-cancel'
+    const internal = app as unknown as OpenCodeInternals
+    internal.sessions.get(thread.id)!.turn = 'turn-cancel'
     const bridge = await internal.bridge.start()
     let toolCallId = ''
     const called = new Promise<void>(resolve => {
@@ -202,11 +203,11 @@ describe('servidor OpenCode isolado e broker do Boobot', () => {
   it('entrega apenas delta novo no stream SSE', () => {
     const app = new OpenCodeServerRuntime(tmpdir())
     runtime = app
-    const internal = app as any
-    const state: any = { id: 'stream', turn: 'turn-1', cwd: 'D:/project', agent, instructions: '',
+    const internal = app as unknown as OpenCodeInternals
+    const state: Parameters<OpenCodeInternals['finish']>[0] = { id: 'stream', turn: 'turn-1', cwd: 'D:/project', agent, instructions: '',
       tools: [], text: '', parts: new Map(), assistantMessages: new Set(), request: new AbortController(), steps: 0 }
     internal.sessions.set(state.id, state)
-    const events: any[] = []
+    const events: RuntimeEvent[] = []
     app.on('event', item => events.push(item))
     const update = (text: string, role = 'assistant', messageID = 'assistant-1') => {
       internal.onStreamEvent({ type: 'message.updated', properties: {

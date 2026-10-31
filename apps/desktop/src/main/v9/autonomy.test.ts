@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { ServiceInternals, RunContext } from './test-support'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,7 +23,7 @@ function setup(mode: Agent['approvalMode'] = 'bypass') {
   const message: Message = { id: 'reply', conversationId: conversation.id, agentId: agent.id, author: agent.name, role: 'assistant', status: 'running', text: '', runId: run.id, createdAt: run.createdAt }
   service.store.putRun(run); service.store.putMessage(message)
   const context = { agent, conversation, run, message, signal: new AbortController().signal }
-  const broker = service as any
+  const broker = service as unknown as ServiceInternals
   return { root, service, workspace, context, broker }
 }
 
@@ -44,7 +45,7 @@ describe('autonomia do Chief e acesso à pasta', () => {
     expect(worker).toMatchObject({ canWrite: true, approvalMode: 'bypass', computerUse: false, temporary: false })
     expect(service.store.workspace(workspace.id).defaultAgentIds).toContain(worker.id)
     expect(service.store.conversation(context.conversation.id)).toMatchObject({ kind: 'group', agentIds: [context.agent.id, worker.id], leaderAgentId: context.agent.id, responseMode: 'leader' })
-    vi.spyOn(broker, 'execute').mockImplementation(async (child: any) => {
+    vi.spyOn(broker, 'execute').mockImplementation(async (child: RunContext) => {
       await broker.callTool(child, 'workspace_write', { path: 'index.html', content: '<h1>Criskelly</h1>' }, 'worker-write')
       service.store.putRun({ ...child.run, status: 'completed' })
       service.store.putMessage({ ...child.message, text: 'LP criada.', status: 'completed' })

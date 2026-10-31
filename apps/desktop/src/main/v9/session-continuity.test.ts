@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { HeadlessInternals, ClaudeInternals, CodexInternals, RuntimeEvent } from './test-support'
 import { EventEmitter } from 'node:events'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
@@ -27,7 +28,7 @@ class AmbiguousRuntime extends EventEmitter {
   failAfterTool = false
   toolCalls = 0
   async models() { return [] }
-  async thread(_agent: any, _directory: string, _tools: any[], threadId?: string) {
+  async thread(_agent: import('../../shared/v9').Agent, _directory: string, _tools: import('./codex').DynamicTool[], threadId?: string) {
     const id = threadId || `thread-${this.threadIds.length + 1}`
     this.threadIds.push(id)
     if (threadId && this.failResume) { this.failResume = false; throw new SessionUnavailableError('stale thread') }
@@ -64,14 +65,14 @@ describe('continuidade real de sessão', () => {
   it('Headless só informa histórico retido enquanto a instância mantém a conversa em memória', async () => {
     const directory = temporary('politron-headless-continuity-')
     const first = new HeadlessCliRuntime('opencode', directory)
-    ;(first as any).binary = 'opencode'
+    ;(first as unknown as HeadlessInternals).binary = 'opencode'
     const created = await first.thread({ ...ASSISTANT, runtime: 'opencode' }, directory, [])
     expect(created.history).toBe('empty')
     expect((await first.thread({ ...ASSISTANT, runtime: 'opencode' }, directory, [], created.id)).history).toBe('retained')
     first.close()
 
     const restarted = new HeadlessCliRuntime('opencode', directory)
-    ;(restarted as any).binary = 'opencode'
+    ;(restarted as unknown as HeadlessInternals).binary = 'opencode'
     expect((await restarted.thread({ ...ASSISTANT, runtime: 'opencode' }, directory, [], created.id)).history).toBe('empty')
     restarted.close()
   })
@@ -90,14 +91,14 @@ describe('continuidade real de sessão', () => {
     const runtime = new CodexRuntime()
     const pending = (method: string) => new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('timeout')), 1000)
-      ;(runtime as any).pending.set(1, { method, resolve, reject, timer })
+      ;(runtime as unknown as CodexInternals).pending.set(1, { method, resolve, reject, timer })
     })
     const stale = pending('thread/resume')
-    ;(runtime as any).receive({ id: 1, error: { code: -32600, message: 'thread/resume failed: no rollout found for thread id 01234567-89ab-cdef-0123-456789abcdef' } })
+    ;(runtime as unknown as CodexInternals).receive({ id: 1, error: { code: -32600, message: 'thread/resume failed: no rollout found for thread id 01234567-89ab-cdef-0123-456789abcdef' } })
     await expect(stale).rejects.toBeInstanceOf(SessionUnavailableError)
 
     const configuration = pending('thread/resume')
-    ;(runtime as any).receive({ id: 1, error: { code: -32600, message: 'failed to load configuration: thread not found in invalid config' } })
+    ;(runtime as unknown as CodexInternals).receive({ id: 1, error: { code: -32600, message: 'failed to load configuration: thread not found in invalid config' } })
     await expect(configuration).rejects.not.toBeInstanceOf(SessionUnavailableError)
   })
 
@@ -109,10 +110,10 @@ describe('continuidade real de sessão', () => {
       },
       close: vi.fn(),
     }))
-    const runtime = new ClaudeRuntime(directory, async () => null, sdk as any)
-    ;(runtime as any).executable = 'claude'
+    const runtime = new ClaudeRuntime(directory, async () => null, sdk as unknown as NonNullable<ConstructorParameters<typeof ClaudeRuntime>[2]>)
+    ;(runtime as unknown as ClaudeInternals).executable = 'claude'
     const thread = await runtime.thread(ASSISTANT, directory, [], 'missing-session')
-    const events: any[] = []
+    const events: RuntimeEvent[] = []
     runtime.on('event', event => events.push(event))
     await expect(runtime.send(thread.id, 'Não reenvie automaticamente além da abertura segura.')).rejects.toBeInstanceOf(SessionUnavailableError)
     expect(events.some(event => event.method === 'item/agentMessage/delta' || event.method === 'item/tool/call')).toBe(false)
@@ -122,7 +123,7 @@ describe('continuidade real de sessão', () => {
   it('não repete um turno após timeout genérico de uma sessão que estava retida', async () => {
     const directory = temporary('politron-ambiguous-resume-')
     const runtime = new AmbiguousRuntime()
-    const service = new AppService(directory, runtime as any)
+    const service = new AppService(directory, runtime as unknown as ConstructorParameters<typeof AppService>[1])
     try {
       const conversation = service.saveConversation({ name: 'Sem repetição' })
       await service.send(conversation.id, 'Primeiro pedido')
@@ -139,7 +140,7 @@ describe('continuidade real de sessão', () => {
   it('renova binding só após confirmação explícita de sessão inexistente e envia uma vez', async () => {
     const directory = temporary('politron-stale-binding-')
     const runtime = new AmbiguousRuntime()
-    const service = new AppService(directory, runtime as any)
+    const service = new AppService(directory, runtime as unknown as ConstructorParameters<typeof AppService>[1])
     try {
       const conversation = service.saveConversation({ name: 'Binding antigo' })
       await service.send(conversation.id, 'Primeiro pedido')
@@ -156,7 +157,7 @@ describe('continuidade real de sessão', () => {
   it('não reenvia um turno depois que uma ferramenta já foi iniciada', async () => {
     const directory = temporary('politron-tool-no-retry-')
     const runtime = new AmbiguousRuntime()
-    const service = new AppService(directory, runtime as any)
+    const service = new AppService(directory, runtime as unknown as ConstructorParameters<typeof AppService>[1])
     try {
       const conversation = service.saveConversation({ name: 'Ferramenta sem repetição' })
       await service.send(conversation.id, 'Primeiro pedido')

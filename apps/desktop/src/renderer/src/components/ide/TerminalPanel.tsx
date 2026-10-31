@@ -9,7 +9,7 @@ const RealTerminal = memo(({ workspaceId }: { workspaceId?: string | null }) => 
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const vibeAPIRef = useRef<any>(null);
+  const vibeAPIRef = useRef<Window["vibeAPI"] | null>(null);
 
   const getThemeColors = () => {
     const style = getComputedStyle(document.documentElement);
@@ -58,7 +58,7 @@ const RealTerminal = memo(({ workspaceId }: { workspaceId?: string | null }) => 
     fitAddonRef.current = fitAddon;
 
     // Connect to Backend
-    const vibeAPI = (window as any).vibeAPI;
+    const vibeAPI = window.vibeAPI;
     vibeAPIRef.current = vibeAPI;
     if (vibeAPI?.terminal) {
       // Host remoto: o terminal manual continua indisponível; mostra o motivo em vez de falhar em silêncio.

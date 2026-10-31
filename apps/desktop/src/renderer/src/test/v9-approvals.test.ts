@@ -1,3 +1,5 @@
+import type { AgentRuntime } from '../../../main/v9/agent-runtime'
+import type { ServiceInternals } from './service-internals'
 import { EventEmitter } from 'node:events'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,7 +25,7 @@ class FakeRuntime extends EventEmitter {
 const directories: string[] = []
 const services: AppService[] = []
 function directory() { const value = mkdtempSync(join(tmpdir(), 'politron-approval-')); directories.push(value); return value }
-function open(path: string) { const service = new AppService(path, new FakeRuntime() as any); services.push(service); return service }
+function open(path: string) { const service = new AppService(path, new FakeRuntime() as unknown as AgentRuntime); services.push(service); return service }
 afterEach(() => {
   for (const service of services.splice(0)) service.dispose()
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 })
@@ -39,12 +41,12 @@ function setup() {
   service.store.putMessage(message)
   const run = { id: 'run-test', conversationId: conversation.id, agentId: agent.id, rootId: 'run-test', parentId: null, ancestry: [agent.id], status: 'running' as const, threadId: null, turnId: null, messageId: message.id, input: 'Crie um arquivo.', agent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now } satisfies Run
   service.store.putRun(run)
-  const context: any = { run, message, conversation, agent, signal: new AbortController().signal }
-  ;(service as any).contexts.set(run.id, context)
+  const context = { run, message, conversation, agent, signal: new AbortController().signal }
+  ;(service as unknown as ServiceInternals).contexts.set(run.id, context)
   return { service, context, workspacePath, run }
 }
 
-const write = (service: AppService, context: unknown, content = 'proposta', toolCallId = 'tool-1') => (service as any).callTool(context, 'workspace_write', { path: 'nota.txt', content }, toolCallId) as Promise<string>
+const write = (service: AppService, context: unknown, content = 'proposta', toolCallId = 'tool-1') => (service as unknown as ServiceInternals).callTool(context, 'workspace_write', { path: 'nota.txt', content }, toolCallId) as Promise<string>
 
 describe('aprovações inline V9', () => {
   it('persiste o modo de permissões do runtime por agente e no Assistente padrão', () => {
@@ -71,7 +73,7 @@ describe('aprovações inline V9', () => {
     const message = { id: 'assistant-message', conversationId: conversation.id, agentId: ASSISTANT_ID, author: 'Assistente', role: 'assistant' as const, text: '', status: 'running' as const, runId: 'assistant-run', createdAt: now }
     const run: Run = { id: 'assistant-run', conversationId: conversation.id, agentId: ASSISTANT_ID, rootId: 'assistant-run', parentId: null, ancestry: [ASSISTANT_ID], status: 'running', threadId: null, turnId: null, messageId: message.id, input: 'Crie arquivo.', agent: assistant, workspaceId: workspace.id, workspacePath, createdAt: now }
     service.store.putMessage(message); service.store.putRun(run)
-    const context: any = { run, message, conversation, agent: service.store.agent(ASSISTANT_ID), signal: new AbortController().signal }
+    const context = { run, message, conversation, agent: service.store.agent(ASSISTANT_ID), signal: new AbortController().signal }
     const pendingWrite = write(service, context, 'conteúdo do assistente', 'assistant-write')
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
     expect(existsSync(join(workspacePath, 'nota.txt'))).toBe(false)
@@ -142,7 +144,7 @@ describe('aprovações inline V9', () => {
     context.agent = service.saveAgent({ ...context.agent, computerUse: true })
     const open = vi.fn()
     service.setPlatformBrowser({ openForAgent: open, captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
-    const pendingNavigation = (service as any).callTool(context, 'browser_open', { url: 'https://example.com' }, 'browser-call') as Promise<string>
+    const pendingNavigation = (service as unknown as ServiceInternals).callTool(context, 'browser_open', { url: 'https://example.com' }, 'browser-call') as Promise<string>
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
     expect(service.store.approvals()[0]).toMatchObject({ kind: 'browser', details: { action: 'Abrir https://example.com/' } })
     expect(open).not.toHaveBeenCalled()
@@ -155,7 +157,7 @@ describe('aprovações inline V9', () => {
     const { service, context } = setup()
     context.agent = service.saveAgent({ ...context.agent, computerUse: true })
     service.setPlatformBrowser({ openForAgent: vi.fn(), captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
-    const pending = (service as any).callTool(context, 'browser_open', { url: 'https://example.com/path?token=secret#private' }, 'browser-private-url') as Promise<string>
+    const pending = (service as unknown as ServiceInternals).callTool(context, 'browser_open', { url: 'https://example.com/path?token=secret#private' }, 'browser-private-url') as Promise<string>
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
     const action = String(service.store.approvals()[0].details.action)
     expect(action).toContain('https://example.com/path')
@@ -167,7 +169,7 @@ describe('aprovações inline V9', () => {
     const { service, context } = setup()
     context.agent = service.saveAgent({ ...context.agent, computerUse: true })
     service.setPlatformBrowser({ acquireForAgent: async () => undefined, sharingState: () => null, captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
-    const pending = (service as any).callTool(context, 'browser_click', { selector: 'a[href="https://example.com/path?token=secret#private"]' }, 'browser-private-selector') as Promise<string>
+    const pending = (service as unknown as ServiceInternals).callTool(context, 'browser_click', { selector: 'a[href="https://example.com/path?token=secret#private"]' }, 'browser-private-selector') as Promise<string>
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
     const action = String(service.store.approvals()[0].details.action)
     expect(action).toContain('https://example.com/path'); expect(action).not.toContain('token=secret'); expect(action).not.toContain('#private')
@@ -182,7 +184,7 @@ describe('aprovações inline V9', () => {
     service.setPlatformBrowser({ openForAgent: open, observeForAgent: observe, sharingState: () => null,
       acquireForAgent: async () => { if (revoked) throw new Error('Compartilhamento do navegador bloqueado pelo usuário nesta conversa.') },
       captureDocument: async () => 1, assertSharing: () => undefined, revokeSharing: () => undefined } as never)
-    const pending = (service as any).callTool(context, 'browser_open', { url: 'https://example.com' }, 'browser-stale') as Promise<unknown>
+    const pending = (service as unknown as ServiceInternals).callTool(context, 'browser_open', { url: 'https://example.com' }, 'browser-stale') as Promise<unknown>
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
     revoked = true
     await service.respondApproval(service.store.approvals()[0].id, true)
@@ -205,7 +207,7 @@ describe('aprovações inline V9', () => {
     browser.navigate('https://example.com'); browser.setBounds({ x: 0, y: 0, width: 300, height: 200 }, true)
     browser.setSharingContext(owner); browser.grantSharing(owner); service.setPlatformBrowser(browser)
     const act = vi.spyOn(browser, 'actForAgent'), capture = vi.spyOn(browser, 'captureDocument')
-    const pending = (service as any).callTool(context, 'browser_click', { selector: '#pay' }, 'browser-document') as Promise<unknown>
+    const pending = (service as unknown as ServiceInternals).callTool(context, 'browser_click', { selector: '#pay' }, 'browser-document') as Promise<unknown>
     await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
     expect(capture).toHaveBeenCalledWith(owner, 'click', { selector: '#pay' })
     browser.reload()
@@ -219,7 +221,7 @@ describe('aprovações inline V9', () => {
     context.agent = service.saveAgent({ ...context.agent, computerUse: true })
     const capture = vi.fn()
     service.setPlatformBrowser({ captureDocument: capture, revokeSharing: () => undefined } as never)
-    await expect((service as any).callTool(context, 'browser_key', { key: 'Enter' }, 'unsupported-key')).rejects.toThrow(/não suportada/i)
+    await expect((service as unknown as ServiceInternals).callTool(context, 'browser_key', { key: 'Enter' }, 'unsupported-key')).rejects.toThrow(/não suportada/i)
     expect(capture).not.toHaveBeenCalled(); expect(service.store.approvals()).toHaveLength(0)
   })
   it('bloqueia navegação antes de pedir aprovação quando o agente não tem permissão', async () => {

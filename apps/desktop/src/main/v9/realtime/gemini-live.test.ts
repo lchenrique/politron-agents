@@ -8,7 +8,7 @@ class FakeSocket extends EventTarget {
   static last: FakeSocket
   readyState = 0
   binaryType = 'blob'
-  sent: any[] = []
+  sent: { setup?: { model: string; generationConfig: { responseModalities: string[]; speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: string } } } }; tools: { functionDeclarations: { name: string }[] }[] }; realtimeInput?: { audio: { mimeType: string } }; toolResponse?: { functionResponses: unknown[] } }[] = []
   constructor(readonly url: string) { super(); FakeSocket.last = this; queueMicrotask(() => { this.readyState = 1; this.dispatchEvent(new Event('open')) }) }
   send(data: string) { this.sent.push(JSON.parse(data)) }
   close() { this.readyState = 3 }
@@ -28,7 +28,7 @@ describe('Gemini Live', () => {
     const socket = FakeSocket.last
     expect(socket.url).toContain('key=chave-de-teste-123456789')
     expect(socket.binaryType).toBe('arraybuffer')
-    const setup = socket.sent[0].setup
+    const setup = socket.sent[0].setup!
     expect(setup.model).toBe('models/gemini-live-x')
     expect(setup.generationConfig.responseModalities).toEqual(['AUDIO'])
     expect(setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Kore')
@@ -37,7 +37,7 @@ describe('Gemini Live', () => {
     socket.server({ setupComplete: {} })
     const session = await opening
     session.pushAudio(new Int16Array([1, 2, 3]))
-    expect(socket.sent[1].realtimeInput.audio.mimeType).toBe('audio/pcm;rate=16000')
+    expect(socket.sent[1].realtimeInput!.audio.mimeType).toBe('audio/pcm;rate=16000')
 
     socket.server({ serverContent: { inputTranscription: { text: 'corrige o login' } } })
     socket.server({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'audio/pcm;rate=24000', data: 'AAAA' } }] } } })
@@ -50,7 +50,7 @@ describe('Gemini Live', () => {
     socket.server({ toolCall: { functionCalls: [{ id: 'f1', name: 'delegar_tarefa', args: { tarefa: 'corrigir login' } }] } })
     await vi.waitFor(() => expect(socket.sent.some(message => message.toolResponse)).toBe(true))
     expect(run).toHaveBeenCalledWith({ tarefa: 'corrigir login' })
-    expect(socket.sent.find(message => message.toolResponse).toolResponse.functionResponses[0]).toEqual({ id: 'f1', name: 'delegar_tarefa', response: { result: 'Tarefa enviada para Nina.' } })
+    expect(socket.sent.find(message => message.toolResponse)!.toolResponse!.functionResponses[0]).toEqual({ id: 'f1', name: 'delegar_tarefa', response: { result: 'Tarefa enviada para Nina.' } })
     session.close()
   })
 

@@ -1,3 +1,4 @@
+import type { ServiceInternals } from './service-internals'
 import { EventEmitter } from 'node:events'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
@@ -77,7 +78,7 @@ class ParallelWriteRuntime extends FakeRuntime {
 const dirs: string[] = []
 const services: AppService[] = []
 const tempDirectory = () => { const path = mkdtempSync(join(tmpdir(), 'politron-v9-workspaces-')); dirs.push(path); return path }
-const open = (directory: string, runtime = new FakeRuntime()) => { const service = new AppService(directory, runtime as any); services.push(service); return { service, runtime } }
+const open = (directory: string, runtime = new FakeRuntime()) => { const service = new AppService(directory, runtime); services.push(service); return { service, runtime } }
 const close = (service: AppService) => { service.dispose(); services.splice(services.indexOf(service), 1) }
 afterEach(() => {
   for (const service of services.splice(0)) { try { service.dispose() } catch { /* already closed */ } }
@@ -133,7 +134,7 @@ describe('Assistente padrão e conversas por workspace V9', () => {
     const conversation = service.saveConversation({ name: 'Diffs', agentIds: [agentA.id], workspacePath: folder })
     const workspace = service.store.workspace(conversation.workspaceId)
     const context = (agent: Agent, runId: string, messageId: string) => ({ run: { id: runId, workspaceId: workspace.id, workspacePath: workspace.path }, message: { id: messageId }, conversation, agent })
-    const write = (ctx: unknown, path: string, content: string, id: string) => (service as any).callTool(ctx, 'workspace_write', { path, content }, id)
+    const write = (ctx: unknown, path: string, content: string, id: string) => (service as unknown as ServiceInternals).callTool(ctx, 'workspace_write', { path, content }, id)
     await write(context(agentA, 'run-a', 'msg-a'), 'notes.txt', 'linha um\nlinha dois', 'tool-create')
     await write(context(agentA, 'run-a', 'msg-a'), 'notes.txt', 'linha um\nlinha três', 'tool-edit')
     await write(context(agentA, 'run-a', 'msg-a'), 'notes.txt', 'linha um\nlinha três', 'tool-unchanged')
@@ -304,7 +305,7 @@ describe('Assistente padrão e conversas por workspace V9', () => {
   it('separa bindings quando o runtime ou as permissões efetivas mudam', async () => {
     const directory = tempDirectory()
     const runtime = new FakeRuntime()
-    const service = new AppService(directory, runtime as any, runtime as any)
+    const service = new AppService(directory, runtime, runtime)
     services.push(service)
     const workspace = await service.saveWorkspace({ name: 'Contrato de ferramentas' })
     let agent = service.saveAgent({ name: 'Leitora', alias: 'leitora', instructions: 'Leia sem modificar.', canWrite: false })

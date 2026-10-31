@@ -90,10 +90,10 @@ export class SkillsService {
 export function registerSkillsIpc(service: SkillsService, routing?: import('../../hosts/rpc').HostRouting): () => void {
   routing?.register('skills:list', () => service.list())
   routing?.register('skills:readContent', (id: string) => service.readContent(id))
-  const handle = (channel: string, handler: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown) => ipcMain.handle(`skills:${channel}`, (event, ...args) => {
+  const handle = <K extends 'list' | 'addFromFolder' | 'remove' | 'readContent'>(channel: K, handler: (event: Electron.IpcMainInvokeEvent, ...args: K extends 'remove' | 'readContent' ? [id: string] : []) => unknown) => ipcMain.handle(`skills:${channel}`, (event, ...args) => {
     const owner = BrowserWindow.fromWebContents(event.sender)
     if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
-    return routing ? routing.invoke(`skills:${channel}`, args, () => handler(event, ...args)) : handler(event, ...args)
+    return routing ? routing.invoke(`skills:${channel}`, args, () => handler(event, ...args as K extends 'remove' | 'readContent' ? [id: string] : [])) : handler(event, ...args as K extends 'remove' | 'readContent' ? [id: string] : [])
   })
   handle('list', () => service.list())
   handle('addFromFolder', event => service.addFromFolder(BrowserWindow.fromWebContents(event.sender)!))
