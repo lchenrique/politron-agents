@@ -10,6 +10,8 @@
 
 ## 1. Corrigir execução e Git
 
+**Estado atual:** implementado; a delegação aguardada compartilha a vaga de execução e `apps/desktop/src/main/v9/queue-delegation.test.ts` tem sete testes passando. A seguir, o desenho original.
+
 A causa do impasse é ocupar uma vaga global enquanto aguarda um filho que precisa da mesma fila. Introduzir concessões de execução explícitas: uma delegação aguardada herda a concessão da família/pasta, com irmãos serializados e descendentes reentrantes. Trabalho em background entra como outra raiz da mesma pasta, depois da liberação da origem. Não aumentar slots para esconder o problema. Manter permissões, ciclos, profundidade e cancelamento próprios.
 
 Para Git, limitar processos concorrentes, compartilhar consultas de status simultâneas e impedir varreduras periódicas sobrepostas. Cancelar consultas de status ao encerrar o serviço. Reduzir processos por consulta quando o contrato puder ser preservado. Reproduzir timeouts sem alterar seus limites e distinguir contenção comprovada de hipótese.

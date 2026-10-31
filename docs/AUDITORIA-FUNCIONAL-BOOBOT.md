@@ -6,7 +6,7 @@ Data: **19/10/2026**. Projeto: `D:\projetos pessoais\politron`; aplicativo: `app
 
 **O fluxo real Chief → implementador → edição → testes → conclusão funcionou em um projeto React/TypeScript descartável.** Houve criação e delegação aprovadas, permissões próprias, diff, testes executados pelo agente e conferência independente. A troca aprovada de Codex para Claude também funcionou, com leitura real pelo Claude.
 
-Isso comprova o cenário assistido pequeno. **Ainda não certifica coordenação geral, operação desassistida ou confinamento de processos.** Foi reproduzido um impasse da fila em delegações aninhadas e com dois pais aguardando filhos.
+Isso comprova o cenário assistido pequeno. **Ainda não certifica coordenação geral, operação desassistida ou confinamento de processos.** Foi reproduzido um impasse da fila em delegações aninhadas e com dois pais aguardando filhos. **Atualização:** o impasse foi corrigido depois da auditoria; a delegação aguardada compartilha a vaga de execução e há sete testes passando em `apps/desktop/src/main/v9/queue-delegation.test.ts`. Os achados abaixo descrevem o estado no momento da auditoria.
 
 O Electron foi aberto em uma segunda instância com `appData` exclusivo. Não há login do Boobot: usamos os runtimes já disponíveis na máquina, conforme esclarecimento do usuário. Não copiamos credenciais nem usamos perfis pessoais de navegador, e-mails ou formulários externos. A automação atuou somente no Electron de teste, Chromium isolado e arquivos/processos descartáveis.
 
@@ -77,7 +77,7 @@ Tentativas anteriores foram preservadas: o agente inicialmente aguardou confirma
 | Área | Evidência / runtime | Limite e correção necessária |
 | --- | --- | --- |
 | Autonomia da equipe | Chief e implementador reais | Criação, concessão de escrita e ações sensíveis dependem do operador. A passagem “criado → autorizado → pronto” precisa comunicar a permissão atual com clareza. |
-| Delegação com três níveis ou dois pais | Classe de fila real, sem LLM; **E/queue-repro.jsonl** | Impasse reproduzido. Falta concessão herdada/suspensa para filhos, mantendo limites e serialização por pasta. |
+| Delegação com três níveis ou dois pais | Classe de fila real, sem LLM; **E/queue-repro.jsonl** | Impasse reproduzido na auditoria; **corrigido depois** (concessão compartilhada, sete testes em `queue-delegation.test.ts`). Faltava concessão herdada/suspensa para filhos, mantendo limites e serialização por pasta. |
 | Terminal limitado ao workspace | Processo real; **E/terminal-boundaries.jsonl** | `cwd` não confina comandos: um comando aprovado leu um arquivo sintético irmão. Necessita sandbox de SO para prometer confinamento. |
 | Revogação durante execução | Inspeção do broker/contextos | Run usa snapshot do agente; revogação durante uma chamada em andamento não foi certificada. Definir cancelamento imediato e política de revogação. |
 | Motores adicionais | Código/testes existentes inspecionados | Pi/OpenCode/Antigravity não fizeram edição real aqui. `HeadlessCliRuntime.thread` ignora workspace/ferramentas recebidos e usa execução restrita; catálogo/chat não provam capacidade de codar nesse caminho. |
@@ -160,7 +160,7 @@ As regressões de falha exigem estado final correto e liberação da espera. O t
 
 - Controle de desktop/janelas Windows: não existe backend certificado e não foram autorizadas ações sobre outros aplicativos. Somente a interface Electron de teste foi automatizada.
 - Confinamento forte de comandos: inexiste sandbox de SO. A reprodução usou exclusivamente arquivo sintético irmão da fixture.
-- Fluxo real de dois Chiefs presos ou três níveis: impasse já reproduzido na fila sem LLM; mais chamadas reais não resolveriam admissão e consumiriam recursos.
+- Fluxo real de dois Chiefs presos ou três níveis: impasse reproduzido na fila sem LLM (hoje corrigido e coberto por teste); mais chamadas reais não resolveriam admissão e consumiriam recursos.
 - Edição real por Pi/OpenCode/Antigravity, voz e distribuição instalada: fora do cenário real certificado. CLI/catálogo não provam execução de ferramentas.
 - Retomada integral após matar o aplicativo, revogação durante ação e falhas reais de rede de cada provedor: sem certificação real; SQLite e injeção de falhas cobrem somente partes.
 - Seis agentes, uso prolongado, custo e benchmark de desempenho: não medidos. Não há promessa de latência ou estabilidade prolongada baseada no smoke.
@@ -185,7 +185,7 @@ Também não existem garantias de sandbox do terminal limitado à pasta, retomad
 
 | Ordem | Melhoria | Impacto / esforço | Critério de aceitação |
 | --- | --- | --- | --- |
-| 1 | Resolver B09 com concessão herdada/suspensa e serialização por pasta | Alto / médio a alto | Dois pais e três níveis terminam sem impasse; irmãos e cancelamentos respeitam os limites. Não apenas aumentar slots. |
+| 1 | ~~Resolver B09~~ (resolvido: concessão compartilhada, sete testes) — Resolver B09 com concessão herdada/suspensa e serialização por pasta | Alto / médio a alto | Dois pais e três níveis terminam sem impasse; irmãos e cancelamentos respeitam os limites. Não apenas aumentar slots. |
 | 2 | Confinamento de comandos e política de revogação | Alto / alto | Não acessar fixture irmã, bloquear ações após revogação e comunicar limites. Até lá, comandos confiáveis explicitamente aprovados. |
 | 3 | Comunicar “criado → autorizado → pronto” | Alto / baixo a médio | Chief e implementador reconhecem a permissão concedida sem repetir verbalmente; sem promoção automática de privilégio. |
 | 4 | Isolar causa dos timeouts Git e eliminar dívida de lint | Médio / médio | Repetições estáveis e lint aprovado, sem suprimir regras ou aumentar limites para esconder falhas. |
@@ -193,4 +193,4 @@ Também não existem garantias de sandbox do terminal limitado à pasta, retomad
 | 6 | Reinício real e revogação em tarefas longas | Médio / médio | Sem tarefa presa, replay de comando ou cruzamento de workspace. |
 | 7 | Computer Use mínimo descrito acima | Futuro / alto | Somente janela descartável, com consentimento e parada independente. |
 
-**Impedimentos atuais ao uso diário confiável:** impasse de coordenação aninhada/concorrente, ausência de confinamento do terminal, motores adicionais sem certificação de código e instabilidade da suíte Git/workspaces. O fluxo simples com Chief e implementador já realiza trabalho verificável. A ausência de Computer Use nativo é uma lacuna de produto, não uma falha do navegador existente.
+**Impedimentos atuais ao uso diário confiável:** ausência de confinamento do terminal, motores adicionais sem certificação de código e instabilidade da suíte Git/workspaces. O fluxo simples com Chief e implementador já realiza trabalho verificável. A ausência de Computer Use nativo é uma lacuna de produto, não uma falha do navegador existente.

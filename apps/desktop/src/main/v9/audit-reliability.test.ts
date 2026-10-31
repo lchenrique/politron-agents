@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -45,10 +46,11 @@ afterEach(async () => {
     for (const conversation of fixture.conversations) await fixture.service.stop(conversation.id)
     await Promise.all(fixture.sends)
     fixture.service.dispose()
-    // No Windows o processo encerrado pelo dispose pode segurar a pasta por alguns instantes.
-    rmSync(fixture.directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 })
+    // No Windows o processo encerrado pelo dispose pode segurar a pasta por alguns instantes (EPERM/EBUSY),
+    // principalmente com a suíte sob carga. Espera assíncrona, sem bloquear o loop de eventos.
+    await rm(fixture.directory, { recursive: true, force: true, maxRetries: 60, retryDelay: 250 })
   }
-})
+}, 30000)
 
 describe('auditoria de permissões por agente', () => {
   it('Acesso total libera aprovações, mudanças no Boobot, perguntas e plano sem criar pendência', async () => {
