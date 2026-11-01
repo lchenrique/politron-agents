@@ -384,3 +384,9 @@
 .dsh-new-boo { display: inline-flex; align-items: center; gap: 6px; width: fit-content; margin: 6px 4px 2px; padding: 4px 10px 4px 8px; border-radius: 999px; background: var(--dsh-hover); color: var(--dsh-label-secondary, inherit); font-size: 13px; line-height: 20px; }
 .dsh-new-boo:hover { color: var(--dsh-label-primary); background: color-mix(in srgb, var(--primary) 14%, transparent); }
 .dsh-new-boo svg.lucide { width: 14px; height: 14px; }
+
+/* Seleção em lote de sessões: caixinha no lugar do indicador de estado. */
+.dsh-check { display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center; border: 1px solid var(--dsh-label-tertiary); border-radius: 4px; }
+.dsh-check[data-checked="true"] { border-color: var(--primary, currentColor); background: var(--primary, currentColor); color: var(--primary-foreground, #fff); }
+.dsh-check svg.lucide { width: 11px; height: 11px; }
+.dsh-bulk-bar { gap: 2px; }

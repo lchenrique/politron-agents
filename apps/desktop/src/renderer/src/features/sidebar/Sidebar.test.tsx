@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 beforeEach(() => localStorage.clear())
@@ -298,6 +298,43 @@ describe('colapso e exclusão da barra lateral', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(confirm).not.toHaveBeenCalled()
     confirm.mockRestore()
+  })
+  it('seleciona várias sessões e exclui em lote com uma única confirmação', async () => {
+    const make = (id: string, name: string): Conversation => ({ id, kind: 'direct', name, agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' })
+    const conversations = [make('bulk-1', 'Primeira'), make('bulk-2', 'Segunda'), make('bulk-3', 'Terceira')]
+    const onDeleteConversations = vi.fn()
+    const onDeleteConversation = vi.fn()
+    const onSelectConversation = vi.fn()
+    renderSidebar({ snapshot: { ...snapshot, conversations }, onDeleteConversations, onDeleteConversation, onSelectConversation })
+    enter(workspace.name)
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar sessões' }))
+    const toolbar = screen.getByRole('toolbar', { name: 'Seleção de sessões' })
+    expect(within(toolbar).getByRole('button', { name: 'Excluir' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: /Primeira/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Terceira/ }))
+    expect(onSelectConversation).not.toHaveBeenCalled()
+    expect(screen.getByRole('checkbox', { name: /Segunda/ })).toHaveAttribute('aria-checked', 'false')
+    expect(toolbar).toHaveTextContent('2 selecionadas')
+    fireEvent.click(within(toolbar).getByRole('button', { name: 'Excluir' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Excluir 2 conversas?')
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Excluir' }))
+    expect(onDeleteConversations).toHaveBeenCalledExactlyOnceWith(['bulk-1', 'bulk-3'])
+    expect(onDeleteConversation).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.queryByRole('toolbar', { name: 'Seleção de sessões' })).not.toBeInTheDocument()
+  })
+  it('marca todas as sessões e cancela a seleção sem excluir', () => {
+    const make = (id: string, name: string): Conversation => ({ id, kind: 'direct', name, agentIds: [], workspaceId: workspace.id, titleAuto: false, revision: 1, archived: false, createdAt: '' })
+    const onDeleteConversations = vi.fn()
+    renderSidebar({ snapshot: { ...snapshot, conversations: [make('all-1', 'Alfa'), make('all-2', 'Beta')] }, onDeleteConversations })
+    enter(workspace.name)
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar sessões' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Todas' }))
+    expect(screen.getAllByRole('checkbox').every(item => item.getAttribute('aria-checked') === 'true')).toBe(true)
+    expect(screen.getByRole('toolbar', { name: 'Seleção de sessões' })).toHaveTextContent('2 selecionadas')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(onDeleteConversations).not.toHaveBeenCalled()
   })
 })
 

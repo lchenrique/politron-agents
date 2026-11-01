@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, Building2, CalendarClock, Check, ChevronRight, CirclePlus, ClipboardList, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Store, Trash2, Triangle, Users } from 'lucide-react'
+import { Archive, ArrowLeft, Building2, CalendarClock, Check, ChevronRight, CirclePlus, ClipboardList, Crown, LayoutDashboard, Folder, FolderOpen, FolderPlus, GitBranch, ListChecks, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Settings2, Star, Store, Trash2, Triangle, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Menu, Modal, type MenuEntry, type MenuItem } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
@@ -27,7 +27,7 @@ function readSet(key: string): Set<string> {
   try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []) } catch { return new Set() }
 }
 
-export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, agentStates, onSelectConversation, onSelectWorkspace, onStartConversation, onOpenAgent, onOpenEditor, onOpenSettings, onDeleteWorkspace, onDeleteConversation, onDeleteAgent, onSetChief, onNotice, view = null, onOpenHome, section: controlledSection, onSectionChange, attentionCount = 0, browserMode = false, canChat = true }: {
+export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, agentStates, onSelectConversation, onSelectWorkspace, onStartConversation, onOpenAgent, onOpenEditor, onOpenSettings, onDeleteWorkspace, onDeleteConversation, onDeleteConversations, onDeleteAgent, onSetChief, onNotice, view = null, onOpenHome, section: controlledSection, onSectionChange, attentionCount = 0, browserMode = false, canChat = true }: {
   snapshot: Snapshot
   selected: Conversation | undefined
   activeWorkspaceId?: string | null
@@ -41,6 +41,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   onOpenSettings: () => void
   onDeleteWorkspace: (id: string) => void | Promise<void>
   onDeleteConversation: (id: string) => void | Promise<void>
+  /** Exclusão em lote; sem ele, a seleção cai em exclusões individuais em sequência. */
+  onDeleteConversations?: (ids: string[]) => void | Promise<void>
   onDeleteAgent: (id: string) => void | Promise<void>
   onSetChief: (agent: Agent, chief: boolean) => void | Promise<void>
   onNotice: (value: string) => void
@@ -73,7 +75,12 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(timer) }, [])
   const runningConversations = useMemo(() => new Set(snapshot.runs.filter(run => run.status === 'running' || run.status === 'queued').map(run => run.conversationId)), [snapshot.runs])
-  const [deleteRequest, setDeleteRequest] = useState<{ kind: 'workspace' | 'conversation' | 'agent'; id: string; title: string; description: string } | null>(null)
+  const [deleteRequest, setDeleteRequest] = useState<{ kind: 'workspace' | 'conversation' | 'conversations' | 'agent'; id: string; ids?: string[]; title: string; description: string } | null>(null)
+  // Modo de seleção das sessões do projeto aberto, para excluir várias de uma vez.
+  const [selecting, setSelecting] = useState(false)
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set())
+  const stopSelecting = () => { setSelecting(false); setCheckedIds(new Set()) }
+  const toggleChecked = (id: string) => setCheckedIds(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
   useEffect(() => { localStorage.setItem('politron.sidebar.collapsed-workspaces', JSON.stringify([...collapsed])) }, [collapsed])
   useEffect(() => { localStorage.setItem('politron.sidebar.favorites', JSON.stringify([...favorites])) }, [favorites])
   const { layout, save, groups, workspaceGroup, collapsedGroups, moveWorkspaceToGroup, addGroup, renameGroup, removeGroup, toggleGroup } = useSidebarLayout(onNotice)
@@ -100,7 +107,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const enteredProject = enteredId ? workspacesById.get(enteredId) : undefined
   // Projeto apagado ou arquivado volta para a lista. O id fica guardado: no início o snapshot ainda chega vazio.
   const project = enteredProject && !enteredProject.archived && enteredProject.name ? enteredProject : undefined
-  const enterProject = (id: string | null) => { setEnteredId(id); setProjectTab('sessions') }
+  const enterProject = (id: string | null) => { setEnteredId(id); setProjectTab('sessions'); stopSelecting() }
   // Abrir uma conversa ou projeto por fora (central, busca, links, notificações) leva a barra para o projeto dele.
   // A primeira conversa vista é a restaurada na inicialização: não sobrepõe o projeto lembrado.
   const navigationTarget = activeWorkspaceId || (selected && (workspacesById.get(selected.workspaceId)?.name ? selected.workspaceId : rootWorkspaces.find(item => item.name === 'Livre' && item.kind === 'free')?.id)) || null
@@ -149,6 +156,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     setDeleteRequest({ kind: 'workspace', id: workspace.id, title: `Excluir projeto “${workspace.name}”?`, description: warning + (preserved ? ` As ${preserved} sessão(ões) antigas permanecem preservadas em seus workspaces originais.` : '') })
   }
   const removeConversation = (conversation: Conversation) => { setOpenConversationMenuId(null); setDeleteRequest({ kind: 'conversation', id: conversation.id, title: `Excluir a conversa “${conversation.name}”?`, description: 'Esta ação não pode ser desfeita.' }) }
+  const removeConversations = (ids: string[]) => {
+    if (!ids.length) return
+    setDeleteRequest({ kind: 'conversations', id: '', ids, title: ids.length === 1 ? 'Excluir 1 conversa?' : `Excluir ${ids.length} conversas?`, description: 'As mensagens e o histórico das conversas selecionadas serão apagados. Esta ação não pode ser desfeita.' })
+  }
   const removeAgent = (agent: Agent) => { setOpenAgentMenuId(null); setDeleteRequest({ kind: 'agent', id: agent.id, title: `Excluir o agente ${agent.name}?`, description: 'As conversas continuam, mas perdem este participante.' }) }
 
   const agentMenuEntries = (agent: Agent): MenuEntry[] => {
@@ -216,6 +227,13 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     ...(!browserMode ? [{ id: 'delete-conversation', label: 'Excluir conversa', icon: <Trash2 />, danger: true }] : []),
   ]
   const conversationRow = (conversation: Conversation, attention: boolean, unread: number, running: boolean) =>
+    selecting ? <div key={conversation.id} data-active={checkedIds.has(conversation.id)} className="dsh-row dsh-session">
+      <Button variant="ghost" size={null} role="checkbox" aria-checked={checkedIds.has(conversation.id)} onClick={() => toggleChecked(conversation.id)} className="dsh-row-main">
+        <span className="dsh-slot"><span aria-hidden="true" className="dsh-check" data-checked={checkedIds.has(conversation.id)}>{checkedIds.has(conversation.id) && <Check />}</span></span>
+        <span className="dsh-title" title={conversation.name}>{conversationDisplayName(conversation.name)}</span>
+        <span className="dsh-meta">{relativeTime(conversation.updatedAt || conversation.createdAt, now)}</span>
+      </Button>
+    </div> :
     <div key={conversation.id} data-active={conversation.id === selected?.id} className="dsh-row dsh-session group" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
       <Button variant="ghost" size={null} onClick={() => onSelectConversation(conversation.id)} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="dsh-row-main">
         <span className="dsh-slot">{attention ? <span aria-label="Aguardando aprovação" className="dsh-dot" /> : running ? <svg role="img" aria-label="Em execução" className="dsh-spinner" viewBox="0 0 24 24" width="14" height="14"><g><circle cx="12" cy="12" r="9.5" /><circle cx="12" cy="12" r="9.5" /></g></svg> : unread ? <span aria-label={unread + ' não lidas'} className="dsh-dot" data-state="done" /> : null}</span>
@@ -303,6 +321,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const showAllSessions = expandedSessions.has(workspace.id)
     const conversations = showAllSessions ? topLevel : topLevel.slice(0, SESSION_LIMIT)
     const hiddenSessions = topLevel.length - conversations.length
+    // Só conta o que ainda existe neste projeto: sessões apagadas por fora saem da seleção.
+    const selectable = [...sessionIds, ...topLevel.flatMap(item => delegatedSubtree(item.id).map(child => child.id))]
+    const checked = selectable.filter(id => checkedIds.has(id))
+    const allChecked = sessionIds.length > 0 && sessionIds.every(id => checkedIds.has(id))
     const children = childWorkspaces(workspace.id)
     // Time: equipe padrão do projeto mais quem participa das conversas dele, como na elegibilidade de delegação.
     const team = new Set(workspace.defaultAgentIds)
@@ -326,7 +348,18 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </TabsList>
       <TabsContent value="sessions" className="dsh-list dsh-rows mt-0">
         <div className="dsh-row dsh-session"><Button variant="ghost" size={null} disabled={!canChat} onClick={() => void onStartConversation(workspace.id)} className="dsh-row-main text-[var(--dsh-label-tertiary)]"><span className="dsh-slot"><Plus /></span><span className="dsh-title">Nova sessão no projeto</span></Button></div>
-        {children.map(projectRow)}
+        {!browserMode && !!topLevel.length && (selecting
+          ? <div role="toolbar" aria-label="Seleção de sessões" className="dsh-section-header dsh-bulk-bar">
+              <p className="dsh-section-label" aria-live="polite">{checked.length ? `${checked.length} selecionada${checked.length === 1 ? '' : 's'}` : 'Selecione sessões'}</p>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setCheckedIds(allChecked ? new Set() : new Set(sessionIds))}>{allChecked ? 'Nenhuma' : 'Todas'}</Button>
+              <Button variant="destructive" size="sm" className="h-7 gap-1 px-2 text-xs" disabled={!checked.length} onClick={() => removeConversations(checked)}><Trash2 className="size-3.5" />Excluir</Button>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={stopSelecting}>Cancelar</Button>
+            </div>
+          : <div className="dsh-section-header">
+              <p className="dsh-section-label">Sessões</p>
+              <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Selecionar sessões" title="Selecionar várias sessões para excluir" onClick={() => { setSelecting(true); if (hiddenSessions) setExpandedSessions(current => new Set(current).add(workspace.id)) }}><ListChecks /></Button>
+            </div>)}
+        {!selecting && children.map(projectRow)}
         <SortableArea onDragEnd={listDragEnd(sessionIds, moveSession)}><SortableGroup ids={sessionIds}>
           {conversations.map(conversation => <SortableRow key={conversation.id} id={conversation.id} data={{ type: 'session' }} onMove={delta => moveSession(conversation.id, sessionIds.indexOf(conversation.id) + delta)}>{conversationButton(conversation)}</SortableRow>)}
         </SortableGroup></SortableArea>
@@ -525,6 +558,12 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             if (!request) return
             if (request.kind === 'workspace') void onDeleteWorkspace(request.id)
             else if (request.kind === 'conversation') void onDeleteConversation(request.id)
+            else if (request.kind === 'conversations') {
+              const ids = request.ids || []
+              stopSelecting()
+              if (onDeleteConversations) void onDeleteConversations(ids)
+              else void ids.reduce<Promise<void>>((chain, id) => chain.then(() => onDeleteConversation(id)), Promise.resolve())
+            }
             else void onDeleteAgent(request.id)
           }}>Excluir</Button>
       </div>} />

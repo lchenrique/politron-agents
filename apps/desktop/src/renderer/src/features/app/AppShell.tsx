@@ -281,6 +281,33 @@ export default function AppShell() {
       }
     } catch (error) { setNotice(errorText(error)) }
   }
+  /** Exclui várias conversas e só então reconcilia a seleção, para não abrir uma conversa que também vai ser apagada. */
+  const deleteConversations = async (ids: string[]) => {
+    const removed = new Set(ids)
+    const wasCurrent = removed.has(selectedId)
+    const workspaceId = snapshot.conversations.find(item => item.id === selectedId)?.workspaceId
+    let deleted = 0
+    let failure: unknown
+    for (const id of ids) {
+      try { await window.appAPI.deleteConversation(id); deleted++ } catch (error) { failure ??= error }
+    }
+    try {
+      const data = await window.appAPI.snapshot()
+      setSnapshot(current => replaceEqualDeep(current, data))
+      if (wasCurrent && !data.conversations.some(item => item.id === selectedId)) {
+        const next = data.conversations.find(item => !item.archived && item.workspaceId === workspaceId)
+          || data.conversations.find(item => !item.archived)
+        if (next) selectConversation(next.id)
+        else {
+          const conversation = await window.appAPI.saveConversation({ workspaceId })
+          const updated = await window.appAPI.snapshot()
+          setSnapshot(current => replaceEqualDeep(current, updated))
+          selectConversation(conversation.id)
+        }
+      }
+      setNotice(failure ? `${deleted} de ${ids.length} conversas excluídas. ${errorText(failure)}` : `${deleted} conversa${deleted === 1 ? '' : 's'} excluída${deleted === 1 ? '' : 's'}.`)
+    } catch (error) { setNotice(errorText(error)) }
+  }
   const deleteAgent = async (id: string) => { try { const name = snapshot.agents.find(agent => agent.id === id)?.name; await window.appAPI.deleteAgent(id); await refresh(); setNotice(`${name || 'Agente'} excluído.`) } catch (error) { setNotice(errorText(error)) } }
   const setAgentChief = async (agent: Agent, chief: boolean) => {
     if (chief && snapshot.agents.some(item => item.id !== agent.id && item.role === 'chief')) { setNotice('Já existe um Chief. Remova esse papel antes de promover outro agente.'); return }
@@ -424,6 +451,7 @@ export default function AppShell() {
         attentionCount={attentionCount}
         onDeleteWorkspace={deleteWorkspace}
         onDeleteConversation={deleteConversation}
+        onDeleteConversations={deleteConversations}
         onDeleteAgent={deleteAgent}
         onSetChief={setAgentChief}
         onNotice={setNotice}
