@@ -60,7 +60,7 @@ export async function discoverSkills(customPaths: string[], learnedDir?: string,
   const builtin = await Promise.all(builtinRoots().map(root => scanSkillsDir(root.dir, root.source)))
   const custom = await Promise.all(customPaths.map(path => readSkill(path, 'custom')))
   const learned = learnedDir ? await scanSkillsDir(learnedDir, 'learned') : []
-  // Skills do Marketplace usam o nome da pasta como id estável (é o que fica em Agent.skillIds).
-  const marketplace = marketplaceDir ? (await scanSkillsDir(marketplaceDir, 'marketplace')).map(skill => ({ ...skill, id: `marketplace:${basename(skill.path)}` })) : []
+  // Skills do Marketplace usam o nome da pasta como id e nome (é o que fica em Agent.skillIds; duas origens podem declarar o mesmo name).
+  const marketplace = marketplaceDir ? (await scanSkillsDir(marketplaceDir, 'marketplace')).map(skill => ({ ...skill, id: `marketplace:${basename(skill.path)}`, name: basename(skill.path) })) : []
   return [...builtin.flat(), ...custom.filter((skill): skill is SkillInfo => !!skill), ...learned, ...marketplace]
 }

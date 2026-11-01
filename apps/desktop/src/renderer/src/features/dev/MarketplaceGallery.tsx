@@ -1,12 +1,12 @@
 /** Prévia de desenvolvimento do Marketplace com o catálogo real; contratar só simula. */
 import type { Snapshot } from '../../../../shared/v9'
 import type { MarketplaceTeam } from '../../../../shared/marketplace'
-import instagram from '../../../../main/marketplace/catalog/teams/instagram/team.json'
 import { emptySnapshot } from '../app/appShellShared'
 import { MarketplacePage } from '../marketplace/MarketplacePage'
 
 const api = (window.appAPI ||= {} as typeof window.appAPI)
-api.marketplaceTeams = async () => [instagram as MarketplaceTeam]
+const teams = Object.values(import.meta.glob('../../../../main/marketplace/catalog/teams/*/team.json', { eager: true, import: 'default' })) as MarketplaceTeam[]
+api.marketplaceTeams = async () => teams
 api.hireTeam = async () => { await new Promise(resolve => setTimeout(resolve, 600)); return { agentIds: [], conversationId: 'demo' } }
 const at = '2026-10-31T00:00:00.000Z'
 const snapshot = { ...emptySnapshot, workspaces: [

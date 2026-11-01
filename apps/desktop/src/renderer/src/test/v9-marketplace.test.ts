@@ -27,6 +27,19 @@ describe('catálogo do Marketplace', () => {
     for (const slug of skills) expect(existsSync(join(skillsDir, slug, 'SKILL.md')), slug).toBe(true)
   })
 
+  it('todas as equipes: líder válido, menções e skills únicas, e toda skill existe com descrição legível', async () => {
+    const teams = await loadTeams()
+    expect(teams.map(team => team.id).sort()).toEqual(['atendimento', 'instagram', 'marketing', 'vendas'])
+    const known = new Map((await new SkillsService(temp(), skillsDir).list()).filter(skill => skill.source === 'marketplace').map(skill => [skill.id.replace(/^marketplace:/, ''), skill]))
+    for (const team of teams) {
+      expect(team.members.some(member => member.key === team.leader), team.id).toBe(true)
+      expect(new Set(team.members.map(member => member.alias)).size, team.id).toBe(team.members.length)
+      const skills = team.members.flatMap(member => member.skills)
+      expect(new Set(skills).size, team.id).toBe(skills.length)
+      for (const slug of skills) expect(known.get(slug)?.description.length || 0, `${team.id}: ${slug}`).toBeGreaterThan(20)
+    }
+  })
+
   it('lê description em bloco dobrado do YAML', () => {
     expect(parseSkillFrontmatter('---\nname: x\ndescription: >\n  Primeira linha\n  segunda linha\nversion: 1\n---\n')).toMatchObject({ name: 'x', description: 'Primeira linha segunda linha', version: '1' })
   })
@@ -48,6 +61,9 @@ describe('skills por Boo', () => {
     expect(await skills.readContent('agent-reach', undefined, pool)).toContain('---')
     await expect(skills.readContent('marketplace:agent-reach', '../virality/SKILL.md', pool)).rejects.toThrow('dentro da pasta')
     await expect(skills.readContent('marketplace:virality', undefined, pool)).rejects.toThrow('não encontrada')
+    const both = await skills.forAgent(['customer-research', 'support-customer-research'])
+    expect(await skills.readContent('support-customer-research', undefined, both)).toContain('name: customer-research')
+    expect(both.filter(skill => skill.name === 'customer-research')).toHaveLength(1)
   })
 })
 

@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 import quality from "./eslint-rules/index.cjs";
 
 export default tseslint.config(
-  { ignores: ["out", "dist", "node_modules"] },
+  { ignores: ["out", "dist", "node_modules", "src/main/marketplace/catalog"] },
   {
     files: ["src/**/*.{ts,tsx}"],
     plugins: { quality },
