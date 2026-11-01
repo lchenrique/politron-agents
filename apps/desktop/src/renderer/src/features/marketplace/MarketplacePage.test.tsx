@@ -26,13 +26,25 @@ function setup() {
 }
 
 describe('Marketplace', () => {
-  it('mostra a equipe com membros, líder e skills nos detalhes', async () => {
+  it('cartão resume a equipe; Ver equipe abre membros, líder e skills', async () => {
     setup()
     expect(await screen.findByRole('heading', { name: 'Equipe de Instagram' })).toBeInTheDocument()
-    const members = screen.getByRole('list', { name: 'Membros da Equipe de Instagram' })
-    expect(members).toHaveTextContent('Vera'); expect(members).toHaveTextContent('líder'); expect(members).toHaveTextContent('Roteirista')
+    expect(screen.getByText('Redes sociais · 2 Boos · 3 skills')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Ver equipe' }))
-    expect(screen.getByLabelText('Skills de Luna')).toHaveTextContent('reel-scripter')
+    const dialog = screen.getByRole('dialog')
+    const members = within(dialog).getByRole('list', { name: 'Membros da Equipe de Instagram' })
+    expect(members).toHaveTextContent('Vera'); expect(members).toHaveTextContent('líder'); expect(members).toHaveTextContent('Roteirista')
+    expect(within(dialog).getByLabelText('Skills de Luna')).toHaveTextContent('reel-scripter')
+  })
+
+  it('busca filtra por skill e mostra como limpar quando nada combina', async () => {
+    setup()
+    const search = await screen.findByRole('searchbox', { name: /Buscar/ })
+    fireEvent.change(search, { target: { value: 'reel-scripter' } })
+    expect(screen.getByRole('heading', { name: 'Equipe de Instagram' })).toBeInTheDocument()
+    fireEvent.change(search, { target: { value: 'nada disso' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }))
+    expect(screen.getByRole('heading', { name: 'Equipe de Instagram' })).toBeInTheDocument()
   })
 
   it('contrata para um projeto escolhido e abre a conversa da equipe', async () => {
