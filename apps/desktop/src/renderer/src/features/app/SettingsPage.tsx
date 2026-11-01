@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import { AudioLines, Download, FolderPlus, GraduationCap, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench, X } from 'lucide-react'
+import { AudioLines, Download, FolderPlus, GraduationCap, ImagePlus, KeyRound, Monitor, Palette, Plug, Router, Trash2, Wrench, X } from 'lucide-react'
 import { ASSISTANT_ID, type Agent, type DecisionModel, type OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { SkillInfo } from '../../../../shared/skills'
@@ -16,16 +16,18 @@ import { HostSettingsPanel } from '../hosts/HostSettingsPanel'
 import { PwaSettingsPanel } from '../hosts/PwaSettingsPanel'
 import { ApprovalGrantList } from '../editors/ApprovalGrantList'
 import { AppUpdatesPanel } from './AppUpdatesPanel'
+import { ImageGenerationPanel } from './ImageGenerationPanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
 import css from './SettingsPage.module.css'
 
-export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'skills' | 'voz' | 'conexoes' | 'atualizacoes'
+export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'imagens' | 'skills' | 'voz' | 'conexoes' | 'atualizacoes'
 type Section = SettingsSection
 const SECTIONS: { id: Section; label: string; icon: typeof Palette; description: string }[] = [
   { id: 'geral', label: 'Geral', icon: Palette, description: 'Modo visual do Boobot e animação dos Boos neste dispositivo.' },
   { id: 'assistente', label: 'Assistente', icon: KeyRound, description: 'Permissões e modo de aprovação do Assistente padrão.' },
   { id: 'ferramentas', label: 'Ferramentas', icon: Wrench, description: 'Recursos compartilhados por todos os agentes, como o terminal.' },
   { id: 'provedores', label: 'Provedores', icon: Plug, description: 'CLIs detectadas, chaves de API e o modelo que escolhe quem responde em grupo.' },
+  { id: 'imagens', label: 'Geração de imagens', icon: ImagePlus, description: 'Quem gera as imagens pedidas aos Boos: Codex, Antigravity ou uma chave de API.' },
   { id: 'skills', label: 'Skills', icon: GraduationCap, description: 'Skills SKILL.md encontradas nesta máquina e pastas adicionadas por você.' },
   { id: 'voz', label: 'Voz em tempo real', icon: AudioLines, description: 'Chaves, transcrição e vozes das ligações e da leitura de mensagens.' },
   { id: 'conexoes', label: 'Conexões', icon: Monitor, description: 'Acesso a este computador pelos seus outros dispositivos e pelo navegador.' },
@@ -296,6 +298,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
             <div className="flex flex-wrap items-center justify-between gap-3"><span role="status" className="min-w-0 flex-1 basis-56 text-xs text-muted-foreground">{feedback || (configured ? 'Chave Anthropic configurada' : 'Sem chave Anthropic no Boobot; o CLI pode usar suas credenciais próprias')}</span><div className="flex flex-wrap gap-2"><Button disabled={saving || !apiKey.trim()} onClick={() => void saveKey()}>{saving ? 'Salvando…' : configured ? 'Substituir chave Anthropic' : 'Salvar chave'}</Button>{configured && <Button variant="outline" disabled={saving} onClick={() => void removeKey()}>Remover chave Anthropic</Button>}</div></div>
           </Field>
         </>}
+        {section === 'imagens' && <Field icon={ImagePlus} title="Provedor de imagens" description="Quando você pede uma arte, capa ou criativo, o Boo usa a ferramenta generate_image com o provedor escolhido aqui e salva o arquivo na pasta da conversa. Sem provedor, os Boos não geram imagens."><ImageGenerationPanel /></Field>}
         {section === 'skills' && <>
           <SkillsSection />
         </>}

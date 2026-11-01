@@ -7,6 +7,7 @@ const appAPI = {
   settingsPreferences: vi.fn().mockResolvedValue({ canWrite: true, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed', terminalEnabled: true }),
   hasClaudeCredential: vi.fn().mockResolvedValue(false),
   openRouterDecisionStatus: vi.fn().mockResolvedValue({ configured: false, modelId: 'typesafe/jev-1.13' }),
+  imageGenerationStatus: vi.fn().mockResolvedValue({ provider: 'off', apiProvider: 'openai', model: 'gpt-image-2.5-flare', keys: { openai: false, gemini: false, openrouter: false }, engines: { codex: { available: true }, antigravity: { available: true } } }),
   saveAssistantPreferences: vi.fn().mockResolvedValue(undefined),
   saveTerminalAccess: vi.fn().mockResolvedValue(undefined),
 }
@@ -173,11 +174,11 @@ describe('painel de configurações', () => {
 describe('hierarquia das seções', () => {
   const sections: [string, RegExp][] = [
     ['Geral', /Modo visual/], ['Assistente', /Assistente padrão/], ['Ferramentas', /terminal/],
-    ['Provedores', /CLIs detectadas/], ['Skills', /SKILL\.md/], ['Voz em tempo real', /transcrição/],
+    ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex, Antigravity/], ['Skills', /SKILL\.md/], ['Voz em tempo real', /transcrição/],
     ['Conexões', /outros dispositivos/], ['Atualizações', /canal de atualização/],
   ]
 
-  it('mantém as oito seções na navegação e dá a cada página título e propósito próprios', () => {
+  it('mantém as nove seções na navegação e dá a cada página título e propósito próprios', () => {
     vi.stubGlobal('appAPI', { ...appAPI, voiceStatus: vi.fn().mockResolvedValue({ voiceKeyConfigured: false }) })
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
@@ -234,5 +235,37 @@ describe('atualizações em Configurações', () => {
     expect(await screen.findByText(/Modo desenvolvimento/)).toBeInTheDocument()
     expect(updatesAPI.status).toHaveBeenCalledTimes(1)
     expect(updatesAPI.check).not.toHaveBeenCalled()
+  })
+})
+
+describe('Geração de imagens', () => {
+  const engines = { codex: { available: false, reason: 'O Codex está instalado, mas não parece logado. Faça login no CLI (codex login) e teste de novo.' }, antigravity: { available: true } }
+  const base = { apiProvider: 'openai' as const, model: 'gpt-image-2.5-flare', keys: { openai: false, gemini: false, openrouter: false }, engines }
+
+  it('mostra quando o motor escolhido não está logado', async () => {
+    vi.stubGlobal('appAPI', { ...appAPI, imageGenerationStatus: vi.fn().mockResolvedValue({ ...base, provider: 'codex' }) })
+    render(<SettingsPage open onOpenChange={vi.fn()} initialSection="imagens" />)
+    expect(await screen.findByText(/não parece logado/)).toBeInTheDocument()
+  })
+
+  it('salva a chave sem exibi-la de volta e testa com a configuração salva', async () => {
+    const saved = { ...base, provider: 'api' as const, keys: { ...base.keys, openai: true } }
+    const api = {
+      ...appAPI,
+      imageGenerationStatus: vi.fn().mockResolvedValue({ ...base, provider: 'api' }),
+      saveImageGeneration: vi.fn().mockResolvedValue(saved),
+      testImageGeneration: vi.fn().mockResolvedValue({ dataUrl: 'data:image/png;base64,AAAA', provider: 'api' }),
+    }
+    vi.stubGlobal('appAPI', api)
+    render(<SettingsPage open onOpenChange={vi.fn()} initialSection="imagens" />)
+    const key = await screen.findByLabelText('Chave de API de imagens')
+    fireEvent.change(key, { target: { value: 'sk-test-0123456789abcdefghij' } })
+    expect(screen.getByRole('button', { name: 'Testar' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    await waitFor(() => expect(api.saveImageGeneration).toHaveBeenCalledWith({ provider: 'api', apiProvider: 'openai', model: 'gpt-image-2.5-flare' }, 'sk-test-0123456789abcdefghij'))
+    await waitFor(() => expect(key).toHaveValue(''))
+    expect(key).toHaveAttribute('placeholder', 'Chave configurada; cole outra para substituir')
+    fireEvent.click(screen.getByRole('button', { name: 'Testar' }))
+    expect(await screen.findByAltText('Imagem de teste gerada')).toHaveAttribute('src', 'data:image/png;base64,AAAA')
   })
 })
