@@ -195,11 +195,27 @@ describe('contatos de agentes na barra lateral', () => {
     expect(central.querySelector('[style*="width: 20px"]')).not.toBeNull()
   })
 
+  it('seções recolhem e expandem pelo título e lembram a escolha', () => {
+    const chief: Agent = { ...agent, role: 'chief' }
+    const { unmount } = renderSidebar({ snapshot: { ...snapshot, agents: [chief] } })
+    const toggle = () => within(screen.getByRole('heading', { name: 'Boos' })).getByRole('button')
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /^Lyra, Chief/ })).toBeInTheDocument()
+    fireEvent.click(toggle())
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: /^Lyra, Chief/ })).toBeNull()
+    unmount()
+    renderSidebar({ snapshot: { ...snapshot, agents: [chief] } })
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(toggle())
+    expect(screen.getByRole('button', { name: /^Lyra, Chief/ })).toBeInTheDocument()
+  })
+
   it('fixa o Chief com coroa no início da faixa de Boos, sem duplicá-lo', () => {
     const chief: Agent = { ...agent, role: 'chief' }
     const mira: Agent = { ...agent, id: 'agent-2', name: 'Alba', alias: 'alba' }
     renderSidebar({ snapshot: { ...snapshot, agents: [mira, chief] } })
-    const boos = within(screen.getByRole('heading', { name: 'Boos' }).closest('section')!).getAllByRole('button').filter(item => !item.matches('[aria-label="Novo Boo"]'))
+    const boos = within(screen.getByRole('heading', { name: 'Boos' }).closest('section')!).getAllByRole('button').filter(item => !item.matches('[aria-label="Novo Boo"], .dsh-section-toggle'))
     expect(boos[0]).toHaveAccessibleName(/^Lyra, Chief/)
     expect(boos[0].querySelector('svg.dsh-boo-crown')).not.toBeNull()
     expect(screen.getAllByRole('button', { name: /^Lyra/ })).toHaveLength(1)
@@ -256,7 +272,7 @@ describe('Precisa de você', () => {
       },
     })
     const region = () => screen.getByRole('heading', { name: 'Precisa de você' }).closest('section')!
-    expect(within(region()).getAllByRole('button').map(item => item.textContent)).toEqual(['Aprovar: Lyra quer alterar notes.txt', 'Lyra pergunta: Qual banco usar?', 'Responder: Posso apagar a tabela antiga?', 'Módulo de agendamentos · Lyra'])
+    expect(within(region()).getAllByRole('button').filter(item => !item.matches('.dsh-section-toggle')).map(item => item.textContent)).toEqual(['Aprovar: Lyra quer alterar notes.txt', 'Lyra pergunta: Qual banco usar?', 'Responder: Posso apagar a tabela antiga?', 'Módulo de agendamentos · Lyra'])
     expect(within(region()).getAllByLabelText('Aguardando você')).toHaveLength(3)
     expect(within(region()).getByLabelText('Em execução')).toBeInTheDocument()
     // O projeto com pendência avisa na lista.
@@ -265,7 +281,7 @@ describe('Precisa de você', () => {
     expect(onSelectConversation).toHaveBeenCalledExactlyOnceWith('c-rodando')
     // Entrou no projeto da conversa: a seção passa a mostrar só o que é dele.
     expect(screen.getByRole('button', { name: 'Voltar aos projetos' })).toBeInTheDocument()
-    expect(within(region()).getAllByRole('button').map(item => item.textContent)).toEqual(['Lyra pergunta: Qual banco usar?', 'Responder: Posso apagar a tabela antiga?', 'Módulo de agendamentos · Lyra'])
+    expect(within(region()).getAllByRole('button').filter(item => !item.matches('.dsh-section-toggle')).map(item => item.textContent)).toEqual(['Lyra pergunta: Qual banco usar?', 'Responder: Posso apagar a tabela antiga?', 'Módulo de agendamentos · Lyra'])
   })
 
   it('na visão do projeto, some quando o projeto não tem nada pendente', () => {

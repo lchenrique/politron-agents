@@ -362,6 +362,7 @@
 .dsh-section > .dsh-section-header { height: 30px; margin-bottom: 2px; }
 .dsh-section-label { font-size: 12px; font-weight: 500; line-height: 16px; letter-spacing: 0.01em; }
 .dsh-section-count { margin-right: 10px; }
+.dsh-section-heading { display: flex; flex: 1; min-width: 0; margin: 0; font: inherit; }
 .dsh-section-toggle { display: flex; flex: 1; min-width: 0; height: 28px; align-items: center; justify-content: flex-start; gap: 4px; margin-left: -6px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: inherit; box-shadow: none; transition: none; }
 .dsh-section-toggle:hover { background: var(--dsh-hover); color: inherit; }
 .dsh-section-toggle .dsh-section-label { flex: none; }

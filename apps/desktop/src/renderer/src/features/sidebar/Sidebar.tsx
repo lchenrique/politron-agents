@@ -84,8 +84,18 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null)
   const [openWorkspaceMenuId, setOpenWorkspaceMenuId] = useState<string | null>(null)
   const [projectCreateMenuOpen, setProjectCreateMenuOpen] = useState(false)
-  const [companyCollapsed, setCompanyCollapsed] = useState(() => readFlag('politron.sidebar.company-collapsed'))
-  useEffect(() => { try { localStorage.setItem('politron.sidebar.company-collapsed', String(companyCollapsed)) } catch { /* preferência opcional */ } }, [companyCollapsed])
+  const [closedSections, setClosedSections] = useState<Set<string>>(() => { const value = readSet('politron.sidebar.closed-sections'); if (readFlag('politron.sidebar.company-collapsed')) value.add('company'); return value })
+  useEffect(() => { try { localStorage.setItem('politron.sidebar.closed-sections', JSON.stringify([...closedSections])) } catch { /* preferência opcional */ } }, [closedSections])
+  const isOpen = (key: string) => !closedSections.has(key)
+  const toggleSection = (key: string) => setClosedSections(current => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next })
+  /** Título clicável de seção: recolhe/expande e lembra a escolha. */
+  const sectionTitle = (key: string, label: string, id?: string) => <h2 id={id} className="dsh-section-heading">
+    <Button variant="ghost" size={null} className="dsh-section-toggle" aria-expanded={isOpen(key)} onClick={() => toggleSection(key)}>
+      <span className="dsh-section-label">{label}</span>
+      <ChevronRight aria-hidden="true" className="dsh-chevron" data-open={isOpen(key)} />
+    </Button>
+  </h2>
+  const companyCollapsed = !isOpen('company')
   const [allNeeds, setAllNeeds] = useState(false)
   const [allBoos, setAllBoos] = useState(false)
   // Projetos com muitas sessoes mostram so as mais recentes; o resto fica sob demanda.
@@ -408,21 +418,25 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={stopSelecting}>Cancelar</Button>
             </div>
           : <div className="dsh-section-header">
-              <h2 className="dsh-section-label">Sessões</h2>
-              <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Selecionar sessões" title="Selecionar várias sessões para excluir" onClick={() => { setSelecting(true); if (hiddenSessions) setExpandedSessions(current => new Set(current).add(workspace.id)) }}><ListChecks /></Button>
+              {sectionTitle('sessions', 'Sessões')}
+              {isOpen('sessions') && <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Selecionar sessões" title="Selecionar várias sessões para excluir" onClick={() => { setSelecting(true); if (hiddenSessions) setExpandedSessions(current => new Set(current).add(workspace.id)) }}><ListChecks /></Button>}
             </div>)}
+        {(selecting || isOpen('sessions')) && <>
         {!selecting && children.map(projectRow)}
         <SortableArea onDragEnd={listDragEnd(sessionIds, moveSession)}><SortableGroup ids={sessionIds}>
           {conversations.map(conversation => <SortableRow key={conversation.id} id={conversation.id} data={{ type: 'session' }} onMove={delta => moveSession(conversation.id, sessionIds.indexOf(conversation.id) + delta)}>{conversationButton(conversation)}</SortableRow>)}
         </SortableGroup></SortableArea>
         {!!hiddenSessions && <Button type="button" variant="ghost" size={null} onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="dsh-overflow">Ver mais {hiddenSessions} sessões</Button>}
         {!conversations.length && !children.length && <p className="dsh-empty">Nenhuma conversa ainda.</p>}
+        </>}
       </section>
       <section aria-labelledby="dsh-team" className="dsh-section">
-        <div className="dsh-section-header"><h2 id="dsh-team" className="dsh-section-label">Equipe do projeto</h2></div>
+        <div className="dsh-section-header">{sectionTitle('team', 'Equipe do projeto', 'dsh-team')}{!isOpen('team') && !!team.length && <span className="dsh-meta dsh-section-count">{team.length}</span>}</div>
+        {isOpen('team') && <>
         {!!team.length && <div className="dsh-boos">{team.map(agent => <span key={agent.id}>{booButton(agent, openTeamAgent)}</span>)}</div>}
         {!team.length && <p className="dsh-empty">Este projeto ainda não tem equipe.</p>}
         {hireLink}
+        </>}
       </section>
       {companySection}
     </div>
@@ -543,23 +557,20 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     if (!items.length) return null
     const shown = allNeeds ? items : items.slice(0, NEEDS_LIMIT)
     return <section aria-labelledby="dsh-needs-you" className="dsh-rows dsh-section">
-      <div className="dsh-section-header"><h2 id="dsh-needs-you" className="dsh-section-label">Precisa de você</h2><span className="dsh-meta dsh-section-count">{items.length}</span></div>
-      {shown.map(item => <div key={item.key} data-active={item.conversation.id === selected?.id} className="dsh-row dsh-session">
+      <div className="dsh-section-header">{sectionTitle('needs', 'Precisa de você', 'dsh-needs-you')}<span className="dsh-meta dsh-section-count">{items.length}</span></div>
+      {isOpen('needs') && shown.map(item => <div key={item.key} data-active={item.conversation.id === selected?.id} className="dsh-row dsh-session">
         <Button variant="ghost" size={null} onClick={() => { const target = projectOf(item.conversation); if (target) enterProject(target); onSelectConversation(item.conversation.id) }} title={item.label} className="dsh-row-main">
           <span className="dsh-slot">{item.attention ? <span aria-label="Aguardando você" role="img" className="dsh-dot" /> : <svg role="img" aria-label="Em execução" className="dsh-spinner" viewBox="0 0 24 24" width="14" height="14"><g><circle cx="12" cy="12" r="9.5" /><circle cx="12" cy="12" r="9.5" /></g></svg>}</span>
           <span className="dsh-title">{item.label}</span>
         </Button>
       </div>)}
-      {items.length > shown.length && <Button type="button" variant="ghost" size={null} className="dsh-overflow" onClick={() => setAllNeeds(true)}>Ver mais {items.length - shown.length}</Button>}
+      {isOpen('needs') && items.length > shown.length && <Button type="button" variant="ghost" size={null} className="dsh-overflow" onClick={() => setAllNeeds(true)}>Ver mais {items.length - shown.length}</Button>}
     </section>
   }
   const hireLink = !browserMode && onOpenHome && <Button type="button" variant="ghost" size={null} className="dsh-overflow dsh-hire" onClick={() => onOpenHome('marketplace')}><Store />Contratar equipe</Button>
   const companySection = onOpenHome && <section aria-label="Empresa" className="dsh-section">
     <div className="dsh-section-header">
-      <Button variant="ghost" size={null} className="dsh-section-toggle" aria-expanded={!companyCollapsed} onClick={() => setCompanyCollapsed(value => !value)}>
-        <span className="dsh-section-label">Empresa</span>
-        <ChevronRight aria-hidden="true" className="dsh-chevron" data-open={!companyCollapsed} />
-      </Button>
+      {sectionTitle('company', 'Empresa')}
       {companyCollapsed && !!workingCount && <span className="dsh-meta dsh-section-count" aria-label={`${workingCount} trabalhando`}>{workingCount}</span>}
     </div>
     {!companyCollapsed && <nav aria-label="Empresa" className="dsh-panel-list">
@@ -574,7 +585,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     {needsSection(needsYou)}
     <section aria-labelledby="dsh-projects" className="dsh-section">
       <div className="dsh-section-header">
-        <h2 id="dsh-projects" className="dsh-section-label">Projetos</h2>
+        {sectionTitle('projects', 'Projetos', 'dsh-projects')}
         {!browserMode && <Menu open={projectCreateMenuOpen} onClose={() => setProjectCreateMenuOpen(false)} align="end" portal autoFocus
           anchor={<Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Novo projeto ou pasta" title="Novo projeto ou pasta" aria-haspopup="menu" aria-expanded={projectCreateMenuOpen}
             onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setProjectCreateMenuOpen(value => !value) } }} onClick={() => setProjectCreateMenuOpen(value => !value)}><Plus /></Button>}
@@ -585,6 +596,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             else if (id === 'new-group') openGroupDialog('create')
           }} />}
       </div>
+      {isOpen('projects') && <>
       {(!!favoriteProjects.length || !!favoriteSessions.length) && <div role="group" aria-label="Favoritos" className="dsh-rows dsh-pinned">
         {favoriteProjects.map(projectRow)}
         {favoriteSessions.map(conversation => conversationRow(conversation, needsAttention(conversation.id), unreadCounts[conversation.id] || 0, runningConversations.has(conversation.id)))}
@@ -595,12 +607,14 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </SortableArea>
       {!rootWorkspaces.length && <p className="dsh-empty">Crie um projeto pelo botão + para organizar suas sessões.</p>}
       {!!legacyConversations.length && !rootWorkspaces.some(item => item.name === 'Livre' && item.kind === 'free') && <div className="dsh-rows mt-1"><div className="dsh-row dsh-folder"><Button variant="ghost" size={null} className="dsh-row-main" onClick={() => toggle('legacy')} aria-label={collapsed.has('legacy') ? 'Expandir sessões antigas' : 'Recolher sessões antigas'}><span className="dsh-slot"><Triangle className="dsh-arrow rotate-90 fill-current" data-open={!collapsed.has('legacy')} /><FolderOpen className="dsh-folder-icon" /></span><span className="dsh-title">Sessões antigas</span><span className="dsh-meta">{legacyConversations.length}</span></Button></div>{!collapsed.has('legacy') && <div className="dsh-indent dsh-rows">{legacyConversations.filter(isTopLevel).map(conversationButton)}</div>}</div>}
+      </>}
     </section>
     <section aria-labelledby="dsh-boos" className="dsh-section">
       <div className="dsh-section-header">
-        <h2 id="dsh-boos" className="dsh-section-label">Boos</h2>
+        {sectionTitle('boos', 'Boos', 'dsh-boos')}
         {!browserMode && <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Novo Boo" title="Novo Boo" onClick={() => onOpenEditor({ kind: 'agent' })}><Plus /></Button>}
       </div>
+      {isOpen('boos') && <>
       {!!strip.length && <div className="dsh-boos">
         <SortableArea onDragEnd={listDragEnd(booIds, moveBoo)}><SortableGroup ids={booIds} grid>
           {shownBoos.map(agent => <SortableRow key={agent.id} id={agent.id} data={{ type: 'agent' }} onMove={delta => moveBoo(agent.id, booIds.indexOf(agent.id) + delta)}>{booButton(agent)}</SortableRow>)}
@@ -609,6 +623,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </div>}
       {!visibleAgents.length && <p className="dsh-empty">{chiefAgent ? 'Nenhum outro Boo ainda. Use o + para criar.' : 'Crie um Boo pelo + para começar.'}</p>}
       {hireLink}
+      </>}
     </section>
     {companySection}
   </div>
