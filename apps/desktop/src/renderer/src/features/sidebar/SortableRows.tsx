@@ -1,6 +1,6 @@
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import { closestCenter, DndContext, MouseSensor, pointerWithin, TouchSensor, useSensor, useSensors, type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { rectSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
 export type SortableData = { type: 'project' | 'group' | 'session' | 'agent'; group?: string | null; name?: string | null }
@@ -41,8 +41,9 @@ export function SortableArea({ onDragEnd, children }: { onDragEnd: (event: DragE
   </DndContext>
 }
 
-export function SortableGroup({ ids, children }: { ids: string[]; children: ReactNode }) {
-  return <SortableContext items={ids} strategy={verticalListSortingStrategy}>{children}</SortableContext>
+/** `grid`: itens que quebram linha (faixa de avatares) em vez de uma coluna. */
+export function SortableGroup({ ids, grid, children }: { ids: string[]; grid?: boolean; children: ReactNode }) {
+  return <SortableContext items={ids} strategy={grid ? rectSortingStrategy : verticalListSortingStrategy}>{children}</SortableContext>
 }
 
 /** Atalho de teclado do reordenamento: Alt+↑/↓ no item focado. */

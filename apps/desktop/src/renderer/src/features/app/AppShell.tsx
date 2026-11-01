@@ -239,6 +239,17 @@ export default function AppShell() {
   }
   const saveWorkspace = async (data: EditorData) => { const workspace = await window.appAPI.saveWorkspace(data as Partial<Workspace> & { path?: string | null }); await refresh(); selectWorkspace(workspace.id) }
   const startConversation = async (workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ workspaceId }); await refresh(); selectConversation(conversation.id) } catch (error) { setNotice(errorText(error)) } }
+  // Ctrl+N: nova sessão livre, como o botão do topo da barra lateral. Só no desktop: no navegador o atalho abre outra janela.
+  useEffect(() => {
+    if (browserMode || !canChat) return
+    const shortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'n' || event.repeat) return
+      event.preventDefault()
+      void startConversation()
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  })
   const deleteWorkspace = async (id: string) => {
     try {
       const currentActiveWorkspace = activeWorkspaceIdRef.current

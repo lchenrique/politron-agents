@@ -369,8 +369,10 @@
 
 /* Rodapé: linhas de 32px sem divisória. */
 .dsh-foot { display: flex; align-items: center; gap: 2px; margin: 4px 0; padding-top: 6px; border-top: 0.5px solid var(--dsh-hover); }
-.dsh-foot > .dsh-panel-row:first-child { flex: 1; min-width: 0; }
-.dsh-foot .dsh-foot-icon { flex: none; width: 32px; justify-content: center; padding-inline: 0; }
+.dsh-foot-host { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.dsh-foot-host:empty { display: none; }
+.dsh-foot-host:empty + .dsh-foot-settings { flex: 1; }
+.dsh-foot .dsh-foot-settings { flex: none; padding-inline: 8px; }
 .dsh-foot .dsh-panel-row { min-height: 32px; margin: 0 -2px; padding: 6px 2px 6px 6px; line-height: 20px; }
 .dsh-foot .dsh-panel-row:disabled { opacity: 1; color: var(--dsh-label-caption); }
 
@@ -390,3 +392,42 @@
 .dsh-check[data-checked="true"] { border-color: var(--primary, currentColor); background: var(--primary, currentColor); color: var(--primary-foreground, #fff); }
 .dsh-check svg.lucide { width: 11px; height: 11px; }
 .dsh-bulk-bar { gap: 2px; }
+
+/* Barra v2: Nova sessão com atalho, seções empilhadas (Precisa de você, Projetos, Boos, Empresa). */
+.dsh-new-session .dsh-kbd { margin-left: auto; height: 18px; padding: 0 5px; border-radius: 6px; background: var(--dsh-hover); color: var(--dsh-label-tertiary); font-size: 10px; font-weight: 500; letter-spacing: 0.02em; }
+.dsh-new-session:has(.dsh-kbd) { justify-content: flex-start; padding-inline: 12px 8px; }
+.dsh-section + .dsh-section { margin-top: 6px; }
+.dsh-section > .dsh-section-header { height: 30px; margin-bottom: 2px; }
+.dsh-section-label { font-size: 12px; font-weight: 500; line-height: 16px; letter-spacing: 0.01em; }
+.dsh-section-count { margin-right: 10px; }
+.dsh-section-toggle { display: flex; flex: 1; min-width: 0; height: 28px; align-items: center; justify-content: flex-start; gap: 4px; margin-left: -6px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: inherit; box-shadow: none; transition: none; }
+.dsh-section-toggle:hover { background: var(--dsh-hover); color: inherit; }
+.dsh-section-toggle .dsh-section-label { flex: none; }
+
+/* Chevron da árvore: aponta para baixo quando aberto. */
+.dsh-chevron { width: 14px; height: 14px; flex: none; color: var(--dsh-label-caption); transition: transform 150ms var(--dsh-ease); }
+.dsh-chevron[data-open="true"] { transform: rotate(90deg); }
+.dsh-section-toggle .dsh-chevron { width: 12px; height: 12px; }
+.dsh-project .dsh-slot svg.lucide.dsh-chevron { width: 14px; height: 14px; }
+.dsh-project .dsh-row-main { gap: 4px; }
+.dsh-kind { width: 13px; height: 13px; flex: none; color: var(--dsh-label-tertiary); }
+.dsh-project .dsh-spinner { width: 12px; height: 12px; }
+.dsh-pinned { margin-bottom: 4px; }
+
+/* Boos: faixa de avatares que quebra linha; o ponto de estado fica no canto do avatar. */
+.dsh-boos { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 4px 2px 8px; }
+.dsh-boo { position: relative; display: inline-flex; width: 38px; height: 38px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: transparent; box-shadow: none; transition: none; }
+.dsh-boo:hover, .dsh-boo[aria-expanded="true"] { background: var(--dsh-hover); }
+.dsh-boo:focus-visible { outline-offset: 0; }
+.dsh-boo-crown { position: absolute; top: 0; right: 1px; width: 13px; height: 13px; padding: 1.5px; border-radius: 999px; background: var(--dsh-fill); color: var(--warning); }
+.boobot-sidebar .dsh-boo-crown.lucide { stroke-width: 1.5; }
+.dsh-boo-state { position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px; border: 2px solid var(--dsh-fill); border-radius: 999px; background: var(--success); }
+.dsh-boo-state[data-state="waiting"] { background: var(--dsh-amber); }
+.dsh-boo-more { color: var(--dsh-label-tertiary); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.dsh-boo-more:hover { color: var(--dsh-label-primary); }
+.dsh-hire { padding-left: 12px; }
+.dsh-hire:hover { color: var(--primary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-chevron { transition: none; }
+}
