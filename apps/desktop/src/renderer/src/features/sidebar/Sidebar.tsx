@@ -7,9 +7,8 @@ import { GroupDialog, type GroupDraft } from './GroupDialog'
 import { ProjectGroupSection } from './ProjectGroupSection'
 import { useSidebarIndex } from './sidebarIndex'
 import { WorkspaceSearch } from './WorkspaceSearch'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import type { Agent, Approval, Conversation, Snapshot, Workspace } from '../../../../shared/v9'
-import { AgentPresence, Avatar } from '../app/Avatar'
+import { Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 import type { EditorKind } from '../editors/Editor'
 import { HostSelector } from '../hosts/HostSelector'
@@ -23,8 +22,6 @@ import './sidebar-dsh.css'
 
 /** Quantas sessoes o projeto aberto mostra antes de exigir "ver mais". Limita o DOM do sidebar sem esconder o trabalho recente. */
 const SESSION_LIMIT = 10
-/** Sessões recentes mostradas na árvore ao expandir um projeto; o resto fica em "Ver todas". */
-const PREVIEW_LIMIT = 5
 /** Itens de "Precisa de você" antes de "Ver mais". */
 const NEEDS_LIMIT = 6
 /** Boos na faixa de avatares antes de "Ver todos". */
@@ -49,7 +46,7 @@ function readSet(key: string): Set<string> {
   try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []) } catch { return new Set() }
 }
 
-export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, agentStates, onSelectConversation, onSelectWorkspace, onStartConversation, onOpenAgent, onOpenEditor, onOpenSettings, onDeleteWorkspace, onDeleteConversation, onDeleteConversations, onDeleteAgent, onSetChief, onNotice, view = null, onOpenHome, onSectionChange, attentionCount = 0, browserMode = false, canChat = true }: {
+export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, agentStates, onSelectConversation, onSelectWorkspace, onStartConversation, onOpenAgent, onOpenWorkspaceAgent, onOpenEditor, onOpenSettings, onDeleteWorkspace, onDeleteConversation, onDeleteConversations, onDeleteAgent, onSetChief, onNotice, view = null, onOpenHome, onSectionChange, attentionCount = 0, browserMode = false, canChat = true }: {
   snapshot: Snapshot
   selected: Conversation | undefined
   activeWorkspaceId?: string | null
@@ -59,6 +56,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   onSelectWorkspace?: (id: string) => void
   onStartConversation: (workspaceId?: string) => void | Promise<void>
   onOpenAgent: (agent: Agent, newConversation?: boolean) => void | Promise<void>
+  /** Conversa do Boo dentro do projeto; sem ele, a equipe do projeto abre a conversa geral do Boo. */
+  onOpenWorkspaceAgent?: (workspaceId: string, agent: Agent) => void | Promise<void>
   onOpenEditor: (editor: { kind: EditorKind; initial?: Agent | Conversation | Workspace; workspaceId?: string | null }) => void
   onOpenSettings: () => void
   onDeleteWorkspace: (id: string) => void | Promise<void>
@@ -80,16 +79,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   // Projeto aberto na parte de baixo da barra; null mostra a lista de projetos.
   const [enteredId, setEnteredId] = useState<string | null>(() => { try { return localStorage.getItem('politron.sidebar.project') } catch { return null } })
   useEffect(() => { try { if (enteredId) localStorage.setItem('politron.sidebar.project', enteredId); else localStorage.removeItem('politron.sidebar.project') } catch { /* preferência opcional */ } }, [enteredId])
-  const [projectTab, setProjectTab] = useState<'sessions' | 'team'>('sessions')
   const [favorites, setFavorites] = useState<Set<string>>(() => readSet('politron.sidebar.favorites'))
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null)
   const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null)
   const [openWorkspaceMenuId, setOpenWorkspaceMenuId] = useState<string | null>(null)
   const [projectCreateMenuOpen, setProjectCreateMenuOpen] = useState(false)
-  // Projetos abertos na árvore; o projeto da conversa atual abre sozinho.
-  const [expanded, setExpanded] = useState<Set<string>>(() => readSet('politron.sidebar.expanded-projects'))
-  useEffect(() => { try { localStorage.setItem('politron.sidebar.expanded-projects', JSON.stringify([...expanded])) } catch { /* preferência opcional */ } }, [expanded])
-  const toggleExpanded = (id: string) => setExpanded(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next })
   const [companyCollapsed, setCompanyCollapsed] = useState(() => readFlag('politron.sidebar.company-collapsed'))
   useEffect(() => { try { localStorage.setItem('politron.sidebar.company-collapsed', String(companyCollapsed)) } catch { /* preferência opcional */ } }, [companyCollapsed])
   const [allNeeds, setAllNeeds] = useState(false)
@@ -134,7 +128,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const enteredProject = enteredId ? workspacesById.get(enteredId) : undefined
   // Projeto apagado ou arquivado volta para a lista. O id fica guardado: no início o snapshot ainda chega vazio.
   const project = enteredProject && !enteredProject.archived && enteredProject.name ? enteredProject : undefined
-  const enterProject = (id: string | null) => { setEnteredId(id); setProjectTab('sessions'); stopSelecting() }
+  const enterProject = (id: string | null) => { setEnteredId(id); stopSelecting() }
   // Abrir uma conversa ou projeto por fora (central, busca, links, notificações) leva a barra para o projeto dele.
   // A primeira conversa vista é a restaurada na inicialização: não sobrepõe o projeto lembrado.
   const navigationTarget = activeWorkspaceId || (selected && (workspacesById.get(selected.workspaceId)?.name ? selected.workspaceId : rootWorkspaces.find(item => item.name === 'Livre' && item.kind === 'free')?.id)) || null
@@ -153,19 +147,13 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     // Sessão recém-criada: o projeto dela (ex.: Livre criado agora) pode chegar num snapshot seguinte; espera por ele.
     if (!navigationTarget) return
     handledNavigation.current = navigationKey
-    // A visão "Ver todas" de outro projeto fecha; a árvore mostra o projeto da conversa.
-    if (enteredId && enteredId !== navigationTarget) enterProject(null)
+    enterProject(navigationTarget)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reage à navegação e à chegada do destino, não a cada snapshot
   }, [navigationKey, navigationTarget])
-  // O projeto da conversa atual (inclusive a restaurada na abertura) abre na árvore; recolher depois continua valendo.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- só quando o destino muda
-  useEffect(() => { if (navigationTarget) expandTo(navigationTarget) }, [navigationTarget])
-  /** Abre na árvore o projeto e os projetos acima dele (worktrees ficam dentro do projeto de origem). */
-  const expandTo = (id: string) => setExpanded(current => {
-    const next = new Set(current)
-    for (let item = workspacesById.get(id); item; item = item.parentWorkspaceId ? workspacesById.get(item.parentWorkspaceId) : undefined) next.add(item.id)
-    return next.size === current.size ? current : next
-  })
+  /** Projeto em que a conversa aparece: sessões sem projeto nomeado ficam no Livre. */
+  const projectOf = (conversation: Conversation) => workspacesById.get(conversation.workspaceId)?.name ? conversation.workspaceId : rootWorkspaces.find(item => item.name === 'Livre' && item.kind === 'free')?.id
+  /** Projeto da lista global: o próprio e os worktrees dele (que só aparecem dentro do projeto). */
+  const projectFamily = (workspace: Workspace) => [workspace, ...childWorkspaces(workspace.id)]
   // Projetos com sessão rodando, pelo projeto da conversa (sessões antigas aparecem no Livre).
   const runningWorkspaces = useMemo(() => {
     const result = new Set<string>()
@@ -173,7 +161,10 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     for (const id of runningConversations) {
       const workspaceId = conversationsById.get(id)?.workspaceId
       if (!workspaceId) continue
-      result.add(workspacesById.get(workspaceId)?.name ? workspaceId : free?.id || workspaceId)
+      const own = workspacesById.get(workspaceId)
+      // Worktree acende também o projeto de origem, que é o que aparece na lista.
+      if (own?.parentWorkspaceId) result.add(own.parentWorkspaceId)
+      result.add(own?.name ? workspaceId : free?.id || workspaceId)
     }
     return result
   }, [runningConversations, conversationsById, workspacesById, rootWorkspaces])
@@ -247,31 +238,6 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     ]
   }
 
-  const agentRow = (agent: Agent, pinnedChief = false) => <div
-    key={agent.id}
-    className="dsh-row dsh-session group"
-    onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}
-  >
-    <Button variant="ghost" size={null} onClick={() => void onOpenAgent(agent)} title={pinnedChief ? 'Chief · Coordenação' : agent.description || '@' + agent.alias} className="dsh-row-main">
-      <span className="dsh-slot"><span className="dsh-glyph"><Avatar agent={agent} size="xxs" state={agentStates[agent.id] || 'idle'} /></span></span>
-      <span className="dsh-title flex items-center gap-1">{agent.name}{agent.temporary && <span className="dsh-meta" title={agent.temporaryStatus === 'working' ? 'Boo temporário em execução' : 'Boo temporário'}>Temp</span>}{pinnedChief && <Crown aria-label="Chief" className="size-3.5 shrink-0 text-warning" />}</span>
-      <span className="dsh-sub">{pinnedChief ? 'Chief · Coordenação' : agent.description || '@' + agent.alias}</span>
-      <AgentPresence state={agentStates[agent.id] || 'idle'} />
-      {isFavorite('agent', agent.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
-    </Button>
-    <Menu open={openAgentMenuId === agent.id} onClose={() => setOpenAgentMenuId(null)} align="end" portal autoFocus
-      anchor={<Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações de ' + agent.name} aria-haspopup="menu" aria-expanded={openAgentMenuId === agent.id}
-        onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpenAgentMenuId(current => current === agent.id ? null : agent.id) } }}
-        onClick={() => setOpenAgentMenuId(current => current === agent.id ? null : agent.id)}><MoreHorizontal /></Button>}
-      items={agentMenuEntries(agent)} onSelect={id => {
-        setOpenAgentMenuId(null)
-        if (id === 'new-conversation') void onOpenAgent(agent, true)
-        else if (id === 'edit-agent') onOpenEditor({ kind: 'agent', initial: agent })
-        else if (id === 'favorite-agent') toggleFavorite(favoriteKey('agent', agent.id))
-        else if (id === 'chief-role') void onSetChief(agent, agent.role !== 'chief')
-        else if (id === 'delete-agent') removeAgent(agent)
-      }} />
-  </div>
   const chiefAgent = useMemo(() => snapshot.agents.find(agent => agent.role === 'chief'), [snapshot.agents])
   const regularAgents = useMemo(() => snapshot.agents.filter(agent => agent.role !== 'chief' && agent.temporaryStatus !== 'retired'), [snapshot.agents])
 
@@ -370,44 +336,30 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
 
   const workspaceLabel = (workspace: Workspace) => workspace.kind === 'worktree' ? workspace.branch || workspace.name : workspace.name
 
-  /** Projeto na árvore: clicar abre ou recolhe; aberto, mostra worktrees, as sessões mais recentes e "Ver todas". */
-  const projectNode = (workspace: Workspace): React.ReactNode => {
-    const top = conversationsOf(workspace.id).filter(isTopLevel)
-    const open = expanded.has(workspace.id)
+  /** Uma linha por projeto: clicar entra no projeto. Estado e contagens somam os worktrees dele. */
+  const projectRow = (workspace: Workspace): React.ReactNode => {
+    const family = projectFamily(workspace).flatMap(item => conversationsOf(item.id))
+    const sessions = conversationsOf(workspace.id).filter(isTopLevel).length
     // Mesmo vocabulário das sessões: âmbar pede você, anel gira enquanto roda, verde marca não lidas.
-    const attention = conversationsOf(workspace.id).some(item => needsAttention(item.id))
-    const unread = !attention && conversationsOf(workspace.id).some(item => (unreadCounts[item.id] || 0) > 0)
+    const attention = family.some(item => needsAttention(item.id))
+    const unread = family.reduce((total, item) => total + (unreadCounts[item.id] || 0), 0)
     const running = runningWorkspaces.has(workspace.id)
     const label = workspaceLabel(workspace)
-    const children = open ? childWorkspaces(workspace.id) : []
-    // Recentes por atividade; a conversa aberta aparece mesmo fora das recentes.
-    const recent = open ? [...top].sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt)).slice(0, PREVIEW_LIMIT) : []
-    if (open && selected && !recent.includes(selected) && top.includes(selected)) recent.push(selected)
-    return <div key={workspace.id}>
-      <div className="dsh-row dsh-project group" data-active={activeWorkspaceId === workspace.id} onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
-        <Button variant="ghost" size={null} onClick={() => toggleExpanded(workspace.id)} aria-expanded={open} className="dsh-row-main" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
-          <span className="dsh-slot"><ChevronRight aria-hidden="true" className="dsh-chevron" data-open={open} /></span>
-          {workspace.kind === 'worktree' && <GitBranch aria-hidden="true" className="dsh-kind" />}
-          <span className="dsh-title">{label}</span>
-          {isFavorite('workspace', workspace.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
-          {attention ? <span aria-label="Workspace precisa de atenção" className="dsh-dot" /> : running ? <svg role="img" aria-label="Sessão em execução" className="dsh-spinner" viewBox="0 0 24 24" width="14" height="14"><g><circle cx="12" cy="12" r="9.5" /><circle cx="12" cy="12" r="9.5" /></g></svg> : unread ? <span aria-label="Sessões não lidas" className="dsh-dot" data-state="done" /> : null}
-          {workspace.kind === 'worktree' && !!workspace.changes && <span className="dsh-meta dsh-resting text-warning">{workspace.changes} alter.</span>}
-          <span className="dsh-meta dsh-resting" title={`${top.length} sessões`}>{top.length || ''}</span>
-        </Button>
-        <Button variant="ghost" size={null} className="dsh-row-action" disabled={!canChat} aria-label={`Nova sessão em ${label}`} title="Nova sessão neste projeto" onClick={() => void onStartConversation(workspace.id)}><Plus /></Button>
-        {workspaceMenu(workspace, 'dsh-row-action')}
-      </div>
-      {/* Sessões dentro de um projeto arrastável não arrastam nem reordenam o projeto. */}
-      {open && <div className="dsh-indent dsh-rows" onMouseDown={event => event.stopPropagation()} onTouchStart={event => event.stopPropagation()} onKeyDown={event => { if (event.altKey) event.stopPropagation() }}>
-        {children.map(projectNode)}
-        {recent.map(conversationButton)}
-        {top.length > recent.length && <Button type="button" variant="ghost" size={null} className="dsh-overflow" onClick={() => enterProject(workspace.id)}>Ver todas ({top.length})</Button>}
-        {!top.length && !children.length && <Button type="button" variant="ghost" size={null} disabled={!canChat} className="dsh-overflow" onClick={() => void onStartConversation(workspace.id)}><Plus />Nova sessão no projeto</Button>}
-      </div>}
+    return <div key={workspace.id} className="dsh-row group" data-active={enteredId === workspace.id} onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
+      <Button variant="ghost" size={null} onClick={() => enterProject(workspace.id)} className="dsh-row-main" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
+        <span className="dsh-slot">{workspace.kind === 'worktree' ? <GitBranch /> : <FolderOpen />}</span>
+        <span className="dsh-title">{label}</span>
+        {isFavorite('workspace', workspace.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
+        {attention ? <span aria-label="Workspace precisa de atenção" className="dsh-dot" /> : running ? <svg role="img" aria-label="Sessão em execução" className="dsh-spinner" viewBox="0 0 24 24" width="14" height="14"><g><circle cx="12" cy="12" r="9.5" /><circle cx="12" cy="12" r="9.5" /></g></svg> : unread ? <span aria-label="Sessões não lidas" className="dsh-dot" data-state="done" /> : null}
+        {workspace.kind === 'worktree' && !!workspace.changes && <span className="dsh-meta dsh-resting text-warning">{workspace.changes} alter.</span>}
+        {unread ? <span className="ds-count dsh-resting" data-tone="primary" aria-label={`${unread} não lidas`}>{unread > 99 ? '99+' : unread}</span> : <span className="dsh-meta dsh-resting" title={`${sessions} sessões`}>{sessions || ''}</span>}
+      </Button>
+      <Button variant="ghost" size={null} className="dsh-row-action" disabled={!canChat} aria-label={`Nova sessão em ${label}`} title="Nova sessão neste projeto" onClick={() => void onStartConversation(workspace.id)}><Plus /></Button>
+      {workspaceMenu(workspace, 'dsh-row-action')}
     </div>
   }
 
-  /** Projeto aberto: cabeçalho com voltar e abas Projeto/Boos. Só a aba ativa é montada (Radix desmonta a inativa). */
+  /** Projeto aberto: só ele na barra (voltar, sessões, pendências e equipe do projeto). */
   const projectView = (workspace: Workspace) => {
     const allConversations = conversationsOf(workspace.id)
     const topLevel = applyOrder(allConversations.filter(isTopLevel), layout.sessionOrder[workspace.id], item => item.id)
@@ -427,28 +379,27 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const checked = selectable.filter(id => checkedIds.has(id))
     const allChecked = sessionIds.length > 0 && sessionIds.every(id => checkedIds.has(id))
     const children = childWorkspaces(workspace.id)
-    // Time: equipe padrão do projeto mais quem participa das conversas dele, como na elegibilidade de delegação.
-    const team = new Set(workspace.defaultAgentIds)
-    if (projectTab === 'team') for (const conversation of allConversations) for (const id of conversation.agentIds) team.add(id)
-    const teamAgents = applyOrder([...team].map(id => agentsById.get(id)).filter((agent): agent is Agent => !!agent && agent.temporaryStatus !== 'retired'), layout.agentOrder, agent => agent.id)
-    return <Tabs value={projectTab} onValueChange={value => setProjectTab(value as 'sessions' | 'team')} className="flex min-h-0 flex-1 flex-col">
+    const own = new Set(projectFamily(workspace).flatMap(item => conversationsOf(item.id)).map(item => item.id))
+    const projectNeeds = needsYou.filter(item => own.has(item.conversation.id))
+    const team = applyOrder(workspace.defaultAgentIds.map(id => agentsById.get(id)).filter((agent): agent is Agent => !!agent && agent.temporaryStatus !== 'retired'), layout.agentOrder, agent => agent.id)
+    const openTeamAgent = (agent: Agent) => void (onOpenWorkspaceAgent ? onOpenWorkspaceAgent(workspace.id, agent) : onOpenAgent(agent))
+    return <div className="dsh-list">
       <div className="dsh-project-head">
-        <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Voltar aos projetos" title="Voltar aos projetos" onClick={() => enterProject(null)}><ArrowLeft /></Button>
-        <div data-active={activeWorkspaceId === workspace.id} className="dsh-row group">
-          <Button variant="ghost" size={null} onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path} className="dsh-row-main">
-            <span className="dsh-slot dsh-folder-active">{workspace.kind === 'worktree' ? <GitBranch /> : <FolderOpen />}</span>
-            <span className="dsh-title">{workspaceLabel(workspace)}</span>
-            {isFavorite('workspace', workspace.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
-          </Button>
-          {workspaceMenu(workspace, 'dsh-row-action')}
-        </div>
+        <Button variant="ghost" size={null} className="dsh-back" aria-label="Voltar aos projetos" title="Voltar aos projetos" onClick={() => enterProject(null)}><ArrowLeft />Projetos</Button>
       </div>
-      <TabsList className="dsh-tabs">
-        <TabsTrigger value="sessions" className="dsh-tab">Projeto</TabsTrigger>
-        <TabsTrigger value="team" className="dsh-tab">Boos</TabsTrigger>
-      </TabsList>
-      <TabsContent value="sessions" className="dsh-list dsh-rows mt-0">
+      <div data-active={activeWorkspaceId === workspace.id} className="dsh-row dsh-project-title group" onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
+        <Button variant="ghost" size={null} onClick={() => onSelectWorkspace?.(workspace.id)} aria-current={activeWorkspaceId === workspace.id ? 'page' : undefined} title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path} className="dsh-row-main">
+          <span className="dsh-slot dsh-folder-active">{workspace.kind === 'worktree' ? <GitBranch /> : <FolderOpen />}</span>
+          <span className="dsh-title">{workspaceLabel(workspace)}</span>
+          {isFavorite('workspace', workspace.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
+        </Button>
+        {workspaceMenu(workspace, 'dsh-row-action')}
+      </div>
+      <div className="dsh-rows">
         <div className="dsh-row dsh-session"><Button variant="ghost" size={null} disabled={!canChat} onClick={() => void onStartConversation(workspace.id)} className="dsh-row-main text-[var(--dsh-label-tertiary)]"><span className="dsh-slot"><Plus /></span><span className="dsh-title">Nova sessão no projeto</span></Button></div>
+      </div>
+      {needsSection(projectNeeds)}
+      <section aria-label="Sessões do projeto" className="dsh-rows dsh-section">
         {!browserMode && !!topLevel.length && (selecting
           ? <div role="toolbar" aria-label="Seleção de sessões" className="dsh-section-header dsh-bulk-bar">
               <p className="dsh-section-label" aria-live="polite">{checked.length ? `${checked.length} selecionada${checked.length === 1 ? '' : 's'}` : 'Selecione sessões'}</p>
@@ -457,21 +408,24 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={stopSelecting}>Cancelar</Button>
             </div>
           : <div className="dsh-section-header">
-              <p className="dsh-section-label">Sessões</p>
+              <h2 className="dsh-section-label">Sessões</h2>
               <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Selecionar sessões" title="Selecionar várias sessões para excluir" onClick={() => { setSelecting(true); if (hiddenSessions) setExpandedSessions(current => new Set(current).add(workspace.id)) }}><ListChecks /></Button>
             </div>)}
-        {!selecting && children.map(projectNode)}
+        {!selecting && children.map(projectRow)}
         <SortableArea onDragEnd={listDragEnd(sessionIds, moveSession)}><SortableGroup ids={sessionIds}>
           {conversations.map(conversation => <SortableRow key={conversation.id} id={conversation.id} data={{ type: 'session' }} onMove={delta => moveSession(conversation.id, sessionIds.indexOf(conversation.id) + delta)}>{conversationButton(conversation)}</SortableRow>)}
         </SortableGroup></SortableArea>
         {!!hiddenSessions && <Button type="button" variant="ghost" size={null} onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="dsh-overflow">Ver mais {hiddenSessions} sessões</Button>}
         {!conversations.length && !children.length && <p className="dsh-empty">Nenhuma conversa ainda.</p>}
-      </TabsContent>
-      <TabsContent value="team" className="dsh-list dsh-rows mt-0">
-        {sortableAgents(teamAgents, agent => agentRow(agent, agent.role === 'chief'))}
-        {!teamAgents.length && <p className="dsh-empty">Este projeto ainda não tem time.</p>}
-      </TabsContent>
-    </Tabs>
+      </section>
+      <section aria-labelledby="dsh-team" className="dsh-section">
+        <div className="dsh-section-header"><h2 id="dsh-team" className="dsh-section-label">Equipe do projeto</h2></div>
+        {!!team.length && <div className="dsh-boos">{team.map(agent => <span key={agent.id}>{booButton(agent, openTeamAgent)}</span>)}</div>}
+        {!team.length && <p className="dsh-empty">Este projeto ainda não tem equipe.</p>}
+        {hireLink}
+      </section>
+      {companySection}
+    </div>
   }
 
   const rootProject = (workspace: Workspace) => <SortableRow key={workspace.id} id={workspace.id} data={{ type: 'project', group: workspaceGroup[workspace.id] ?? null }} onMove={delta => {
@@ -479,7 +433,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const ids = containerIds(group)
     const index = ids.indexOf(workspace.id) + delta
     if (index >= 0 && index < ids.length) moveProject(workspace, group, index)
-  }}>{projectNode(workspace)}</SortableRow>
+  }}>{projectRow(workspace)}</SortableRow>
 
   const groupSection = (name: string | null, items: Workspace[], editable = true) => {
     if (!name) return <div className="dsh-rows"><SortableGroup ids={items.map(item => item.id)}>{items.map(rootProject)}</SortableGroup></div>
@@ -491,20 +445,6 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const orderedAgentIds = useMemo(() => applyOrder(snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired'), layout.agentOrder, agent => agent.id).map(agent => agent.id), [snapshot.agents, layout.agentOrder])
   const listDragEnd = (ids: string[], move: (id: string, index: number) => void) => ({ active, over }: DragEndEvent) => {
     if (over && active.id !== over.id) move(String(active.id), ids.indexOf(String(over.id)))
-  }
-  /** Boos na ordem manual; mover no time do projeto reordena só o time dentro da ordem global. */
-  const sortableAgents = (agents: Agent[], render: (agent: Agent) => React.ReactNode) => {
-    const ids = agents.map(agent => agent.id)
-    const move = (id: string, index: number) => {
-      const next = moveTo(ids, id, index)
-      const agent = agentsById.get(id)
-      if (!next || !agent) return
-      save({ agentOrder: mergeSubset(orderedAgentIds, next) })
-      setAnnouncement(`Boo ${agent.name} movido para a posição ${next.indexOf(id) + 1}`)
-    }
-    return <SortableArea onDragEnd={listDragEnd(ids, move)}><SortableGroup ids={ids}>
-      {agents.map(agent => <SortableRow key={agent.id} id={agent.id} data={{ type: 'agent' }} onMove={delta => move(agent.id, ids.indexOf(agent.id) + delta)}>{render(agent)}</SortableRow>)}
-    </SortableGroup></SortableArea>
   }
   // Separa os projetos por pasta numa passada só (filtrar por pasta custava O(pastas * projetos)) e aplica a ordem manual.
   const projectContainers = useMemo(() => {
@@ -559,17 +499,16 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const unpinned = (items: Workspace[]) => items.filter(item => !isFavorite('workspace', item.id))
   const strip = [...(chiefAgent ? [chiefAgent] : []), ...visibleAgents]
   const shownBoos = allBoos ? strip : strip.slice(0, BOO_LIMIT)
-  const shownNeeds = allNeeds ? needsYou : needsYou.slice(0, NEEDS_LIMIT)
   const stateLabel = (state: 'idle' | 'working' | 'waiting') => state === 'working' ? 'trabalhando' : state === 'waiting' ? 'aguardando você' : 'livre'
 
   /** Boo na faixa: clicar abre a conversa; o menu (botão direito ou tecla de menu) guarda as outras ações. */
-  const booButton = (agent: Agent) => {
+  const booButton = (agent: Agent, open: (agent: Agent) => void = item => void onOpenAgent(item)) => {
     const state = agentStates[agent.id] || 'idle'
     const chief = agent.role === 'chief'
     const name = `${agent.name}${chief ? ', Chief' : ''}${agent.temporary ? ', temporário' : ''}${isFavorite('agent', agent.id) ? ', favorito' : ''} · ${stateLabel(state)}`
     return <Menu open={openAgentMenuId === agent.id} onClose={() => setOpenAgentMenuId(null)} align="start" portal autoFocus
       anchor={<Button variant="ghost" size={null} className="dsh-boo" data-state={state} aria-label={name} title={chief ? `${agent.name} · Chief` : agent.description ? `${agent.name} · ${agent.description}` : agent.name}
-        onClick={() => void onOpenAgent(agent)}
+        onClick={() => open(agent)}
         onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}>
         <Avatar agent={agent} size="xs" state={state} />
         {chief && <Crown aria-hidden="true" className="dsh-boo-crown" />}
@@ -599,17 +538,40 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       {count}
     </Button>
 
-  const overview = <div className="dsh-list">
-    {!!needsYou.length && <section aria-labelledby="dsh-needs-you" className="dsh-rows dsh-section">
-      <div className="dsh-section-header"><h2 id="dsh-needs-you" className="dsh-section-label">Precisa de você</h2><span className="dsh-meta dsh-section-count">{needsYou.length}</span></div>
-      {shownNeeds.map(item => <div key={item.key} data-active={item.conversation.id === selected?.id} className="dsh-row dsh-session">
-        <Button variant="ghost" size={null} onClick={() => onSelectConversation(item.conversation.id)} title={item.label} className="dsh-row-main">
+  /** "Precisa de você": clicar abre a conversa e leva a barra ao projeto dela. */
+  const needsSection = (items: typeof needsYou) => {
+    if (!items.length) return null
+    const shown = allNeeds ? items : items.slice(0, NEEDS_LIMIT)
+    return <section aria-labelledby="dsh-needs-you" className="dsh-rows dsh-section">
+      <div className="dsh-section-header"><h2 id="dsh-needs-you" className="dsh-section-label">Precisa de você</h2><span className="dsh-meta dsh-section-count">{items.length}</span></div>
+      {shown.map(item => <div key={item.key} data-active={item.conversation.id === selected?.id} className="dsh-row dsh-session">
+        <Button variant="ghost" size={null} onClick={() => { const target = projectOf(item.conversation); if (target) enterProject(target); onSelectConversation(item.conversation.id) }} title={item.label} className="dsh-row-main">
           <span className="dsh-slot">{item.attention ? <span aria-label="Aguardando você" role="img" className="dsh-dot" /> : <svg role="img" aria-label="Em execução" className="dsh-spinner" viewBox="0 0 24 24" width="14" height="14"><g><circle cx="12" cy="12" r="9.5" /><circle cx="12" cy="12" r="9.5" /></g></svg>}</span>
           <span className="dsh-title">{item.label}</span>
         </Button>
       </div>)}
-      {needsYou.length > shownNeeds.length && <Button type="button" variant="ghost" size={null} className="dsh-overflow" onClick={() => setAllNeeds(true)}>Ver mais {needsYou.length - shownNeeds.length}</Button>}
-    </section>}
+      {items.length > shown.length && <Button type="button" variant="ghost" size={null} className="dsh-overflow" onClick={() => setAllNeeds(true)}>Ver mais {items.length - shown.length}</Button>}
+    </section>
+  }
+  const hireLink = !browserMode && onOpenHome && <Button type="button" variant="ghost" size={null} className="dsh-overflow dsh-hire" onClick={() => onOpenHome('marketplace')}><Store />Contratar equipe</Button>
+  const companySection = onOpenHome && <section aria-label="Empresa" className="dsh-section">
+    <div className="dsh-section-header">
+      <Button variant="ghost" size={null} className="dsh-section-toggle" aria-expanded={!companyCollapsed} onClick={() => setCompanyCollapsed(value => !value)}>
+        <span className="dsh-section-label">Empresa</span>
+        <ChevronRight aria-hidden="true" className="dsh-chevron" data-open={!companyCollapsed} />
+      </Button>
+      {companyCollapsed && !!workingCount && <span className="dsh-meta dsh-section-count" aria-label={`${workingCount} trabalhando`}>{workingCount}</span>}
+    </div>
+    {!companyCollapsed && <nav aria-label="Empresa" className="dsh-panel-list">
+      {companyItem('board', <ClipboardList />, 'Board da empresa', !!openBoardTasks && <span className="ds-count">{openBoardTasks}</span>)}
+      {companyItem('office', <Building2 />, 'Escritório', !!workingCount && <span className="ds-count" aria-label={`${workingCount} trabalhando`}>{workingCount}</span>)}
+      {!browserMode && companyItem('routines', <CalendarClock />, 'Rotinas', !!enabledRoutines && <span className="ds-count">{enabledRoutines}</span>)}
+      {!browserMode && companyItem('marketplace', <Store />, 'Marketplace')}
+    </nav>}
+  </section>
+
+  const overview = <div className="dsh-list">
+    {needsSection(needsYou)}
     <section aria-labelledby="dsh-projects" className="dsh-section">
       <div className="dsh-section-header">
         <h2 id="dsh-projects" className="dsh-section-label">Projetos</h2>
@@ -624,7 +586,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
           }} />}
       </div>
       {(!!favoriteProjects.length || !!favoriteSessions.length) && <div role="group" aria-label="Favoritos" className="dsh-rows dsh-pinned">
-        {favoriteProjects.map(projectNode)}
+        {favoriteProjects.map(projectRow)}
         {favoriteSessions.map(conversation => conversationRow(conversation, needsAttention(conversation.id), unreadCounts[conversation.id] || 0, runningConversations.has(conversation.id)))}
       </div>}
       <SortableArea onDragEnd={rootDragEnd}>
@@ -646,23 +608,9 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         {strip.length > shownBoos.length && <Button type="button" variant="ghost" size={null} className="dsh-boo dsh-boo-more" aria-label={`Ver todos os ${strip.length} Boos`} title="Ver todos os Boos" onClick={() => setAllBoos(true)}>+{strip.length - shownBoos.length}</Button>}
       </div>}
       {!visibleAgents.length && <p className="dsh-empty">{chiefAgent ? 'Nenhum outro Boo ainda. Use o + para criar.' : 'Crie um Boo pelo + para começar.'}</p>}
-      {!browserMode && onOpenHome && <Button type="button" variant="ghost" size={null} className="dsh-overflow dsh-hire" onClick={() => onOpenHome('marketplace')}><Store />Contratar equipe</Button>}
+      {hireLink}
     </section>
-    {onOpenHome && <section aria-label="Empresa" className="dsh-section">
-      <div className="dsh-section-header">
-        <Button variant="ghost" size={null} className="dsh-section-toggle" aria-expanded={!companyCollapsed} onClick={() => setCompanyCollapsed(value => !value)}>
-          <span className="dsh-section-label">Empresa</span>
-          <ChevronRight aria-hidden="true" className="dsh-chevron" data-open={!companyCollapsed} />
-        </Button>
-        {companyCollapsed && !!workingCount && <span className="dsh-meta dsh-section-count" aria-label={`${workingCount} trabalhando`}>{workingCount}</span>}
-      </div>
-      {!companyCollapsed && <nav aria-label="Empresa" className="dsh-panel-list">
-        {companyItem('board', <ClipboardList />, 'Board da empresa', !!openBoardTasks && <span className="ds-count">{openBoardTasks}</span>)}
-        {companyItem('office', <Building2 />, 'Escritório', !!workingCount && <span className="ds-count" aria-label={`${workingCount} trabalhando`}>{workingCount}</span>)}
-        {!browserMode && companyItem('routines', <CalendarClock />, 'Rotinas', !!enabledRoutines && <span className="ds-count">{enabledRoutines}</span>)}
-        {!browserMode && companyItem('marketplace', <Store />, 'Marketplace')}
-      </nav>}
-    </section>}
+    {companySection}
   </div>
 
   // A navegação faz parte do chrome da janela: mesma superfície da barra superior, sem bordas internas.

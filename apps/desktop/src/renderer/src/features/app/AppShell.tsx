@@ -453,6 +453,10 @@ export default function AppShell() {
           if (canChat) void openAgent(agent, newConversation)
           else { setDetailsAgentId(agent.id); if (browserMode && isMobile) setSidebarCollapsed(true) }
         }}
+        onOpenWorkspaceAgent={(workspaceId, agent) => {
+          if (canChat) void openWorkspaceAgent(workspaceId, agent)
+          else { setDetailsAgentId(agent.id); if (browserMode && isMobile) setSidebarCollapsed(true) }
+        }}
         onOpenEditor={setEditor}
         onOpenSettings={() => setSettingsOpen(true)}
         view={view === "boos" ? null : view}

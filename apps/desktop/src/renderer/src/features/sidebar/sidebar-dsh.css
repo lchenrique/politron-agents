@@ -132,49 +132,6 @@
 /* Avatar de 20px centrado no espaço de 16px do ícone: o texto alinha com as outras linhas. */
 .dsh-glyph > [data-slot="avatar"] { margin: 0 -2px; }
 
-/* Abas de texto (Chat/Trajectory do DSH): azul e barra de 2px na ativa. */
-.dsh-tabs {
-  display: flex;
-  height: auto;
-  min-height: 25px;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 32px;
-  margin: 10px 0 8px;
-  padding: 0 0 0 12px;
-  border-radius: 0;
-  background: transparent;
-  color: var(--dsh-label-tertiary);
-}
-.dsh-tab {
-  position: relative;
-  flex: none;
-  min-height: 35px;
-  margin: -10px -10px 0;
-  padding: 10px 10px 9px;
-  border: 0;
-  border-radius: 12px; /* só o anel de foco aparece: segue a regra de linhas médias */
-  background: transparent;
-  color: var(--dsh-label-tertiary);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 16px;
-  box-shadow: none;
-  transition: none;
-}
-.dsh-tab::after {
-  content: '';
-  position: absolute;
-  right: 10px;
-  bottom: -1px;
-  left: 10px;
-  height: 2px;
-  border-radius: 2px;
-  background: transparent;
-}
-.dsh-tab[data-state="active"] { background: transparent; color: var(--dsh-blue); box-shadow: none; }
-.dsh-tab[data-state="active"]::after { background: var(--dsh-blue); }
-
 /* Lista rolável: barra de 5px só com o ponteiro dentro, degradê de 24px no pé. */
 .dsh-list {
   flex: 1;
@@ -364,8 +321,13 @@
 .dsh-empty { padding: 16px 12px; color: var(--dsh-label-tertiary); font-size: 13px; line-height: 20px; }
 
 /* Projeto aberto: voltar + nome no estilo de linha. */
-.dsh-project-head { display: flex; align-items: center; gap: 4px; margin: 0 2px; }
-.dsh-project-head .dsh-row { flex: 1; min-width: 0; font-weight: 500; }
+/* Projeto aberto: "← Projetos" acima do nome, que fica como título da visão. */
+.dsh-project-head { display: flex; align-items: center; margin: 0 2px 2px; }
+.dsh-back { display: inline-flex; height: 28px; align-items: center; gap: 6px; padding: 0 10px 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--dsh-label-tertiary); font-size: 12px; font-weight: 500; box-shadow: none; transition: none; }
+.dsh-back:hover { background: var(--dsh-hover); color: var(--dsh-label-primary); }
+.dsh-back svg.lucide { width: 14px; height: 14px; }
+.dsh-project-title { height: 38px; margin-bottom: 4px; font-weight: 600; }
+.dsh-project-title .dsh-title { font-size: 15px; }
 
 /* Rodapé: linhas de 32px sem divisória. */
 .dsh-foot { display: flex; align-items: center; gap: 2px; margin: 4px 0; padding-top: 6px; border-top: 0.5px solid var(--dsh-hover); }
@@ -404,14 +366,10 @@
 .dsh-section-toggle:hover { background: var(--dsh-hover); color: inherit; }
 .dsh-section-toggle .dsh-section-label { flex: none; }
 
-/* Chevron da árvore: aponta para baixo quando aberto. */
+/* Chevron das seções recolhíveis: aponta para baixo quando aberto. */
 .dsh-chevron { width: 14px; height: 14px; flex: none; color: var(--dsh-label-caption); transition: transform 150ms var(--dsh-ease); }
 .dsh-chevron[data-open="true"] { transform: rotate(90deg); }
 .dsh-section-toggle .dsh-chevron { width: 12px; height: 12px; }
-.dsh-project .dsh-slot svg.lucide.dsh-chevron { width: 14px; height: 14px; }
-.dsh-project .dsh-row-main { gap: 4px; }
-.dsh-kind { width: 13px; height: 13px; flex: none; color: var(--dsh-label-tertiary); }
-.dsh-project .dsh-spinner { width: 12px; height: 12px; }
 .dsh-pinned { margin-bottom: 4px; }
 
 /* Boos: faixa de avatares que quebra linha; o ponto de estado fica no canto do avatar. */

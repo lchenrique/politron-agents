@@ -10,7 +10,7 @@ const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOStr
 const agent = (id: string, name: string, color: string, extra: Partial<Agent> = {}): Agent => ({ id, name, alias: id, description: extra.description || '', instructions: '', runtime: 'codex', model: '', color, avatar: '', canWrite: true, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: created, ...extra })
 const agents = [agent('chief', 'Chief', '#ffd23f', { description: 'Coordenação', role: 'chief' }), agent('atlas', 'Atlas', '#ffffff', { description: 'Código e arquitetura' }), agent('examen', 'Examen', '#7ee0b5', { description: 'Testes' }), agent('hermes', 'Hermes', '#e9eaf0', { description: 'Pesquisa' }), agent('tyr', 'Tyr', '#ff8fa3', { description: 'Revisão' }), agent('freya', 'Freya', '#c4b5fd', { description: 'Infra' }), agent('luna', 'Luna', '#93c5fd', { description: 'Design' }), agent('mimir', 'Mimir', '#fde68a', { description: 'Documentação' })]
 const workspace = (id: string, name: string, extra: Partial<Workspace> = {}): Workspace => ({ id, name, kind: 'local', path: 'C:/projetos/' + id, branch: 'main', baseBranch: null, parentWorkspaceId: null, instructions: '', defaultAgentIds: [], changes: 0, archived: false, createdAt: created, ...extra })
-const workspaces = [workspace('bubbledesk', 'bubbledesk'), workspace('politron', 'politron'), workspace('politron-wt', 'politron-sidebar', { kind: 'worktree', branch: 'feat/sidebar-v2', parentWorkspaceId: 'politron', changes: 4 }), workspace('site', 'site-pessoal'), workspace('acme', 'acme-loja')]
+const workspaces = [workspace('bubbledesk', 'bubbledesk', { defaultAgentIds: ['atlas', 'tyr', 'examen'] }), workspace('politron', 'politron'), workspace('politron-wt', 'politron-sidebar', { kind: 'worktree', branch: 'feat/sidebar-v2', parentWorkspaceId: 'politron', changes: 4 }), workspace('site', 'site-pessoal'), workspace('acme', 'acme-loja')]
 const conversation = (id: string, name: string, workspaceId: string, agentIds: string[], hours: number): Conversation => ({ id, kind: 'direct', name, agentIds, workspaceId, titleAuto: false, revision: 1, archived: false, createdAt: ago(hours), updatedAt: ago(hours) })
 const bubbleTitles = ['Branch develop remota', 'Módulo de agendamentos', 'Corrigir login social', 'Revisão do checkout', 'Migração do banco', 'Relatório semanal', 'Notificações por e-mail', 'Testes de carga', 'Cache de imagens', 'Webhooks do Stripe', 'Tela de perfil', 'Refatorar rotas']
 const conversations = [
@@ -29,6 +29,8 @@ const snapshot: Snapshot = { ...emptySnapshot, agents, workspaces, conversations
 const noop = () => undefined
 
 // Pasta de projetos e host fictícios: a prévia não tem banco nem processo principal.
+// As duas colunas começam na lista global; a da direita entra no projeto pela navegação.
+try { localStorage.removeItem('politron.sidebar.project') } catch { /* prévia */ }
 try { if (!localStorage.getItem('politron.sidebar.favorites')) localStorage.setItem('politron.sidebar.favorites', JSON.stringify(['workspace:politron'])) } catch { /* prévia */ }
 try { if (!localStorage.getItem('politron.sidebar.groups')) { localStorage.setItem('politron.sidebar.groups', JSON.stringify(['Clientes'])); localStorage.setItem('politron.sidebar.workspace-groups', JSON.stringify({ site: 'Clientes', acme: 'Clientes' })) } } catch { /* prévia */ }
 const hostsSnapshot: HostsSnapshot = { selectedId: 'local', hosts: [{ id: 'local', name: 'Este PC', endpoint: 'local', transport: 'local', status: 'connected' }], local: { enabled: false, address: '127.0.0.1', port: 6778, advertisedUrl: '', relayUrl: '', running: false } }
@@ -36,12 +38,10 @@ if (!window.hostsAPI) window.hostsAPI = { snapshot: async () => hostsSnapshot, o
 
 export default function SidebarGallery() {
   const [view, setView] = useState<'home' | 'routines' | 'board' | 'office' | 'marketplace' | null>(null)
+  const props = { snapshot, unreadCounts: { b2: 2 }, agentStates: { tyr: 'working', luna: 'working', freya: 'waiting' } as const, onSelectConversation: noop, onStartConversation: noop, onOpenAgent: noop, onOpenEditor: noop, onOpenSettings: noop, onDeleteWorkspace: noop, onDeleteConversation: noop, onDeleteAgent: noop, onSetChief: noop, onNotice: noop, view, onOpenHome: setView, attentionCount: 3 }
   return <div className="flex h-dvh bg-chrome text-foreground" data-sidebar-gallery>
-    <div className="h-full w-[280px] shrink-0">
-      <Sidebar snapshot={snapshot} selected={conversations[0]} activeWorkspaceId={null} unreadCounts={{ b2: 2 }} agentStates={{ tyr: 'working', luna: 'working', freya: 'waiting' }}
-        onSelectConversation={noop} onStartConversation={noop} onOpenAgent={noop} onOpenEditor={noop} onOpenSettings={noop} onDeleteWorkspace={noop} onDeleteConversation={noop}
-        onDeleteAgent={noop} onSetChief={noop} onNotice={noop} view={view} onOpenHome={setView} attentionCount={3} />
-    </div>
-    <main className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Prévia da barra lateral · dados fictícios</main>
+    <div className="h-full w-[280px] shrink-0" data-level="global"><Sidebar {...props} selected={undefined} activeWorkspaceId={null} /></div>
+    <div className="h-full w-[280px] shrink-0" data-level="project"><Sidebar {...props} selected={conversations[0]} activeWorkspaceId="bubbledesk" /></div>
+    <main className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Prévia da barra lateral · global e projeto · dados fictícios</main>
   </div>
 }
