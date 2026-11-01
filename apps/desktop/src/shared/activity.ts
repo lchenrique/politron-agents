@@ -61,6 +61,7 @@ export function toolActivityText(name: string, args: Record<string, unknown>): s
     case 'workspace_list': return join('Leitura', clip(args.path) || '.')
     case 'read_skill': return join('Leitura', `skill ${clip(args.id)}`)
     case 'workspace_write': return join('Edição', clip(args.path))
+    case 'generate_image': return join('Imagem', clip(args.prompt))
     case 'search_history': return join('Busca', clip(args.query))
     case 'ask_agent': return join('Delegação', clip(args.agent))
     case 'delegation_result': return join('Delegação', 'Consultar resultado')

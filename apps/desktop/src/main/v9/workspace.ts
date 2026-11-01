@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { basename, extname, isAbsolute, relative, resolve, sep, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, relative, resolve, sep, join } from 'node:path'
 import { app, dialog, shell, Notification, BrowserWindow } from 'electron'
 import { EventEmitter } from 'node:events'
 import { listProjectDirectory, readProjectText, writeProjectText } from './project-files'
@@ -13,7 +13,7 @@ import { createCommandEvidence, formatCommandEvidence } from './command-evidence
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
 import { effectiveRuntimeAgent, hasFullAccess } from './runtime-permissions'
-import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type BoardEvidence, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
+import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type BoardEvidence, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type ImageApiProvider, type ImageGenerationSettings, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
 import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
@@ -21,6 +21,7 @@ import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPrev
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, chiefLaneKey, mentionedRecipients, parseConcurrencyLimit, recipients, sessionLockKey, type WorkspaceLease } from './routing'
 import { OpenRouterDecisionService } from './decision-routing'
+import { ImageGenerationService, imageExtension, NOT_CONFIGURED } from './image-generation'
 import { CodexRuntime, type DynamicTool } from './codex'
 import { ClaudeRuntime } from './claude'
 import { PiRuntime } from './pi'
@@ -51,6 +52,15 @@ type RunContext = { nativeItems?: Map<string, Message>; run: Run; message: Messa
 const SKILL_TOOLS = new Set(['list_skills', 'read_skill', 'save_skill'])
 const REFLECTION_TIMEOUT_MS = 60_000
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
+/** Caminho relativo enviado pelo agente, resolvido sem sair da pasta da conversa. */
+function insideRoot(root: string, input: unknown): string {
+  const rel = text(input, 1000)
+  if (isAbsolute(rel)) throw new Error('Use um caminho relativo à pasta do grupo.')
+  const target = resolve(root, rel)
+  const back = relative(root, target)
+  if (back === '..' || back.startsWith(`..${sep}`) || isAbsolute(back)) throw new Error('O caminho sai da pasta do grupo.')
+  return target
+}
 function approvalScope(kind: Approval['kind'], details: Approval['details']): { kind: 'write' | 'browser' | 'command'; scopeKey: string; summary: string } | undefined {
   if (kind === 'write' && details.path) return { kind, scopeKey: approvalScopeKey(`write\0${details.path.replace(/\\/g, '/')}`), summary: `Arquivo ${details.path}` }
   if (kind === 'command' && details.command && details.cwd) {
@@ -119,6 +129,7 @@ export class AppService extends EventEmitter {
   readonly credentials: ClaudeCredentialStore
   readonly attachments: AttachmentStore
   readonly decisionRouting: OpenRouterDecisionService
+  readonly imageGeneration: ImageGenerationService
   private platformBrowser: PlatformBrowser | null = null
   setPlatformBrowser(browser: PlatformBrowser) { this.platformBrowser = browser }
   private browserBusyBy(owner: PlatformBrowserOwner): { agent: string; conversation: string } | null {
@@ -233,6 +244,7 @@ export class AppService extends EventEmitter {
       this.store.saveAgent({ ...boo, temporaryStatus: 'retired' })
     this.credentials = new ClaudeCredentialStore(dataDirectory)
     this.decisionRouting = new OpenRouterDecisionService(dataDirectory)
+    this.imageGeneration = new ImageGenerationService(dataDirectory)
     this.claudeRuntime = claudeRuntime || new ClaudeRuntime(dataDirectory, () => this.credentials.load())
     this.piRuntime = new PiRuntime(join(dataDirectory, 'pi-runtime'))
     this.openCodeRuntime = process.env.BOOBOT_OPENCODE_TRANSPORT === 'cli'
@@ -1021,6 +1033,13 @@ export class AppService extends EventEmitter {
   async saveOpenRouterDecision(key: string, modelId: string) { await this.decisionRouting.testKey(key, modelId); await this.decisionRouting.save(key, modelId) }
   async saveOpenRouterDecisionModel(modelId: string) { await this.decisionRouting.saveModel(modelId) }
   async clearOpenRouterDecision() { await this.decisionRouting.clear() }
+  imageGenerationStatus() { return this.imageGeneration.status() }
+  saveImageGeneration(settings: ImageGenerationSettings, apiKey?: string) { return this.imageGeneration.save(settings, apiKey) }
+  clearImageGenerationKey(apiProvider: ImageApiProvider) { return this.imageGeneration.clearKey(apiProvider) }
+  async testImageGeneration() {
+    const image = await this.imageGeneration.generate('Ícone simples de um pequeno robô sorridente, fundo liso, estilo flat.', '1024x1024')
+    return { dataUrl: `data:${image.mimeType};base64,${image.bytes.toString('base64')}`, provider: (await this.imageGeneration.settings()).provider }
+  }
   async models(runtimeName?: Agent['runtime']): Promise<Model[]> {
     const withProvider = (name: Agent['runtime'], models: Model[]) => models.map(model => ({ ...model, runtime: name, id: `${name}:${model.id}`, name: `${model.name} · ${RUNTIME_LABELS[name]}` }))
     // Prazo de espera de 12 s; não fecha o runtime compartilhado por conversas ativas.
@@ -1253,6 +1272,7 @@ export class AppService extends EventEmitter {
       }, ['title', 'steps']),
       tool('workspace_list', 'Lista arquivos e pastas dentro da pasta deste grupo.', { path: { type: 'string', description: 'Caminho relativo; use . para a raiz.' } }, ['path']),
       tool('workspace_read', 'Lê um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' } }, ['path']),
+      ...(canWrite && !planning ? [tool('generate_image', 'Gera uma imagem (arte, capa, post, criativo, ilustração) com o provedor escolhido pelo usuário em Configurações → Geração de imagens e salva o arquivo na pasta desta conversa (padrão: imagens/). Escreva um prompt visual completo: assunto, estilo, cores, composição e textos que devem aparecer. Devolve o caminho salvo. Se o provedor não estiver configurado, avise o usuário para configurar em Configurações → Geração de imagens.', { prompt: { type: 'string', description: 'Descrição visual detalhada da imagem.' }, size: { type: 'string', description: 'Opcional: auto (padrão), 1024x1024, 1024x1536 (retrato) ou 1536x1024 (paisagem).' }, file: { type: 'string', description: 'Opcional: caminho relativo do arquivo, ex.: imagens/capa-post.png.' } }, ['prompt'])] : []),
       ...(canWrite && !planning ? [tool('workspace_write', 'Cria ou substitui um arquivo de texto dentro da pasta deste grupo.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content'])] : []),
       ...(canWrite && !planning && this.store.terminalEnabled() ? [tool('workspace_run_command', 'Executa um comando não interativo no terminal com diretório de trabalho nesta conversa. Não há sandbox do sistema operacional: o comando aprovado pode acessar outros caminhos. A confirmação segue o modo de aprovação do agente; no Bypass, executa sem perguntar. Comandos podem ler ou alterar arquivos e usar programas instalados; não use para comandos interativos. A execução aparece no painel Terminal do Boobot. Para servidores e processos que não terminam, use workspace_start_process.', { command: { type: 'string', description: 'Comando de shell a executar.' } }, ['command']),
         tool('workspace_start_process', 'Inicia um processo longo (por exemplo, servidor de desenvolvimento) no painel Terminal do Boobot, nesta pasta, e devolve o ID da sessão sem esperar o fim. Mesma aprovação de workspace_run_command; não há sandbox do sistema operacional. Nunca abre terminal externo.', { command: { type: 'string', description: 'Comando de shell a iniciar.' } }, ['command']),
@@ -1289,7 +1309,7 @@ export class AppService extends EventEmitter {
       tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. A delegação do Chief nunca prende a conversa: sempre roda em segundo plano, mesmo com mode=wait; você recebe um recibo na hora, deve encerrar o turno e será acionado automaticamente quando o Boo terminar (sucesso ou falha). Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
     ]
-    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill'].includes(item.name)) : available
+    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill', 'generate_image'].includes(item.name)) : available
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
@@ -1390,19 +1410,69 @@ export class AppService extends EventEmitter {
     this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
     if (id) items.delete(id)
   }
+  /** Grava arquivo do workspace com aprovação, versão esperada e diff registrado (texto de workspace_write ou bytes de generate_image). */
+  private async writeWorkspaceFile(context: RunContext, pathArg: unknown, content: () => Buffer, callId: string, preview?: string): Promise<string> {
+      const root = context.run.workspacePath
+      const workspace = this.store.workspace(context.run.workspaceId)
+      if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para alterar arquivos.')
+      if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia alterações em arquivos.')
+      let relativePath = typeof pathArg === 'string' ? pathArg.slice(0, 1000).replace(/\\/g, '/') : '(caminho inválido)'
+      const toolCallId = callId || randomUUID()
+      const record = (status: 'applied' | 'failed' | 'unknown' | 'unchanged', before: string, after: string, binary: boolean, truncated: boolean) => {
+        const oldLines = before ? before.split('\n') : []
+        const newLines = after ? after.split('\n') : []
+        let prefix = 0
+        while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++
+        let suffix = 0
+        while (suffix < oldLines.length - prefix && suffix < newLines.length - prefix && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]) suffix++
+        const value = { id: randomUUID(), runId: context.run.id, messageId: context.message.id, toolCallId, agentId: context.agent.id, workspaceId: context.run.workspaceId, path: relativePath, status, before, after, additions: Math.max(0, newLines.length - prefix - suffix), deletions: Math.max(0, oldLines.length - prefix - suffix), truncated, binary, createdAt: new Date().toISOString() }
+        if (this.store.putFileChange(value)) this.emitEvent({ type: 'fileChange', fileChange: value })
+      }
+      let before = ''
+      let binary = false
+      let truncated = false
+      let target: string
+      let next: Buffer
+      let createdFolder: string | undefined
+      try {
+        target = insideRoot(root, pathArg)
+        relativePath = relative(root, target)
+        next = content()
+        // Só generate_image cria a pasta (imagens/); workspace_write continua exigindo pasta existente.
+        if (preview) createdFolder = await fs.mkdir(dirname(target), { recursive: true })
+      } catch (error) { record('failed', '', '', false, false); throw error }
+      let original = Buffer.alloc(0)
+      let expectedVersion: Awaited<ReturnType<typeof captureFileVersion>>
+      try {
+        expectedVersion = await captureFileVersion(root, relativePath)
+        if (expectedVersion.exists) original = await fs.readFile(target)
+        binary = original.includes(0)
+        truncated = original.length > 200_000 || next.length > 200_000
+        if (!binary) before = original.subarray(0, 200_000).toString('utf8')
+      } catch (error) { record('failed', before, '', binary, truncated); throw error }
+      if (expectedVersion.exists && fileContentMatches(original, next)) { record('unchanged', before, binary ? '' : before, binary, truncated); return `Sem alterações: ${relativePath}` }
+      if (!await this.requestApproval(context, 'write', { path: relativePath, before: binary ? '' : before, after: preview ?? next.subarray(0, 200_000).toString('utf8'), truncated: truncated || next.length > 200_000 })) {
+        record('failed', before, before, binary, truncated)
+        if (createdFolder) await fs.rmdir(dirname(target)).catch(() => undefined)
+        return `Alteração negada pelo usuário: ${relativePath}`
+      }
+      try {
+        await commitFileWrite({ root, relativePath, content: next, expectedVersion, signal: this.active.get(context.run.id)?.signal })
+        const afterBinary = next.includes(0)
+        const after = afterBinary ? '' : next.subarray(0, 200_000).toString('utf8')
+        record('applied', before, after, binary || afterBinary, truncated || next.length > 200_000)
+      } catch (error) {
+        record(error instanceof FileVersionConflictError || this.active.get(context.run.id)?.signal.aborted ? 'failed' : 'unknown', before, '', binary, truncated)
+        throw error
+      }
+      return `Arquivo salvo: ${relative(root, target)}`
+  }
   private async callTool(context: RunContext, name: string, args: Record<string, unknown>, callId = ''): Promise<unknown> {
-    if (context.conversation && this.boardReviewerConversations.has(context.conversation.id) && (CHIEF_TOOLS.has(name) || name.startsWith('browser_') || name.startsWith('external_browser_') || ['workspace_write', 'workspace_run_command', 'workspace_start_process', 'workspace_stop_process', 'ask_agent', 'agent_create', 'self_update', 'propose_self_profile', 'save_skill'].includes(name)))
+    if (context.conversation && this.boardReviewerConversations.has(context.conversation.id) && (CHIEF_TOOLS.has(name) || name.startsWith('browser_') || name.startsWith('external_browser_') || ['workspace_write', 'generate_image', 'workspace_run_command', 'workspace_start_process', 'workspace_stop_process', 'ask_agent', 'agent_create', 'self_update', 'propose_self_profile', 'save_skill'].includes(name)))
       throw new Error('A revisão do board é somente leitura; não é possível alterar arquivos, executar comandos ou delegar alterações.')
     if (context.reflecting && !SKILL_TOOLS.has(name)) throw new Error('Na revisão de aprendizado só as ferramentas de skill estão disponíveis.')
     const root = context.run.workspacePath
-    const inside = (input: unknown) => {
-      const rel = text(input, 1000)
-      if (isAbsolute(rel)) throw new Error('Use um caminho relativo à pasta do grupo.')
-      const target = resolve(root, rel)
-      const back = relative(root, target)
-      if (back === '..' || back.startsWith(`..${sep}`) || isAbsolute(back)) throw new Error('O caminho sai da pasta do grupo.')
-      return target
-    }
+    const inside = (input: unknown) => insideRoot(root, input)
     const workspace = this.store.workspace(context.run.workspaceId)
     if (CHIEF_TOOLS.has(name)) {
       if (context.agent.role !== 'chief') throw new Error('Somente o Chief tem esta ferramenta.')
@@ -1492,56 +1562,28 @@ export class AppService extends EventEmitter {
       if (data.includes(0)) throw new Error('Esse arquivo parece binário e não pode ser lido como texto.')
       return data.toString('utf8')
     }
-    if (name === 'workspace_write') {
-      if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para alterar arquivos.')
-      if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia alterações em arquivos.')
-      let relativePath = typeof args.path === 'string' ? args.path.slice(0, 1000).replace(/\\/g, '/') : '(caminho inválido)'
-      const toolCallId = callId || randomUUID()
-      const record = (status: 'applied' | 'failed' | 'unknown' | 'unchanged', before: string, after: string, binary: boolean, truncated: boolean) => {
-        const oldLines = before ? before.split('\n') : []
-        const newLines = after ? after.split('\n') : []
-        let prefix = 0
-        while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix++
-        let suffix = 0
-        while (suffix < oldLines.length - prefix && suffix < newLines.length - prefix && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]) suffix++
-        const value = { id: randomUUID(), runId: context.run.id, messageId: context.message.id, toolCallId, agentId: context.agent.id, workspaceId: context.run.workspaceId, path: relativePath, status, before, after, additions: Math.max(0, newLines.length - prefix - suffix), deletions: Math.max(0, oldLines.length - prefix - suffix), truncated, binary, createdAt: new Date().toISOString() }
-        if (this.store.putFileChange(value)) this.emitEvent({ type: 'fileChange', fileChange: value })
-      }
-      let before = ''
-      let binary = false
-      let truncated = false
-      let target: string
-      let content: string
-      try {
-        target = inside(args.path)
-        relativePath = relative(root, target)
-        content = text(args.content, 1_000_000)
-      } catch (error) { record('failed', '', '', false, false); throw error }
-      let original = Buffer.alloc(0)
-      let expectedVersion: Awaited<ReturnType<typeof captureFileVersion>>
-      try {
-        expectedVersion = await captureFileVersion(root, relativePath)
-        if (expectedVersion.exists) original = await fs.readFile(target)
-        binary = original.includes(0)
-        truncated = original.length > 200_000 || Buffer.byteLength(content) > 200_000
-        if (!binary) before = original.subarray(0, 200_000).toString('utf8')
-      } catch (error) { record('failed', before, '', binary, truncated); throw error }
-      const next = Buffer.from(content, 'utf8')
-      if (expectedVersion.exists && fileContentMatches(original, next)) { record('unchanged', before, binary ? '' : before, binary, truncated); return `Sem alterações: ${relativePath}` }
-      if (!await this.requestApproval(context, 'write', { path: relativePath, before: binary ? '' : before, after: content.slice(0, 200_000), truncated: truncated || content.length > 200_000 })) {
-        record('failed', before, before, binary, truncated)
-        return `Alteração negada pelo usuário: ${relativePath}`
-      }
-      try {
-        await commitFileWrite({ root, relativePath, content: next, expectedVersion, signal: this.active.get(context.run.id)?.signal })
-        const afterBinary = next.includes(0)
-        const after = afterBinary ? '' : next.subarray(0, 200_000).toString('utf8')
-        record('applied', before, after, binary || afterBinary, truncated || next.length > 200_000)
-      } catch (error) {
-        record(error instanceof FileVersionConflictError || this.active.get(context.run.id)?.signal.aborted ? 'failed' : 'unknown', before, '', binary, truncated)
-        throw error
-      }
-      return `Arquivo salvo: ${relative(root, target)}`
+    if (name === 'workspace_write') return this.writeWorkspaceFile(context, args.path, () => Buffer.from(text(args.content, 1_000_000), 'utf8'), callId)
+    if (name === 'generate_image') {
+      if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para salvar arquivos; a imagem não foi gerada.')
+      if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia alterações em arquivos; a imagem não foi gerada.')
+      if ((await this.imageGeneration.settings()).provider === 'off') return NOT_CONFIGURED
+      const prompt = text(args.prompt, 4000).trim()
+      if (!prompt) throw new Error('Descreva a imagem no campo prompt.')
+      const image = await this.imageGeneration.generate(prompt, typeof args.size === 'string' ? args.size : 'auto')
+      const extension = imageExtension(image.mimeType)
+      const slug = prompt.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40).replace(/-$/, '') || 'imagem'
+      const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-')
+      const requested = typeof args.file === 'string' && args.file.trim() ? args.file.trim() : `imagens/${slug}-${stamp}.${extension}`
+      // A extensão segue o formato real devolvido pelo provedor.
+      const path = requested.replace(/(\.(png|jpe?g|webp|gif|bmp))?$/i, `.${extension}`)
+      const result = await this.writeWorkspaceFile(context, path, () => image.bytes, callId, `[imagem ${extension.toUpperCase()} gerada, ${Math.ceil(image.bytes.length / 1024)} KB]`)
+      if (!result.startsWith('Arquivo salvo: ')) return result
+      const saved = result.slice('Arquivo salvo: '.length).replace(/\\/g, '/')
+      // shortcut: a prévia no chat usa o armazenamento de anexos (expira em 24 h); o arquivo continua na pasta da conversa.
+      const attachment = await this.attachments.put(context.conversation.id, image.bytes, image.mimeType, basename(saved))
+        .then(item => this.attachments.accept(context.conversation.id, item.id)).catch(() => null)
+      if (attachment) this.addMessage(context.conversation.id, context.agent, 'activity', `Imagem gerada · ${saved}`, 'completed', context.run.id, { attachments: [attachment] })
+      return `Imagem gerada e salva em ${saved} (${image.mimeType}). A prévia já aparece no chat; informe o caminho ao usuário.`
     }
     if (name === 'group_members') {
       // O Chief coordena o aplicativo inteiro: precisa enxergar todo o catálogo, não só quem já está nesta conversa.

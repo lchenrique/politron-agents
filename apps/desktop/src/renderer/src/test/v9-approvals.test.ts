@@ -251,3 +251,49 @@ describe('aprovações inline V9', () => {
     reopened.close()
   })
 })
+
+describe('ferramenta generate_image', () => {
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+  const fakeProvider = (service: AppService, provider: 'off' | 'codex') => {
+    const generate = vi.fn(async () => ({ bytes: PNG, mimeType: 'image/png' as const }))
+    Object.assign(service.imageGeneration, { settings: async () => ({ provider, apiProvider: 'openai', model: 'x' }), generate })
+    return generate
+  }
+  const generateImage = (service: AppService, context: unknown, args: Record<string, unknown>) => (service as unknown as ServiceInternals).callTool(context, 'generate_image', args, 'tool-img') as Promise<string>
+
+  it('sem provedor configurado orienta a abrir Configurações e não gera nada', async () => {
+    const { service, context, workspacePath } = setup()
+    const generate = fakeProvider(service, 'off')
+    await expect(generateImage(service, context, { prompt: 'capa' })).resolves.toMatch(/Configurações → Geração de imagens/)
+    expect(generate).not.toHaveBeenCalled()
+    expect(existsSync(join(workspacePath, 'imagens'))).toBe(false)
+  })
+
+  it('gera, pede aprovação de escrita, salva em imagens/ e mostra a prévia no chat', async () => {
+    const { service, context, workspacePath, run } = setup()
+    const generate = fakeProvider(service, 'codex')
+    const pending = generateImage(service, context, { prompt: 'Capa de carrossel: Promoção de Verão', size: '1024x1536' })
+    await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
+    const approval = service.store.approvals()[0]
+    expect(approval.details).toMatchObject({ path: expect.stringMatching(/^imagens.capa-de-carrossel-promocao-de-verao-\d{8}-\d{6}\.png$/), after: '[imagem PNG gerada, 1 KB]' })
+    await service.respondApproval(approval.id, true)
+    const result = await pending
+    const saved = /imagens\/[^ ]+\.png/.exec(result)![0]
+    expect(readFileSync(join(workspacePath, saved)).equals(PNG)).toBe(true)
+    expect(generate).toHaveBeenCalledWith('Capa de carrossel: Promoção de Verão', '1024x1536')
+    expect(service.store.fileChangesForRun(run.id)[0]).toMatchObject({ status: 'applied', binary: true })
+    const preview = service.store.history(context.conversation.id).find(item => item.text === `Imagem gerada · ${saved}`)
+    expect(preview?.attachments?.[0]).toMatchObject({ mimeType: 'image/png', size: PNG.length })
+  })
+
+  it('nega a escrita sem deixar a pasta imagens/ vazia para trás', async () => {
+    const { service, context, workspacePath } = setup()
+    fakeProvider(service, 'codex')
+    const pending = generateImage(service, context, { prompt: 'banner', file: 'imagens/banner.jpg' })
+    await vi.waitFor(() => expect(service.store.approvals()[0]?.status).toBe('pending'))
+    expect(service.store.approvals()[0].details).toMatchObject({ path: expect.stringMatching(/banner\.png$/) })
+    await service.respondApproval(service.store.approvals()[0].id, false)
+    await expect(pending).resolves.toMatch(/negada/)
+    expect(existsSync(join(workspacePath, 'imagens'))).toBe(false)
+  })
+})

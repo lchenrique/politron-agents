@@ -190,6 +190,17 @@ export interface PitVoicesInfo { choices: { id: PitVoiceId; name: string; engine
 export interface DecisionModel { id: string; name: string; free?: boolean }
 export interface DecisionModelCatalog { source: 'openrouter'; models: DecisionModel[] }
 export interface OpenRouterDecisionStatus { configured: boolean; modelId: string }
+/** Quem gera imagens para os Boos: motor já logado (Codex/Antigravity), chave de API ou nenhum. */
+export type ImageGenerationProvider = 'off' | 'codex' | 'antigravity' | 'api'
+export type ImageApiProvider = 'openai' | 'gemini' | 'openrouter'
+export interface ImageGenerationSettings { provider: ImageGenerationProvider; apiProvider: ImageApiProvider; model: string }
+/** Padrões conferidos na documentação oficial de cada provedor em 31/10/2026; o usuário pode trocar o modelo. */
+export const DEFAULT_IMAGE_MODELS: Record<ImageApiProvider, string> = { openai: 'gpt-image-2.5-flare', gemini: 'gemini-nano-banana-2.1', openrouter: 'google/gemini-2.5-flash-image' }
+/** Nunca carrega a chave: só se há uma salva para cada provedor de API. */
+export interface ImageGenerationStatus extends ImageGenerationSettings {
+  keys: Record<ImageApiProvider, boolean>
+  engines: Record<'codex' | 'antigravity', { available: boolean; reason?: string }>
+}
 export interface ProjectFileEntry { name: string; path: string; directory: boolean }
 export interface ProjectFileContent { path: string; name: string; content: string; hash: string }
 /** Sessão PTY de um comando do agente, no host que executa o workspace. Separada do terminal manual. */
@@ -279,6 +290,11 @@ export interface AppAPI {
   saveOpenRouterDecision(key: string, modelId: string): Promise<void>
   saveOpenRouterDecisionModel(modelId: string): Promise<void>
   clearOpenRouterDecision(): Promise<void>
+  imageGenerationStatus(): Promise<ImageGenerationStatus>
+  saveImageGeneration(settings: ImageGenerationSettings, apiKey?: string): Promise<ImageGenerationStatus>
+  clearImageGenerationKey(apiProvider: ImageApiProvider): Promise<ImageGenerationStatus>
+  /** Gera uma imagem pequena com a configuração salva; devolve data URL para exibir no teste. */
+  testImageGeneration(): Promise<{ dataUrl: string; provider: ImageGenerationProvider }>
   pickFolder(): Promise<string | null>
   openFolder(conversationId: string): Promise<void>
   agentTerminalSessions(conversationId: string, workspaceId: string): Promise<AgentTerminalSessionWithOutput[]>

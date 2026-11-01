@@ -55,23 +55,26 @@ function CopyMessageButton({ text, onNotice, className }: { text: string; onNoti
   </Button>
 }
 
+const ignoreNotice = () => undefined
+
 function AttachmentPreview({ conversationId, attachment, onNotice }: { conversationId: string; attachment: MessageAttachment; onNotice: (value: string) => void }) {
   const [source, setSource] = useState('')
+  const [failed, setFailed] = useState(false)
   useEffect(() => {
     let disposed = false
     let objectUrl = ''
-    setSource('')
+    setSource(''); setFailed(false)
     void window.appAPI.readAttachment(conversationId, attachment.id).then(({ mimeType, bytes }) => {
       if (!['image/png', 'image/jpeg', 'image/webp'].includes(mimeType) || bytes.byteLength !== attachment.size || bytes.byteLength > 20 * 1024 * 1024) throw new Error('O anexo de imagem é inválido ou expirou.')
       const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
       objectUrl = URL.createObjectURL(new Blob([buffer], { type: mimeType }))
       if (disposed) URL.revokeObjectURL(objectUrl)
       else setSource(objectUrl)
-    }).catch(error => { if (!disposed) onNotice(errorText(error)) })
+    }).catch(error => { if (!disposed) { setFailed(true); onNotice(errorText(error)) } })
     return () => { disposed = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [conversationId, attachment.id, attachment.size, onNotice])
   return <figure className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-muted/30">
-    {source ? <img src={source} alt={attachment.name} loading="lazy" className="max-h-96 max-w-full object-contain" /> : <div role="status" className="px-3 py-2 text-xs text-muted-foreground">Carregando {attachment.name}…</div>}
+    {source ? <img src={source} alt={attachment.name} loading="lazy" className="max-h-96 max-w-full object-contain" /> : <div role="status" className="px-3 py-2 text-xs text-muted-foreground">{failed ? 'Prévia indisponível ou expirada.' : `Carregando ${attachment.name}…`}</div>}
     <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{attachment.name}</figcaption>
   </figure>
 }
@@ -114,6 +117,8 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   // Durante o streaming o texto ainda está incompleto; copiar só depois que a resposta assenta.
   const canCopy = !!message.text.trim() && (human || (message.status !== 'running' && message.status !== 'waiting'))
   if (message.role === 'activity') return <Trace role="status" className="my-1.5 max-w-3xl"><TraceLine status={message.status === 'running' ? 'running' : message.status === 'failed' ? 'error' : message.status === 'queued' ? 'pending' : 'complete'}><TraceTitle>{message.text}</TraceTitle></TraceLine>
+    {/* Imagens geradas por generate_image; a prévia expira, o arquivo fica na pasta da conversa. */}
+    {message.attachments?.length ? <div className="ml-6 mt-2 flex max-w-full flex-wrap gap-2">{message.attachments.map(attachment => <AttachmentPreview key={attachment.id} conversationId={message.conversationId} attachment={attachment} onNotice={ignoreNotice} />)}</div> : null}
     {relatedConversation && <Button variant="link" size={null} onClick={() => onOpenRelatedConversation(relatedConversation.id)} className="ml-6 mt-1 h-auto p-0 text-xs font-medium text-primary underline-offset-4 hover:underline">Abrir conversa relacionada: {relatedConversation.name}</Button>}
     {message.delegationId && ['queued', 'running', 'waiting'].includes(message.status) && <Button variant="link" size={null} onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(error => onNotice(errorText(error)))} className="ml-6 mt-1 h-auto p-0 text-xs font-medium text-destructive underline-offset-4 hover:underline">Cancelar pedido</Button>}
   </Trace>
