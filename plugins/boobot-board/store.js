@@ -19,7 +19,21 @@ const NEXT = {
   cancelled: [],
 }
 
-export const emptyState = () => ({ version: 1, teams: [], tasks: [], events: [] })
+export const ROLES = ['chief', 'boo']
+
+/** O Chief nasce com o plugin: é o Boo coordenador e existe sempre (não pode ser arquivado nem duplicado). */
+const seedChief = (now = new Date().toISOString()) => ({ id: randomUUID(), name: 'Chief', role: 'chief', description: 'Coordena equipes e cartões do Board.', instructions: '', model: null, archived: false, createdAt: now, updatedAt: now })
+
+export const emptyState = () => ({ version: 2, agents: [seedChief()], teams: [], tasks: [], events: [] })
+
+/** Estado lido do disco: garante `agents` (versão 1 não tinha) e o Chief. */
+export function normalizeState(raw) {
+  const state = { ...emptyState(), ...raw }
+  if (!Array.isArray(raw?.agents) || !raw.agents.some(agent => agent.role === 'chief')) state.agents = [seedChief(), ...(Array.isArray(raw?.agents) ? raw.agents : [])]
+  return { ...state, version: 2 }
+}
+
+export const activeAgents = state => state.agents.filter(agent => !agent.archived)
 
 const clean = (value, label, max) => {
   if (typeof value !== 'string') throw new Error(`${label} inválido.`)
@@ -102,4 +116,34 @@ export function assignTask(state, taskId, worker, reviewer, agentIds, actor = { 
   const updated = { ...task, assigneeAgentId: worker, reviewerAgentId: reviewer, status: task.status === 'backlog' ? 'ready' : task.status, updatedAt: now }
   const next = event({ ...state, tasks: state.tasks.map(item => (item.id === taskId ? updated : item)) }, taskId, task.assigneeAgentId ? 'reassigned' : 'assigned', 'Responsável e revisor definidos.', actor, task.status, updated.status, now)
   return { state: next, task: updated }
+}
+
+/** Cadastro de Boos do plugin. O Chief é único; nomes são únicos entre os ativos. */
+export function createAgent(state, input, now = new Date().toISOString()) {
+  const name = clean(input.name, 'Nome do Boo', 60)
+  if (activeAgents(state).some(agent => agent.name.toLowerCase() === name.toLowerCase())) throw new Error('Já existe um Boo com esse nome.')
+  const agent = { id: randomUUID(), name, role: 'boo', description: optional(input.description, 'Descrição', 500), instructions: optional(input.instructions, 'Instruções', 20000), model: optional(input.model, 'Modelo', 120) || null, archived: false, createdAt: now, updatedAt: now }
+  return { state: { ...state, agents: [...state.agents, agent] }, agent }
+}
+
+export function updateAgent(state, agentId, input, now = new Date().toISOString()) {
+  const agent = state.agents.find(item => item.id === agentId)
+  if (!agent || agent.archived) throw new Error('Boo não encontrado.')
+  const name = input.name === undefined ? agent.name : clean(input.name, 'Nome do Boo', 60)
+  if (activeAgents(state).some(other => other.id !== agentId && other.name.toLowerCase() === name.toLowerCase())) throw new Error('Já existe um Boo com esse nome.')
+  const pick = (key, label, max) => (input[key] === undefined ? agent[key] : optional(input[key], label, max))
+  const updated = { ...agent, name, description: pick('description', 'Descrição', 500), instructions: pick('instructions', 'Instruções', 20000), model: input.model === undefined ? agent.model : optional(input.model, 'Modelo', 120) || null, updatedAt: now }
+  return { state: { ...state, agents: state.agents.map(item => (item.id === agentId ? updated : item)) }, agent: updated }
+}
+
+/** Arquivar tira o Boo das equipes e bloqueia cartões em aberto dele; nada é apagado. */
+export function archiveAgent(state, agentId, now = new Date().toISOString()) {
+  const agent = state.agents.find(item => item.id === agentId)
+  if (!agent || agent.archived) throw new Error('Boo não encontrado.')
+  if (agent.role === 'chief') throw new Error('O Chief não pode ser arquivado.')
+  const open = state.tasks.filter(task => (task.assigneeAgentId === agentId || task.reviewerAgentId === agentId) && !['done', 'cancelled'].includes(task.status))
+  if (open.length) throw new Error(`O Boo ainda tem ${open.length} cartão(ões) em aberto; reatribua ou conclua antes.`)
+  const updated = { ...agent, archived: true, updatedAt: now }
+  const teams = state.teams.map(team => ({ ...team, agentIds: team.agentIds.filter(id => id !== agentId) }))
+  return { state: { ...state, teams, agents: state.agents.map(item => (item.id === agentId ? updated : item)) }, agent: updated }
 }

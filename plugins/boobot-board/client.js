@@ -19,32 +19,68 @@ window.__ModuleLoader__.load({
 .bb-card b{display:block;font-size:13px;line-height:20px;font-weight:500}
 .bb-meta{margin-top:4px;font-size:12px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .bb-empty{padding:16px;border:.5px dashed var(--dsw-alias-border-strong,rgba(127,127,127,.4));border-radius:var(--dsw-radius-md,12px);font-size:13px;color:var(--dsw-alias-label-secondary)}
+.bb-boos{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.bb-boo{display:flex;align-items:center;gap:6px;padding:4px 6px 4px 12px;border-radius:999px;font-size:13px;line-height:20px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.bb-boo small{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.bb-btn{font:inherit;font-size:12px;line-height:20px;padding:2px 10px;border:.5px solid var(--dsw-alias-border-strong,rgba(127,127,127,.4));border-radius:999px;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer}
+.bb-btn:hover{background:var(--dsw-alias-bg-layer-1)}
+.bb-form{display:grid;gap:8px;max-width:520px;margin:0 0 20px;padding:12px;border-radius:var(--dsw-radius-md,12px);background:var(--dsw-alias-bg-layer-2)}
+.bb-form input,.bb-form textarea{font:inherit;font-size:13px;padding:6px 10px;border:.5px solid var(--dsw-alias-border-strong,rgba(127,127,127,.4));border-radius:8px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}
+.bb-form textarea{min-height:64px;resize:vertical}
 .bb-err{margin:0 0 12px;font-size:13px;color:var(--dsw-alias-label-primary)}
 `
 
-    // Ponto único de acesso aos dados: roda o comando /board e lê o JSON devolvido (ver README, "A confirmar").
-    async function load(ctx) {
-      const result = await ctx.remote.commands.execute('/board')
-      if (!result || result.kind === 'error') throw new Error(result?.text || 'Não foi possível ler o Board.')
-      return JSON.parse(result.text)
+    // Ponto único de acesso aos dados: GET na rota do Host (`/boobot/board.json`), mesma origem do Web GUI.
+    async function load() {
+      const response = await fetch('/boobot/board.json', { cache: 'no-store' })
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `Board indisponível (${response.status})`)
+      return response.json()
     }
 
-    function BoardPage({ ctx }) {
+    // Ações do cadastro de Boos: POST na mesma rota; a resposta já é o Board atualizado.
+    async function post(body) {
+      const response = await fetch('/boobot/board.json', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || `Falhou (${response.status})`)
+      return result
+    }
+
+    function BooForm({ onDone, onError }) {
+      const [form, setForm] = React.useState({ name: '', description: '', instructions: '' })
+      const [busy, setBusy] = React.useState(false)
+      const set = key => event => setForm({ ...form, [key]: event.target.value })
+      const submit = async event => {
+        event.preventDefault()
+        setBusy(true)
+        try { onDone(await post({ action: 'agent_create', ...form })); setForm({ name: '', description: '', instructions: '' }) } catch (reason) { onError(String(reason?.message || reason)) } finally { setBusy(false) }
+      }
+      return h('form', { className: 'bb-form', onSubmit: submit, 'aria-label': 'Novo Boo' },
+        h('input', { value: form.name, onChange: set('name'), placeholder: 'Nome do Boo', 'aria-label': 'Nome do Boo', required: true, maxLength: 60 }),
+        h('input', { value: form.description, onChange: set('description'), placeholder: 'Função em uma frase', 'aria-label': 'Função', maxLength: 500 }),
+        h('textarea', { value: form.instructions, onChange: set('instructions'), placeholder: 'Instruções (opcional)', 'aria-label': 'Instruções' }),
+        h('div', null, h('button', { type: 'submit', className: 'bb-btn', disabled: busy }, busy ? 'Criando…' : 'Criar Boo')))
+    }
+
+    function BoardPage() {
       const [data, setData] = React.useState(null)
       const [error, setError] = React.useState('')
       React.useEffect(() => {
         let alive = true
-        const tick = () => load(ctx).then(value => { if (alive) { setData(value); setError('') } }, reason => { if (alive) setError(String(reason?.message || reason)) })
+        const tick = () => load().then(value => { if (alive) { setData(value); setError('') } }, reason => { if (alive) setError(String(reason?.message || reason)) })
         tick()
         const timer = setInterval(tick, 5000)
         return () => { alive = false; clearInterval(timer) }
-      }, [ctx])
+      }, [])
 
       const tasks = data?.tasks ?? []
       return h('div', { className: 'bb-page' },
         h('style', null, css),
         h('h2', { className: 'bb-title' }, 'Board da empresa'),
-        h('p', { className: 'bb-sub' }, data ? `${data.teams.length} equipes · ${tasks.length} cartões` : 'Carregando…'),
+        h('p', { className: 'bb-sub' }, data ? `${data.agents.filter(agent => agent.role !== 'chief').length} Boos${data.agents.some(agent => agent.role === 'chief') ? ' + Chief' : ''} · ${data.teams.length} equipes · ${tasks.length} cartões` : (error ? '' : 'Carregando…')),
+        data && h('div', { className: 'bb-boos', 'aria-label': 'Boos' }, data.agents.map(agent => h('span', { key: agent.id, className: 'bb-boo', title: agent.description || '' },
+          agent.name, agent.role === 'chief' ? h('small', null, 'Chief') : h('button', { type: 'button', className: 'bb-btn', 'aria-label': `Arquivar ${agent.name}`,
+            onClick: () => post({ action: 'agent_archive', id: agent.id }).then(value => { setData(value); setError('') }, reason => setError(String(reason?.message || reason))) }, 'Arquivar')))),
+        data && h(BooForm, { onDone: value => { setData(value); setError('') }, onError: setError }),
         error && h('p', { className: 'bb-err', role: 'alert' }, error),
         data && !tasks.length && h('div', { className: 'bb-empty' }, 'Nenhum cartão ainda. Peça ao Chief para criar uma equipe e uma tarefa.'),
         h('div', { className: 'bb-cols' }, COLUMNS.map(status => {
@@ -62,13 +98,15 @@ window.__ModuleLoader__.load({
         h('rect', { x: 2, y: 2.5, width: 3.5, height: 11, rx: 1 }), h('rect', { x: 6.25, y: 2.5, width: 3.5, height: 7, rx: 1 }), h('rect', { x: 10.5, y: 2.5, width: 3.5, height: 9, rx: 1 }))
     }
 
-    return {
-      inject: ['slots', 'layout'],
+    const exports = {
+      name: '@boobot/board',
+      inject: ['slots'],
       apply(ctx) {
-        // Painel global: ícone na lista da sidebar + componente no slot `main` com o mesmo id.
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'boobot-board', order: 40, label: 'Board' }, Icon))
-        ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', id: 'boobot-board' }, () => h(BoardPage, { ctx })))
+        // Ícone na lista da sidebar (`id`) e painel no slot `main` (`key` = mesmo id).
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'boobot-board', order: 40, label: () => 'Board' }, () => h(Icon)))
+        ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'boobot-board' }, () => h(BoardPage)))
       },
     }
+    return exports
   },
 })

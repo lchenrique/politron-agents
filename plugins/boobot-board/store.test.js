@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { emptyState, createTeam, createTask, moveTask, assignTask } from './store.js'
+import { emptyState, normalizeState, activeAgents, createAgent, updateAgent, archiveAgent, createTeam, createTask, moveTask, assignTask } from './store.js'
 
 const agents = ['lyra', 'atlas', 'nova']
 const base = () => createTeam(emptyState(), { name: 'Produto', agents: ['lyra', 'atlas'] }, agents)
@@ -49,4 +49,28 @@ test('não inicia sem responsável; atribuição posterior libera e registra eve
   const a = assignTask(s.state, s.task.id, 'lyra', 'atlas', agents)
   assert.equal(a.task.status, 'ready')
   assert.equal(a.state.events.at(-1).kind, 'assigned')
+})
+
+test('estado novo traz só o Chief; estado antigo sem agentes ganha o Chief', () => {
+  assert.deepEqual(emptyState().agents.map(a => a.role), ['chief'])
+  const old = normalizeState({ version: 1, teams: [], tasks: [], events: [] })
+  assert.deepEqual(old.agents.map(a => a.role), ['chief'])
+  assert.equal(old.version, 2)
+})
+
+test('Boos: nome único, edição, e arquivar respeita Chief e cartões em aberto', () => {
+  let { state, agent } = createAgent(emptyState(), { name: 'Lyra', instructions: 'Design' })
+  assert.throws(() => createAgent(state, { name: 'lyra' }), /Já existe/)
+  assert.equal(updateAgent(state, agent.id, { description: 'UX' }).agent.description, 'UX')
+  const chief = state.agents.find(a => a.role === 'chief')
+  assert.throws(() => archiveAgent(state, chief.id), /Chief/)
+  const other = createAgent(state, { name: 'Nova' })
+  state = other.state
+  const team = createTeam(state, { name: 'Produto', agents: [agent.id, other.agent.id] }, activeAgents(state).map(a => a.id))
+  const card = createTask(team.state, input(team.team.id), { worker: agent.id, reviewer: other.agent.id })
+  assert.throws(() => archiveAgent(card.state, agent.id), /em aberto/)
+  const done = moveTask(moveTask(moveTask(card.state, card.task.id, 'doing').state, card.task.id, 'review').state, card.task.id, 'done')
+  const archived = archiveAgent(done.state, agent.id)
+  assert.equal(activeAgents(archived.state).some(a => a.id === agent.id), false)
+  assert.deepEqual(archived.state.teams[0].agentIds, [other.agent.id])
 })
