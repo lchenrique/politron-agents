@@ -4,20 +4,22 @@ import { boos } from './store.js'
 import { notebookRules } from './notebook.js'
 
 /** Primeira mensagem do teammate: a identidade do Boo. O DSH entrega o prompt inicial sem alterações. */
-export const teammatePrompt = (boo, notebook) => [
+export const teammatePrompt = (boo, notebook, workdir) => [
   `Você é ${boo.name}, um Boo do Boobot: um agente especialista, membro permanente deste time. Seu nome no time é "${boo.handle}". Responda no idioma do usuário.`,
   `Sua especialidade: ${boo.description}`,
   boo.area && `Sua área: ${boo.area}`,
   boo.instructions && `Instruções específicas:\n${boo.instructions}`,
   notebook && notebookRules(notebook),
+  workdir && `Projeto de trabalho: ${workdir.title}. A pasta de trabalho da sua sessão é ${workdir.path}; faça as alterações do projeto lá.`,
   'Como trabalhar: o Lead (Chief) e o usuário falam com você por mensagens. Pegue tarefas do quadro compartilhado, avise o time pelo send_message quando terminar ou travar, e fique dentro da sua especialidade; se o pedido for de outra área, diga isso e indique quem deve cuidar.',
   'Agora responda apenas com uma linha confirmando que está pronto, e aguarde instruções.',
 ].filter(Boolean).join('\n\n')
 
 /** Texto devolvido ao Lead depois de convocar: quem está no time e como delegar. */
-export function briefing(state, chief, squad) {
+export function briefing(state, chief, squad, project) {
   const team = squad ? boos(state).filter(boo => squad.agentIds.includes(boo.id)) : boos(state)
   return [
+    project && `Projeto de trabalho: ${project.title} (${project.path}). Os Boos abaixo estão com a pasta de trabalho apontada para lá. Você (Chief) continua na pasta desta conversa: ao delegar, cite caminhos absolutos do projeto e peça aos Boos que façam as alterações lá; não edite o projeto por conta própria a partir daqui.`,
     squad && `Time deste projeto: ${squad.name}${squad.description ? `, ${squad.description}` : ''}.`,
     chief?.instructions && `Instruções do Chief:\n${chief.instructions}`,
     team.length
@@ -30,15 +32,17 @@ export function briefing(state, chief, squad) {
  * Cria no time do `lead` os teammates que ainda não existem (todos os Boos, ou só os do `squad` do projeto). Idempotente: quem já está no roster (qualquer status) é pulado,
  * porque o DSH nunca reusa nem renomeia um nome de teammate. Falhas individuais não interrompem as demais.
  */
-export async function summon(teams, lead, state, signal, squad, notebookFor) {
-  const present = new Set(teams.listMembers(lead).map(member => member.name))
-  const result = { spawned: [], present: [], failed: [] }
+export async function summon(teams, lead, state, signal, squad, notebookFor, workdir) {
+  const roster = new Map(teams.listMembers(lead).map(member => [member.name, member.id]))
+  // `members` mapeia handle -> id da sessão do teammate (novo ou já presente), para o chamador apontar a pasta de trabalho de cada um.
+  const result = { spawned: [], present: [], failed: [], members: {} }
   const candidates = squad ? boos(state).filter(boo => squad.agentIds.includes(boo.id)) : boos(state)
   for (const boo of candidates) {
-    if (present.has(boo.handle)) { result.present.push(boo.handle); continue }
+    if (roster.has(boo.handle)) { result.present.push(boo.handle); result.members[boo.handle] = roster.get(boo.handle); continue }
     try {
-      await teams.spawnTeammate(lead, { name: boo.handle, description: boo.description, prompt: [{ type: 'text', text: teammatePrompt(boo, notebookFor?.(boo)) }], context: 'fresh', provider: 'spawn', signal })
+      const created = await teams.spawnTeammate(lead, { name: boo.handle, description: boo.description, prompt: [{ type: 'text', text: teammatePrompt(boo, notebookFor?.(boo), workdir) }], context: 'fresh', provider: 'spawn', signal })
       result.spawned.push(boo.handle)
+      result.members[boo.handle] = created?.member?.id
     } catch (error) {
       result.failed.push({ handle: boo.handle, error: error instanceof Error ? error.message : String(error) })
     }

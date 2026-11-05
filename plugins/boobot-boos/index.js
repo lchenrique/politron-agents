@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { activeAgents, archiveBoo, createBoo, createTeam, deleteTeam, emptyState, normalizeState, setProjects, teamFor, updateAgent, updateTeam } from './store.js'
 import { briefing, summon } from './team.js'
 import { definitions, presetIdOf } from './preset.js'
+import { resolveProject, resolveTeam } from './lookup.js'
 import { addRoutine, describeRule, homeOf, MAX_ROUTINES_PER_AGENT, parseRoutine, removeRoutine, routinesOf, scheduleRequest, setHome } from './routines.js'
 import { initialNotes, notebookFile } from './notebook.js'
 
@@ -24,7 +25,7 @@ const opt = description => ({ type: 'string', description })
 const output = { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] }
 
 export const name = 'boobot-boos'
-export const inject = ['tools', 'webServer', 'agentTeams', 'systemPrompt', 'workspaceRegistry', 'workingDirectory', 'agentPresets', 'schedule', 'sessionController']
+export const inject = ['tools', 'webServer', 'agentTeams', 'systemPrompt', 'workspaceRegistry', 'workingDirectory', 'agentPresets', 'schedule', 'sessionController', 'agents']
 
 export function apply(ctx, config = {}) {
   const file = config.file || join(process.env.DSH_PROFILE_DIR || join(homedir(), '.dsh'), 'boobot-boos.json')
@@ -150,14 +151,29 @@ export function apply(ctx, config = {}) {
     return { ...base, routines }
   }
 
-  // Convoca os Boos cadastrados para o time do Lead (a sessão que chamou). Novos Boos entram; quem já está no time é mantido.
-  // Se o projeto da sessão tem um time, só os Boos dele entram; sem time, valem todos os Boos.
-  const convoke = lead => run(async () => {
-    const workspace = await projectOf(lead)
+  // Convoca os Boos para o time do Lead (a sessão que chamou). Novos Boos entram; quem já está no time é mantido. O projeto é o da sessão
+  // ou, com `projectRef`, QUALQUER projeto do DSH: aí cada teammate (novo ou já presente) tem a pasta de trabalho apontada para o projeto
+  // (`workingDirectory.set`), e o Chief delega de onde estiver. Se o projeto tem um time, só os Boos dele entram; sem time, todos.
+  const convoke = (lead, projectRef) => run(async () => {
+    const remote = projectRef ? resolveProject(workspaces(), projectRef) : undefined
+    const workspace = remote ?? await projectOf(lead)
     const squad = workspace ? teamFor(state, workspace.id) : undefined
-    const result = await summon(ctx.agentTeams, lead, state, AbortSignal.timeout(120_000), squad, notebookFor)
+    const result = await summon(ctx.agentTeams, lead, state, AbortSignal.timeout(120_000), squad, notebookFor, remote)
+    const moved = []
+    const moveFailed = []
+    if (remote) {
+      for (const [handle, sessionId] of Object.entries(result.members)) {
+        try {
+          const agent = sessionId ? ctx.agents.get(sessionId) : undefined
+          if (!agent) throw new Error('sessão do teammate não está ativa')
+          await ctx.workingDirectory.set(agent, remote.path)
+          moved.push(handle)
+        } catch (error) { moveFailed.push({ handle, error: error instanceof Error ? error.message : String(error) }) }
+      }
+    }
+    const { members, ...summary } = result
     const chief = state.agents.find(agent => agent.role === 'chief' && !agent.archived)
-    return json({ project: workspace?.title ?? null, team: squad?.name ?? null, ...result, briefing: briefing(state, chief, squad) })
+    return json({ project: workspace?.title ?? null, team: squad?.name ?? null, ...summary, ...(remote ? { pastaDeTrabalho: remote.path, apontados: moved, falhaAoApontar: moveFailed } : {}), briefing: briefing(state, chief, squad, remote) })
   })
 
   const tools = [
@@ -166,11 +182,11 @@ export function apply(ctx, config = {}) {
       parameters: {}, output, execute: () => run(async () => json(await view())),
     }),
     defineTool({
-      name: 'boo_summon', description: 'Convoca para o seu time (Agent Team) os Boos do time deste projeto, ou todos os Boos se o projeto não tem time: cria os que ainda não estão e devolve o briefing de quem faz o quê. Use no início do trabalho ou depois de criar Boos.',
-      parameters: {}, output,
-      execute: (_args, exec) => {
+      name: 'boo_summon', description: 'Convoca para o seu time (Agent Team) os Boos do time de um projeto (o desta conversa, ou o informado em `project`), ou todos os Boos se o projeto não tem time: cria os que ainda não estão e devolve o briefing de quem faz o quê. Use no início do trabalho ou depois de criar Boos.',
+      parameters: { project: { type: 'string', description: 'Nome ou id de QUALQUER projeto do DSH: convoca o time dele e aponta a pasta de trabalho de cada Boo para o projeto, mesmo que esta conversa esteja em outro. Omita para usar o projeto desta conversa.' } }, output,
+      execute: (args, exec) => {
         if (!exec?.agent) throw new Error('Só o Lead de uma sessão pode convocar os Boos.')
-        return convoke(exec.agent)
+        return convoke(exec.agent, args.project)
       },
     }),
     defineTool({
@@ -178,27 +194,29 @@ export function apply(ctx, config = {}) {
       parameters: {}, output, execute: () => run(() => json({ teams: baseView().teams, workspaces: workspaces() })),
     }),
     defineTool({
-      name: 'boo_team_create', description: 'Cria um time: grupo nomeado de Boos. Opcionalmente já o associa ao projeto desta sessão. Um projeto tem no máximo um time.',
-      parameters: { name: text('Nome do time'), description: opt('O que o time faz'), members: { type: 'array', required: true, items: { type: 'string' }, description: 'Handles dos Boos (nome no time, ex.: lyra)' }, for_this_project: { type: 'boolean', description: 'Associar ao projeto desta sessão' } }, output,
+      name: 'boo_team_create', description: 'Cria um time: grupo nomeado de Boos. Opcionalmente já o associa a um projeto: use `project` (nome ou id de qualquer projeto, veja boo_team_list) ou for_this_project para o projeto desta sessão. Um projeto tem no máximo um time.',
+      parameters: { name: text('Nome do time'), description: opt('O que o time faz'), members: { type: 'array', required: true, items: { type: 'string' }, description: 'Handles dos Boos (nome no time, ex.: lyra)' }, for_this_project: { type: 'boolean', description: 'Associar ao projeto desta sessão' }, project: { type: 'string', description: 'Nome ou id do projeto a associar (qualquer projeto do DSH, não só o desta sessão)' } }, output,
       execute: (args, exec) => run(async () => {
         const agentIds = args.members.map(handle => { const boo = activeAgents(state).find(agent => agent.handle === handle && agent.role !== 'chief'); if (!boo) throw new Error(`Boo desconhecido: ${handle}`); return boo.id })
-        const workspace = args.for_this_project ? await projectOf(exec.agent) : undefined
-        if (args.for_this_project && !workspace) throw new Error('Esta sessão não está em um projeto registrado no DSH.')
+        const workspace = args.project ? resolveProject(workspaces(), args.project) : args.for_this_project ? await projectOf(exec.agent) : undefined
+        if (args.for_this_project && !args.project && !workspace) throw new Error('Esta sessão não está em um projeto registrado no DSH.')
         const result = createTeam(state, { name: args.name, description: args.description, agentIds, workspaceIds: workspace ? [workspace.id] : undefined })
         await save(result.state)
         return json(result.team)
       }),
     }),
     defineTool({
-      name: 'boo_team_assign', description: 'Associa um time existente ao projeto desta sessão (substitui o time anterior do projeto). Sem team_id, remove o time do projeto.',
-      parameters: { team_id: opt('Id do time; omita para desassociar') }, output,
+      name: 'boo_team_assign', description: 'Associa um time existente a um projeto, substituindo o time anterior dele. Informe `project` (nome ou id de QUALQUER projeto do DSH; sem ele vale o projeto desta sessão) e `team` (nome ou id). Sem `team`, remove o time do projeto.',
+      parameters: { team: opt('Nome ou id do time; omita para desassociar'), team_id: opt('Igual a team (compatibilidade)'), project: opt('Nome ou id do projeto; omita para usar o projeto desta sessão') }, output,
       execute: (args, exec) => run(async () => {
-        const workspace = await projectOf(exec.agent)
-        if (!workspace) throw new Error('Esta sessão não está em um projeto registrado no DSH.')
+        const workspace = args.project ? resolveProject(workspaces(), args.project) : await projectOf(exec.agent)
+        if (!workspace) throw new Error('Esta sessão não está em um projeto registrado no DSH: informe `project`.')
+        const ref = args.team ?? args.team_id
+        const team = ref ? resolveTeam(state.teams, ref) : undefined
         const projects = { ...state.projects }
         delete projects[workspace.id]
         let next = { ...state, projects }
-        if (args.team_id) next = setProjects(next, args.team_id, [...Object.entries(next.projects).filter(([, owner]) => owner === args.team_id).map(([id]) => id), workspace.id])
+        if (team) next = setProjects(next, team.id, [...Object.entries(next.projects).filter(([, owner]) => owner === team.id).map(([id]) => id), workspace.id])
         await save(next)
         return json({ project: workspace.title, team: teamFor(next, workspace.id)?.name ?? null })
       }),
@@ -256,7 +274,7 @@ export function apply(ctx, config = {}) {
         'Boobot: se a sua persona já diz que você é um Boo específico, ignore esta seção inteira. Caso contrário, se você é o Lead desta sessão, você é o Chief. Os Boos são agentes especialistas permanentes que fazem parte do time.',
         'Você pode criar Boos (boo_create: explique antes o nome e a especialidade e peça confirmação se o usuário não foi específico), editar (boo_update) e arquivar (boo_archive). Depois de criar, use boo_summon para colocá-los no time, e delegue por send_message e pelo quadro team_task_*.',
         team.length ? `Boos cadastrados: ${team.map(boo => `${boo.handle} (${boo.description})`).join('; ')}. Se ainda não estiverem no time desta sessão, use boo_summon.` : 'Ainda não há Boos cadastrados.',
-        'Times (boo_team_create, boo_team_assign, boo_team_list) são grupos de Boos associados a um projeto: boo_summon convoca só o time do projeto da sessão, ou todos os Boos se o projeto não tem time.',
+        'Times (boo_team_create, boo_team_assign, boo_team_list) são grupos de Boos associados a um projeto. Você pode associar um time a QUALQUER projeto do DSH pelo nome (parâmetro `project`), mesmo estando em outra conversa; boo_team_list mostra os projetos. boo_summon convoca, na sua sessão, o time do projeto dela ou, com `project`, o time de QUALQUER projeto do DSH: nesse caso a pasta de trabalho de cada Boo é apontada para o projeto e você delega de onde está, com caminhos absolutos (não precisa pedir ao usuário para abrir outra conversa).',
         'Rotinas (boo_routine_create, boo_routine_list, boo_routine_delete) agendam um prompt para um agente: o DSH o entrega na conversa fixa dele no horário (precisa do DSH aberto). Antes de criar uma, confirme com o usuário o que roda e quando.',
         'Se você é um teammate e não o Lead, ignore as instruções de criação: trabalhe na sua especialidade.',
       ].join('\n')
@@ -266,10 +284,11 @@ export function apply(ctx, config = {}) {
   // `/boos` faz o mesmo pelo composer: o usuário convoca o time sem passar pelo modelo.
   ctx.inject(['commands'], commandCtx => commandCtx.commands.register({
     name: 'boos',
-    description: 'Convoca os Boos cadastrados para o time desta sessão',
+    description: 'Convoca os Boos para o time desta sessão; com um nome de projeto, aponta o trabalho deles para esse projeto',
+    input: { hint: '[projeto]' },
     recordInput: false,
     handler: async invocation => {
-      try { return { kind: 'success', text: await convoke(invocation.agent) } } catch (error) { return { kind: 'error', text: error instanceof Error ? error.message : String(error) } }
+      try { return { kind: 'success', text: await convoke(invocation.agent, (invocation.rawInput ?? '').trim() || undefined) } } catch (error) { return { kind: 'error', text: error instanceof Error ? error.message : String(error) } }
     },
   }))
 

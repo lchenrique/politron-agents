@@ -13,8 +13,8 @@ const fakeTeams = (existing = [], failOn = []) => {
   const calls = []
   return {
     calls,
-    listMembers: () => existing.map(name => ({ name })),
-    spawnTeammate: async (_lead, request) => { calls.push(request); if (failOn.includes(request.name)) throw new Error('limite de membros'); return { member: { name: request.name } } },
+    listMembers: () => existing.map(name => ({ name, id: `sid-${name}` })),
+    spawnTeammate: async (_lead, request) => { calls.push(request); if (failOn.includes(request.name)) throw new Error('limite de membros'); return { member: { name: request.name, id: `sid-${request.name}` } } },
   }
 }
 
@@ -62,4 +62,16 @@ test('com time do projeto, só os Boos do time são convocados e o briefing nome
   assert.match(text, /Time deste projeto: API, backend/)
   assert.match(text, /nova:/)
   assert.doesNotMatch(text, /lyra:/)
+})
+
+test('devolve o id da sessão de cada teammate (novo e já presente) para apontar a pasta de trabalho', async () => {
+  const result = await summon(fakeTeams(['lyra']), {}, withBoos(), new AbortController().signal)
+  assert.deepEqual(result.members, { lyra: 'sid-lyra', nova: 'sid-nova' })
+})
+
+test('briefing com projeto avisa a pasta de trabalho dos Boos e que o Chief delega com caminhos absolutos', () => {
+  const text = briefing(withBoos(), undefined, undefined, { title: 'bubbledesk', path: 'C:/p/bubbledesk' })
+  assert.match(text, /Projeto de trabalho: bubbledesk \(C:\/p\/bubbledesk\)/)
+  assert.match(text, /caminhos absolutos/)
+  assert.doesNotMatch(briefing(withBoos(), undefined, undefined, undefined), /Projeto de trabalho/)
 })
