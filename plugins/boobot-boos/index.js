@@ -1,10 +1,12 @@
 /** Host do bundle: dono dos Boos. Persiste o cadastro, convoca cada Boo como teammate do Agent Team do DSH (o Lead é o Chief) e expõe a UI. */
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { activeAgents, archiveBoo, createBoo, createTeam, deleteTeam, emptyState, normalizeState, setProjects, teamFor, updateAgent, updateTeam } from './store.js'
 import { briefing, summon } from './team.js'
 import { definitions, presetIdOf } from './preset.js'
+import { analyze, applyOutcome, createDelegation, needsNotice, notificationText, pending, prune, taskPrompt } from './delegations.js'
 import { resolveProject, resolveTeam } from './lookup.js'
 import { addRoutine, describeRule, homeOf, MAX_ROUTINES_PER_AGENT, parseRoutine, removeRoutine, routinesOf, scheduleRequest, setHome } from './routines.js'
 import { initialNotes, notebookFile } from './notebook.js'
@@ -148,8 +150,69 @@ export function apply(ctx, config = {}) {
     const routines = await Promise.all(state.routines.filter(routine => base.agents.some(agent => agent.id === routine.agentId)).map(async routine => ({
       id: routine.id, agentId: routine.agentId, title: routine.title, prompt: routine.prompt, rule: routine.rule, description: describeRule(routine.rule), nextRun: await nextRunOf(routine),
     })))
-    return { ...base, routines }
+    return { ...base, routines, delegations: state.delegations.slice(-30).reverse().map(delegationView) }
   }
+
+  // Delegações: o Chief manda uma tarefa a um Boo numa sessão NOVA do Boo, dentro do projeto (aparece na sidebar do projeto). O estado vem do
+  // log da própria sessão (último turno), e quando ela para o Host avisa a conversa de origem. Todo trabalho aqui é serializado.
+  let settling = Promise.resolve()
+  const enqueue = delegation => { settling = settling.then(() => settleDelegation(delegation.id)).catch(error => ctx.logger?.warn?.(`boobot-boos: delegação: ${error?.message ?? error}`)); return settling }
+  const patchDelegation = (id, change) => save({ ...state, delegations: state.delegations.map(item => (item.id === id ? { ...item, ...change } : item)) })
+  const find = id => state.delegations.find(item => item.id === id)
+
+  const notifyOrigin = async delegation => {
+    const text = notificationText(delegation, { state: delegation.status, summary: delegation.summary, error: delegation.error })
+    try {
+      await ctx.sessionController.prompt({ requestId: randomUUID(), sessionId: delegation.originSessionId, mode: 'queue', content: [{ type: 'text', text }] }, AbortSignal.timeout(30_000))
+    } catch (error) {
+      // Conversa de origem apagada: não adianta insistir. Qualquer outra falha fica pendente e é tentada de novo no próximo ciclo.
+      if (error?.code !== 'session/not-found') throw error
+    }
+    await patchDelegation(delegation.id, { notified: delegation.status })
+  }
+
+  async function settleDelegation(id) {
+    let delegation = find(id)
+    if (!delegation) return
+    if (delegation.status === 'running' || delegation.status === 'blocked') {
+      const { events } = await ctx.sessionController.inspect(delegation.sessionId)
+      const next = applyOutcome(delegation, analyze(events))
+      if (next !== delegation) { await patchDelegation(id, { status: next.status, summary: next.summary, error: next.error, finishedAt: next.finishedAt }); delegation = find(id) }
+    }
+    if (delegation && needsNotice(delegation)) await notifyOrigin(delegation)
+  }
+
+  // A sessão parou de rodar: confere o log das delegações dela (running ou blocked) e avisa a origem se terminou.
+  ctx.effect(() => ctx.on('api-session/status', (sessionId, running) => {
+    if (running) return
+    for (const delegation of state.delegations) if (delegation.sessionId === sessionId && (delegation.status === 'running' || delegation.status === 'blocked')) enqueue(delegation)
+  }))
+  // Depois de um reinício: o que terminou enquanto o DSH estava fechado, ou ainda não foi avisado, é resolvido pelo log.
+  ctx.effect(() => { const timer = setTimeout(() => { for (const delegation of pending(state.delegations)) enqueue(delegation) }, 8000); return () => clearTimeout(timer) })
+
+  const delegate = async (exec, args) => {
+    if (!exec?.agent) throw new Error('Só o Lead de uma conversa pode delegar.')
+    const boo = activeAgents(state).find(agent => agent.handle === args.handle && agent.role === 'boo')
+    if (!boo) throw new Error(`Boo desconhecido: ${args.handle}. Veja boo_list.`)
+    const presetId = presetIdOf(boo)
+    if (presetStatus[presetId] !== 'ok') throw new Error(`O preset de ${boo.name} não está ativo: ${presetStatus[presetId] ?? 'pendente'}`)
+    const project = args.project ? resolveProject(workspaces(), args.project) : await projectOf(exec.agent)
+    if (!project) throw new Error('Esta conversa não está em um projeto registrado no DSH: informe `project`.')
+    const chief = state.agents.find(agent => agent.role === 'chief' && !agent.archived)
+    const { sessionId } = await ctx.sessionController.create({ workspaceId: project.id, agentPreset: presetId })
+    const delegation = createDelegation({ agentId: boo.id, handle: boo.handle, name: boo.name, workspaceId: project.id, projectTitle: project.title, sessionId, originSessionId: exec.agent.id, task: args.task })
+    // Grava antes de enviar: se o Boo terminar rápido, o evento de "parou" já encontra a delegação.
+    await save({ ...state, delegations: prune([...state.delegations, delegation]) })
+    try {
+      await ctx.sessionController.prompt({ requestId: randomUUID(), sessionId, mode: 'queue', content: [{ type: 'text', text: taskPrompt({ chiefName: chief?.name ?? 'Chief', project, task: delegation.task }) }] }, AbortSignal.timeout(30_000))
+    } catch (error) {
+      await patchDelegation(delegation.id, { status: 'failed', error: `não consegui enviar a tarefa: ${error?.message ?? error}`, finishedAt: new Date().toISOString() })
+      throw error
+    }
+    return { id: delegation.id, boo: boo.name, projeto: project.title, pasta: project.path, conversaDoBoo: sessionId, status: 'running', aviso: 'Você será avisado nesta conversa, por uma mensagem automática, quando o Boo terminar, parar ou falhar. Use boo_delegation_list para ver o andamento.' }
+  }
+
+  const delegationView = delegation => ({ id: delegation.id, boo: delegation.name, handle: delegation.handle, projeto: delegation.projectTitle, status: delegation.status, tarefa: delegation.task.length > 200 ? `${delegation.task.slice(0, 199)}…` : delegation.task, resumo: delegation.summary, erro: delegation.error, conversaDoBoo: delegation.sessionId, origem: delegation.originSessionId, iniciadaEm: delegation.startedAt, terminouEm: delegation.finishedAt })
 
   // Convoca os Boos para o time do Lead (a sessão que chamou). Novos Boos entram; quem já está no time é mantido. O projeto é o da sessão
   // ou, com `projectRef`, QUALQUER projeto do DSH: aí cada teammate (novo ou já presente) tem a pasta de trabalho apontada para o projeto
@@ -237,6 +300,23 @@ export function apply(ctx, config = {}) {
       execute: args => run(() => dropRoutines(args.agent_id)).then(() => mutate(current => archiveBoo(current, args.agent_id))).then(result => json(result.agent)),
     }),
     defineTool({
+      name: 'boo_delegate',
+      description: 'Delega uma tarefa a um Boo numa conversa NOVA dele, dentro do projeto (qualquer projeto do DSH, pelo nome). A conversa aparece na sidebar do projeto e o usuário pode abri-la. Quando o Boo termina, para ou falha, você recebe nesta conversa uma mensagem automática com o resultado. A tarefa deve ser completa e autocontida.',
+      parameters: { handle: text('Nome do Boo no time (handle), ex.: dev'), project: opt('Nome ou id do projeto; omita para usar o projeto desta conversa'), task: text('Tarefa completa e autocontida, com o contexto que o Boo precisa') }, output,
+      execute: (args, exec) => run(async () => json(await delegate(exec, args))),
+    }),
+    defineTool({
+      name: 'boo_delegation_list',
+      description: 'Lista as delegações feitas aos Boos com o andamento de cada uma (running, done, blocked, failed), por projeto. Atualiza o status das que ainda rodam. Só leitura.',
+      parameters: { project: opt('Filtrar por projeto (nome ou id)'), status: opt('Filtrar por status: running, done, blocked ou failed') }, output,
+      execute: args => run(async () => {
+        const project = args.project ? resolveProject(workspaces(), args.project) : undefined
+        for (const delegation of state.delegations.filter(item => item.status === 'running' || item.status === 'blocked')) await enqueue(delegation)
+        const list = state.delegations.filter(item => (!project || item.workspaceId === project.id) && (!args.status || item.status === args.status))
+        return json(list.slice(-30).reverse().map(delegationView))
+      }),
+    }),
+    defineTool({
       name: 'boo_routine_list', description: 'Lista as rotinas (tarefas agendadas) dos agentes, com a próxima execução de cada uma. Só leitura.',
       parameters: {}, output, execute: () => run(async () => json((await view()).routines)),
     }),
@@ -275,6 +355,7 @@ export function apply(ctx, config = {}) {
         'Você pode criar Boos (boo_create: explique antes o nome e a especialidade e peça confirmação se o usuário não foi específico), editar (boo_update) e arquivar (boo_archive). Depois de criar, use boo_summon para colocá-los no time, e delegue por send_message e pelo quadro team_task_*.',
         team.length ? `Boos cadastrados: ${team.map(boo => `${boo.handle} (${boo.description})`).join('; ')}. Se ainda não estiverem no time desta sessão, use boo_summon.` : 'Ainda não há Boos cadastrados.',
         'Times (boo_team_create, boo_team_assign, boo_team_list) são grupos de Boos associados a um projeto. Você pode associar um time a QUALQUER projeto do DSH pelo nome (parâmetro `project`), mesmo estando em outra conversa; boo_team_list mostra os projetos. boo_summon convoca, na sua sessão, o time do projeto dela ou, com `project`, o time de QUALQUER projeto do DSH: nesse caso a pasta de trabalho de cada Boo é apontada para o projeto e você delega de onde está, com caminhos absolutos (não precisa pedir ao usuário para abrir outra conversa).',
+        'Delegação (boo_delegate, boo_delegation_list): para mandar uma tarefa a um Boo em um projeto, use boo_delegate: cria uma conversa nova do Boo no projeto (visível na sidebar) e você recebe aqui um aviso automático quando ele terminar, parar ou falhar. Use boo_delegation_list para ver o andamento por projeto. Prefira isso a convocar o time quando a tarefa for de um Boo só ou de longa duração.',
         'Rotinas (boo_routine_create, boo_routine_list, boo_routine_delete) agendam um prompt para um agente: o DSH o entrega na conversa fixa dele no horário (precisa do DSH aberto). Antes de criar uma, confirme com o usuário o que roda e quando.',
         'Se você é um teammate e não o Lead, ignore as instruções de criação: trabalhe na sua especialidade.',
       ].join('\n')

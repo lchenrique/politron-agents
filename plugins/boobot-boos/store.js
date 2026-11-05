@@ -31,7 +31,7 @@ const seedChief = (now = new Date().toISOString()) => ({
   description: 'Coordena os Boos: entende o pedido, escolhe o especialista certo e delega.', instructions: '', archived: false, createdAt: now, updatedAt: now,
 })
 
-export const emptyState = () => ({ version: 1, agents: [seedChief()], teams: [], projects: {}, homes: {}, routines: [] })
+export const emptyState = () => ({ version: 1, agents: [seedChief()], teams: [], projects: {}, homes: {}, routines: [], delegations: [] })
 
 export function normalizeState(raw) {
   // Versões anteriores guardavam `presetId` (`boo-<slug>`, `boobot-chief`): o handle é o mesmo nome sem o prefixo de preset.
@@ -39,7 +39,7 @@ export function normalizeState(raw) {
   const teams = Array.isArray(raw?.teams) ? raw.teams : []
   const plainObject = value => (value && typeof value === 'object' && !Array.isArray(value) ? value : {})
   const projects = raw?.projects && typeof raw.projects === 'object' && !Array.isArray(raw.projects) ? raw.projects : {}
-  return { version: 1, agents: agents.some(agent => agent.role === 'chief') ? agents : [seedChief(), ...agents], teams, projects, homes: plainObject(raw?.homes), routines: Array.isArray(raw?.routines) ? raw.routines : [] }
+  return { version: 1, agents: agents.some(agent => agent.role === 'chief') ? agents : [seedChief(), ...agents], teams, projects, homes: plainObject(raw?.homes), routines: Array.isArray(raw?.routines) ? raw.routines : [], delegations: Array.isArray(raw?.delegations) ? raw.delegations : [] }
 }
 
 export const activeAgents = state => state.agents.filter(agent => !agent.archived)

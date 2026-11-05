@@ -86,6 +86,8 @@ const BOO_ART = {"idle":{"body":"M124.913 174.538 C123.986 174.690 123.042 174.7
         state.path && h('span', { className: 'bo-tag' }, state.path))
     }
 
+    const STATUS_LABEL = { running: 'em andamento', done: 'concluída', blocked: 'parou e precisa de você', failed: 'falhou' }
+
     // Rotinas do agente: lista com a próxima execução e formulário para agendar. O DSH guarda e entrega (precisa estar aberto);
     // a resposta de cada POST já traz o cadastro atualizado, que o painel repassa por `onData`.
     const WEEKDAYS = [[1, 'seg'], [2, 'ter'], [3, 'qua'], [4, 'qui'], [5, 'sex'], [6, 'sáb'], [7, 'dom']]
@@ -194,6 +196,14 @@ const BOO_ART = {"idle":{"body":"M124.913 174.538 C123.986 174.690 123.042 174.7
         return () => { alive = false }
       }, [])
 
+      // Delegações em andamento mudam sozinhas (o Boo termina): atualiza a lista a cada 8 s enquanto houver alguma e a aba estiver visível.
+      const watching = (data?.delegations ?? []).some(item => item.status === 'running' || item.status === 'blocked')
+      React.useEffect(() => {
+        if (!watching) return undefined
+        const timer = setInterval(() => { if (!document.hidden) call().then(setData, () => undefined) }, 8000)
+        return () => clearInterval(timer)
+      }, [watching])
+
       const act = async body => {
         setBusy(true)
         try { setData(await call(body)); setError(''); return true } catch (reason) { setError(String(reason?.message || reason)); return false } finally { setBusy(false) }
@@ -225,7 +235,13 @@ const BOO_ART = {"idle":{"body":"M124.913 174.538 C123.986 174.690 123.042 174.7
         } catch (reason) { setError(String(reason?.message || reason)) } finally { setBusy(false) }
       }
 
+      const openSession = sessionId => {
+        const workspace = ctx.get('uiWorkspace')
+        if (!workspace) return setError('Serviço de sessões do DSH indisponível.')
+        try { workspace.openSession(sessionId) } catch (reason) { setError(String(reason?.message || reason)) }
+      }
       const agents = data?.agents ?? []
+      const delegations = data?.delegations ?? []
       const teams = data?.teams ?? []
       const workspaces = data?.workspaces ?? []
       return h('div', { className: 'bo-page' },
@@ -259,6 +275,15 @@ const BOO_ART = {"idle":{"body":"M124.913 174.538 C123.986 174.690 123.042 174.7
             ? team.workspaceIds.map(id => workspaces.find(workspace => workspace.id === id)).filter(Boolean).map(workspace => h('span', { key: workspace.id, className: 'bo-chip bo-chip--plain', title: workspace.path }, workspace.title))
             : h('span', { className: 'bo-tag' }, 'Nenhum projeto ainda'))))
           : h('p', { className: 'bo-sub' }, 'Nenhum time ainda. Um time reúne Boos para um projeto: ao usar /boos nesse projeto, só eles entram.')),
+        data && h('h3', { className: 'bo-section' }, 'Delegações'),
+        data && h('div', { className: 'bo-list' }, delegations.length ? delegations.map(item => h('article', { key: item.id, className: 'bo-card' },
+          h('div', { className: 'bo-head' },
+            h('b', null, item.boo), h('span', { className: 'bo-tag' }, `${item.projeto} · ${STATUS_LABEL[item.status] || item.status}`),
+            h('div', { className: 'bo-actions' }, h('button', { type: 'button', className: 'bo-btn', onClick: () => openSession(item.conversaDoBoo) }, 'Abrir conversa'))),
+          h('p', { className: 'bo-desc' }, item.tarefa),
+          item.erro && h('p', { className: 'bo-desc', role: 'alert' }, `Motivo: ${item.erro}`),
+          item.resumo && h('details', null, h('summary', { className: 'bo-tag' }, 'Resultado'), h('pre', { className: 'bo-notes' }, item.resumo))))
+          : h('p', { className: 'bo-sub' }, 'Nenhuma delegação ainda. Peça ao Chief para mandar uma tarefa a um Boo em um projeto: a conversa do Boo abre no projeto e o Chief é avisado quando ele terminar.')),
         teamForm && h(TeamDrawer, { form: teamForm, setForm: setTeamForm, agents: agents.filter(agent => agent.role !== 'chief'), workspaces, teams, busy, error: formError, onSubmit: submitTeam, onClose: close }),
         form && h(BooDrawer, { form, set, busy, error: formError, routines: data?.routines ?? [], onData: value => setData(value), onSubmit: submit, onClose: close }))
     }
