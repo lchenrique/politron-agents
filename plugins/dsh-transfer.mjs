@@ -24,10 +24,10 @@ const read = path => JSON.parse(readFileSync(path, 'utf8'))
 const skip = path => /(^|[\\/])(node_modules|\.git)([\\/]|$)/.test(path)
 const copyTree = (from, to) => cpSync(from, to, { recursive: true, filter: source => !skip(source) })
 
-/** Estado dos Boos sem o que só vale na máquina de origem: sessões casa, rotinas (agendadas em sessões) e projetos dos times. */
+/** Estado dos Boos sem o que só vale na máquina de origem: sessões casa, rotinas (agendadas em sessões), delegações (sessões) e projetos dos times. */
 export function portableState(raw) {
-  const { homes, routines, projects, ...rest } = raw
-  return { ...rest, homes: {}, routines: [], projects: {} }
+  const { homes, routines, projects, delegations, ...rest } = raw
+  return { ...rest, homes: {}, routines: [], projects: {}, delegations: [] }
 }
 
 /** Separa as dependências do perfil em plugins do npm e plugins locais (link:). */

@@ -21,8 +21,9 @@ test('estado portátil zera o que só vale na máquina de origem e mantém Boos 
     projects: { 'workspace-1': 't' },
     homes: { a: 'session-1' },
     routines: [{ id: 'r', scheduleId: 's', sessionId: 'session-1' }],
+    delegations: [{ id: 'd', sessionId: 'session-2', originSessionId: 'session-3' }],
   })
-  assert.deepEqual([state.homes, state.routines, state.projects], [{}, [], {}])
+  assert.deepEqual([state.homes, state.routines, state.projects, state.delegations], [{}, [], {}, []])
   assert.equal(state.agents.length, 1)
   assert.equal(state.teams[0].name, 'Web')
 })
