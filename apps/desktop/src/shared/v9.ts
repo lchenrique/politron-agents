@@ -1,3 +1,4 @@
+import type { CardAnswer, InteractiveCard } from './interactive-card'
 import type { BooAccessoryColors } from './boo-accessory-colors'
 
 export type RunStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'interrupted' | 'failed' | 'cancelled'
@@ -104,7 +105,7 @@ export type PlanReviewDecision = 'approve' | 'reject' | 'request_changes'
 export interface ApprovalGrant { id: string; agentId: string; workspaceId: string; workspaceName?: string; kind: 'write' | 'browser' | 'command'; scopeKey: string; summary: string; createdAt: string }
 export interface Approval {
   id: string; runId: string; conversationId: string; agentId: string; kind: 'write' | 'browser' | 'command' | 'delegation' | 'agent-change' | 'question' | 'plan'
-  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; recommendedOption?: string; answer?: string; planTitle?: string; planSteps?: string[]; planReviewDecision?: PlanReviewDecision; planReviewFeedback?: string; desktopOnly?: boolean; alwaysAllowed?: boolean }
+  details: { path?: string; action?: string; command?: string; cwd?: string; before?: string; after?: string; truncated?: boolean; recipientName?: string; task?: string; proposal?: string; question?: string; options?: string[]; recommendedOption?: string; answer?: string; planTitle?: string; planSteps?: string[]; planReviewDecision?: PlanReviewDecision; planReviewFeedback?: string; desktopOnly?: boolean; alwaysAllowed?: boolean; /** Cartão interativo (`ask_ui`); `answer` guarda só o resumo, sem campos secretos. */ card?: InteractiveCard }
   status: 'pending' | 'approved' | 'denied' | 'interrupted'; createdAt: string; resolvedAt: string | null
 }
 export interface Run {
@@ -249,6 +250,7 @@ export interface AppAPI {
   respondApproval(approvalId: string, approved: boolean, alwaysAllow?: boolean): Promise<void>
   reviewPlan(approvalId: string, decision: PlanReviewDecision, feedback?: string): Promise<void>
   answerQuestion(approvalId: string, answer: string): Promise<void>
+  answerCard(approvalId: string, answer: CardAnswer): Promise<void>
   setVisibleConversation(conversationId: string | null): Promise<void>
   getVisibleConversation(): Promise<string | null>
   respondToAgent(conversationId: string, text: string, agentId: string): Promise<string>

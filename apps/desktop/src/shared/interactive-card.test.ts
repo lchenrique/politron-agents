@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cardFallbackText, isCardExpired, redactAnswer, validateAnswer, validateCard, type InteractiveCard } from './interactive-card'
+import { cardFallbackText, isCardExpired, parseTextAnswer, redactAnswer, validateAnswer, validateCard, type InteractiveCard } from './interactive-card'
 
 const choice: InteractiveCard = { id: 'c1', kind: 'choice', title: 'Biblioteca?', multiple: true, min: 1, max: 2, options: [{ id: 'a', label: 'React' }, { id: 'b', label: 'Vue' }, { id: 'c', label: 'Svelte' }] }
 const form: InteractiveCard = { id: 'f1', kind: 'form', title: 'Acesso', fields: [{ id: 'user', label: 'Usuário', required: true }, { id: 'pass', label: 'Senha', secret: true }] }
@@ -34,5 +34,15 @@ describe('cartões interativos', () => {
     expect(summary).toContain('ana')
     expect(summary).not.toContain('segredo123')
     expect(redactAnswer(choice, { status: 'expired' })).toBe('Expirado')
+  })
+
+  it('interpreta respostas em texto de canais sem botões', () => {
+    expect(parseTextAnswer({ id: 'q', kind: 'confirm', title: 'Ok?' }, 'Sim')).toEqual({ answer: { status: 'answered', values: { confirmed: true } } })
+    expect(parseTextAnswer({ id: 'q', kind: 'confirm', title: 'Ok?' }, 'talvez')).toHaveProperty('error')
+    expect(parseTextAnswer(choice, '1, 3')).toEqual({ answer: { status: 'answered', values: { choices: ['a', 'c'] } } })
+    expect(parseTextAnswer(choice, '9')).toHaveProperty('error')
+    expect(parseTextAnswer(form, 'usuário: ana\nsenha: x')).toEqual({ answer: { status: 'answered', values: { user: 'ana', pass: 'x' } } })
+    expect(parseTextAnswer(form, 'sem formato')).toHaveProperty('error')
+    expect(parseTextAnswer(form, 'cancelar')).toEqual({ answer: { status: 'dismissed' } })
   })
 })

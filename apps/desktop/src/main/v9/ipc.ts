@@ -82,6 +82,7 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   routing?.register('v9:respondApproval', (id: string, approved: boolean, alwaysAllow?: boolean) => service.respondApproval(id, approved, true, alwaysAllow === true))
   routing?.register('v9:reviewPlan', (id: string, decision: Parameters<AppService['reviewPlan']>[1], feedback?: string) => service.reviewPlan(id, decision, feedback, true))
   invoke('answerQuestion', (id, answer) => service.answerQuestion(id, answer))
+  invoke('answerCard', (id, answer) => service.answerCard(id, answer))
   invoke('setVisibleConversation', (id) => service.setVisibleConversation(id))
   invoke('getVisibleConversation', () => service.getVisibleConversation())
   invoke('respondToAgent', (id, text, agentId) => service.respondToAgent(id, text, agentId))

@@ -20,6 +20,7 @@ import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, re
 import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPreview, type NodeReplServer } from './external-browser-proxy'
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, chiefLaneKey, mentionedRecipients, parseConcurrencyLimit, recipients, sessionLockKey, type WorkspaceLease } from './routing'
+import { redactAnswer, validateAnswer, validateCard, type CardAnswer, type InteractiveCard } from '../../shared/interactive-card'
 import { OpenRouterDecisionService } from './decision-routing'
 import { ImageGenerationService, imageExtension, NOT_CONFIGURED } from './image-generation'
 import { CodexRuntime, type DynamicTool } from './codex'
@@ -229,6 +230,7 @@ export class AppService extends EventEmitter {
   private readonly approvalWaiters = new Map<string, { resolve: (approved: boolean) => void; scope?: ReturnType<typeof approvalScope> }>()
   private readonly planReviewWaiters = new Map<string, (result: { decision: PlanReviewDecision; feedback?: string }) => void>()
   private readonly questionWaiters = new Map<string, (answer: string) => void>()
+  private readonly cardWaiters = new Map<string, (answer: CardAnswer) => void>()
   private visibleConversationId: string | null = null
   private cachedModels: ((runtime: Agent['runtime']) => Promise<Model[]>) | null = null
   private readonly statusTimer: ReturnType<typeof setInterval>
@@ -581,6 +583,60 @@ export class AppService extends EventEmitter {
       this.updateMessage(context.message, 'running', context.message.text)
     }
     submit(response)
+  }
+  async answerCard(approvalId: string, answer: CardAnswer): Promise<void> {
+    const approval = this.store.approval(approvalId)
+    const card = approval?.details.card
+    if (!approval || !card || approval.status !== 'pending') throw new Error('O cartão não está pendente.')
+    const submit = this.cardWaiters.get(approvalId)
+    if (!submit) throw new Error('O agente deste cartão não está ativo.')
+    const problem = validateAnswer(card, answer)
+    if (problem) throw new Error(problem)
+    this.cardWaiters.delete(approvalId)
+    // Só o resumo sem campos secretos é gravado; o valor completo vai apenas ao agente.
+    const updated: Approval = { ...approval, status: answer.status === 'answered' ? 'approved' : 'denied', details: { ...approval.details, answer: redactAnswer(card, answer) }, resolvedAt: new Date().toISOString() }
+    this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
+    const context = this.contexts.get(approval.runId)
+    if (context) {
+      context.run.status = 'running'; this.store.putRun(context.run)
+      this.updateMessage(context.message, 'running', context.message.text)
+    }
+    submit(answer)
+  }
+  private askUi(context: RunContext, card: InteractiveCard): Promise<CardAnswer> {
+    if (context.signal?.aborted) return Promise.reject(new Error('Execução interrompida.'))
+    if (hasFullAccess(context.agent)) return Promise.resolve({ status: 'dismissed' })
+    const approval: Approval = { id: randomUUID(), runId: context.run.id,
+      conversationId: context.conversation.id, agentId: context.agent.id, kind: 'question',
+      details: { question: card.title, options: [], card }, status: 'pending', createdAt: new Date().toISOString(), resolvedAt: null }
+    this.store.putApproval(approval)
+    context.run.status = 'waiting'; this.store.putRun(context.run)
+    this.updateMessage(context.message, 'waiting', context.message.text)
+    return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const finish = (status: 'interrupted' | 'denied', answer: string) => {
+        this.cardWaiters.delete(approval.id); clearTimeout(timer)
+        context.signal?.removeEventListener('abort', abort)
+        const current = this.store.approval(approval.id)
+        if (current?.status === 'pending') {
+          const updated: Approval = { ...current, status, details: { ...current.details, answer }, resolvedAt: new Date().toISOString() }
+          this.store.putApproval(updated); this.emitEvent({ type: 'approval', approval: updated })
+        }
+      }
+      const abort = () => { finish('interrupted', 'Interrompida'); reject(new Error('Cartão interrompido.')) }
+      this.cardWaiters.set(approval.id, answer => { context.signal?.removeEventListener('abort', abort); clearTimeout(timer); resolve(answer) })
+      context.signal?.addEventListener('abort', abort, { once: true })
+      if (card.expiresAt) {
+        const wait = Date.parse(card.expiresAt) - Date.now()
+        timer = setTimeout(() => {
+          finish('denied', 'Expirado')
+          context.run.status = 'running'; this.store.putRun(context.run); this.updateMessage(context.message, 'running', context.message.text)
+          resolve({ status: 'expired' })
+        }, Math.min(Math.max(wait, 0), 2 ** 31 - 1))
+      }
+      this.emitEvent({ type: 'approval', approval })
+      this.notifyWhenAway(context.conversation.id, 'Cartão do Boo', card.title.slice(0, 140))
+    })
   }
   private askUser(context: RunContext, question: string, options: string[], recommendedOption?: string): Promise<string> {
     if (context.signal?.aborted) return Promise.reject(new Error('Execução interrompida.'))
@@ -1267,6 +1323,9 @@ export class AppService extends EventEmitter {
         options: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 6 },
         recommended: { type: 'string', description: 'Uma das opções, idêntica ao texto exibido. Informe somente quando a evidência do contexto favorecer claramente essa escolha; caso contrário, omita.' },
       }, ['question', 'options']),
+      tool('ask_ui', 'Mostre um cartão interativo ao usuário e aguarde a resposta: confirm (confirmação), quick-replies (respostas rápidas), choice (escolha única ou múltipla) ou form (campos curtos; use secret:true em senhas e tokens). Retorna JSON {status, values}. Use somente quando uma decisão ou dado do usuário bloquear o trabalho. Nunca use para pedir permissão de executar ferramentas.', {
+        card: { type: 'object', additionalProperties: true, description: 'Cartão: {id, kind: "confirm"|"quick-replies"|"choice"|"form", title, text?, expiresAt? (ISO 8601), confirmLabel? e cancelLabel? (confirm), options: [{id,label,description?}] (quick-replies e choice), multiple?, min?, max? (choice), fields: [{id,label,placeholder?,required?,secret?}] e submitLabel? (form)}.' },
+      }, ['card']),
       tool('propose_plan', 'Registre um plano visual, em etapas verificáveis, para o usuário acompanhar. No modo plano, NÃO execute mudanças.', {
         title: { type: 'string' },
         steps: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 15 },
@@ -1492,6 +1551,12 @@ export class AppService extends EventEmitter {
       if (args.recommended !== undefined && (!recommended || !raw.includes(recommended))) throw new Error('A opção recomendada deve corresponder a uma das opções apresentadas.')
       return 'Resposta do usuário: ' + await this.askUser(context, question, raw as string[], recommended)
     }
+    if (name === 'ask_ui') {
+      const card = args.card as InteractiveCard | undefined
+      const problem = !card || typeof card !== 'object' ? 'Cartão ausente.' : validateCard(card)
+      if (problem) throw new Error('Cartão inválido: ' + problem)
+      return JSON.stringify(await this.askUi(context, card as InteractiveCard))
+    }
     if (name === 'propose_plan') {
       const title = text(args.title, 140).trim()
       const raw = args.steps
@@ -1512,7 +1577,7 @@ export class AppService extends EventEmitter {
         ? 'Plano apresentado no Boobot. Aguarde o próximo pedido do usuário fora do modo plano.'
         : 'Plano registrado no Boobot. Continue a execução da tarefa autorizada e valide o resultado.'
     }
-    if (context.run.planMode && !['workspace_list', 'workspace_read', 'ask_user', 'propose_plan',
+    if (context.run.planMode && !['workspace_list', 'workspace_read', 'ask_user', 'ask_ui', 'propose_plan',
       'group_members', 'search_history', 'list_skills', 'read_skill'].includes(name))
       throw new Error('Modo plano: ferramenta de alteração indisponível.')
     if (name === 'workspace_run_command') {

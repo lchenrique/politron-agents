@@ -74,6 +74,7 @@ const appAPI: AppAPI = {
   respondApproval: (id, approved, alwaysAllow) => ipcRenderer.invoke('v9:respondApproval', id, approved, alwaysAllow),
   reviewPlan: (id, decision, feedback) => ipcRenderer.invoke('v9:reviewPlan', id, decision, feedback),
   answerQuestion: (id, answer) => ipcRenderer.invoke('v9:answerQuestion', id, answer),
+  answerCard: (id, answer) => ipcRenderer.invoke('v9:answerCard', id, answer),
   setVisibleConversation: (id) => ipcRenderer.invoke('v9:setVisibleConversation', id),
   getVisibleConversation: () => ipcRenderer.invoke('v9:getVisibleConversation'),
   respondToAgent: (id, text, agentId) => ipcRenderer.invoke('v9:respondToAgent', id, text, agentId),

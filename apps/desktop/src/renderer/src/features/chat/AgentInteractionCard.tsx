@@ -4,6 +4,7 @@ import { FollowUpSuggestions } from '@/components/ai/follow-up-suggestions'
 import { PlanApprovalCard } from '@/components/ai/plan-approval-card'
 import { errorText } from '../app/appShellShared'
 import takeoverStyles from '../composer/ComposerTakeover.module.css'
+import { InteractiveCardView } from './InteractiveCardView'
 
 /** Persisted plan and question tool results live alongside the related agent message. */
 export function AgentInteractionCard({ approval, onNotice, takeover = false }: {
@@ -25,6 +26,17 @@ export function AgentInteractionCard({ approval, onNotice, takeover = false }: {
     </div>
   }
   if (approval.kind !== 'question') return null
+  const card = approval.details.card
+  if (card) {
+    const pendingCard = approval.status === 'pending'
+    // Cartão resolvido: só o resumo gravado (sem campos secretos); a resposta completa foi apenas ao agente.
+    return pendingCard
+      ? <InteractiveCardView card={card} onAnswer={async answer => { try { await window.appAPI.answerCard(approval.id, answer) } catch (error) { onNotice(errorText(error)); throw error } }} />
+      : <section aria-label="Cartão do Boo" className="max-w-xl rounded-lg border border-border/60 bg-card p-3 text-sm">
+        <p className="font-medium">{card.title}</p>
+        <p role="status" className="mt-1 text-xs text-muted-foreground">Resposta: {approval.details.answer || 'Interrompida'}</p>
+      </section>
+  }
   const pending = approval.status === 'pending'
   const options = (approval.details.options || []).map((label, index) => ({
     id: String(index), label, recommended: label === approval.details.recommendedOption,

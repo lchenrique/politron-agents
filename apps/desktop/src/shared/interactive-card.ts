@@ -101,3 +101,30 @@ export function redactAnswer(card: InteractiveCard, answer: CardAnswer): string 
   }
   return card.fields.map(field => `${field.label}: ${field.secret ? '••••' : String(values[field.id] ?? '')}`).join('; ')
 }
+
+/** Interpreta a resposta em texto de um canal sem botões. Devolve a resposta ou a mensagem de erro para o usuário. */
+export function parseTextAnswer(card: InteractiveCard, input: string): { answer: CardAnswer } | { error: string } {
+  const text = input.trim()
+  if (/^(cancelar|dispensar)$/i.test(text)) return { answer: { status: 'dismissed' } }
+  if (card.kind === 'confirm') {
+    if (/^(s|sim|y|yes|ok|confirmar)$/i.test(text)) return { answer: { status: 'answered', values: { confirmed: true } } }
+    if (/^(n|não|nao|no)$/i.test(text)) return { answer: { status: 'answered', values: { confirmed: false } } }
+    return { error: 'Responda "sim" ou "não".' }
+  }
+  if (card.kind === 'quick-replies' || card.kind === 'choice') {
+    const numbers = text.split(/[\s,;]+/).filter(Boolean).map(Number)
+    if (!numbers.length || numbers.some(number => !Number.isInteger(number) || number < 1 || number > card.options.length)) return { error: `Responda com o número da opção (1 a ${card.options.length}).` }
+    const ids = [...new Set(numbers)].map(number => card.options[number - 1].id)
+    if (card.kind === 'quick-replies' || !card.multiple) return ids.length === 1 ? { answer: { status: 'answered', values: { choice: ids[0] } } } : { error: 'Escolha uma única opção.' }
+    return { answer: { status: 'answered', values: { choices: ids } } }
+  }
+  const values: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const at = line.indexOf(':')
+    if (at < 1) continue
+    const key = line.slice(0, at).trim().toLowerCase()
+    const field = card.fields.find(item => item.id.toLowerCase() === key || item.label.toLowerCase() === key)
+    if (field) values[field.id] = line.slice(at + 1).trim()
+  }
+  return Object.keys(values).length ? { answer: { status: 'answered', values } } : { error: 'Responda uma linha por campo, no formato "campo: valor".' }
+}
