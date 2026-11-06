@@ -98,6 +98,14 @@
 .dsh-new-session svg { width: 14px; height: 14px; color: currentColor; }
 .boobot-sidebar .dsh-new-session svg.lucide { stroke-width: 1.15; }
 
+/* Controle segmentado Projetos | Boos, no topo da barra. */
+.dsh-segmented { display: flex; gap: 2px; margin: 8px 2px 0 0; padding: 2px; border-radius: 10px; background: var(--dsh-hover); }
+.dsh-segmented button { flex: 1; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--dsh-label-tertiary); font-size: 13px; font-weight: 400; box-shadow: none; }
+.dsh-segmented button:hover { color: var(--dsh-label-primary); background: transparent; }
+.dsh-segmented button[aria-pressed="true"] { background: var(--dsh-fill); color: var(--dsh-label-primary); font-weight: 500; box-shadow: 0 0 0 0.5px var(--dsh-hover), 0 1px 2px rgb(0 0 0 / 0.12); }
+.dsh-context { color: var(--dsh-label-caption); }
+.dsh-foot:has(.dsh-foot-host:empty) { display: none; }
+
 /* Painéis globais: Central, Rotinas, Remoto. */
 .dsh-panel-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
 .dsh-panel-row {

@@ -222,10 +222,6 @@ export interface AppAPI {
   /** Somente Desktop: autoriza o navegador real para todas as conversas. */
   saveExternalBrowserAlways?(enabled: boolean): Promise<void>
   saveAgent(input: Partial<Agent>): Promise<Agent>
-  /** Desktop: catálogo de equipes prontas do Marketplace. */
-  marketplaceTeams?(): Promise<import('./marketplace').MarketplaceTeam[]>
-  /** Desktop: contrata uma equipe pronta (cria os Boos e a conversa em grupo). */
-  hireTeam?(input: import('./marketplace').HireTeamInput): Promise<import('./marketplace').HireTeamResult>
   saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode' | 'runtimePermissionMode'>>): Promise<Agent>
   approvalGrants(agentId: string): Promise<ApprovalGrant[]>
   removeApprovalGrant(grantId: string, agentId: string): Promise<void>

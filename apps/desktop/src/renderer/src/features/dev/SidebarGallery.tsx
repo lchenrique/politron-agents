@@ -37,8 +37,8 @@ const hostsSnapshot: HostsSnapshot = { selectedId: 'local', hosts: [{ id: 'local
 if (!window.hostsAPI) window.hostsAPI = { snapshot: async () => hostsSnapshot, onChanged: () => noop, configure: async () => hostsSnapshot, add: async () => hostsSnapshot.hosts[0], select: async () => undefined, remove: async () => undefined, copyPairing: async () => '', revoke: async () => undefined, browse: async () => [], resolveFolder: async () => null, onFolderRequest: () => noop } as unknown as HostsAPI
 
 export default function SidebarGallery() {
-  const [view, setView] = useState<'home' | 'routines' | 'board' | 'office' | 'marketplace' | null>(null)
-  const props = { snapshot, unreadCounts: { b2: 2 }, agentStates: { tyr: 'working', luna: 'working', freya: 'waiting' } as const, onSelectConversation: noop, onStartConversation: noop, onOpenAgent: noop, onOpenEditor: noop, onOpenSettings: noop, onDeleteWorkspace: noop, onDeleteConversation: noop, onDeleteAgent: noop, onSetChief: noop, onNotice: noop, view, onOpenHome: setView, attentionCount: 3 }
+  const [view, setView] = useState<'home' | 'routines' | 'board' | null>(null)
+  const props = { snapshot, unreadCounts: { b2: 2 }, agentStates: { tyr: 'working', luna: 'working', freya: 'waiting' } as const, onSelectConversation: noop, onStartConversation: noop, onOpenAgent: noop, onOpenEditor: noop, onDeleteWorkspace: noop, onDeleteConversation: noop, onDeleteAgent: noop, onSetChief: noop, onNotice: noop, view, onOpenHome: setView, attentionCount: 3 }
   return <div className="flex h-dvh bg-chrome text-foreground" data-sidebar-gallery>
     <div className="h-full w-[280px] shrink-0" data-level="global"><Sidebar {...props} selected={undefined} activeWorkspaceId={null} /></div>
     <div className="h-full w-[280px] shrink-0" data-level="project"><Sidebar {...props} selected={conversations[0]} activeWorkspaceId="bubbledesk" /></div>

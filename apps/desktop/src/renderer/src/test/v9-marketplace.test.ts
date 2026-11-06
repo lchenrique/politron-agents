@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false } }))
 
 import { AppService } from '../../../main/v9/workspace'
-import { loadTeams, marketplaceRoot } from '../../../main/marketplace/catalog'
+import { marketplaceRoot } from '../../../main/marketplace/catalog'
 import { SkillsService } from '../../../main/v9/skills/service'
 import { parseSkillFrontmatter } from '../../../main/v9/skills/discover'
 
@@ -17,29 +17,7 @@ afterEach(() => { for (const service of services.splice(0)) { try { service.disp
 const service = () => { const value = new AppService(temp()); services.push(value); return value }
 const skillsDir = join(marketplaceRoot(), 'skills')
 
-describe('catálogo do Marketplace', () => {
-  it('equipe de Instagram: 6 Boos, 54 skills únicas e todas existem no catálogo', async () => {
-    const team = (await loadTeams()).find(item => item.id === 'instagram')!
-    expect(team.members).toHaveLength(6)
-    expect(team.members.some(member => member.key === team.leader)).toBe(true)
-    const skills = team.members.flatMap(member => member.skills)
-    expect(new Set(skills).size).toBe(54)
-    for (const slug of skills) expect(existsSync(join(skillsDir, slug, 'SKILL.md')), slug).toBe(true)
-  })
-
-  it('todas as equipes: líder válido, menções e skills únicas, e toda skill existe com descrição legível', async () => {
-    const teams = await loadTeams()
-    expect(teams.map(team => team.id).sort()).toEqual(['atendimento', 'instagram', 'marketing', 'vendas'])
-    const known = new Map((await new SkillsService(temp(), skillsDir).list()).filter(skill => skill.source === 'marketplace').map(skill => [skill.id.replace(/^marketplace:/, ''), skill]))
-    for (const team of teams) {
-      expect(team.members.some(member => member.key === team.leader), team.id).toBe(true)
-      expect(new Set(team.members.map(member => member.alias)).size, team.id).toBe(team.members.length)
-      const skills = team.members.flatMap(member => member.skills)
-      expect(new Set(skills).size, team.id).toBe(skills.length)
-      for (const slug of skills) expect(known.get(slug)?.description.length || 0, `${team.id}: ${slug}`).toBeGreaterThan(20)
-    }
-  })
-
+describe('catálogo de skills', () => {
   it('lê description em bloco dobrado do YAML', () => {
     expect(parseSkillFrontmatter('---\nname: x\ndescription: >\n  Primeira linha\n  segunda linha\nversion: 1\n---\n')).toMatchObject({ name: 'x', description: 'Primeira linha segunda linha', version: '1' })
   })
@@ -64,48 +42,5 @@ describe('skills por Boo', () => {
     const both = await skills.forAgent(['customer-research', 'support-customer-research'])
     expect(await skills.readContent('support-customer-research', undefined, both)).toContain('name: customer-research')
     expect(both.filter(skill => skill.name === 'customer-research')).toHaveLength(1)
-  })
-})
-
-describe('contratar equipe', () => {
-  it('global: cria os 6 Boos com skills e a conversa em grupo liderada pelo diretor', async () => {
-    const app = service()
-    const result = await app.hireTeam({ teamId: 'instagram', runtime: 'claude' })
-    const agents = result.agentIds.map(id => app.store.agent(id))
-    expect(agents).toHaveLength(6)
-    expect(agents.every(agent => agent.runtime === 'claude' && (agent.skillIds?.length || 0) > 0)).toBe(true)
-    const conversation = app.store.conversation(result.conversationId)
-    expect(conversation).toMatchObject({ kind: 'group', responseMode: 'leader', leaderAgentId: agents[0]!.id, name: 'Equipe de Instagram' })
-    expect(app.store.workspace(conversation.workspaceId).name).toBe('Livre')
-  })
-
-  it('contratar de novo não mexe nos Boos existentes e sufixa as menções', async () => {
-    const app = service()
-    const first = await app.hireTeam({ teamId: 'instagram', runtime: 'codex' })
-    const second = await app.hireTeam({ teamId: 'instagram', runtime: 'codex' })
-    const firstAliases = first.agentIds.map(id => app.store.agent(id).alias)
-    expect(second.agentIds.map(id => app.store.agent(id).alias)).toEqual(firstAliases.map(alias => `${alias}-2`))
-    expect(first.agentIds.map(id => app.store.agent(id).alias)).toEqual(firstAliases)
-  })
-
-  it('projeto: entra na equipe padrão; projeto cheio recusa sem criar nenhum Boo', async () => {
-    const app = service()
-    const workspace = app.store.workspace(app.saveConversation({ workspacePath: temp() }).workspaceId)
-    const hired = await app.hireTeam({ teamId: 'instagram', workspaceId: workspace.id, runtime: 'codex' })
-    expect(app.store.workspace(workspace.id).defaultAgentIds).toEqual(hired.agentIds)
-    expect(app.store.conversation(hired.conversationId).workspaceId).toBe(workspace.id)
-    const before = app.store.agents().length
-    await expect(app.hireTeam({ teamId: 'instagram', workspaceId: workspace.id, runtime: 'codex' })).rejects.toThrow('cabem até 10')
-    expect(app.store.agents()).toHaveLength(before)
-  })
-
-  it('erro no meio desfaz os Boos já criados', async () => {
-    const app = service()
-    const before = app.store.agents().length
-    const original = app.store.saveConversation.bind(app.store)
-    app.store.saveConversation = () => { throw new Error('falhou de propósito') }
-    await expect(app.hireTeam({ teamId: 'instagram', runtime: 'codex' })).rejects.toThrow('falhou de propósito')
-    app.store.saveConversation = original
-    expect(app.store.agents()).toHaveLength(before)
   })
 })

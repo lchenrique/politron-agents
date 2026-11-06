@@ -63,7 +63,6 @@ function props(snapshot: Snapshot) {
     onStartConversation: vi.fn(),
     onOpenAgent: vi.fn(),
     onOpenEditor: vi.fn(),
-    onOpenSettings: vi.fn(),
     onDeleteWorkspace: vi.fn(),
     onDeleteConversation: vi.fn(),
     onDeleteAgent: vi.fn(),

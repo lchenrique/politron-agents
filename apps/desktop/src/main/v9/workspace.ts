@@ -29,8 +29,7 @@ import { PiRuntime } from './pi'
 import { HeadlessCliRuntime } from './headless-cli'
 import { OpenCodeServerRuntime } from './opencode-server'
 import { chooseBooIdentity } from './boo-identity'
-import { loadTeams, marketplaceRoot } from '../marketplace/catalog'
-import type { HireTeamInput, HireTeamResult } from '../../shared/marketplace'
+import { marketplaceRoot } from '../marketplace/catalog'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
 import { agentModelInput, CHIEF_READ_TOOLS, CHIEF_TOOLS, chiefToolDefinitions, runChiefTool, type ChiefCall } from './chief-control'
 import { SessionUnavailableError, type AgentInput, type AgentRuntime, type RuntimeThread } from './agent-runtime'
@@ -367,33 +366,6 @@ export class AppService extends EventEmitter {
     if (owner && !this.canShareBrowser(owner)) this.platformBrowser?.revokeSharing()
   }
   saveAgent(input: Partial<Agent>) { const agent = this.store.saveAgent(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return agent }
-  marketplaceTeams() { return loadTeams() }
-  /**
-   * Contrata uma equipe pronta: cria Boos novos (nunca toca nos existentes; menção repetida ganha -2, -3…),
-   * liga ao projeto escolhido ou deixa global, e abre a conversa em grupo liderada pelo líder da equipe. Tudo ou nada.
-   */
-  async hireTeam(input: HireTeamInput): Promise<HireTeamResult> {
-    const team = (await loadTeams()).find(item => item.id === input.teamId)
-    if (!team) throw new Error('Equipe não encontrada no Marketplace.')
-    const target = input.workspaceId ? this.store.workspace(input.workspaceId) : undefined
-    if (target?.archived) throw new Error('Este projeto está arquivado.')
-    if (target && target.defaultAgentIds.length + team.members.length > 10) throw new Error(`O projeto ${target.name} já tem ${target.defaultAgentIds.length} Boos na equipe padrão e cabem até 10. Tire alguns de lá ou contrate a equipe como global.`)
-    const taken = new Set(this.store.agents().map(agent => agent.alias.toLowerCase()))
-    const freeAlias = (alias: string) => { let candidate = alias; for (let index = 2; taken.has(candidate); index++) candidate = `${alias}-${index}`; taken.add(candidate); return candidate }
-    this.store.db.exec('BEGIN IMMEDIATE')
-    let result: HireTeamResult
-    try {
-      const saved = team.members.map(member => this.store.saveAgent({ name: member.name, alias: freeAlias(member.alias.toLowerCase()), description: member.description.slice(0, 500), instructions: member.instructions, color: member.color, pitsHeadAccessory: member.pitsHeadAccessory as Agent['pitsHeadAccessory'], skillIds: member.skills, runtime: input.runtime, model: input.model || '' }))
-      const agentIds = saved.map(agent => agent.id)
-      if (target) this.store.saveWorkspace({ id: target.id, defaultAgentIds: [...target.defaultAgentIds, ...agentIds] })
-      const leader = saved[team.members.findIndex(member => member.key === team.leader)] ?? saved[0]!
-      const conversation = this.store.saveConversation({ workspaceId: target?.id, name: team.name, titleAuto: false, agentIds, kind: 'group', responseMode: 'leader', leaderAgentId: leader.id })
-      this.store.db.exec('COMMIT')
-      result = { agentIds, conversationId: conversation.id }
-    } catch (error) { this.store.db.exec('ROLLBACK'); throw error }
-    this.emitEvent({ type: 'changed' })
-    return result
-  }
   saveAssistantPreferences(input: Partial<AssistantPreferences>) { const assistant = this.store.saveAssistantPreferences(input); this.revalidateBrowserSharing(); this.emitEvent({ type: 'changed' }); return assistant }
   approvalGrants(agentId: string) { this.store.agent(agentId); return this.store.approvalGrants(agentId).map(grant => ({ ...grant, workspaceName: this.store.workspace(grant.workspaceId).name || basename(this.store.workspace(grant.workspaceId).path) })) }
   removeApprovalGrant(grantId: string, agentId: string) {

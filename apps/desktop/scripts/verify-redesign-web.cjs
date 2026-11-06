@@ -76,18 +76,6 @@ async function main() {
     assert.equal(await activity.getAttribute('aria-expanded'), 'true')
     await page.locator('section[aria-label="Boo ao vivo"]').screenshot({ path: path.join(shots, 'voice-panel.png') })
 
-    // Escritório vivo: sala ilustrada, Boos com estado real e alguém andando pela sala.
-    await open('/office-gallery', '.office__scene')
-    assert.equal(await page.locator('.office-boo').count(), 6, 'um Boo por agente')
-    assert.ok(await page.locator('.office-boo svg.boo-work').count() >= 2, 'Boos digitando nas mesas')
-    assert.equal(await page.locator('.office__alert-badge').count(), 1, 'alerta de aprovação')
-    const positions = () => page.locator('.office-boo').evaluateAll(nodes => nodes.map(node => node.getAttribute('transform')).join('|'))
-    const before = await positions()
-    let moved = false
-    for (let i = 0; i < 20 && !moved; i++) { await page.waitForTimeout(500); moved = (await positions()) !== before }
-    assert.ok(moved, 'Boos livres andam pela sala')
-    await page.locator('[data-office-gallery]').screenshot({ path: path.join(shots, 'office.png') })
-
     assert.deepEqual(errors, [], 'sem erros de página')
     console.log('Redesign verificado. Capturas em ' + shots)
   } finally {
