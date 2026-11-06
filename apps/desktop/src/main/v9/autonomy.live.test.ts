@@ -25,6 +25,10 @@ it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1')('Codex real cria time, delega
       }
     })
     await service.send(conversation.id, 'Crie uma equipe permanente com um Boo chamado Hermes Smoke, especialista em frontend. Adicione-o a esta conversa e delegue a ele a criação de index.html com o título Studio Criskelly e o texto Aplicação em cinco minutos. O especialista deve gravar o arquivo por workspace_write. Aguarde o resultado, confira o arquivo por workspace_read e execute node --version pelo terminal. Conclua relatando apenas os resultados reais. A pasta vazia é o projeto novo, não é um bloqueio.')
+    // A delegação roda em segundo plano (o Chief não bloqueia): espera a conclusão antes de conferir.
+    await vi.waitFor(() => expect(service.store.delegations()[0]?.status).toBe('completed'), { timeout: 200_000, interval: 1000 })
+    // Ao concluir, o Chief é reativado para continuar: espera as execuções terminarem antes de conferir o terminal.
+    await vi.waitFor(() => expect(service.store.runs().filter(run => ['queued', 'running', 'waiting'].includes(run.status))).toEqual([]), { timeout: 200_000, interval: 1000 })
     const team = service.store.agents().filter(item => item.id !== chief.id)
     const delegations = service.store.delegations()
     const commands = service.store.runs().flatMap(run => service.store.commandEvidenceForRun(run.id))
@@ -39,4 +43,36 @@ it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1')('Codex real cria time, delega
     expect(commands.some(item => item.exitCode === 0 && /^v\d+\./m.test(item.output))).toBe(true)
     expect(service.store.approvals()).toEqual([])
   } finally { console.info('EVIDÊNCIA AUTONOMIA:', root); service.dispose() }
+}, 240_000)
+
+it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1')('Codex real: Chief cria projeto, equipe, vincula ao projeto e só exclui Boo com confirmação', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'boobot-chief-control-live-'))
+  const service = new AppService(join(root, 'profile'))
+  const approvals: { kind: string; details: { action?: string; task?: string } }[] = []
+  try {
+    const models = await service.runtime.models()
+    const model = models.find(item => item.id === 'gpt-6-luna') || models.find(item => item.isDefault)
+    if (!model) throw new Error('Nenhum modelo Codex autorizado disponível.')
+    const chief = service.saveAgent({ name: 'Atlas Smoke', role: 'chief', instructions: 'Conclua a tarefa usando as ferramentas do Boobot. Este teste dispensa skills e memória. Relate apenas resultados reais.', runtime: 'codex', model: model.id, canWrite: true, approvalMode: 'bypass' })
+    const home = service.store.saveWorkspace({ name: 'Central', path: root })
+    const conversation = service.saveConversation({ name: 'Controle do Chief', workspaceId: home.id, agentIds: [chief.id] })
+    service.on('workspace-event', (event: WorkspaceEvent) => {
+      if (event.type === 'approval' && event.approval.status === 'pending') {
+        approvals.push(event.approval)
+        // Exclusão pede confirmação mesmo no Bypass; o teste aprova só ela e recusa qualquer outra coisa.
+        void service.respondApproval(event.approval.id, event.approval.kind === 'agent-change')
+      }
+    })
+    await service.send(conversation.id, `Crie o projeto "Loja Teste" na pasta ${join(root, 'loja-teste').split(String.fromCharCode(92)).join('/')} (crie a pasta se faltar), crie dois Boos permanentes, "Ana Front" (frontend) e "Beto Back" (backend), defina os dois como o time padrão desse projeto e depois exclua o Boo "Beto Back". Relate apenas o que de fato aconteceu.`)
+    await vi.waitFor(() => expect(service.store.runs().filter(run => ['queued', 'running', 'waiting'].includes(run.status))).toEqual([]), { timeout: 200_000, interval: 1000 })
+    const project = service.store.workspaces().find(item => item.name === 'Loja Teste')
+    const names = service.store.agents().filter(item => item.id !== chief.id).map(item => item.name)
+    await writeFile(join(root, 'evidence.json'), JSON.stringify({ root, project, names, approvals, history: service.history(conversation.id) }, null, 2))
+    expect(project).toBeTruthy()
+    expect(names).toContain('Ana Front')
+    expect(names).not.toContain('Beto Back')
+    const ana = service.store.agents().find(item => item.name === 'Ana Front')!
+    expect(project!.defaultAgentIds).toContain(ana.id)
+    expect(approvals.some(item => /Beto Back/.test(JSON.stringify(item.details)))).toBe(true)
+  } finally { console.info('EVIDÊNCIA CONTROLE:', root); service.dispose() }
 }, 240_000)
