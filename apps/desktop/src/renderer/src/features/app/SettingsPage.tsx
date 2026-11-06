@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import { AudioLines, Brain, Download, FolderPlus, GraduationCap, ImagePlus, KeyRound, Monitor, Palette, Plug, Router, Send, Trash2, Wrench, X } from 'lucide-react'
+import { AudioLines, Brain, Download, FolderPlus, GraduationCap, ImagePlus, KeyRound, Monitor, MousePointerClick, Palette, Plug, Router, Send, Trash2, Wrench, X } from 'lucide-react'
 import { ASSISTANT_ID, type Agent, type DecisionModel, type OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { SkillInfo } from '../../../../shared/skills'
@@ -18,10 +18,11 @@ import { AppUpdatesPanel } from './AppUpdatesPanel'
 import { ImageGenerationPanel } from './ImageGenerationPanel'
 import { TelegramPanel } from './TelegramPanel'
 import { MemoryPanel } from './MemoryPanel'
+import { ComputerUsePanel } from './ComputerUsePanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
 import css from './SettingsPage.module.css'
 
-export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'imagens' | 'skills' | 'memoria' | 'voz' | 'conexoes' | 'telegram' | 'atualizacoes'
+export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'imagens' | 'skills' | 'memoria' | 'computer-use' | 'voz' | 'conexoes' | 'telegram' | 'atualizacoes'
 type Section = SettingsSection
 const SECTIONS: { id: Section; label: string; icon: typeof Palette; description: string }[] = [
   { id: 'geral', label: 'Geral', icon: Palette, description: 'Modo visual do Boobot e animação dos Boos neste dispositivo.' },
@@ -31,6 +32,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof Palette; description:
   { id: 'imagens', label: 'Geração de imagens', icon: ImagePlus, description: 'Quem gera as imagens pedidas aos Boos: Codex, Antigravity ou uma chave de API.' },
   { id: 'skills', label: 'Skills', icon: GraduationCap, description: 'Skills SKILL.md encontradas nesta máquina e pastas adicionadas por você.' },
   { id: 'memoria', label: 'Memória', icon: Brain, description: 'Fatos que os Boos lembram entre conversas, guardados só neste computador.' },
+  { id: 'computer-use', label: 'Computer Use', icon: MousePointerClick, description: 'Deixe os Boos controlarem o Windows com o cua-driver, com aprovação por conversa.' },
   { id: 'voz', label: 'Voz em tempo real', icon: AudioLines, description: 'Chaves, transcrição e vozes das ligações e da leitura de mensagens.' },
   { id: 'conexoes', label: 'Conexões', icon: Monitor, description: 'Acesso a este computador pelos seus outros computadores.' },
   { id: 'telegram', label: 'Telegram', icon: Send, description: 'Fale com o Chief e aprove ações pelo celular com um bot seu do Telegram.' },
@@ -307,6 +309,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         </>}
         {section === 'memoria' && <Field icon={Brain} title="Memória dos Boos" description="Essenciais entram em todo turno (até 8 KiB); pesquisáveis só aparecem quando o Boo busca. Os Boos tratam memórias como dados, nunca como ordens, e não guardam tokens nem senhas. Tudo fica no banco local do Boobot."><MemoryPanel /></Field>}
         {section === 'conexoes' && <><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field></>}
+        {section === 'computer-use' && <Field icon={MousePointerClick} title="Controle do Windows" description="O Boo vê janelas, clica, digita e abre programas como você, só depois da sua aprovação em cada conversa e só enquanto está executando."><ComputerUsePanel /></Field>}
         {section === 'telegram' && <Field icon={Send} title="Bot do Telegram" description="Crie um bot no @BotFather, cole o token e pareie seu celular. Só chats pareados conversam com o Boobot, e nenhuma ação é executada sem o seu toque em Aprovar."><TelegramPanel /></Field>}
         {section === 'atualizacoes' && <AppUpdatesPanel />}
         {section === 'voz' && <>

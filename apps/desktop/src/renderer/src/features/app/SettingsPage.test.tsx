@@ -174,11 +174,11 @@ describe('painel de configurações', () => {
 describe('hierarquia das seções', () => {
   const sections: [string, RegExp][] = [
     ['Geral', /Modo visual/], ['Assistente', /Assistente padrão/], ['Ferramentas', /terminal/],
-    ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex, Antigravity/], ['Skills', /SKILL\.md/], ['Memória', /lembram entre conversas/], ['Voz em tempo real', /transcrição/],
+    ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex, Antigravity/], ['Skills', /SKILL\.md/], ['Memória', /lembram entre conversas/], ['Computer Use', /cua-driver/], ['Voz em tempo real', /transcrição/],
     ['Conexões', /outros dispositivos/], ['Telegram', /Chief/], ['Atualizações', /canal de atualização/],
   ]
 
-  it('mantém as onze seções na navegação e dá a cada página título e propósito próprios', () => {
+  it('mantém as doze seções na navegação e dá a cada página título e propósito próprios', () => {
     vi.stubGlobal('appAPI', { ...appAPI, voiceStatus: vi.fn().mockResolvedValue({ voiceKeyConfigured: false }) })
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
