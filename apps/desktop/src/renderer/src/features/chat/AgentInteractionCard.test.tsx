@@ -47,3 +47,16 @@ it('registra resultado de aprovação e feedback de mudanças na transcrição',
   expect(screen.getByText('Pedido de mudanças: Inclua testes.')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Aprovar' })).not.toBeInTheDocument()
 })
+
+it('cartão interativo pendente responde pelo IPC e o resolvido mostra só o resumo', async () => {
+  const answerCard = vi.fn(async () => undefined)
+  vi.stubGlobal('appAPI', { answerCard })
+  const card = { id: 'k', kind: 'confirm' as const, title: 'Publicar?' }
+  const pendingApproval: Approval = { ...base, details: { question: 'Publicar?', options: [], card } }
+  const view = render(<AgentInteractionCard approval={pendingApproval} onNotice={vi.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+  await waitFor(() => expect(answerCard).toHaveBeenCalledWith('q-1', { status: 'answered', values: { confirmed: true } }))
+  view.rerender(<AgentInteractionCard approval={{ ...pendingApproval, status: 'approved', details: { ...pendingApproval.details, answer: 'Confirmado' } }} onNotice={vi.fn()} />)
+  expect(screen.getByRole('status')).toHaveTextContent('Resposta: Confirmado')
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+})

@@ -36,7 +36,7 @@ function setup(opts: { now?: () => number } = {}) {
   const host = Object.assign(new EventEmitter(), {
     snapshot: vi.fn(() => ({ agents: [{ id: 'chief', name: 'Chief', role: 'chief' }], conversations: [{ id: CONV, name: 'Chief', kind: 'direct', agentIds: ['chief'], archived: false, createdAt: '2026-01-01' }], runs: [], approvals: [] })),
     send: vi.fn(async () => undefined), saveConversation: vi.fn(() => ({ id: CONV })),
-    respondApproval: vi.fn(async () => { approval.status = 'approved' }), reviewPlan: vi.fn(), answerQuestion: vi.fn(),
+    respondApproval: vi.fn(async () => { approval.status = 'approved' }), reviewPlan: vi.fn(), answerQuestion: vi.fn(), answerCard: vi.fn(),
     store: { approval: () => approval, agent: () => ({ name: 'Chief' }), conversation: () => ({ id: CONV, name: 'Chief', archived: false, agentIds: ['chief'], workspaceId: 'ws' }),
       memories: { list: vi.fn(() => [{ text: 'Prefere <b>curto</b>', scope: 'global', inclusion: 'essencial' }]), save: vi.fn((input: { text: string }) => { if (input.text.includes('sk-')) throw new Error('Isto parece um token'); return { memory: input, note: '' } }) } },
   }) as unknown as TelegramHost & EventEmitter
@@ -146,6 +146,59 @@ describe('aprovações', () => {
     await pollWith(s, callback(3, 7, `a:${APPROVAL_ID}:1`))
     expect(s.host.respondApproval).not.toHaveBeenCalled()
     expect((s.calls.find(c => c.method === 'editMessageText')!.body.text as string)).toContain('recusada')
+  })
+})
+
+describe('cartões interativos', () => {
+  async function withCard(card: Record<string, unknown>) {
+    const s = setup(); await ready(s); await pair(s)
+    ;(s.service as unknown as { data: { enabled: boolean }; botUsername: string }).data.enabled = true
+    Object.assign(s.approval, { kind: 'question', details: { question: card.title, options: [], card } })
+    s.host.emit('workspace-event', { type: 'approval', approval: s.approval })
+    await vi.waitFor(() => expect(sent(s.calls)).toHaveLength(1))
+    return s
+  }
+  type Body = { text: string; reply_markup?: { inline_keyboard: { text: string; callback_data: string }[][] } }
+  const lastSend = (s: S) => s.calls.filter(c => c.method === 'sendMessage')[0].body as Body
+
+  it('confirmação vira dois botões e o toque responde pelo cartão', async () => {
+    const s = await withCard({ id: 'k', kind: 'confirm', title: 'Publicar <hoje>?', confirmLabel: 'Publicar' })
+    expect(lastSend(s).text).toContain('Publicar &lt;hoje&gt;?')
+    expect(lastSend(s).reply_markup!.inline_keyboard[0].map(b => b.text)).toEqual(['Publicar', 'Cancelar'])
+    await pollWith(s, callback(3, 7, `k:${APPROVAL_ID}:1`))
+    expect(s.host.answerCard).toHaveBeenCalledWith(APPROVAL_ID, { status: 'answered', values: { confirmed: true } })
+  })
+
+  it('respostas rápidas viram botões com o id da opção; índice inválido é recusado', async () => {
+    const s = await withCard({ id: 'q', kind: 'quick-replies', title: 'Tom?', options: [{ id: 'f', label: 'Formal' }, { id: 'i', label: 'Informal' }] })
+    expect(lastSend(s).reply_markup!.inline_keyboard.map(row => row[0].text)).toEqual(['Formal', 'Informal'])
+    await pollWith(s, callback(3, 7, `k:${APPROVAL_ID}:5`))
+    expect(s.host.answerCard).not.toHaveBeenCalled()
+    await pollWith(s, callback(4, 7, `k:${APPROVAL_ID}:1`))
+    expect(s.host.answerCard).toHaveBeenCalledWith(APPROVAL_ID, { status: 'answered', values: { choice: 'i' } })
+  })
+
+  it('escolha e formulário vão em texto, sem botões, e aceitam resposta por reply', async () => {
+    const s = await withCard({ id: 'f', kind: 'form', title: 'Acesso', fields: [{ id: 'user', label: 'Usuário', required: true }, { id: 'pass', label: 'Senha', secret: true }] })
+    expect(lastSend(s).reply_markup).toBeUndefined()
+    expect(lastSend(s).text).toContain('secreto')
+    const reply = { update_id: 5, message: { message_id: 60, chat: { id: 7, type: 'private' }, from: { id: 7 }, text: 'usuário: ana\nsenha: x', reply_to_message: { message_id: 1 } } }
+    await pollWith(s, reply)
+    expect(s.host.answerCard).toHaveBeenCalledWith(APPROVAL_ID, { status: 'answered', values: { user: 'ana', pass: 'x' } })
+  })
+
+  it('resposta em texto inválida pede de novo e não responde o cartão', async () => {
+    const s = await withCard({ id: 'c', kind: 'choice', title: 'Quais?', options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] })
+    const reply = { update_id: 5, message: { message_id: 60, chat: { id: 7, type: 'private' }, from: { id: 7 }, text: '9', reply_to_message: { message_id: 1 } } }
+    await pollWith(s, reply)
+    expect(s.host.answerCard).not.toHaveBeenCalled()
+    expect(sent(s.calls).some(text => text.includes('número da opção'))).toBe(true)
+  })
+
+  it('chat não autorizado não responde o cartão', async () => {
+    const s = await withCard({ id: 'k', kind: 'confirm', title: 'Ok?' })
+    await pollWith(s, callback(3, 99, `k:${APPROVAL_ID}:1`))
+    expect(s.host.answerCard).not.toHaveBeenCalled()
   })
 })
 

@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron'
+import { cardFallbackText, parseTextAnswer } from '../../shared/interactive-card'
 import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
@@ -10,7 +11,7 @@ import type { AppService } from '../v9/workspace'
 import { escapeHtml, telegramChunks, TELEGRAM_LIMIT } from './format'
 
 /** O que o canal usa do núcleo V9: o mesmo envio e as mesmas decisões de aprovação da janela do desktop. */
-export type TelegramHost = Pick<AppService, 'snapshot' | 'send' | 'saveConversation' | 'respondApproval' | 'reviewPlan' | 'answerQuestion' | 'on' | 'off'> & {
+export type TelegramHost = Pick<AppService, 'snapshot' | 'send' | 'saveConversation' | 'respondApproval' | 'reviewPlan' | 'answerQuestion' | 'answerCard' | 'on' | 'off'> & {
   store: Pick<AppService['store'], 'approval' | 'agent' | 'conversation' | 'memories'>
 }
 type Chat = { id: number; type: string; first_name?: string; username?: string }
@@ -401,7 +402,12 @@ export class TelegramService {
     if (this.approvalMessages.has(approval.id)) return
     this.approvalMessages.set(approval.id, [])
     const html = this.approvalHtml(approval)
-    const buttons = approval.details.desktopOnly ? undefined : approval.kind === 'question'
+    const card = approval.details.card
+    const buttons = approval.details.desktopOnly ? undefined : card
+      ? card.kind === 'confirm' ? [[{ text: (card.confirmLabel || 'Confirmar').slice(0, 30), callback_data: `k:${approval.id}:1` }, { text: (card.cancelLabel || 'Cancelar').slice(0, 30), callback_data: `k:${approval.id}:0` }]]
+        : card.kind === 'quick-replies' ? card.options.slice(0, 8).map((option, index) => [{ text: option.label.slice(0, 60), callback_data: `k:${approval.id}:${index}` }])
+          : undefined
+      : approval.kind === 'question'
       ? (approval.details.options || []).slice(0, 8).map((option, index) => [{ text: option.slice(0, 60), callback_data: `q:${approval.id}:${index}` }])
       : [[{ text: 'Aprovar', callback_data: `a:${approval.id}:1` }, { text: 'Recusar', callback_data: `a:${approval.id}:0` }]]
     for (const chat of this.data.chats) {
@@ -423,6 +429,7 @@ export class TelegramService {
       : approval.kind === 'write' ? `Alterar arquivo <code>${clip(d.path, 300)}</code>${d.action ? `\n${clip(d.action, 300)}` : ''}`
         : approval.kind === 'browser' ? `Usar o navegador: ${clip(d.action || d.task, 800)}`
           : approval.kind === 'delegation' ? `Delegar para ${clip(d.recipientName, 80)}:\n${clip(d.task, 1500)}`
+            : approval.kind === 'question' && d.card ? `${escapeHtml(cardFallbackText(d.card).slice(0, 1800))}${d.card.kind === 'form' || d.card.kind === 'choice' ? '\n\nResponda a esta mensagem (use "cancelar" para dispensar).' : ''}`
             : approval.kind === 'question' ? `${clip(d.question, 1500)}\n\n${d.options?.length ? 'Toque numa opção ou responda a esta mensagem com outra resposta.' : 'Responda a esta mensagem com o texto da resposta.'}`
               : approval.kind === 'plan' ? `Plano: <b>${clip(d.planTitle, 200)}</b>\n${(d.planSteps || []).slice(0, 20).map((step, index) => `${index + 1}. ${clip(step, 200)}`).join('\n')}`
                 : `Alterar o Boobot: ${clip(d.action, 300)}${d.task ? `\n${clip(d.task, 1200)}` : ''}`
@@ -442,14 +449,22 @@ export class TelegramService {
   }
 
   private async editState(chatId: number, messageId: number, approval: Approval): Promise<void> {
-    const outcome = approval.kind === 'question' && approval.status === 'approved' ? `Respondida: ${escapeHtml(approval.details.answer || '')}` : `Estado: ${STATE_LABEL[approval.status]}.`
+    const outcome = approval.kind === 'question' && approval.details.card && approval.status !== 'pending' ? `Resposta: ${escapeHtml(approval.details.answer || STATE_LABEL[approval.status])}`
+      : approval.kind === 'question' && approval.status === 'approved' ? `Respondida: ${escapeHtml(approval.details.answer || '')}` : `Estado: ${STATE_LABEL[approval.status]}.`
     await this.call('editMessageText', { chat_id: chatId, message_id: messageId, text: `${this.approvalHtml(approval)}\n\n<b>${outcome}</b>`.slice(0, TELEGRAM_LIMIT), parse_mode: 'HTML' }).catch(() => undefined)
   }
 
   private async answerQuestion(chatId: number, approvalId: string, answer: string): Promise<void> {
     const approval = this.host.store.approval(approvalId)
     if (!approval || approval.status !== 'pending') { await this.sendHtml(chatId, 'Esta pergunta já foi respondida.'); return }
-    try { await this.host.answerQuestion(approvalId, answer) } catch (error) { await this.sendHtml(chatId, escapeHtml(error instanceof Error ? error.message : 'Não foi possível responder.')) }
+    try {
+      const card = approval.details.card
+      if (card) {
+        const parsed = parseTextAnswer(card, answer)
+        if ('error' in parsed) { await this.sendHtml(chatId, escapeHtml(parsed.error)); return }
+        await this.host.answerCard(approvalId, parsed.answer)
+      } else await this.host.answerQuestion(approvalId, answer)
+    } catch (error) { await this.sendHtml(chatId, escapeHtml(error instanceof Error ? error.message : 'Não foi possível responder.')) }
   }
 
   private async handleCallback(query: NonNullable<Update['callback_query']>): Promise<void> {
@@ -466,7 +481,7 @@ export class TelegramService {
       await this.sendHtml(chatId, `Agora você fala em ${escapeHtml(this.conversationName(conversation[1]))}.`)
       return
     }
-    const decision = /^([aq]):([0-9a-f-]{36}):(\d{1,2})$/.exec(data)
+    const decision = /^([aqk]):([0-9a-f-]{36}):(\d{1,2})$/.exec(data)
     if (!decision) { await answer('Ação desconhecida.'); return }
     const [, kind, approvalId, value] = decision
     const approval = this.host.store.approval(approvalId)
@@ -477,7 +492,12 @@ export class TelegramService {
       return
     }
     try {
-      if (kind === 'q') {
+      if (kind === 'k') {
+        const card = approval.kind === 'question' ? approval.details.card : undefined
+        const choice = card?.kind === 'quick-replies' ? card.options[Number(value)] : undefined
+        if (!card || (card.kind === 'confirm' ? value !== '0' && value !== '1' : !choice)) { await answer('Opção inválida.'); return }
+        await this.host.answerCard(approvalId, { status: 'answered', values: card.kind === 'confirm' ? { confirmed: value === '1' } : { choice: choice!.id } })
+      } else if (kind === 'q') {
         const option = approval.kind === 'question' ? approval.details.options?.[Number(value)] : undefined
         if (!option) { await answer('Opção inválida.'); return }
         await this.host.answerQuestion(approvalId, option)
@@ -488,7 +508,7 @@ export class TelegramService {
         if (approval.kind === 'plan') await this.host.reviewPlan(approvalId, approved ? 'approve' : 'reject', undefined, true)
         else await this.host.respondApproval(approvalId, approved, true)
       }
-      await answer(kind === 'q' ? 'Resposta enviada.' : value === '1' ? 'Aprovado.' : 'Recusado.')
+      await answer(kind === 'q' || kind === 'k' ? 'Resposta enviada.' : value === '1' ? 'Aprovado.' : 'Recusado.')
     } catch (error) {
       await answer(error instanceof Error ? error.message : 'Não foi possível decidir.')
       const current = this.host.store.approval(approvalId)
