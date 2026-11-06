@@ -9,6 +9,7 @@ declare global {
 interface Window {
   hostsAPI?: import('../../shared/hosts').HostsAPI
   telegramAPI?: import('../../shared/telegram').TelegramAPI
+  memoryAPI?: import('../../shared/memory').MemoryAPI
   /** Ausente nos testes do renderer sem preload. */
   platformBrowserAPI?: import('../../shared/platform-browser').PlatformBrowserAPI
  vibeAPI: {

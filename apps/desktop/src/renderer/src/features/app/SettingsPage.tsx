@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import { AudioLines, Download, FolderPlus, GraduationCap, ImagePlus, KeyRound, Monitor, Palette, Plug, Router, Send, Trash2, Wrench, X } from 'lucide-react'
+import { AudioLines, Brain, Download, FolderPlus, GraduationCap, ImagePlus, KeyRound, Monitor, Palette, Plug, Router, Send, Trash2, Wrench, X } from 'lucide-react'
 import { ASSISTANT_ID, type Agent, type DecisionModel, type OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { SkillInfo } from '../../../../shared/skills'
@@ -17,10 +17,11 @@ import { ApprovalGrantList } from '../editors/ApprovalGrantList'
 import { AppUpdatesPanel } from './AppUpdatesPanel'
 import { ImageGenerationPanel } from './ImageGenerationPanel'
 import { TelegramPanel } from './TelegramPanel'
+import { MemoryPanel } from './MemoryPanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
 import css from './SettingsPage.module.css'
 
-export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'imagens' | 'skills' | 'voz' | 'conexoes' | 'telegram' | 'atualizacoes'
+export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'imagens' | 'skills' | 'memoria' | 'voz' | 'conexoes' | 'telegram' | 'atualizacoes'
 type Section = SettingsSection
 const SECTIONS: { id: Section; label: string; icon: typeof Palette; description: string }[] = [
   { id: 'geral', label: 'Geral', icon: Palette, description: 'Modo visual do Boobot e animação dos Boos neste dispositivo.' },
@@ -29,6 +30,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof Palette; description:
   { id: 'provedores', label: 'Provedores', icon: Plug, description: 'CLIs detectadas, chaves de API e o modelo que escolhe quem responde em grupo.' },
   { id: 'imagens', label: 'Geração de imagens', icon: ImagePlus, description: 'Quem gera as imagens pedidas aos Boos: Codex, Antigravity ou uma chave de API.' },
   { id: 'skills', label: 'Skills', icon: GraduationCap, description: 'Skills SKILL.md encontradas nesta máquina e pastas adicionadas por você.' },
+  { id: 'memoria', label: 'Memória', icon: Brain, description: 'Fatos que os Boos lembram entre conversas, guardados só neste computador.' },
   { id: 'voz', label: 'Voz em tempo real', icon: AudioLines, description: 'Chaves, transcrição e vozes das ligações e da leitura de mensagens.' },
   { id: 'conexoes', label: 'Conexões', icon: Monitor, description: 'Acesso a este computador pelos seus outros computadores.' },
   { id: 'telegram', label: 'Telegram', icon: Send, description: 'Fale com o Chief e aprove ações pelo celular com um bot seu do Telegram.' },
@@ -303,6 +305,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         {section === 'skills' && <>
           <SkillsSection />
         </>}
+        {section === 'memoria' && <Field icon={Brain} title="Memória dos Boos" description="Essenciais entram em todo turno (até 8 KiB); pesquisáveis só aparecem quando o Boo busca. Os Boos tratam memórias como dados, nunca como ordens, e não guardam tokens nem senhas. Tudo fica no banco local do Boobot."><MemoryPanel /></Field>}
         {section === 'conexoes' && <><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field></>}
         {section === 'telegram' && <Field icon={Send} title="Bot do Telegram" description="Crie um bot no @BotFather, cole o token e pareie seu celular. Só chats pareados conversam com o Boobot, e nenhuma ação é executada sem o seu toque em Aprovar."><TelegramPanel /></Field>}
         {section === 'atualizacoes' && <AppUpdatesPanel />}

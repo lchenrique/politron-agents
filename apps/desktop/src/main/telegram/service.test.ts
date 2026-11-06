@@ -37,7 +37,8 @@ function setup(opts: { now?: () => number } = {}) {
     snapshot: vi.fn(() => ({ agents: [{ id: 'chief', name: 'Chief', role: 'chief' }], conversations: [{ id: CONV, name: 'Chief', kind: 'direct', agentIds: ['chief'], archived: false, createdAt: '2026-01-01' }], runs: [], approvals: [] })),
     send: vi.fn(async () => undefined), saveConversation: vi.fn(() => ({ id: CONV })),
     respondApproval: vi.fn(async () => { approval.status = 'approved' }), reviewPlan: vi.fn(), answerQuestion: vi.fn(),
-    store: { approval: () => approval, agent: () => ({ name: 'Chief' }), conversation: () => ({ id: CONV, name: 'Chief', archived: false }) },
+    store: { approval: () => approval, agent: () => ({ name: 'Chief' }), conversation: () => ({ id: CONV, name: 'Chief', archived: false, agentIds: ['chief'], workspaceId: 'ws' }),
+      memories: { list: vi.fn(() => [{ text: 'Prefere <b>curto</b>', scope: 'global', inclusion: 'essencial' }]), save: vi.fn((input: { text: string }) => { if (input.text.includes('sk-')) throw new Error('Isto parece um token'); return { memory: input, note: '' } }) } },
   }) as unknown as TelegramHost & EventEmitter
   const memory = { v: null as string | null, has: async () => memory.v !== null, load: async () => memory.v, save: async (x: string) => { memory.v = x }, clear: async () => { memory.v = null } }
   const service = new TelegramService(dir, host, { token: memory, fetcher, now: opts.now })
@@ -172,6 +173,20 @@ describe('polling', () => {
     expect(JSON.stringify(s.service.status())).not.toContain('AAAA')
     expect(readFileSync(join(s.dir, 'telegram.json'), 'utf8')).not.toContain('AAAA')
     await expect(s.service.saveToken('lixo')).rejects.toThrow(/token completo/)
+  })
+})
+
+describe('memória', () => {
+  it('/memoria lista no escopo da conversa e /lembrar grava global essencial', async () => {
+    const s = setup(); await ready(s); await pair(s)
+    await pollWith(s, msg(10, 7, '/memoria'))
+    expect(s.host.store.memories.list).toHaveBeenCalledWith({ limit: 10 }, { agentIds: ['chief'], workspaceId: 'ws' })
+    expect(sent(s.calls).at(-1)).toContain('Prefere &lt;b&gt;curto&lt;/b&gt;')
+    await pollWith(s, msg(11, 7, '/lembrar Uso Windows 11'))
+    expect(s.host.store.memories.save).toHaveBeenCalledWith({ text: 'Uso Windows 11', scope: 'global', inclusion: 'essencial' }, { kind: 'usuario' })
+    expect(sent(s.calls).at(-1)).toMatch(/memória global essencial/)
+    await pollWith(s, msg(12, 7, '/lembrar minha chave sk-xxxxxxxxxxxxxxxxxxxx'))
+    expect(sent(s.calls).at(-1)).toMatch(/parece um token/)
   })
 })
 
