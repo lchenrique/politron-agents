@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./components/dsh/theme.css";
+@import "tw-shimmer";
 @plugin "@tailwindcss/typography";
 
 html.floating-mascot-document, body.floating-mascot-document, body.floating-mascot-document #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent !important; }
@@ -303,6 +304,16 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
     transform: translateX(0); }
   to {
     transform: translateX(-50%); } }
+  @keyframes collapsible-down {
+  from {
+    height: 0; }
+  to {
+    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto)); } }
+  @keyframes collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto)); }
+  to {
+    height: 0; } }
 }
 
 @layer base {
@@ -896,3 +907,11 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   font-size: 0.88em;
   font-weight: 500;
 }
+/*
+ ---break---
+ */
+@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+/*
+ ---break---
+ */
+@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
