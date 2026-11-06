@@ -76,3 +76,66 @@ it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1')('Codex real: Chief cria proje
     expect(approvals.some(item => /Beto Back/.test(JSON.stringify(item.details)))).toBe(true)
   } finally { console.info('EVIDÊNCIA CONTROLE:', root); service.dispose() }
 }, 240_000)
+
+/** Cenários reais (Codex) de memória, cartões interativos e esperas por evento. */
+async function liveChief(prefix: string) {
+  const root = await mkdtemp(join(tmpdir(), prefix))
+  const service = new AppService(join(root, 'profile'))
+  const models = await service.runtime.models()
+  const model = models.find(item => item.id === 'gpt-6-luna') || models.find(item => item.isDefault)
+  if (!model) throw new Error('Nenhum modelo Codex autorizado disponível.')
+  const chief = service.saveAgent({ name: 'Atlas Smoke', role: 'chief', instructions: 'Conclua a tarefa usando as ferramentas do Boobot. Este teste dispensa skills. Relate apenas resultados reais, em uma frase.', runtime: 'codex', model: model.id, canWrite: true, approvalMode: 'bypass' })
+  const home = service.store.saveWorkspace({ name: 'Central', path: root })
+  const chat = (name: string) => service.saveConversation({ name, workspaceId: home.id, agentIds: [chief.id] })
+  const idle = () => vi.waitFor(() => expect(service.store.runs().filter(run => ['queued', 'running', 'waiting'].includes(run.status))).toEqual([]), { timeout: 200_000, interval: 1000 })
+  const lastReply = (conversationId: string) => service.history(conversationId).filter(message => message.role === 'assistant').at(-1)?.text ?? ''
+  return { root, service, chief, chat, idle, lastReply }
+}
+
+it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1')('Codex real: o Boo grava uma memória e a recupera em outra conversa', async () => {
+  const { root, service, chat, idle, lastReply } = await liveChief('boobot-memory-live-')
+  try {
+    const first = chat('Memória 1')
+    await service.send(first.id, 'Guarde na sua memória, como memória global e essencial, o fato: "A cor favorita do Carlos é verde-musgo". Use a ferramenta remember.')
+    await idle()
+    expect(service.store.memories.list({}).some(memory => /verde-musgo/i.test(memory.text))).toBe(true)
+    const second = chat('Memória 2')
+    await service.send(second.id, 'Qual é a cor favorita do Carlos? Responda só com a cor.')
+    await idle()
+    expect(lastReply(second.id)).toMatch(/musgo/i)
+  } finally { console.info('EVIDÊNCIA MEMÓRIA:', root); service.dispose() }
+}, 300_000)
+
+it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1')('Codex real: ask_ui mostra um cartão, a resposta volta ao Boo e o segredo não vai ao histórico', async () => {
+  const { root, service, chat, idle, lastReply } = await liveChief('boobot-cards-live-')
+  const cards: string[] = []
+  try {
+    service.on('workspace-event', (event: WorkspaceEvent) => {
+      const approval = event.type === 'approval' ? event.approval : undefined
+      if (!approval || approval.status !== 'pending' || !approval.details.card || cards.includes(approval.id)) return
+      cards.push(approval.id)
+      const card = approval.details.card
+      void service.answerCard(approval.id, card.kind === 'form' ? { status: 'answered', values: Object.fromEntries(card.fields.map(field => [field.id, field.secret ? 'SEGREDO-123' : 'ana'])) } : { status: 'answered', values: { confirmed: true } })
+    })
+    const conversation = chat('Cartões')
+    await service.send(conversation.id, 'Use a ferramenta ask_ui com um cartão do tipo form, título "Acesso", com dois campos: "user" (rótulo Usuário) e "senha" (rótulo Senha, secret true). Depois diga apenas o valor que veio no campo user.')
+    await idle()
+    expect(cards.length).toBeGreaterThanOrEqual(1)
+    expect(lastReply(conversation.id)).toMatch(/ana/i)
+    expect(JSON.stringify(service.store.approvals())).not.toContain('SEGREDO-123')
+  } finally { console.info('EVIDÊNCIA CARTÕES:', root); service.dispose() }
+}, 300_000)
+
+it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1')('Codex real: await_event registra a espera e encerra o turno', async () => {
+  const { root, service, chief, chat, idle } = await liveChief('boobot-waits-live-')
+  try {
+    const home = service.store.workspaces()[0]
+    service.saveRoutine({ name: 'Checar deploy', instructions: 'Verifique o deploy.', agentId: chief.id, workspaceId: home.id, trigger: { kind: 'daily', time: '09:00', weekdays: [] } })
+    const conversation = chat('Esperas')
+    await service.send(conversation.id, 'O deploy ainda não terminou. Use a ferramenta await_event com a nota "aguardar o deploy" e encerre o turno.')
+    await idle()
+    const open = service.store.waits.open(chief.id)
+    expect(open).toHaveLength(1)
+    expect(open[0].note).toMatch(/deploy/i)
+  } finally { console.info('EVIDÊNCIA ESPERAS:', root); service.dispose() }
+}, 300_000)
