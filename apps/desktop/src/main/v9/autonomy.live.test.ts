@@ -139,3 +139,35 @@ it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1')('Codex real: await_event regi
     expect(open[0].note).toMatch(/deploy/i)
   } finally { console.info('EVIDÊNCIA ESPERAS:', root); service.dispose() }
 }, 300_000)
+
+/** Windows real, Codex real e cua-driver real: só roda com BOOBOT_RUN_AUTONOMY=1 e com o driver instalado. O Bloco de Notas aberto pelo teste é encerrado no fim. */
+it.skipIf(process.env.BOOBOT_RUN_AUTONOMY !== '1' || process.platform !== 'win32')('Codex real: o Chief controla o Windows (Bloco de Notas) depois da aprovação', async () => {
+  const { execFileSync } = await import('node:child_process')
+  const notepads = () => { try { return execFileSync('powershell', ['-NoProfile', '-Command', '(Get-Process notepad -ErrorAction SilentlyContinue).Id -join ","'], { encoding: 'utf8' }).trim().split(',').filter(Boolean) } catch { return [] } }
+  const before = new Set(notepads())
+  const { root, service, chief, chat, idle, lastReply } = await liveChief('boobot-computer-use-live-')
+  const approvals: { kind: string; details: { action?: string; desktopOnly?: boolean } }[] = []
+  try {
+    expect((await service.computerUseDriver(true)).state).toBe('installed')
+    service.saveAgent({ ...chief, computerUse: true })
+    service.on('workspace-event', (event: WorkspaceEvent) => {
+      if (event.type === 'approval' && event.approval.status === 'pending') { approvals.push(event.approval); void service.respondApproval(event.approval.id, event.approval.kind === 'browser') }
+    })
+    const conversation = chat('Computer Use')
+    await service.send(conversation.id, 'Tarefa inofensiva de teste: peça autorização para controlar o Windows (computer_use_request), abra o Bloco de Notas com as ferramentas do driver, digite exatamente a frase "Boobot controla o Windows" nele, use get_window_state ou list_windows para confirmar que a janela existe e que o texto aparece, e então feche a janela SEM salvar (se o Bloco de Notas perguntar, escolha não salvar). Responda em uma frase com o título da janela que você viu.')
+    await idle()
+    const history = service.history(conversation.id)
+    const activity = history.filter(message => message.role === 'activity').map(message => message.text)
+    await writeFile(join(root, 'evidence.json'), JSON.stringify({ root, approvals, activity, reply: lastReply(conversation.id) }, null, 2))
+    expect(approvals.filter(item => item.kind === 'browser' && /Controlar o Windows/.test(item.details.action ?? '') && item.details.desktopOnly)).toHaveLength(1)
+    expect(activity.some(text => /^Windows · launch_app/.test(text))).toBe(true)
+    expect(activity.some(text => /^Windows · type_text/.test(text))).toBe(true)
+    expect(activity.join('\n')).not.toContain('Boobot controla')
+    expect(lastReply(conversation.id)).toMatch(/bloco de notas|notepad|sem t[ií]tulo/i)
+  } finally {
+    console.info('EVIDÊNCIA COMPUTER USE:', root)
+    service.dispose()
+    // Encerra só o que o teste abriu; o que já estava aberto antes fica intocado.
+    for (const pid of notepads().filter(id => !before.has(id))) { try { execFileSync('taskkill', ['/PID', pid, '/T', '/F']) } catch { /* já fechou */ } }
+  }
+}, 400_000)

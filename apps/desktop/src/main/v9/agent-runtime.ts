@@ -3,7 +3,7 @@ import type { Agent, Model, ModelRuntimeOptions } from '../../shared/v9'
 import type { DynamicTool } from './codex'
 
 export interface AgentInput { text: string; images: Array<{ path: string; mimeType: string }> }
-/** Proxy MCP do Politron para o navegador externo, registrado só na thread autorizada. */
+/** Proxy MCP do Politron (navegador externo ou cua-driver), registrado só na thread autorizada. */
 export interface ExternalBrowserRegistration { url: string; token: string; tools: string[] }
 export interface RuntimeSendResult {
   thread?: { id?: string }
@@ -13,7 +13,7 @@ export interface RuntimeSendResult {
 export interface AgentRuntime extends Pick<EventEmitter, 'on' | 'off' | 'emit'> {
   readonly supportsImages?: boolean
   models(binaryPath?: string): Promise<Model[]>
-  thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string, externalBrowser?: ExternalBrowserRegistration): Promise<RuntimeThread>
+  thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string, externalBrowser?: ExternalBrowserRegistration, computerUse?: ExternalBrowserRegistration): Promise<RuntimeThread>
   send(threadId: string, input: string | AgentInput, model?: string, timeout?: number, options?: ModelRuntimeOptions & { effort?: Agent['effort'] }): Promise<RuntimeSendResult>
   steer?(threadId: string, turnId: string, input: string): Promise<void>
   respond(id: number | string, result: unknown): void

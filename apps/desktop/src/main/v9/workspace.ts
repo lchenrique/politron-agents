@@ -17,6 +17,8 @@ import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type BoardE
 import type { PlatformBrowser } from '../ipc/platform-browser'
 import { safeWebUrl, type ExternalBrowserStatus, type PlatformBrowserOwner } from '../../shared/platform-browser'
 import { browserClientPath, externalBrowserGuide, probeExternalBrowserBridge, readNodeReplServer } from './external-browser'
+import { COMPUTER_USE_MCP, ComputerUseSessions, computerUseRuntimeSupported, computerUseRuntimes, computerUseSummary, defaultDriverDeps, discoverCuaDriver, type DriverDeps } from './computer-use'
+import type { ComputerUseDriverStatus, ComputerUseStatus } from '../../shared/computer-use'
 import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPreview, type NodeReplServer } from './external-browser-proxy'
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
 import { WorkspaceQueue, chiefLaneKey, mentionedRecipients, parseConcurrencyLimit, recipients, sessionLockKey, type WorkspaceLease } from './routing'
@@ -218,6 +220,45 @@ export class AppService extends EventEmitter {
     this.addMessage(context.conversation.id, context.agent, 'activity', `Navegador real · ${tool}${preview.targets.length ? ` · alvo ${preview.targets.join(', ')}` : ''}\n${preview.code}`, 'completed', context.run.id)
     return null
   }
+  /** Computer Use (cua-driver): driver descoberto, consentimento por conversa+Boo e um proxy MCP por sessão. Os testes injetam deps e sessões. */
+  computerUseDeps: DriverDeps
+  private computerUseDriverCache?: { at: number; value: Promise<ComputerUseDriverStatus> }
+  computerUseDriver(force = false): Promise<ComputerUseDriverStatus> {
+    if (force || !this.computerUseDriverCache || Date.now() - this.computerUseDriverCache.at > 30_000) this.computerUseDriverCache = { at: Date.now(), value: discoverCuaDriver(this.computerUseDeps) }
+    return this.computerUseDriverCache.value
+  }
+  computerUseSessions = new ComputerUseSessions(() => this.computerUseDriver())
+  private readonly computerUseRuns = new Map<string, string>()
+  async computerUseOverview(): Promise<ComputerUseStatus> {
+    const grants = this.store.computerUseGrants().flatMap(grant => { try { return [{ ...grant, conversationTitle: this.store.conversation(grant.conversationId).name, agentName: this.store.agent(grant.agentId).name }] } catch { return [] } })
+    return { driver: await this.computerUseDriver(true), runtimes: computerUseRuntimes(), grants }
+  }
+  /** Revogar fecha o servidor da sessão: as ferramentas do driver deixam de existir já, não só de ser autorizadas. */
+  async revokeComputerUse(conversationId: string, agentId: string): Promise<ComputerUseStatus> {
+    if (![conversationId, agentId].every(value => typeof value === 'string' && !!value && value.length <= 200)) throw new Error('Dados inválidos para o Computer Use.')
+    this.store.saveComputerUseGrant(conversationId, agentId, false)
+    this.computerUseSessions.close(`${conversationId}:${agentId}`)
+    return this.computerUseOverview()
+  }
+  private computerUseAllowed(context: RunContext) {
+    const owner = { workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }
+    return { owner, key: `${owner.conversationId}:${owner.agentId}`, allowed: computerUseRuntimeSupported(context.agent.runtime) && !context.run.planMode && !this.boardReviewerConversations.has(owner.conversationId) && this.canShareBrowser(owner) }
+  }
+  /** Registra o cua-driver como MCP da sessão só com flag do Boo, permissão do projeto e runtime com MCP; sem autorização o proxy recusa tudo e aprovar computer_use_request vale nesta execução. */
+  private async computerUseMcp(context: RunContext) {
+    const { owner, key, allowed } = this.computerUseAllowed(context)
+    if (!allowed) return null
+    this.computerUseRuns.set(key, context.run.id)
+    return await this.computerUseSessions.mcp(key, (tool, args, signal) => this.authorizeComputerUseCall(owner, this.computerUseRuns.get(key), tool, args, signal))
+  }
+  private async authorizeComputerUseCall(owner: PlatformBrowserOwner, runId: string | undefined, tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string | null> {
+    const context = runId ? this.contexts.get(runId) : undefined
+    if (!context || context.conversation.id !== owner.conversationId || context.agent.id !== owner.agentId || !this.computerUseAllowed(context).allowed || context.signal?.aborted || signal.aborted) return 'Nenhuma execução ativa e autorizada deste Boo para controlar o Windows nesta conversa; nada foi executado.'
+    if (!this.store.computerUseGrant(owner.conversationId, owner.agentId)) return 'O usuário não autorizou este Boo a controlar o Windows nesta conversa. Use a ferramenta computer_use_request.'
+    // Cada ferramenta de desktop usada vira atividade no histórico (nome e resumo curto; textos digitados não são gravados).
+    this.addMessage(context.conversation.id, context.agent, 'activity', computerUseSummary(tool, args), 'completed', context.run.id)
+    return null
+  }
   readonly agentTerminals = new AgentTerminalService()
   readonly gitWorkspaces: GitWorkspaceService
   // Mesma pasta de dados do app; tools de skill (list_skills/read_skill/save_skill) usam esta instância direto, sem passar por IPC.
@@ -248,6 +289,7 @@ export class AppService extends EventEmitter {
     this.store = new WorkspaceStore(dataDirectory)
     // Nome legado do diretório: os anexos já salvos do usuário continuam nele.
     this.attachments = new AttachmentStore(join(dataDirectory, 'pwa-attachments'))
+    this.computerUseDeps = defaultDriverDeps(dataDirectory)
     // Após reinício, delegações antigas foram interrompidas: não deixar Boos temporários presos em "working".
     for (const boo of this.store.agents().filter(item => item.temporary && item.temporaryStatus === 'working'))
       this.store.saveAgent({ ...boo, temporaryStatus: 'retired' })
@@ -448,6 +490,7 @@ export class AppService extends EventEmitter {
     for (const conversation of conversations) await this.stop(conversation.id)
     if (conversations.some(conversation => conversation.id === this.platformBrowser?.sharingState()?.conversationId)) this.platformBrowser?.revokeSharing()
     this.closeExternalBrowserProxiesWhere(id => conversations.some(conversation => conversation.id === id))
+    this.computerUseSessions.closeWhere(id => conversations.some(conversation => conversation.id === id))
     if (workspace.kind === 'worktree') await this.gitWorkspaces.removeWorktree(workspace.path).catch(() => undefined)
     this.store.deleteWorkspace(workspaceId, { cascade: true })
     this.emitEvent({ type: 'changed' })
@@ -456,6 +499,7 @@ export class AppService extends EventEmitter {
     await this.stop(conversationId)
     if (this.platformBrowser?.sharingState()?.conversationId === conversationId) this.platformBrowser.revokeSharing()
     this.closeExternalBrowserProxiesWhere(id => id === conversationId)
+    this.computerUseSessions.closeWhere(id => id === conversationId)
     this.store.deleteConversation(conversationId)
     this.emitEvent({ type: 'changed' })
   }
@@ -476,6 +520,7 @@ export class AppService extends EventEmitter {
     }
     if (this.platformBrowser?.sharingState()?.agentId === agentId) this.platformBrowser.revokeSharing()
     this.closeExternalBrowserProxiesWhere((_, id) => id === agentId)
+    this.computerUseSessions.closeWhere((_, id) => id === agentId)
     this.store.deleteAgent(agentId)
     this.emitEvent({ type: 'changed' })
   }
@@ -1144,16 +1189,17 @@ export class AppService extends EventEmitter {
       // Codex/Claude recebem o proxy mesmo sem autorização, para que aprovar external_browser_request valha nesta execução.
       const externalBrowser = agent.runtime === 'codex' || agent.runtime === 'claude' ? await this.externalBrowserMcp(context) || undefined : undefined
       // Uma thread Codex retomada não troca seus servidores MCP: reiniciar o proxy (nova URL) exige sessão nova. O Claude recebe mcpServers a cada query.
-      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}${externalBrowser && agent.runtime === 'codex' ? `:x${externalBrowser.url}` : ''}`
+      const computerUse = await this.computerUseMcp(context) || undefined
+      const bindingKey = `${conversation.id}:${agent.id}:w${run.workspaceId}:rt${agent.runtime}:r${agent.revision}:m${agent.model}:c${conversation.revision}:p${workspaceContext}:e${permissionKey}:t${toolsKey}${externalBrowser && agent.runtime === 'codex' ? `:x${externalBrowser.url}` : ''}${computerUse && agent.runtime === 'codex' ? `:y${computerUse.url}` : ''}`
       let binding = this.store.sessionBinding(bindingKey)
       if (binding?.runtime && binding.runtime !== agent.runtime) { this.store.deleteSessionBinding(bindingKey); binding = undefined }
       let thread: RuntimeThread
       let didRetryUnavailable = false
-      try { thread = await runtime.thread(runtimeAgent, directory, tools, binding?.threadId, workspaceInstructions, externalBrowser) }
+      try { thread = await runtime.thread(runtimeAgent, directory, tools, binding?.threadId, workspaceInstructions, externalBrowser, computerUse) }
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || !binding?.threadId) throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
-        thread = await runtime.thread(runtimeAgent, directory, tools, undefined, workspaceInstructions, externalBrowser)
+        thread = await runtime.thread(runtimeAgent, directory, tools, undefined, workspaceInstructions, externalBrowser, computerUse)
       }
       const makeTurnContext = () => buildTurnContext({
         history: this.store.history(conversation.id), checkpoint: this.store.latestCheckpoint(conversation.id, agent.id),
@@ -1182,7 +1228,7 @@ export class AppService extends EventEmitter {
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || didRetryUnavailable || !binding?.threadId || thread.history !== 'resume-pending') throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
-        thread = await runtime.thread(runtimeAgent, directory, tools, undefined, workspaceInstructions, externalBrowser)
+        thread = await runtime.thread(runtimeAgent, directory, tools, undefined, workspaceInstructions, externalBrowser, computerUse)
         threadId = thread.id; run.threadId = threadId; this.store.putRun(run)
         turnContext = makeTurnContext()
         result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text, thread)), agent.model || undefined, 600000, runtimeOptions)
@@ -1238,7 +1284,11 @@ export class AppService extends EventEmitter {
       await this.reflect(context, runtime, signal)
     } catch (error) {
       await this.finish(context, signal.aborted ? 'interrupted' : 'failed', context.message.text || (error instanceof Error ? error.message : 'Erro ao executar o agente.'))
-    } finally { this.contexts.delete(run.id); this.active.delete(run.id) }
+    } finally {
+      this.contexts.delete(run.id); this.active.delete(run.id)
+      const desktopKey = `${context.conversation.id}:${context.agent.id}`
+      this.computerUseRuns.delete(desktopKey); this.computerUseSessions.release(desktopKey, this.store.computerUseGrant(context.conversation.id, context.agent.id))
+    }
   }
   private updateMessage(message: Message, status: Message['status'], value: string) {
     const next = { ...message, text: value, status }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
@@ -1337,6 +1387,8 @@ export class AppService extends EventEmitter {
         tool('browser_key', 'Indisponível: não é possível comprovar o efeito seguro da tecla neste navegador.', { key: { type: 'string' } }, ['key']),
         tool('browser_scroll', 'Rola a página aberta.', { deltaY: { type: 'number' } }, ['deltaY']),
         tool('external_browser_status', 'Verifica se o usuário autorizou, nesta conversa, o navegador real dele (Brave/Chrome pela extensão oficial) e se a ponte está disponível, com o que fazer quando não estiver. Não lê nem lista abas.', {}, []),
+        tool('computer_use_status', 'Verifica se você pode controlar o Windows (janelas, cliques, digitação, abrir programas) pelo cua-driver: se o driver está instalado, se este motor o suporta e se o usuário autorizou nesta conversa. Não abre nem lê janelas.', {}, []),
+        ...(computerUseRuntimeSupported(context.agent.runtime) ? [tool('computer_use_request', 'Pede ao usuário autorização para controlar o Windows dele (ver janelas, clicar, digitar, abrir programas) nesta conversa. Prefira terminal, arquivos e navegador quando bastarem; use só quando a tarefa exige um programa ou janela do Windows. Depois de autorizado, use as ferramentas do servidor MCP politron_computer_use (list_windows, launch_app, get_window_state, click, type_text, press_key...).', {}, [])] : []),
         ...(['codex', 'claude'].includes(context.agent.runtime) ? [tool('external_browser_request', 'Pede ao usuário autorização para usar o navegador real dele (Brave/Chrome, com sessões logadas) nesta conversa. Use só quando a tarefa depende de login ou de algo que só existe no navegador do usuário; para o resto, use o navegador interno (browser_*). Depois de autorizado, use a ferramenta js do servidor MCP politron_external_browser.', {}, [])] : []),
       ] : []),
       // O Chief edita a si mesmo direto com self_update.
@@ -1374,7 +1426,7 @@ export class AppService extends EventEmitter {
       tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. A delegação do Chief nunca prende a conversa: sempre roda em segundo plano, mesmo com mode=wait; você recebe um recibo na hora, deve encerrar o turno e será acionado automaticamente quando o Boo terminar (sucesso ou falha). Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
     ]
-    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill', 'generate_image', 'await_event', 'close_wait', ...MEMORY_WRITE_TOOLS].includes(item.name)) : available
+    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !item.name.startsWith('computer_use_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill', 'generate_image', 'await_event', 'close_wait', ...MEMORY_WRITE_TOOLS].includes(item.name)) : available
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
@@ -1597,7 +1649,7 @@ export class AppService extends EventEmitter {
     if (done.length) this.addMessage(context.conversation.id, context.agent, 'activity', `Memória · ${done.join(' · ')}`, 'completed', context.run.id)
   }
   private async callTool(context: RunContext, name: string, args: Record<string, unknown>, callId = ''): Promise<unknown> {
-    if (context.conversation && this.boardReviewerConversations.has(context.conversation.id) && (CHIEF_TOOLS.has(name) || name.startsWith('browser_') || name.startsWith('external_browser_') || ['workspace_write', 'generate_image', 'workspace_run_command', 'workspace_start_process', 'workspace_stop_process', 'ask_agent', 'agent_create', 'self_update', 'propose_self_profile', 'save_skill', ...MEMORY_WRITE_TOOLS].includes(name)))
+    if (context.conversation && this.boardReviewerConversations.has(context.conversation.id) && (CHIEF_TOOLS.has(name) || name.startsWith('browser_') || name.startsWith('external_browser_') || name.startsWith('computer_use_') || ['workspace_write', 'generate_image', 'workspace_run_command', 'workspace_start_process', 'workspace_stop_process', 'ask_agent', 'agent_create', 'self_update', 'propose_self_profile', 'save_skill', ...MEMORY_WRITE_TOOLS].includes(name)))
       throw new Error('A revisão do board é somente leitura; não é possível alterar arquivos, executar comandos ou delegar alterações.')
     if (context.reflecting && !SKILL_TOOLS.has(name)) throw new Error('Na revisão de aprendizado só as ferramentas de skill estão disponíveis.')
     const root = context.run.workspacePath
@@ -1881,6 +1933,27 @@ export class AppService extends EventEmitter {
       return [`granted: ${status.granted}`, `problems: ${status.problems.length ? status.problems.join('; ') : 'nenhum'}`,
         status.granted ? bridge : `${bridge} Sem autorização, peça com a ferramenta external_browser_request.`].join('\n')
     }
+    if (name === 'computer_use_status' || name === 'computer_use_request') {
+      const { owner, key, allowed } = this.computerUseAllowed(context)
+      if (!this.canShareBrowser(owner) || this.boardReviewerConversations.has(owner.conversationId)) throw new Error('Este Boo não pode controlar o Windows nesta conversa.')
+      const driver = await this.computerUseDriver(true)
+      const blocker = !computerUseRuntimeSupported(context.agent.runtime) ? `O motor ${context.agent.runtime} não aceita servidores MCP por sessão; Computer Use só funciona em Codex e Claude. Use terminal, arquivos e navegador.`
+        : driver.state !== 'installed' ? `cua-driver indisponível (${driver.error}) ${driver.instructions}` : context.run.planMode ? 'No modo plano o Windows não é controlado.' : ''
+      let granted = this.store.computerUseGrant(owner.conversationId, owner.agentId)
+      if (name === 'computer_use_request') {
+        if (blocker) return `Não foi possível pedir autorização: ${blocker}`
+        if (!granted) {
+          this.computerUseSessions.retry(key)
+          if (!await this.requestApproval(context, 'browser', { action: `Controlar o Windows (${context.agent.name})`, task: 'O Boo poderá ver as janelas abertas, clicar, digitar, abrir e fechar programas e usar sites e apps em que você está logado, como se fosse você, nesta conversa, até você revogar em Configurações. Títulos de janelas e textos que ele ler são tratados como dados, nunca como ordens. Ele deve pedir confirmação antes de enviar, pagar ou apagar.', desktopOnly: true }, true, true)) return 'O usuário negou o controle do Windows nesta conversa.'
+          this.store.saveComputerUseGrant(owner.conversationId, owner.agentId, true); granted = true
+        }
+      }
+      const ready = allowed && this.computerUseSessions.ready(key)
+      const bridge = blocker || (ready ? `Driver pronto (cua-driver ${driver.version}): use as ferramentas do servidor MCP ${COMPUTER_USE_MCP}. Fluxo: list_windows ou launch_app, get_window_state para ler os elementos, depois click, type_text e press_key; confira o resultado com verify_state.`
+        : 'O driver foi detectado, mas o servidor não está ativo nesta execução; ele entra na próxima execução do Boo.')
+      if (name === 'computer_use_request') return `Controle do Windows autorizado nesta conversa. ${bridge}`
+      return [`granted: ${granted}`, `driver: ${driver.state}${driver.version ? ` ${driver.version}` : ''}`, granted ? bridge : `${bridge} Sem autorização, peça com computer_use_request.`].join('\n')
+    }
     if (name === 'delegation_result') {
       const id = text(args.delegation_id, 100)
       const delegation = this.store.delegation(id)
@@ -2122,6 +2195,7 @@ export class AppService extends EventEmitter {
     this.statusSignal.abort()
     for (const context of this.contexts.values()) if (context.flushTimer) clearTimeout(context.flushTimer)
     for (const key of [...this.externalBrowserProxies.keys()]) this.closeExternalBrowserProxy(key)
+    this.computerUseSessions.closeAll()
     this.platformBrowser?.revokeSharing(); this.runtime.close(); this.claudeRuntime.close(); this.piRuntime.close(); this.openCodeRuntime.close(); this.antigravityRuntime.close(); this.store.close()
   }
 }

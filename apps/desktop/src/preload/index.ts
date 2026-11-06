@@ -6,6 +6,7 @@ import type { SkillsAPI } from '../shared/skills'
 import type { UpdatesAPI } from '../shared/updates'
 import type { TelegramAPI } from '../shared/telegram'
 import type { MemoryAPI } from '../shared/memory'
+import type { ComputerUseAPI } from '../shared/computer-use'
 
 type EventCallback<T> = (data: T) => void
 
@@ -188,6 +189,12 @@ const memoryAPI: MemoryAPI = {
   exportJson: () => ipcRenderer.invoke('memory:exportJson'),
 }
 contextBridge.exposeInMainWorld('memoryAPI', memoryAPI)
+
+const computerUseAPI: ComputerUseAPI = {
+  status: () => ipcRenderer.invoke('computerUse:status'),
+  revoke: (conversationId, agentId) => ipcRenderer.invoke('computerUse:revoke', conversationId, agentId),
+}
+contextBridge.exposeInMainWorld('computerUseAPI', computerUseAPI)
 
 const providersAPI: ProvidersAPI = {
   list: () => ipcRenderer.invoke('providers:list'),
