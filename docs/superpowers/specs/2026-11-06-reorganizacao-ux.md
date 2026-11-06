@@ -80,3 +80,26 @@ Instalar **skills**, **plugins** e **times**, com busca, categorias, estado "ins
 - **Largura do chat ajustável pelo usuário**, como no DeepSeek Harness: o usuário aumenta e diminui a coluna de leitura (arrastando ou por um controle), a escolha fica salva e existe um valor padrão confortável. Vale para o chat e para a Central.
 - **Loja com plugins externos desde a estrutura:** começamos com times e skills locais funcionando, mas o modelo de dados, as telas e o fluxo de instalação já nascem prontos para plugins externos (origem, versão, permissões pedidas, confirmação antes de instalar), mesmo que o carregamento deles ainda não esteja ativo.
 - Para o time de desenvolvimento, existe agora um canal **Boobot** no OpenBot com o Atlas como líder e os três agentes do Boobot; os pedidos de trabalho vão por lá.
+
+## Auditoria de layout (06/11/2026, capturas de todas as páginas)
+
+Problemas medidos, em 1440x900 e tema escuro:
+
+1. **Cada página tem sua própria coluna.** A Central começa em x=493 (coluna de ~960 px mais uma lateral), o Board em x=438 e sem limite de largura (as colunas passam da janela e o "Retrabalho" fica cortado), as Rotinas numa coluna centralizada que começa em x=659, e o chat centraliza o composer com outra largura. Não existe largura de conteúdo compartilhada.
+2. **Cabeçalhos diferentes.** Central: avatar, título e descrição inline. Board: título à esquerda e ações à direita, descrição em duas linhas. Rotinas: descrição e o botão abaixo. Chat: barra com avatar, nome e ícones. Todos usam um "eyebrow" pequeno ("Central", "Trabalho da empresa", "Automação") que não ajuda.
+3. **Título da janela repete o contexto** ("Central do Chief", "Livre") e não corresponde ao título da página.
+4. **Configurações é um modal com outro esqueleto**: cartões pesados, descrições longas, escala tipográfica própria.
+5. **Composer:** o da Central e o do chat têm formatos e larguras diferentes.
+6. **Sidebar em projeto** mostra a Central ao lado, e o item selecionado ("Chief") não bate com o que está aberto.
+7. **Contraste de superfícies baixo** (fundo, cartões e bordas quase da mesma luminosidade) e hierarquia tipográfica rasa.
+
+## Sistema de layout (a aplicar em todas as páginas)
+
+- **PageShell único**: barra de cabeçalho de 56 px com título (20 px, semibold), uma linha opcional de contexto e as ações à direita; abaixo, o conteúdo numa coluna com largura `--content-width` centralizada e padding lateral de 32 px. Páginas largas (Board) usam o mesmo cabeçalho e ocupam a largura toda, com rolagem própria sem cortar colunas.
+- **Largura ajustável pelo usuário** (como no DeepSeek Harness): controle no cabeçalho (Estreita 720 / Média 880 / Larga 1080 / Total), salvo em `localStorage`, com a mesma variável para Central, Rotinas, chat e composer.
+- **Sem eyebrows.** O título da janela mostra só o app; o contexto vive no cabeçalho da página.
+- **Escala de espaçamento** 4/8/12/16/24/32 e escala tipográfica fixa (12/13/14/16/20); cartões com uma única receita (raio, borda, padding), com contraste de superfície visível.
+- **Configurações** como página no mesmo PageShell (navegação de seções à esquerda, conteúdo na coluna), no lugar do modal.
+- **Chat e Central compartilham o composer** (mesmo componente, mesma largura de coluna). Host e seletor de modelo sobem para a barra superior.
+- **Estados vazios** curtos, com uma ação, sem texto longo.
+
