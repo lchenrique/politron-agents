@@ -13,7 +13,6 @@ import { errorText } from './appShellShared'
 import { setRivePreview, useRivePreview } from './booRendererPreference'
 import { RealtimeSettingsPanel } from '../realtime/RealtimeCall'
 import { HostSettingsPanel } from '../hosts/HostSettingsPanel'
-import { PwaSettingsPanel } from '../hosts/PwaSettingsPanel'
 import { ApprovalGrantList } from '../editors/ApprovalGrantList'
 import { AppUpdatesPanel } from './AppUpdatesPanel'
 import { ImageGenerationPanel } from './ImageGenerationPanel'
@@ -30,7 +29,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof Palette; description:
   { id: 'imagens', label: 'Geração de imagens', icon: ImagePlus, description: 'Quem gera as imagens pedidas aos Boos: Codex, Antigravity ou uma chave de API.' },
   { id: 'skills', label: 'Skills', icon: GraduationCap, description: 'Skills SKILL.md encontradas nesta máquina e pastas adicionadas por você.' },
   { id: 'voz', label: 'Voz em tempo real', icon: AudioLines, description: 'Chaves, transcrição e vozes das ligações e da leitura de mensagens.' },
-  { id: 'conexoes', label: 'Conexões', icon: Monitor, description: 'Acesso a este computador pelos seus outros dispositivos e pelo navegador.' },
+  { id: 'conexoes', label: 'Conexões', icon: Monitor, description: 'Acesso a este computador pelos seus outros computadores.' },
   { id: 'atualizacoes', label: 'Atualizações', icon: Download, description: 'Versão instalada, canal de atualização e instalação de novas versões.' },
 ]
 const SOURCE_LABEL: Record<SkillInfo['source'], string> = { codex: 'Codex', claude: 'Claude Code', custom: 'Adicionada aqui', learned: 'Aprendida por um agente', marketplace: 'Marketplace' }
@@ -302,7 +301,7 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
         {section === 'skills' && <>
           <SkillsSection />
         </>}
-        {section === 'conexoes' && <><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field><Field icon={Monitor} title="Acesso PWA no navegador" description="Pareie o navegador e escolha, por dispositivo, acesso ao chat, aprovações e leitura ou edição de arquivos do host."><PwaSettingsPanel /></Field></>}
+        {section === 'conexoes' && <><Field icon={Monitor} title="Este computador como host" description="Permita o acesso pelos seus outros computadores e gerencie o pareamento."><HostSettingsPanel /></Field></>}
         {section === 'atualizacoes' && <AppUpdatesPanel />}
         {section === 'voz' && <>
           <Field icon={AudioLines} title="Ligações do mascote" description="Configure aqui as chaves, transcrição e vozes. O mascote dentro do app e o flutuante usam estas mesmas preferências."><RealtimeSettingsPanel /></Field>

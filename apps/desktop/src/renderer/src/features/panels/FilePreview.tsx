@@ -16,12 +16,11 @@ const languages: Record<string, string> = {
 }
 export const fileLanguage = (path: string): string => languages[path.split('.').pop()?.toLowerCase() || ''] || 'plaintext'
 
-export function FilePreview({ workspaceId, path, draft, onDraftChange, readOnly = false }: {
+export function FilePreview({ workspaceId, path, draft, onDraftChange }: {
   workspaceId: string
   path: string
   draft?: FileDraft
   onDraftChange: FileDraftChange
-  readOnly?: boolean
 }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -77,7 +76,7 @@ export function FilePreview({ workspaceId, path, draft, onDraftChange, readOnly 
       {dirty && <span aria-label="Alterações não salvas" className="size-2 shrink-0 rounded-full bg-warning" />}
       <Button variant="ghost" size="icon" className="size-7 rounded-full" aria-label="Atualizar arquivo" title="Recarregar do disco" onClick={reload}><RefreshCw className="size-3.5" /></Button>
       <Button variant="ghost" size="icon" className="size-7 rounded-full" disabled={!draft} aria-label="Copiar conteúdo" onClick={() => { if (draft) void navigator.clipboard?.writeText(draft.content).catch(() => undefined) }}><Copy className="size-3.5" /></Button>
-      {!readOnly && <Button size="sm" className="h-7 gap-1.5 text-xs" disabled={!dirty || saving} aria-label="Salvar arquivo" onClick={() => void save()}><Save className="size-3.5" />{saving ? 'Salvando…' : 'Salvar'}</Button>}
+      <Button size="sm" className="h-7 gap-1.5 text-xs" disabled={!dirty || saving} aria-label="Salvar arquivo" onClick={() => void save()}><Save className="size-3.5" />{saving ? 'Salvando…' : 'Salvar'}</Button>
     </header>
     {loading && !draft && <p className="p-4 text-xs text-muted-foreground">Carregando arquivo…</p>}
     {error && <div role="alert" className="flex items-center gap-2 border-b border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"><AlertCircle className="size-4 shrink-0" />{error}</div>}
@@ -85,10 +84,10 @@ export function FilePreview({ workspaceId, path, draft, onDraftChange, readOnly 
       <MonacoCodeEditor path={'file:///' + workspaceId + '/' + encodeURIComponent(path)}
         value={draft.content} language={fileLanguage(path)} onMount={onMount}
         onChange={next => onDraftChange(current => current ? { ...current, content: next ?? '' } : undefined)}
-        options={{ readOnly: saving || readOnly }} />
+        options={{ readOnly: saving }} />
     </Suspense></div>}
     <footer className="flex h-7 shrink-0 items-center justify-between border-t border-border/40 px-3 text-[10px] text-muted-foreground">
-      <span>{readOnly ? 'Monaco Editor · somente leitura' : dirty ? '● Alterações não salvas' : 'Monaco Editor · Ctrl+S para salvar'} · Até 1 MB</span>
+      <span>{dirty ? '● Alterações não salvas' : 'Monaco Editor · Ctrl+S para salvar'} · Até 1 MB</span>
       <span>{draft && lineCount ? lineCount + ' linhas' : ''}</span>
     </footer>
   </section>

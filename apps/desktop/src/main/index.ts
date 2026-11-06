@@ -20,7 +20,6 @@ import { SkillsService, registerSkillsIpc } from './v9/skills/service'
 import { marketplaceRoot } from './marketplace/catalog'
 import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
-import { PwaGateway } from './pwa/gateway'
 import { initAutoUpdater } from './v9/auto-updater'
 import { databaseFailureDetails, retryTransient, setAsideStaleWalIndex } from './startup'
 
@@ -47,7 +46,6 @@ let isQuitting = false
 let appService: AppService | null = null
 let realtimeService: RealtimeService | null = null
 let hosts: HostManager | null = null
-let pwa: PwaGateway | null = null
 let platformBrowser: PlatformBrowser | null = null
 
 // Marca nova, mantendo os dados do Politron já instalado. Em uma instalação nova,
@@ -305,44 +303,6 @@ app.whenReady().then(async () => {
   await hosts.initialize()
   hosts.registerIpc()
 
-  // Browser gateway is loopback-only. Tailnet HTTPS must be enabled explicitly by the owner.
-  pwa = new PwaGateway({
-    assets: app.isPackaged ? join(process.resourcesPath, 'pwa') : join(process.cwd(), 'src', 'main', 'pwa', 'assets'),
-    host: () => {
-      const data = hosts!.snapshot()
-      return { id: data.selectedId, name: data.hosts.find(item => item.id === data.selectedId)?.name || 'Boobot' }
-    },
-    dispatch: (method, args, grants) => hosts!.dispatchFromPwa(method, args, grants),
-    attachments: appService.attachments,
-    attachmentsEnabled: () => !hosts?.remote,
-  })
-  // Isolated Electron E2E profiles may choose an ephemeral port; production is fixed at loopback 6780.
-  const pwaPort = process.env.BOOBOT_E2E_USER_DATA_DIR && process.env.BOOBOT_E2E_PWA_PORT === '0' ? 0 : 6780
-  void pwa.listen(pwaPort).then(port => {
-    console.log('[PWA] Gateway privado ativo em loopback na porta', port)
-  }).catch(error => console.warn('[PWA] Gateway não pôde iniciar:', error instanceof Error ? error.message : 'erro'))
-
-  const pwaWindow = (event: Electron.IpcMainInvokeEvent) => {
-    if (BrowserWindow.fromWebContents(event.sender) !== mainWindow) throw new Error('Janela não autorizada.')
-    if (!pwa) throw new Error('PWA indisponível.')
-    return pwa
-  }
-  ipcMain.handle('pwa:status', event => pwaWindow(event).status())
-  ipcMain.handle('pwa:issueCode', event => pwaWindow(event).issueCode())
-  ipcMain.handle('pwa:revokeAll', event => { pwaWindow(event).revokeAll(); return pwaWindow(event).status() })
-  ipcMain.handle('pwa:setDevicePermissions', (event, id: unknown, grants: unknown) => {
-    if (typeof id !== 'string' || !grants || typeof grants !== 'object' ||
-      typeof (grants as {chat?: unknown}).chat !== 'boolean' ||
-      typeof (grants as {approvals?: unknown}).approvals !== 'boolean' ||
-      typeof (grants as {filesRead?: unknown}).filesRead !== 'boolean' ||
-      typeof (grants as {filesWrite?: unknown}).filesWrite !== 'boolean') throw new Error('Permissões inválidas.')
-    return pwaWindow(event).setDevicePermissions(id, grants as { chat: boolean; approvals: boolean; filesRead: boolean; filesWrite: boolean })
-  })
-  ipcMain.handle('pwa:revokeDevice', (event, id: unknown) => {
-    if (typeof id !== 'string') throw new Error('Dispositivo inválido.')
-    return pwaWindow(event).revokeDevice(id)
-  })
-
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
@@ -383,8 +343,6 @@ app.on('before-quit', () => {
   destroyAppWindow()
   realtimeService?.stop()
   void hosts?.close()
-  void pwa?.close()
-  pwa = null
   platformBrowser?.close()
   appService?.dispose()
   appService = null

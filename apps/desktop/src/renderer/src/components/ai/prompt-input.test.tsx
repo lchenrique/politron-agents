@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { PromptInput } from './prompt-input'
 
-it('envia texto na PWA sem oferecer nem receber anexos indisponíveis e respeita IME', () => {
+it('envia texto sem oferecer nem receber anexos indisponíveis e respeita IME', () => {
   const onSubmit = vi.fn()
   render(<PromptInput showAttachments={false} showModelPicker={false} textareaLabel="Mensagem para o Boo" defaultValue="Continua o trabalho" onSubmit={onSubmit} />)
   const textarea = screen.getByRole('textbox', { name: 'Mensagem para o Boo' })

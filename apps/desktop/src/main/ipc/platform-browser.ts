@@ -290,7 +290,7 @@ export class PlatformBrowser {
   private publish() { const host = this.host(); if (host && !host.isDestroyed()) host.webContents.send('platformBrowser:state', this.state()) }
 }
 
-/** IPC local da janela principal. Não faz parte da RPC de hosts nem da PWA. */
+/** IPC local da janela principal. Não faz parte da RPC de hosts. */
 export function registerPlatformBrowserIpc(browser: PlatformBrowser, isMainSender: (event: IpcMainInvokeEvent) => boolean): void {
   const handle = (name: string, handler: (...args: unknown[]) => unknown) => ipcMain.handle(`platformBrowser:${name}`, (event, ...args) => {
     if (!isMainSender(event)) throw new Error('Janela não autorizada.')

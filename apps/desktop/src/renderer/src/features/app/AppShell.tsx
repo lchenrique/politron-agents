@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { FolderPlus, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import TitleBar from '@/components/ide/TitleBar'
-import { ASSISTANT_ID, type Agent, type Conversation, type MessageAttachment, type Model, type ModelRuntimeOptions, type Snapshot, type Workspace } from '../../../../shared/v9'
+import { ASSISTANT_ID, type Agent, type Conversation, type MessageAttachment, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import { Sidebar } from '../sidebar/Sidebar'
 import { WorkspaceSearch } from '../sidebar/WorkspaceSearch'
@@ -11,7 +11,9 @@ import { PoliAvatar } from './PoliAvatar'
 import { AgentDetails } from './AgentDetails'
 import { ChatHeader, ConversationAvatar, ConversationTools, conversationIdentity, type ConversationChromeProps } from '../chat/ChatHeader'
 import { booActivity } from './boo-activity'
+import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { MessageList } from '../chat/MessageList'
+import { useV1ThreadRuntime, type SendOptions } from '../chat/assistant-ui-adapter'
 import { MessageLinkContext, type MessageLinkHandlers } from '../chat/MessageMarkdown'
 import { linkFileWorkspaceId } from '../chat/message-link'
 import { useConversationHistory } from '../chat/useConversationHistory'
@@ -25,13 +27,7 @@ import { INHERIT_MODEL_NAME, emptySnapshot, errorText } from './appShellShared'
 import { selectVisibleRunEvidence } from './delegation-evidence'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { replaceEqualDeep } from '@tanstack/react-query'
-import { useIsMobile } from '@/hooks/use-mobile'
-import { getPwaCapabilities, onPwaCapabilitiesChanged } from '../../pwa/remote-api'
 import { ChiefHome } from '../work/ChiefHome'
-import { PwaBoosPage } from '../pwa/PwaAgentFirst'
-import { PwaChatList, PwaChatTopBar, type PwaMenuAction } from '../pwa/PwaChatList'
-import { usePwaDelegationNotices } from '../pwa/use-pwa-delegation-notices'
-import { booOverview, deriveDelegations } from '../pwa/pwa-agent-model'
 import { RoutinesPage } from '../work/RoutinesPage'
 import { MissionStrip } from '../work/MissionStrip'
 import { BoardPage } from '../board/BoardPage'
@@ -43,21 +39,7 @@ const SettingsPage = lazy(() => import('./SettingsPage').then(module => ({ defau
 const UpdateReadyCallout = lazy(() => import('./UpdateReadyCallout').then(module => ({ default: module.UpdateReadyCallout })))
 
 export default function AppShell() {
-  const browserMode = !('vibeAPI' in window)
-  const isMobile = useIsMobile()
-  // No celular a PWA abre na conversa com o Chief e navega por Chief, Boos e Projetos.
-  const pwaMobile = browserMode && isMobile
-  // No celular "nenhuma conversa aberta" é a lista de conversas: não escolher a primeira sozinho.
-  // A detecção de celular chega depois do primeiro carregamento; a largura da tela já vale desde o início.
-  const pwaListRef = useRef(false)
-  pwaListRef.current = pwaMobile || (browserMode && typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches === true)
-  const [pwaCapabilities, setPwaCapabilities] = useState<string[]>(getPwaCapabilities)
-  const canChat = !browserMode || pwaCapabilities.includes('chat')
-  const canApprove = !browserMode || pwaCapabilities.includes('approvals')
-  const canReadFiles = !browserMode || pwaCapabilities.includes('files:read') || pwaCapabilities.includes('files:write')
-  const canWriteFiles = !browserMode || pwaCapabilities.includes('files:write')
-  useEffect(() => onPwaCapabilitiesChanged(setPwaCapabilities), [])
-  useEffect(() => browserMode ? undefined : window.platformBrowserAPI?.onReveal(() => dockRef.current?.revealTool('web')), [browserMode])
+  useEffect(() => window.platformBrowserAPI?.onReveal(() => dockRef.current?.revealTool('web')), [])
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot)
   const [models, setModels] = useState<Model[]>([])
   const [providerInventory, setProviderInventory] = useState<ProviderSnapshot | null>(null)
@@ -70,8 +52,7 @@ export default function AppShell() {
   const setSelectedEffort = useCallback((effort: Agent['effort']) => { setSelectedEffortState(effort); try { localStorage.setItem('politron.composer.effort', effort || 'medium') } catch { /* preferência opcional */ } }, [])
   const [selectedId, setSelectedId] = useState('')
   // A Central do Chief é a tela inicial; conversas e projetos continuam a um clique.
-  const [view, setView] = useState<'home' | 'routines' | 'board' | 'office' | 'marketplace' | 'boos' | null>('home')
-  const [pwaStarted, setPwaStarted] = useState(false)
+  const [view, setView] = useState<'home' | 'routines' | 'board' | 'office' | 'marketplace' | null>('home')
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const activeWorkspaceIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
@@ -83,7 +64,6 @@ export default function AppShell() {
   const [editor, setEditor] = useState<{ kind: EditorKind; initial?: Agent | Conversation | Workspace; workspaceId?: string | null } | null>(null)
   const [notice, setNotice] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (browserMode && window.matchMedia('(max-width: 767px)').matches) return true
     try { return localStorage.getItem('politron.sidebar.collapsed') === 'true' } catch { return false }
   })
   const [sidebarSection, setSidebarSection] = useState<'projects' | 'agents'>(() => { try { return localStorage.getItem('politron.sidebar.section') === 'agents' ? 'agents' : 'projects' } catch { return 'projects' } })
@@ -103,7 +83,6 @@ export default function AppShell() {
     return () => window.removeEventListener('keydown', shortcut)
   }, [])
   const openTool = (kind: DockTool, zone: DockZone = 'side') => {
-    if (browserMode && (kind === 'files' && !canReadFiles || kind === 'terminal' || kind === 'web' || kind === 'mascot')) return
     dockRef.current?.openTool(kind, zone)
   }
   const [workspaceDiff, setWorkspaceDiff] = useState('')
@@ -115,12 +94,11 @@ export default function AppShell() {
   const [mascotAgentId, setMascotAgentId] = useState<string | null>(null)
   useEffect(() => { selectedIdRef.current = selectedId; if (selectedId) setUnreadCounts(current => { if (!current[selectedId]) return current; const next = { ...current }; delete next[selectedId]; return next }) }, [selectedId])
   useEffect(() => { localStorage.setItem('politron-unread-counts', JSON.stringify(unreadCounts)) }, [unreadCounts])
-  // No celular, sem conversa escolhida mostra a lista de conversas em vez de abrir a primeira.
-  const selected = view || activeWorkspaceId ? undefined : snapshot.conversations.find(item => item.id === selectedId && !item.archived) || (!activeWorkspaceId && !pwaListRef.current ? snapshot.conversations.find(item => !item.archived) : undefined)
+  const selected = view || activeWorkspaceId ? undefined : snapshot.conversations.find(item => item.id === selectedId && !item.archived) || snapshot.conversations.find(item => !item.archived)
   const activeWorkspace = snapshot.workspaces.find(item => item.id === activeWorkspaceId && !item.archived)
   useEffect(() => { setDetailsAgentId(null); setMascotAgentId(null) }, [selected?.id])
-  const selectConversation = useCallback((id: string) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(null); setSelectedId(id); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
-  const selectWorkspace = useCallback((id: string) => { activeWorkspaceIdRef.current = id; setActiveWorkspaceId(id); setView(null); setSelectedId(''); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
+  const selectConversation = useCallback((id: string) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(null); setSelectedId(id) }, [])
+  const selectWorkspace = useCallback((id: string) => { activeWorkspaceIdRef.current = id; setActiveWorkspaceId(id); setView(null); setSelectedId('') }, [])
   useEffect(() => { activeWorkspaceIdRef.current = activeWorkspaceId }, [activeWorkspaceId])
   const selectedAgents = useMemo(() => !selected ? [] : selected.agentIds.length ? selected.agentIds.map(id => snapshot.agents.find(agent => agent.id === id)).filter((agent): agent is Agent => !!agent) : [snapshot.assistant], [selected, snapshot.agents, snapshot.assistant])
   const selectedModelRuntime = selectedModelName.split(':', 1)[0] as Agent['runtime']
@@ -131,9 +109,7 @@ export default function AppShell() {
   const visibleRunEvidence = useMemo(() => selectVisibleRunEvidence(messages, snapshot.fileChanges, snapshot.approvals), [messages, snapshot.fileChanges, snapshot.approvals])
   const visibleFileChanges = visibleRunEvidence.fileChanges
   const visibleApprovals = visibleRunEvidence.approvals
-  const composerTakeoverApproval = canApprove
-    ? visibleApprovals.find(approval => approval.status === 'pending')
-    : undefined
+  const composerTakeoverApproval = visibleApprovals.find(approval => approval.status === 'pending')
   const transcriptApprovals = composerTakeoverApproval
     ? visibleApprovals.filter(approval => approval.id !== composerTakeoverApproval.id)
     : visibleApprovals
@@ -147,8 +123,8 @@ export default function AppShell() {
   const selectedWorkspace = selected ? snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined
   const linkWorkspaceId = linkFileWorkspaceId(selectedWorkspace)
   const linkWorkspaceRoot = linkWorkspaceId ? selectedWorkspace?.path : undefined
-  // Links das respostas no Desktop: arquivos no editor do dock, web no navegador da plataforma. A PWA não recebe provider.
-  const messageLinks = useMemo<MessageLinkHandlers | null>(() => browserMode ? null : {
+  // Links das respostas: arquivos no editor do dock, web no navegador da plataforma.
+  const messageLinks = useMemo<MessageLinkHandlers>(() => ({
     workspaceRoot: linkWorkspaceRoot,
     openFile: path => {
       if (!linkWorkspaceId) { setNotice('Esta conversa não tem pasta de projeto; o arquivo não pode ser aberto.'); return }
@@ -162,9 +138,9 @@ export default function AppShell() {
       void api.navigate(url).catch(error => setNotice(errorText(error)))
     },
     blocked: () => setNotice('Link não aberto: somente HTTP/HTTPS ou arquivos dentro da pasta do projeto são permitidos.'),
-  }, [browserMode, linkWorkspaceId, linkWorkspaceRoot])
+  }), [linkWorkspaceId, linkWorkspaceRoot])
   // O IPC recria os objetos: conservar os dados iguais evita invalidar os memos do chat e dos Boos.
-  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : pwaListRef.current && !current ? '' : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
+  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => {
     void refresh()
     const applyProviders = (catalog: ProviderSnapshot) => {
@@ -215,7 +191,7 @@ export default function AppShell() {
       }
     })
     return () => { off(); offProviders(); if (refreshTimer !== null) clearTimeout(refreshTimer) }
-  }, [refresh, queueMessage, reconcileAfterReconnect, browserMode])
+  }, [refresh, queueMessage, reconcileAfterReconnect])
   useEffect(() => { void window.appAPI.setVisibleConversation(selected?.id || null).catch(error => setNotice(errorText(error))) }, [selected?.id])
   useEffect(() => { if (!selected?.workspaceId) { setWorkspaceDiff(''); return } window.appAPI.workspaceDiff(selected.workspaceId).then(setWorkspaceDiff).catch(error => setNotice(errorText(error))) }, [selected?.workspaceId, snapshot.workspaces, snapshot.fileChanges])
   useEffect(() => { const timeout = window.setTimeout(() => setNotice(''), 6000); return () => window.clearTimeout(timeout) }, [notice])
@@ -239,9 +215,8 @@ export default function AppShell() {
   }
   const saveWorkspace = async (data: EditorData) => { const workspace = await window.appAPI.saveWorkspace(data as Partial<Workspace> & { path?: string | null }); await refresh(); selectWorkspace(workspace.id) }
   const startConversation = async (workspaceId?: string) => { try { const conversation = await window.appAPI.saveConversation({ workspaceId }); await refresh(); selectConversation(conversation.id) } catch (error) { setNotice(errorText(error)) } }
-  // Ctrl+N: nova sessão livre, como o botão do topo da barra lateral. Só no desktop: no navegador o atalho abre outra janela.
+  // Ctrl+N: nova sessão livre, como o botão do topo da barra lateral.
   useEffect(() => {
-    if (browserMode || !canChat) return
     const shortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'n' || event.repeat) return
       event.preventDefault()
@@ -269,7 +244,7 @@ export default function AppShell() {
           setSnapshot(current => replaceEqualDeep(current, updated))
           selectConversation(conversation.id)
         }
-      } else if (!(pwaListRef.current && !selectedId) && !data.conversations.some(item => item.id === selectedId && !item.archived)) setSelectedId(data.conversations.find(item => !item.archived)?.id || '')
+      } else if (!data.conversations.some(item => item.id === selectedId && !item.archived)) setSelectedId(data.conversations.find(item => !item.archived)?.id || '')
     } catch (error) { setNotice(errorText(error)) }
   }
   const deleteConversation = async (id: string) => {
@@ -342,7 +317,7 @@ export default function AppShell() {
     try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
-  const submitMessage = async (value: string, modelName: string, options: { files: File[]; effort?: Agent['effort']; modelOptions: ModelRuntimeOptions; planMode?: boolean; delivery: 'queue' | 'now'; requestId: string }) => {
+  const submitMessage = async (value: string, modelName: string, options: SendOptions) => {
     if (!selected) throw new Error('Escolha uma conversa antes de enviar.')
     let input = value
     const attachments: MessageAttachment[] = []
@@ -370,39 +345,26 @@ export default function AppShell() {
       ...(Object.keys(options.modelOptions).length ? { modelOptions: options.modelOptions } : {}),
     })
   }
+  const chatRuntime = useV1ThreadRuntime(messages, submitMessage)
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
-  const openHome = useCallback((next: 'home' | 'routines' | 'board' | 'office' | 'marketplace' | 'boos') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next); if (browserMode && isMobile) setSidebarCollapsed(true) }, [browserMode, isMobile])
+  const openHome = useCallback((next: 'home' | 'routines' | 'board' | 'office' | 'marketplace') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next) }, [])
   const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
-  const pwaBoos = useMemo(() => booOverview(snapshot, agentStates), [snapshot, agentStates])
-  const pwaDelegations = useMemo(() => deriveDelegations(snapshot), [snapshot])
-  usePwaDelegationNotices(pwaMobile ? pwaDelegations : [], setNotice)
-  useEffect(() => { if (pwaMobile && !pwaStarted && !loading) { setView(null); setPwaStarted(true) } }, [pwaMobile, pwaStarted, loading])
-  // Projetos no PWA: a barra lateral antiga aparece no lugar da lista até voltar às conversas.
-  const [pwaProjects, setPwaProjects] = useState(false)
-  const backToChats = useCallback(() => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setSelectedId(''); setView(null); setPwaProjects(false); if (isMobile) setSidebarCollapsed(true) }, [isMobile])
-  const pwaMenu = (action: PwaMenuAction) => {
-    if (action === 'projects') { setSidebarSection('projects'); setPwaProjects(true); if (isMobile) setSidebarCollapsed(false); return }
-    openHome(action)
-  }
-  const pwaChatList = <PwaChatList snapshot={snapshot} unreadCounts={unreadCounts} selectedId={selected?.id} canChat={canChat} onSelect={selectConversation}
-    onNewChat={agent => { if (canChat) void openAgent(agent) }} onMenu={pwaMenu} />
-  const pwaList = pwaMobile && !selected && !view && !activeWorkspaceId
   const conversationRuns = snapshot.runs.filter(run => run.conversationId === selected?.id && !run.parentId && ['queued', 'running', 'waiting'].includes(run.status))
   const queuedMessages = useMemo(() => messages.filter(message => message.role === 'user' && message.status === 'queued'), [messages])
   // A barra da janela diz onde se está; quem participa e as ações da conversa ficam na faixa da conversa.
   const chiefName = snapshot.agents.find(agent => agent.role === 'chief')?.name
   const contextWorkspace = activeWorkspace || selectedWorkspace
   const parentWorkspace = contextWorkspace?.kind === 'worktree' ? snapshot.workspaces.find(item => item.id === contextWorkspace.parentWorkspaceId) : undefined
-  const windowLocation = view === 'boos' ? { label: 'Boos' } : view === 'home' ? { label: `Central do ${chiefName || 'Chief'}` }
+  const windowLocation = view === 'home' ? { label: `Central do ${chiefName || 'Chief'}` }
     : view === 'routines' ? { label: 'Rotinas' }
     : view === 'board' ? { label: 'Board da empresa' }
     : view === 'office' ? { label: 'Escritório' }
     : view === 'marketplace' ? { label: 'Marketplace' }
     : contextWorkspace && (parentWorkspace?.name || contextWorkspace.name) ? { label: parentWorkspace?.name || contextWorkspace.name, detail: contextWorkspace.kind === 'worktree' ? contextWorkspace.branch || contextWorkspace.name : undefined }
     : undefined
-  const mainTabLabel = view === 'boos' ? 'Boos' : view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : view === 'office' ? 'Escritório' : view === 'marketplace' ? 'Marketplace' : activeWorkspace ? 'Projeto' : undefined
+  const mainTabLabel = view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : view === 'office' ? 'Escritório' : view === 'marketplace' ? 'Marketplace' : activeWorkspace ? 'Projeto' : undefined
   // Mesmos dados para a faixa da conversa (chat sozinho) e para a aba do chat (com outras abas): nunca as duas ao mesmo tempo.
   const conversationChrome: ConversationChromeProps | null = selected ? {
     agentActivities: Object.fromEntries([snapshot.assistant, ...snapshot.agents].map(agent => [agent.id, booActivity(agent.id, selected.id, snapshot.runs, messages)])),
@@ -420,26 +382,20 @@ export default function AppShell() {
     onOpenSearchHit: hit => void openHistorySearchHit(hit).catch(error => setNotice(errorText(error))),
     focusedMessageId: focusedHistoryMessageId,
     onReturnToLatest: () => void returnToLatestHistory().catch(error => setNotice(errorText(error))),
-    browserMode,
-    canReadFiles,
-    canChat,
   } : null
   const conversationTitle = selected ? conversationIdentity(selected, snapshot.agents, snapshot.assistant) : null
 
-  return <div data-pwa-shell={browserMode ? 'true' : undefined} data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-chrome font-sans text-foreground">
-    {!(pwaMobile && !view) && <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} browserMode={browserMode} browserCanReadFiles={canReadFiles} location={windowLocation}
-      search={!browserMode && <WorkspaceSearch snapshot={snapshot} canChat={canChat} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} onSectionChange={setSidebarSection} />} />}
+  return <div data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-chrome font-sans text-foreground">
+    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} location={windowLocation}
+      search={<WorkspaceSearch snapshot={snapshot} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} onSectionChange={setSidebarSection} />} />
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-      {browserMode && isMobile && !sidebarCollapsed && <Button type="button" variant="ghost" size={null} className="boobot-web-sidebar-backdrop h-auto rounded-none p-0" aria-label="Fechar navegação" onClick={() => setSidebarCollapsed(true)} />}
-      <ResizablePanelGroup key={browserMode && isMobile ? 'web-mobile-layout' : sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
+      <ResizablePanelGroup key={sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
         defaultLayout={sidebarCollapsed ? { main: 100 } : { sidebar: sidebarSize, main: 100 - sidebarSize }}
         onLayoutChanged={(layout, meta) => { if (!meta.isUserInteraction || typeof layout.sidebar !== 'number') return; const next = Math.min(34, Math.max(10, layout.sidebar)); setSidebarSize(next); try { localStorage.setItem('politron.sidebar.size', String(next)) } catch { /* preferência opcional */ } }}
-        className="boobot-web-layout min-h-0 min-w-0">
+        className="min-h-0 min-w-0">
       {!sidebarCollapsed && <>
-      <ResizablePanel id="sidebar" defaultSize={`${sidebarSize}%`} minSize="240px" maxSize="400px" className={'min-w-0 ' + (browserMode ? 'boobot-web-sidebar-panel' : '')}>
-      {browserMode && !isMobile && !pwaProjects ? pwaChatList : <>
-      {browserMode && <Button type="button" variant="ghost" size="sm" className="m-2 justify-start" onClick={backToChats}>← Conversas</Button>}
+      <ResizablePanel id="sidebar" defaultSize={`${sidebarSize}%`} minSize="240px" maxSize="400px" className="min-w-0">
       <Sidebar
         snapshot={snapshot}
         selected={selected}
@@ -449,17 +405,11 @@ export default function AppShell() {
         onSelectWorkspace={selectWorkspace}
         activeWorkspaceId={activeWorkspaceId}
         onStartConversation={startConversation}
-        onOpenAgent={(agent, newConversation) => {
-          if (canChat) void openAgent(agent, newConversation)
-          else { setDetailsAgentId(agent.id); if (browserMode && isMobile) setSidebarCollapsed(true) }
-        }}
-        onOpenWorkspaceAgent={(workspaceId, agent) => {
-          if (canChat) void openWorkspaceAgent(workspaceId, agent)
-          else { setDetailsAgentId(agent.id); if (browserMode && isMobile) setSidebarCollapsed(true) }
-        }}
+        onOpenAgent={(agent, newConversation) => void openAgent(agent, newConversation)}
+        onOpenWorkspaceAgent={(workspaceId, agent) => void openWorkspaceAgent(workspaceId, agent)}
         onOpenEditor={setEditor}
         onOpenSettings={() => setSettingsOpen(true)}
-        view={view === "boos" ? null : view}
+        view={view}
         onOpenHome={openHome}
         section={sidebarSection}
         onSectionChange={setSidebarSection}
@@ -470,34 +420,26 @@ export default function AppShell() {
         onDeleteAgent={deleteAgent}
         onSetChief={setAgentChief}
         onNotice={setNotice}
-        browserMode={browserMode}
-        canChat={canChat}
       />
-      </>}
       </ResizablePanel>
       {/* Alça invisível de 8px centrada na borda, como no DSH: o canvas encosta na barra lateral. */}
       <ResizableHandle aria-label="Redimensionar barra lateral" className="z-10 w-0 bg-transparent after:w-2 hover:bg-transparent" />
       </>}
-      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className={'min-w-0 ' + (browserMode ? 'pb-1.5 pr-1.5 boobot-web-main-panel ' + (sidebarCollapsed ? 'pl-1.5' : '') : '')}>
+      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className="min-w-0">
       <div className="boobot-canvas ds-canvas flex h-full min-h-0 min-w-0">
-      <DockWorkspace onSendMessage={canChat ? (conversationId, agentId, text) => window.appAPI.respondToAgent(conversationId, text, agentId) : undefined} ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} delegationMessages={selected ? messages : []} conversations={snapshot.conversations} runs={snapshot.runs} onOpenRelatedConversation={selectConversation} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff} browserMode={browserMode} canReadFiles={canReadFiles} canWriteFiles={canWriteFiles}
-        chatHeader={conversationChrome && !pwaMobile && <ChatHeader {...conversationChrome} />}
+      <DockWorkspace onSendMessage={(conversationId, agentId, text) => window.appAPI.respondToAgent(conversationId, text, agentId)} ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} delegationMessages={selected ? messages : []} conversations={snapshot.conversations} runs={snapshot.runs} onOpenRelatedConversation={selectConversation} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff}
+        chatHeader={conversationChrome && <ChatHeader {...conversationChrome} />}
         chatTab={conversationChrome && conversationTitle ? { label: conversationTitle.title, title: [conversationTitle.title, conversationTitle.subtitle].filter(Boolean).join(' · '), leading: <ConversationAvatar compact {...conversationChrome} />, trailing: <ConversationTools compact {...conversationChrome} /> } : mainTabLabel ? { label: mainTabLabel } : undefined}>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {pwaMobile && view && <header className="pwa-chat-top"><Button variant="ghost" size="sm" onClick={backToChats}>← Conversas</Button></header>}
-        {pwaMobile && !pwaStarted ? <div className="flex-1" aria-busy="true" />
-        : pwaList ? pwaChatList
-        : view === 'boos' ? <PwaBoosPage boos={pwaBoos} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} />
-        : view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} canChat={canChat} />
+        {view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => void openAgent(agent)} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} />
         : view === 'routines' ? <RoutinesPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
-        : view === 'office' ? <OfficePage snapshot={snapshot} onOpenConversation={selectConversation} onOpenAgent={agent => { if (canChat) void openAgent(agent); else setDetailsAgentId(agent.id) }} />
+        : view === 'office' ? <OfficePage snapshot={snapshot} onOpenConversation={selectConversation} onOpenAgent={agent => void openAgent(agent)} />
         : view === 'marketplace' ? <MarketplacePage snapshot={snapshot} models={models} onNotice={setNotice} onHired={conversationId => { void refresh().then(() => selectConversation(conversationId)) }} />
-        : view === 'board' ? <BoardPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} readOnly={browserMode} />
+        : view === 'board' ? <BoardPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
         : selected ? <>
-          {pwaMobile && <PwaChatTopBar snapshot={snapshot} conversation={selected} onBack={backToChats}
-            tools={[{ id: 'diff', label: 'Alterações' }, ...(canReadFiles ? [{ id: 'files', label: 'Arquivos' }] : [])]} onTool={id => openTool(id as DockTool)} />}
           {selectedMission && <MissionStrip mission={selectedMission} runs={snapshot.runs} approvals={snapshot.approvals} onNotice={setNotice} />}
           <div className="flex min-h-0 flex-1 flex-col">
+            <AssistantRuntimeProvider runtime={chatRuntime.runtime}>
             <MessageLinkContext.Provider value={messageLinks}>
             <MessageList
               key={selected.id}
@@ -516,19 +458,15 @@ export default function AppShell() {
               workspaceName={selectedWorkspace?.name}
               onOpenRelatedConversation={selectConversation}
               onNotice={setNotice}
-              canSpeak={!browserMode || canChat}
-              canApprove={canApprove}
-              canCancelQueued={canChat}
+              canCancelQueued
             />
             </MessageLinkContext.Provider>
-            <fieldset disabled={!canChat} className="m-0 min-w-0 border-0 p-0">
             <div hidden={Boolean(composerTakeoverApproval)}>
             <Composer
               mentionAgents={selectedAgents}
               working={conversationRuns.length > 0}
               queued={queuedMessages}
               canAttachImages={canAttachImages}
-              canAttachFiles={!browserMode || canAttachImages}
               conversationId={selected.id}
               reviewChanges={latestReview}
               reviewKey={finishedWithChanges?.runId || ''}
@@ -537,19 +475,15 @@ export default function AppShell() {
               defaultModelName={selectedModelName}
               defaultEffort={selectedEffort}
               onModelChange={setSelectedModelName}
-              onSubmit={submitMessage}
+              onSubmit={chatRuntime.send}
               onStop={() => void window.appAPI.stop(selected.id)}
               onVoiceNotice={setNotice}
             />
             </div>
-            </fieldset>
-            {composerTakeoverApproval && <ComposerTakeover key={composerTakeoverApproval.id} approval={composerTakeoverApproval} onNotice={setNotice} canApprove={canApprove} />}
-            {browserMode && !canChat && <p className="mx-3 mb-2 rounded-md bg-warning-soft px-3 py-2 text-center text-xs text-warning sm:mx-auto sm:max-w-3xl">O host está em leitura para este dispositivo. Libere o chat nas permissões PWA do Boobot.</p>}
+            {composerTakeoverApproval && <ComposerTakeover key={composerTakeoverApproval.id} approval={composerTakeoverApproval} onNotice={setNotice} />}
+            </AssistantRuntimeProvider>
           </div>
-        </> : activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} conversations={snapshot.conversations} workspaces={snapshot.workspaces} agents={snapshot.agents} onCreateSession={() => void startConversation(activeWorkspace.id)} onOpenConversation={selectConversation} onEdit={() => setEditor({ kind: 'workspace', initial: activeWorkspace })} onOpenAgent={agent => {
-          if (canChat) void openWorkspaceAgent(activeWorkspace.id, agent)
-          else { setDetailsAgentId(agent.id); if (browserMode && isMobile) setSidebarCollapsed(true) }
-        }} browserMode={browserMode} canChat={canChat} /> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><div className="mx-auto mb-5 flex items-center justify-center"><PoliAvatar agent={{ ...snapshot.assistant, name: 'Boo' }} size={104} /></div><h1 className="ds-page-title">Seu espaço de trabalho</h1><p className="ds-page-lede mx-auto">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em projetos e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-6 flex flex-wrap justify-center gap-2"><Button disabled={!canChat} onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button>{!browserMode && <Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo projeto</Button>}</div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
+        </> : activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} conversations={snapshot.conversations} workspaces={snapshot.workspaces} agents={snapshot.agents} onCreateSession={() => void startConversation(activeWorkspace.id)} onOpenConversation={selectConversation} onEdit={() => setEditor({ kind: 'workspace', initial: activeWorkspace })} onOpenAgent={agent => void openWorkspaceAgent(activeWorkspace.id, agent)} /> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><div className="mx-auto mb-5 flex items-center justify-center"><PoliAvatar agent={{ ...snapshot.assistant, name: 'Boo' }} size={104} /></div><h1 className="ds-page-title">Seu espaço de trabalho</h1><p className="ds-page-lede mx-auto">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em projetos e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-6 flex flex-wrap justify-center gap-2"><Button onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button><Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo projeto</Button></div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}
       </main>
       </DockWorkspace>
       </div>
@@ -557,13 +491,13 @@ export default function AppShell() {
       </ResizablePanelGroup>
       </div>
     </div>
-    <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} browserMode={browserMode} />
-    {!browserMode && <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} /></Suspense>}
+    <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} />
+    <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} /></Suspense>
     {/* No celular o composer ocupa toda a largura: o aviso sobe para não cobrir o botão de enviar. */}
     {notice && <div role="status" className="fixed inset-x-3 bottom-32 z-[60] mx-auto max-w-md rounded-lg sm:inset-x-auto sm:bottom-5 sm:right-5 sm:mx-0 border border-border bg-popover px-4 py-3 text-[13px] leading-5 text-popover-foreground shadow-lg">{notice}</div>}
-    {!browserMode && <Suspense fallback={null}>
+    <Suspense fallback={null}>
       <SettingsPage open={settingsOpen} onOpenChange={setSettingsOpen} initialSection={settingsSection} />
       {editor && <Editor kind={editor.kind} initial={editor.initial} workspaceId={editor.workspaceId} defaultAgentIds={editor.workspaceId ? snapshot.workspaces.find(workspace => workspace.id === editor.workspaceId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'workspace' ? saveWorkspace : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
-    </Suspense>}
+    </Suspense>
   </div>
 }

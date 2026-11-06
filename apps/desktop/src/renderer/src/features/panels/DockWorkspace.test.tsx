@@ -27,9 +27,9 @@ beforeEach(() => {
   })
 })
 
-function setup(chrome: Pick<ComponentProps<typeof DockWorkspace>, 'chatTab' | 'chatHeader'> = {}, options: Partial<Pick<ComponentProps<typeof DockWorkspace>, 'browserMode' | 'canReadFiles'>> = {}) {
+function setup(chrome: Pick<ComponentProps<typeof DockWorkspace>, 'chatTab' | 'chatHeader'> = {}) {
   const ref = createRef<DockWorkspaceHandle>()
-  const result = render(<DockWorkspace ref={ref} {...options} {...chrome} workspaceId="workspace-1" agents={[]} selectedAgents={[]} onChanged={vi.fn()} workspaceDiff=""><div>Chat existente</div></DockWorkspace>)
+  const result = render(<DockWorkspace ref={ref} {...chrome} workspaceId="workspace-1" agents={[]} selectedAgents={[]} onChanged={vi.fn()} workspaceDiff=""><div>Chat existente</div></DockWorkspace>)
   return { ref, ...result }
 }
 
@@ -70,16 +70,6 @@ describe('abas e painéis móveis do Politron', () => {
     expect(screen.getByRole('button', { name: 'Aba Agentes' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Aba Chat' })).toBeInTheDocument()
     expect(ref.current).toBeTruthy()
-  })
-
-  it('oferece agentes na PWA sem expor ferramentas exclusivas do desktop', () => {
-    const { ref } = setup({}, { browserMode: true })
-    act(() => ref.current!.openTool('diff', 'main'))
-    fireEvent.click(screen.getByRole('button', { name: 'Nova aba' }))
-    expect(screen.getByRole('menuitem', { name: 'Agentes' })).toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: 'Navegador' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: 'Terminal' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: 'Mascote' })).not.toBeInTheDocument()
   })
 
   it('nomeia a aba principal pelo conteúdo exibido', () => {

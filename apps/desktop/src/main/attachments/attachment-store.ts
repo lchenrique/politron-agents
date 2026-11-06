@@ -26,7 +26,7 @@ function displayName(name: string): string {
   return clean && clean !== '.' && clean !== '..' ? clean : 'imagem'
 }
 
-/** Host-only temporary image files for PWA uploads, addressed by opaque ids. */
+/** Host-only temporary image files addressed by opaque ids. */
 export class AttachmentStore {
   private entries = new Map<string, Entry>()
   private readonly manifest: string

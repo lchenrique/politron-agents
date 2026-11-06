@@ -24,7 +24,7 @@ const accessibility = {
 
 /**
  * Área de arrastar e soltar. Mouse começa a arrastar após 5px; toque, após segurar 250 ms,
- * para que tocar e rolar a lista continuem funcionando na PWA.
+ * para que tocar e rolar a lista continuem funcionando em telas de toque.
  */
 export function SortableArea({ onDragEnd, children }: { onDragEnd: (event: DragEndEvent) => void; children: ReactNode }) {
   const sensors = useSensors(

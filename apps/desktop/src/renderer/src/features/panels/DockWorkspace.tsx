@@ -25,8 +25,6 @@ export interface DockWorkspaceHandle {
 const labels: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações', agents: 'Agentes' }
 const icons = { chat: MessageSquare, files: Files, terminal: Terminal, web: Globe, mascot: UserRound, diff: FileDiff, agents: Users, file: Code2 }
 const toolKinds: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff', 'agents']
-/** Ferramentas que dependem do Electron local; a PWA nunca as monta. */
-const desktopOnly = (kind: DockTab['kind']) => kind === 'terminal' || kind === 'web' || kind === 'mascot'
 const positions = [
   { value: 'left', label: 'Dividir à esquerda', icon: PanelLeft },
   { value: 'right', label: 'Dividir à direita', icon: PanelRight },
@@ -42,14 +40,13 @@ function loadLayout(): DockLayoutState {
   } catch { return initialDockLayout() }
 }
 
-function DockAddMenu({ groupId, onOpen, label = 'Nova aba', browserMode = false, canReadFiles = true }: { groupId: string; onOpen: (kind: DockTool, groupId: string) => void; label?: string; browserMode?: boolean; canReadFiles?: boolean }) {
+function DockAddMenu({ groupId, onOpen, label = 'Nova aba' }: { groupId: string; onOpen: (kind: DockTool, groupId: string) => void; label?: string }) {
   const [open, setOpen] = useState(false)
-  const available = browserMode ? toolKinds.filter(kind => kind === 'chat' || kind === 'diff' || kind === 'agents' || kind === 'files' && canReadFiles) : toolKinds
   return <Menu open={open} onClose={() => setOpen(false)} align="end" portal autoFocus
     anchor={<Button size="icon" variant="ghost" className="size-7 rounded-full shrink-0" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open}
       onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpen(value => !value) } }} onClick={() => setOpen(value => !value)}><Plus className="size-4" /></Button>}
-    items={available.map(kind => { const Icon = icons[kind]; return { id: kind, label: labels[kind], icon: <Icon /> } })}
-    onSelect={kind => { setOpen(false); if (available.includes(kind as DockTool)) onOpen(kind as DockTool, groupId) }} />
+    items={toolKinds.map(kind => { const Icon = icons[kind]; return { id: kind, label: labels[kind], icon: <Icon /> } })}
+    onSelect={kind => { setOpen(false); if (toolKinds.includes(kind as DockTool)) onOpen(kind as DockTool, groupId) }} />
 }
 
 const MASCOT_STATE_LABEL: Record<AgentAvatarState, string> = { idle: 'Ocioso', working: 'Trabalhando', waiting: 'Aguardando aprovação', speaking: 'Falando' }
@@ -77,10 +74,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
   agentStates?: Record<string, AgentAvatarState>
   onChanged: (value: string) => void
   workspaceDiff: string
-  browserMode?: boolean
-  canReadFiles?: boolean
-  canWriteFiles?: boolean
-}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, delegationMessages = [], conversations = [], runs = [], onOpenRelatedConversation, onSendMessage, voiceAgentId, assistant, agents, selectedAgents, onChanged, workspaceDiff, browserMode = false, canReadFiles = true, canWriteFiles = false }, ref) {
+}>(function DockWorkspace({ children, chatTab, chatHeader, workspaceId, conversationId, delegationMessages = [], conversations = [], runs = [], onOpenRelatedConversation, onSendMessage, voiceAgentId, assistant, agents, selectedAgents, onChanged, workspaceDiff }, ref) {
   const [layout, setLayout] = useState<DockLayoutState>(loadLayout)
   const [openOrganizeMenuId, setOpenOrganizeMenuId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, FileDraft>>({})
@@ -89,21 +83,6 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     if (!next) { const copy = { ...current }; delete copy[id]; return copy }
     return { ...current, [id]: next }
   }), [])
-  useEffect(() => {
-    if (!browserMode) return
-    setLayout(current => {
-      const unavailable = groups(current.root).flatMap(group => group.tabs
-        .filter(tab => desktopOnly(tab.kind) || !canReadFiles && (tab.kind === 'files' || tab.kind === 'file'))
-        .map(tab => ({ groupId: group.id, tabId: tab.id })))
-      if (!unavailable.length) return current
-      let next = current
-      for (const item of unavailable) {
-        if (!groupWithTab(next.root, item.tabId)) continue
-        next = pruneEmpty({ ...next, root: removeTabFromTree(next.root, item.groupId, item.tabId) })
-      }
-      return next
-    })
-  }, [browserMode, canReadFiles])
   useEffect(() => {
     if (!Object.values(drafts).some(item => item.content !== item.baseline)) return
     const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
@@ -128,11 +107,9 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     return groups(state.root).find(group => group.id !== mainGroup(state).id && group.tabs.some(tab => tab.kind === 'files')) || groups(state.root).find(group => group.id !== mainGroup(state).id && group.tabs.length > 0) || groups(state.root).find(group => group.id !== mainGroup(state).id)
   }
   const openInGroup = (kind: DockTool, groupId: string) => {
-    if (browserMode && (desktopOnly(kind) || kind === 'files' && !canReadFiles)) return
     setLayout(current => placeTab(current, toolTab(kind), groupId))
   }
   const openTool = (kind: DockTool, zone: DockZone = 'side') => setLayout(current => {
-    if (browserMode && (desktopOnly(kind) || kind === 'files' && !canReadFiles)) return current
     const destination = toolGroup(current, zone)
     if (destination) return placeTab(current, toolTab(kind), destination.id)
     return splitGroup(current, mainGroup(current).id, 'right', toolTab(kind))
@@ -204,15 +181,14 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
     setLayout(initialDockLayout())
   }
   const renderTab = (tab: DockTab): ReactNode => {
-    if (browserMode && (desktopOnly(tab.kind) || (tab.kind === 'files' || tab.kind === 'file') && !canReadFiles)) return null
     switch (tab.kind) {
       case 'chat': return children
       case 'agents': return <DelegationOverview conversationId={conversationId} messages={delegationMessages} conversations={conversations} runs={runs} agents={agents} onOpenConversation={onOpenRelatedConversation} />
       case 'files': return <ProjectExplorer workspaceId={workspaceId} onOpenFile={(id, path) => openFile(id, path)} />
-      case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} readOnly={browserMode && !canWriteFiles} /> : null
+      case 'file': return tab.workspaceId && tab.path ? <FilePreview workspaceId={tab.workspaceId} path={tab.path} draft={drafts[tab.id]} onDraftChange={updater => changeDraft(tab.id, updater)} /> : null
       case 'terminal': return <Suspense fallback={null}><TerminalPanel workspaceId={workspaceId} conversationId={conversationId} showLogs={false} /></Suspense>
       case 'web': return <Suspense fallback={null}><PlatformBrowserPanel onNotice={onChanged} workspaceId={workspaceId} conversationId={conversationId} agents={selectedAgents} /></Suspense>
-      case 'mascot': return <BooWorkPanel assistant={assistant} agents={agents} selectedAgents={selectedAgents} conversationId={conversationId} voiceAgentId={voiceAgentId} runs={runs} messages={delegationMessages} onSendMessage={onSendMessage} onOpenChat={() => revealTool('chat')} onOpenFile={canReadFiles && workspaceId ? path => openFile(workspaceId, path) : undefined} />
+      case 'mascot': return <BooWorkPanel assistant={assistant} agents={agents} selectedAgents={selectedAgents} conversationId={conversationId} voiceAgentId={voiceAgentId} runs={runs} messages={delegationMessages} onSendMessage={onSendMessage} onOpenChat={() => revealTool('chat')} onOpenFile={workspaceId ? path => openFile(workspaceId, path) : undefined} />
       case 'diff': return <div className="h-full overflow-auto p-4"><h2 className="mb-3 text-xs font-semibold text-muted-foreground">Alterações versus HEAD</h2><pre className="min-w-max whitespace-pre font-mono text-[11px] leading-5">{workspaceDiff || 'Nenhuma alteração rastreada.'}</pre></div>
     }
   }
@@ -276,7 +252,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
           })}
         </div>
         <div className="ml-1 flex shrink-0 items-center gap-0.5 border-l border-border/50 pl-1">
-          <DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} />
+          <DockAddMenu groupId={group.id} onOpen={openInGroup} />
           <Menu open={openOrganizeMenuId === group.id} onClose={() => setOpenOrganizeMenuId(null)} align="end" portal autoFocus
             anchor={<Button variant="ghost" size="icon" className="size-7 rounded-full shrink-0" aria-label={'Organizar ' + (primary ? 'área principal' : 'painel auxiliar')}
               aria-haspopup="menu" aria-expanded={openOrganizeMenuId === group.id}
@@ -309,7 +285,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
       </header>}
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         {group.tabs.length ? group.tabs.map(tab => <div key={tab.id} className={group.active === tab.id ? 'flex h-full min-h-0 min-w-0 flex-col' : 'hidden'}>{tab.kind === 'chat' && soloChat && chatHeader}{tab.kind === 'file' && group.active !== tab.id ? null : renderTab(tab)}</div>)
-          : <div className="flex h-full flex-col items-center justify-center gap-3 p-5 text-center"><Code2 className="size-8 text-muted-foreground/50" /><p className="text-xs text-muted-foreground">Escolha o conteúdo deste painel.</p><DockAddMenu groupId={group.id} onOpen={openInGroup} browserMode={browserMode} canReadFiles={canReadFiles} label="Escolher conteúdo da nova aba" /></div>}
+          : <div className="flex h-full flex-col items-center justify-center gap-3 p-5 text-center"><Code2 className="size-8 text-muted-foreground/50" /><p className="text-xs text-muted-foreground">Escolha o conteúdo deste painel.</p><DockAddMenu groupId={group.id} onOpen={openInGroup} label="Escolher conteúdo da nova aba" /></div>}
       </div>
     </section>
   }

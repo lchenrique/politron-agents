@@ -68,7 +68,7 @@ async function main() {
   fs.writeFileSync(path.join(root, 'secret.txt'), 'SEGREDO-FORA-DO-WORKSPACE')
 
   const profile = path.join(root, 'userData')
-  const env = { ...process.env, BOOBOT_E2E_USER_DATA_DIR: profile, BOOBOT_E2E_PWA_PORT: '0' }
+  const env = { ...process.env, BOOBOT_E2E_USER_DATA_DIR: profile }
   delete env.ELECTRON_RUN_AS_NODE
   delete env.ELECTRON_RENDERER_URL
   if (dev) env.ELECTRON_RENDERER_URL = await startDevRenderer()
@@ -118,7 +118,14 @@ async function main() {
   await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].webContents.on('render-process-gone', (_event, details) => { globalThis.__gone = details }) })
   try { await page.reload({ waitUntil: 'domcontentloaded', timeout: 120_000 }) } catch (error) { record('reload-gone', await app.evaluate(() => globalThis.__gone || null)); throw error }
   await page.waitForFunction(() => !!window.appAPI && !!window.platformBrowserAPI, undefined, { timeout: 120_000 })
-  await page.getByRole('button', { name: fixture.conversation.name, exact: true }).click()
+  // Sidebar v2: a conversa só aparece depois de entrar no projeto dela.
+  const openConversation = async (workspaceName, conversationName) => {
+    const back = page.getByRole('button', { name: 'Voltar aos projetos', exact: true })
+    if (await back.count()) await back.click()
+    await page.getByRole('button', { name: new RegExp('^' + workspaceName) }).first().click()
+    await page.getByRole('button', { name: new RegExp('^' + conversationName) }).first().click()
+  }
+  await openConversation(fixture.workspace.name, fixture.conversation.name)
   const link = name => page.locator('[data-message-id="qa-links"] a', { hasText: new RegExp('^' + name + '$') })
   // Abrir arquivo ativa a aba do editor na área do chat; volta ao chat antes de cada clique.
   const showChat = async () => { const chat = page.locator('[aria-label="Aba Assistente"]'); if (await chat.count()) await chat.first().click() }
@@ -198,14 +205,14 @@ async function main() {
       assert.equal(page.url(), appUrl, name + ': janela do app navegou'); assert.ok(!page.url().includes('secret') && !page.url().includes('win.ini'))
       evidence.push({ name, href, notice })
     }
-    await page.getByRole('button', { name: fixture.noFolder.name, exact: true }).click()
+    await openConversation('QA sem pasta', fixture.noFolder.name)
     await showChat()
     const tabsBefore = await tabs(), externalBefore = (await external()).length
     await page.locator('[data-message-id="qa-links-sem-pasta"] a').click()
     const notice = await page.getByRole('status').filter({ hasText: 'não tem pasta de projeto' }).first().textContent({ timeout: 5_000 })
     assert.deepEqual(await tabs(), tabsBefore); assert.equal((await external()).length, externalBefore)
     evidence.push({ name: 'README sem pasta', href: 'README.md', notice })
-    await page.getByRole('button', { name: fixture.conversation.name, exact: true }).click()
+    await openConversation(fixture.workspace.name, fixture.conversation.name)
     await showChat()
     await link('README').waitFor()
     return evidence

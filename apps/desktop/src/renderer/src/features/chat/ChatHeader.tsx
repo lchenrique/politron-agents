@@ -26,9 +26,6 @@ export interface ConversationChromeProps {
   onOpenSearchHit?: (hit: MessageSearchHit) => void
   focusedMessageId?: string | null
   onReturnToLatest?: () => void
-  browserMode?: boolean
-  canReadFiles?: boolean
-  canChat?: boolean
 }
 
 /** Quem está na conversa e como ela se apresenta: o mesmo título serve à faixa e à aba. */
@@ -51,9 +48,9 @@ function MiniAvatar({ agent, activity }: { agent: Agent; activity?: BooActivity 
 }
 
 /** Avatar do Boo ou da equipe: abre os detalhes do Boo ou a edição da equipe. */
-export function ConversationAvatar({ selected, agents, assistant, agentActivities, onOpenAgent, onEditConversation, browserMode = false, canChat = true, compact = false }: ConversationChromeProps & { compact?: boolean }) {
+export function ConversationAvatar({ selected, agents, assistant, agentActivities, onOpenAgent, onEditConversation, compact = false }: ConversationChromeProps & { compact?: boolean }) {
   const { identities, isGroup } = conversationIdentity(selected, agents, assistant)
-  if (isGroup) return <Button type="button" variant="ghost" size={null} aria-label="Ver participantes do grupo" title={identities.map(agent => agent.name).join(', ')} onClick={onEditConversation} disabled={browserMode || !canChat}
+  if (isGroup) return <Button type="button" variant="ghost" size={null} aria-label="Ver participantes do grupo" title={identities.map(agent => agent.name).join(', ')} onClick={onEditConversation}
     className={compact ? 'relative flex h-5 w-8 shrink-0 items-center justify-start gap-0 rounded-full p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-primary' : 'relative flex h-10 w-12 shrink-0 items-center justify-start gap-0 rounded-md p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-primary'}>
     {identities.slice(0, compact ? 2 : 3).map((agent, index) =>
       <span key={agent.id} className={'absolute overflow-hidden rounded-full ring-2 ring-background ' + (compact ? 'top-0' : 'top-1')} style={{ left: index * (compact ? 10 : 9), zIndex: 3 - index }}>
@@ -68,7 +65,7 @@ export function ConversationAvatar({ selected, agents, assistant, agentActivitie
 }
 
 /** Busca no histórico e ações da conversa. A busca usa portal para não ser cortada pela faixa de abas. */
-export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFiles, onOpenMascot, onEditConversation, onSearchHistory, onOpenSearchHit, focusedMessageId, onReturnToLatest, browserMode = false, canReadFiles = true, compact = false }: ConversationChromeProps & { compact?: boolean }) {
+export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFiles, onOpenMascot, onEditConversation, onSearchHistory, onOpenSearchHit, focusedMessageId, onReturnToLatest, compact = false }: ConversationChromeProps & { compact?: boolean }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<MessageSearchHit[]>([])
@@ -104,16 +101,13 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
     catch (error) { setSearchError(error instanceof Error ? error.message : 'Não foi possível pesquisar o histórico.') }
     finally { setSearching(false) }
   }
-  const showFiles = !browserMode || canReadFiles
   const buttonClass = compact ? 'size-6 rounded-full' : undefined
   const iconClass = compact ? 'size-3.5' : 'size-4'
   const actionItems = [
     { id: 'files', label: 'Arquivos', icon: <FolderOpen /> },
-    ...(!browserMode ? [
-      { id: 'mascot', label: 'Mascote e voz', icon: <UserRound /> },
-      { id: 'browser', label: 'Navegador', icon: <Globe /> },
-      { id: 'conversation', label: 'Conversa e equipe', icon: <Settings2 /> },
-    ] : []),
+    { id: 'mascot', label: 'Mascote e voz', icon: <UserRound /> },
+    { id: 'browser', label: 'Navegador', icon: <Globe /> },
+    { id: 'conversation', label: 'Conversa e equipe', icon: <Settings2 /> },
   ]
   return <div ref={rootRef} className={'flex shrink-0 items-center justify-end ' + (compact ? 'gap-0' : 'gap-1')}>
     <Button ref={searchTriggerRef} variant="ghost" size="icon" className={buttonClass} aria-label="Buscar no histórico desta conversa" title="Buscar no histórico"
@@ -132,7 +126,7 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
         {!searching && searched && hits.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">Nenhuma mensagem encontrada.</p>}
         {focusedMessageId && <Button type="button" variant="link" size={null} onClick={() => { onReturnToLatest?.(); setSearchOpen(false) }} className="mt-2 h-auto w-full justify-start rounded-none border-t border-border p-0 pt-2 text-left text-xs font-normal text-primary hover:underline">Voltar às mensagens recentes</Button>}
       </MenuSurface>, document.body)}
-    {showFiles && <Menu open={actionsOpen} onClose={() => setActionsOpen(false)} anchor={<Button variant="ghost" size="icon" className={buttonClass} aria-label="Ações da conversa" title="Ações da conversa"
+    <Menu open={actionsOpen} onClose={() => setActionsOpen(false)} anchor={<Button variant="ghost" size="icon" className={buttonClass} aria-label="Ações da conversa" title="Ações da conversa"
       aria-haspopup="menu" aria-expanded={actionsOpen} onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setActionsOpen(value => !value) } }} onClick={() => setActionsOpen(value => !value)}><MoreHorizontal className={iconClass} /></Button>}
       items={actionItems} onSelect={id => {
         setActionsOpen(false)
@@ -140,7 +134,7 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
         else if (id === 'mascot') onOpenMascot?.()
         else if (id === 'browser') onOpenComputerUse()
         else if (id === 'conversation') onEditConversation()
-      }} align="end" portal listClassName="w-56" autoFocus />}
+      }} align="end" portal listClassName="w-56" autoFocus />
   </div>
 }
 

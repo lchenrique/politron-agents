@@ -9,7 +9,7 @@ import { describeTrigger } from '../../../../shared/missions'
 import { Avatar, AgentPresence } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 import { PolitronToolApproval } from '../chat/PolitronToolApproval'
-import { deriveDelegations, isDelegationActive } from '../pwa/pwa-agent-model'
+import { deriveDelegations, isDelegationActive } from './delegation-model'
 import { MissionControls, MissionReply, PhaseLabel, ProgressBar, StepList, missionPhase, missionProgress, relativeTime } from './mission-ui'
 
 const SUGGESTIONS = [
@@ -21,14 +21,13 @@ const SUGGESTION_LABELS = ['Lançar um produto', 'Acompanhar projetos todo dia',
 // Radix Select não aceita item com valor vazio; o estado e o localStorage continuam usando ''.
 const NO_PROJECT = '__no-project__'
 
-export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAgent, onOpenRoutines, onNotice, canChat = true }: {
+export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAgent, onOpenRoutines, onNotice }: {
   snapshot: Snapshot
   agentStates: Record<string, 'idle' | 'working' | 'waiting'>
   onOpenConversation: (id: string) => void
   onOpenAgent: (agent: Agent) => void
   onOpenRoutines: () => void
   onNotice: (text: string) => void
-  canChat?: boolean
 }) {
   const chief = snapshot.agents.find(agent => agent.role === 'chief' && agent.temporaryStatus !== 'retired')
   const owners = useMemo(() => [...(chief ? [chief] : []), ...snapshot.agents.filter(agent => agent.role !== 'chief' && !agent.temporary), snapshot.assistant], [chief, snapshot.agents, snapshot.assistant])
@@ -111,7 +110,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
         <form className="mt-6 rounded-2xl bg-[var(--dsw-specific-input-major,var(--card))] shadow-[var(--dsw-elevation-soft,var(--shadow-composer))] transition-shadow focus-within:shadow-[var(--dsw-elevation-prominent,var(--shadow-composer))]"
           onSubmit={event => { event.preventDefault(); void assign() }}>
           <label htmlFor="chief-goal" className="sr-only">Objetivo para {chief?.name || 'o Chief'}</label>
-          <Textarea id="chief-goal" value={goal} disabled={!canChat} onChange={event => setGoal(event.target.value)} rows={3}
+          <Textarea id="chief-goal" value={goal} onChange={event => setGoal(event.target.value)} rows={3}
             onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void assign() } }}
             placeholder="Ex.: Preciso lançar um novo produto. Monte uma equipe, pesquise o mercado e comece a executar."
             className="field-sizing-content block max-h-72 min-h-24 w-full resize-none rounded-none border-0 bg-transparent px-4 pb-2 pt-4 text-[15px] leading-6 shadow-none outline-none placeholder:text-muted-foreground/80 focus-visible:ring-0 md:text-[15px] dark:bg-transparent" />
@@ -131,11 +130,11 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
               </SelectContent>
             </Select>
             <span className="ml-auto hidden text-[11px] text-muted-foreground @md:inline">Ctrl + Enter</span>
-            <Button type="submit" size={null} aria-label="Atribuir" title="Atribuir (Ctrl + Enter)" disabled={!goal.trim() || sending || !canChat} className="size-[34px] -translate-y-0.5 rounded-full bg-[var(--dsw-alias-button-info-fill,var(--primary))] text-white hover:bg-[var(--dsw-alias-button-info-fill,var(--primary))]/90 disabled:opacity-40">{sending ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}</Button>
+            <Button type="submit" size={null} aria-label="Atribuir" title="Atribuir (Ctrl + Enter)" disabled={!goal.trim() || sending} className="size-[34px] -translate-y-0.5 rounded-full bg-[var(--dsw-alias-button-info-fill,var(--primary))] text-white hover:bg-[var(--dsw-alias-button-info-fill,var(--primary))]/90 disabled:opacity-40">{sending ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}</Button>
           </div>
         </form>
         {!goal && <div className="mt-3 flex flex-wrap gap-1.5">
-          {SUGGESTIONS.map((suggestion, index) => <Button key={suggestion} type="button" variant="outline" size={null} disabled={!canChat} onClick={() => setGoal(suggestion)} className="h-7 rounded-full border-0 bg-[var(--dsw-alias-button-tool-bar-fill,var(--muted))] px-2.5 text-[13px] font-normal text-muted-foreground shadow-none transition-colors hover:bg-[var(--dsw-alias-button-tool-bar-hover,var(--accent))] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0 disabled:opacity-50">{SUGGESTION_LABELS[index]}</Button>)}
+          {SUGGESTIONS.map((suggestion, index) => <Button key={suggestion} type="button" variant="outline" size={null} onClick={() => setGoal(suggestion)} className="h-7 rounded-full border-0 bg-[var(--dsw-alias-button-tool-bar-fill,var(--muted))] px-2.5 text-[13px] font-normal text-muted-foreground shadow-none transition-colors hover:bg-[var(--dsw-alias-button-tool-bar-hover,var(--accent))] hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring focus-visible:ring-0 disabled:opacity-50">{SUGGESTION_LABELS[index]}</Button>)}
         </div>}
       </section>
 

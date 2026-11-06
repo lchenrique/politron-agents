@@ -6,7 +6,6 @@ import { Menu, Modal, type MenuEntry, type MenuItem } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
 import { ProjectGroupSection } from './ProjectGroupSection'
 import { useSidebarIndex } from './sidebarIndex'
-import { WorkspaceSearch } from './WorkspaceSearch'
 import type { Agent, Approval, Conversation, Snapshot, Workspace } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
@@ -27,6 +26,9 @@ const NEEDS_LIMIT = 6
 /** Boos na faixa de avatares antes de "Ver todos". */
 const BOO_LIMIT = 12
 
+/** Na barra todo Boo usa a figura padrão; só a cor do corpo o diferencia (sem foto, forma ou acessórios). */
+const colorOnly = (agent: Agent): Agent => ({ id: agent.id, name: agent.name, color: agent.color } as Agent)
+
 /** Frase curta do que o Boo espera do usuário, a partir dos detalhes da aprovação. */
 function approvalLabel(approval: Approval, agent: string) {
   const details = approval.details
@@ -46,7 +48,7 @@ function readSet(key: string): Set<string> {
   try { const value: unknown = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []) } catch { return new Set() }
 }
 
-export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, agentStates, onSelectConversation, onSelectWorkspace, onStartConversation, onOpenAgent, onOpenWorkspaceAgent, onOpenEditor, onOpenSettings, onDeleteWorkspace, onDeleteConversation, onDeleteConversations, onDeleteAgent, onSetChief, onNotice, view = null, onOpenHome, onSectionChange, attentionCount = 0, browserMode = false, canChat = true }: {
+export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, agentStates, onSelectConversation, onSelectWorkspace, onStartConversation, onOpenAgent, onOpenWorkspaceAgent, onOpenEditor, onOpenSettings, onDeleteWorkspace, onDeleteConversation, onDeleteConversations, onDeleteAgent, onSetChief, onNotice, view = null, onOpenHome, onSectionChange, attentionCount = 0 }: {
   snapshot: Snapshot
   selected: Conversation | undefined
   activeWorkspaceId?: string | null
@@ -72,8 +74,6 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   section?: 'projects' | 'agents'
   onSectionChange?: (section: 'projects' | 'agents') => void
   attentionCount?: number
-  browserMode?: boolean
-  canChat?: boolean
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readSet('politron.sidebar.collapsed-workspaces'))
   // Projeto aberto na parte de baixo da barra; null mostra a lista de projetos.
@@ -240,11 +240,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const chiefExists = snapshot.agents.some(item => item.role === 'chief')
     const favoriteLabel = isFavorite('agent', agent.id) ? 'Remover dos favoritos' : 'Favoritar agente'
     return [
-      { id: 'new-conversation', label: 'Nova conversa', icon: <MessageSquarePlus />, disabled: !canChat },
-      ...(!browserMode ? [{ id: 'edit-agent', label: 'Editar perfil', icon: <Pencil /> }] : []),
+      { id: 'new-conversation', label: 'Nova conversa', icon: <MessageSquarePlus /> },
+      { id: 'edit-agent', label: 'Editar perfil', icon: <Pencil /> },
       { id: 'favorite-agent', label: favoriteLabel, icon: <Star /> },
-      ...(!browserMode ? [{ id: 'chief-role', label: agent.role === 'chief' ? 'Remover papel de Chief' : chiefExists ? 'Já existe um Chief' : 'Promover a Chief', icon: <Crown />, disabled: agent.role !== 'chief' && chiefExists }] : []),
-      ...(!browserMode ? [{ id: 'delete-agent', label: 'Excluir agente', icon: <Trash2 />, danger: true }] : []),
+      { id: 'chief-role', label: agent.role === 'chief' ? 'Remover papel de Chief' : chiefExists ? 'Já existe um Chief' : 'Promover a Chief', icon: <Crown />, disabled: agent.role !== 'chief' && chiefExists },
+      { id: 'delete-agent', label: 'Excluir agente', icon: <Trash2 />, danger: true },
     ]
   }
 
@@ -270,9 +270,9 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   }
   /** Como no DSH: o espaço inicial só mostra estado (aprovação > execução > não lida); à direita, o tempo dá lugar ao menu no hover. */
   const conversationMenuEntries = (conversation: Conversation): MenuEntry[] => [
-    ...(!browserMode ? [{ id: 'edit-conversation', label: 'Renomear ou editar', icon: <Pencil /> }] : []),
+    { id: 'edit-conversation', label: 'Renomear ou editar', icon: <Pencil /> },
     { id: 'favorite-conversation', label: isFavorite('conversation', conversation.id) ? 'Remover dos favoritos' : 'Favoritar sessão', icon: <Star /> },
-    ...(!browserMode ? [{ id: 'delete-conversation', label: 'Excluir conversa', icon: <Trash2 />, danger: true }] : []),
+    { id: 'delete-conversation', label: 'Excluir conversa', icon: <Trash2 />, danger: true },
   ]
   const conversationRow = (conversation: Conversation, attention: boolean, unread: number, running: boolean) =>
     selecting ? <div key={conversation.id} data-active={checkedIds.has(conversation.id)} className="dsh-row dsh-session">
@@ -311,16 +311,16 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     // A API abre a pasta pela conversa; sem sessão no projeto não há como abrir.
     const folderConversation = conversationsOf(workspace.id).find(item => item.workspaceId === workspace.id)
     const items: MenuEntry[] = [
-      { id: 'new-conversation', label: 'Nova sessão', icon: <Plus />, disabled: !canChat },
+      { id: 'new-conversation', label: 'Nova sessão', icon: <Plus /> },
       ...(onSelectWorkspace ? [{ id: 'open-workspace', label: 'Abrir projeto', icon: <FolderOpen /> }] : []),
-      ...(!browserMode && workspace.kind !== 'free' ? [{ id: 'open-folder', label: 'Abrir pasta', icon: <Folder />, disabled: !folderConversation }] : []),
-      ...(!browserMode && conversationsOf(workspace.id).length ? [{ id: 'select-sessions', label: 'Selecionar sessões…', icon: <ListChecks /> }] : []),
+      ...(workspace.kind !== 'free' ? [{ id: 'open-folder', label: 'Abrir pasta', icon: <Folder />, disabled: !folderConversation }] : []),
+      ...(conversationsOf(workspace.id).length ? [{ id: 'select-sessions', label: 'Selecionar sessões…', icon: <ListChecks /> }] : []),
       { id: 'favorite-workspace', label: isFavorite('workspace', workspace.id) ? 'Remover dos favoritos' : 'Favoritar projeto', icon: <Star /> },
-      ...(!browserMode ? [{ id: 'edit-workspace', label: 'Editar projeto', icon: <Settings2 /> }] : []),
-      ...(!browserMode && workspace.kind !== 'worktree' && workspace.kind !== 'free' ? [{ id: 'new-worktree', label: 'Novo worktree', icon: <GitBranch /> }] : []),
-      ...(!browserMode && workspace.kind === 'worktree' ? [{ id: 'archive-worktree', label: 'Arquivar worktree', icon: <Archive /> }] : []),
-      ...(!browserMode ? [{ id: 'move-workspace', label: 'Mover para pasta', icon: <FolderPlus />, submenu: groupItems }] : []),
-      ...(!browserMode ? [{ id: 'delete-workspace', label: 'Excluir projeto', icon: <Trash2 />, danger: true }] : []),
+      { id: 'edit-workspace', label: 'Editar projeto', icon: <Settings2 /> },
+      ...(workspace.kind !== 'worktree' && workspace.kind !== 'free' ? [{ id: 'new-worktree', label: 'Novo worktree', icon: <GitBranch /> }] : []),
+      ...(workspace.kind === 'worktree' ? [{ id: 'archive-worktree', label: 'Arquivar worktree', icon: <Archive /> }] : []),
+      { id: 'move-workspace', label: 'Mover para pasta', icon: <FolderPlus />, submenu: groupItems },
+      { id: 'delete-workspace', label: 'Excluir projeto', icon: <Trash2 />, danger: true },
     ]
     return <Menu open={openWorkspaceMenuId === workspace.id} onClose={() => setOpenWorkspaceMenuId(null)} align="end" portal autoFocus
       anchor={<Button variant="ghost" size={null} className={triggerClassName} aria-label={`Ações de ${workspace.name}`} aria-haspopup="menu" aria-expanded={openWorkspaceMenuId === workspace.id}
@@ -364,7 +364,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         {workspace.kind === 'worktree' && !!workspace.changes && <span className="dsh-meta dsh-resting text-warning">{workspace.changes} alter.</span>}
         {unread ? <span className="ds-count dsh-resting" data-tone="primary" aria-label={`${unread} não lidas`}>{unread > 99 ? '99+' : unread}</span> : <span className="dsh-meta dsh-resting" title={`${sessions} sessões`}>{sessions || ''}</span>}
       </Button>
-      <Button variant="ghost" size={null} className="dsh-row-action" disabled={!canChat} aria-label={`Nova sessão em ${label}`} title="Nova sessão neste projeto" onClick={() => void onStartConversation(workspace.id)}><Plus /></Button>
+      <Button variant="ghost" size={null} className="dsh-row-action" aria-label={`Nova sessão em ${label}`} title="Nova sessão neste projeto" onClick={() => void onStartConversation(workspace.id)}><Plus /></Button>
       {workspaceMenu(workspace, 'dsh-row-action')}
     </div>
   }
@@ -406,11 +406,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         {workspaceMenu(workspace, 'dsh-row-action')}
       </div>
       <div className="dsh-rows">
-        <div className="dsh-row dsh-session"><Button variant="ghost" size={null} disabled={!canChat} onClick={() => void onStartConversation(workspace.id)} className="dsh-row-main text-[var(--dsh-label-tertiary)]"><span className="dsh-slot"><Plus /></span><span className="dsh-title">Nova sessão no projeto</span></Button></div>
+        <div className="dsh-row dsh-session"><Button variant="ghost" size={null} onClick={() => void onStartConversation(workspace.id)} className="dsh-row-main text-[var(--dsh-label-tertiary)]"><span className="dsh-slot"><Plus /></span><span className="dsh-title">Nova sessão no projeto</span></Button></div>
       </div>
       {needsSection(projectNeeds)}
       <section aria-label="Sessões do projeto" className="dsh-rows dsh-section">
-        {!browserMode && !!topLevel.length && (selecting
+        {!!topLevel.length && (selecting
           ? <div role="toolbar" aria-label="Seleção de sessões" className="dsh-section-header dsh-bulk-bar">
               <p className="dsh-section-label" aria-live="polite">{checked.length ? `${checked.length} selecionada${checked.length === 1 ? '' : 's'}` : 'Selecione sessões'}</p>
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setCheckedIds(allChecked ? new Set() : new Set(sessionIds))}>{allChecked ? 'Nenhuma' : 'Todas'}</Button>
@@ -524,7 +524,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       anchor={<Button variant="ghost" size={null} className="dsh-boo" data-state={state} aria-label={name} title={chief ? `${agent.name} · Chief` : agent.description ? `${agent.name} · ${agent.description}` : agent.name}
         onClick={() => open(agent)}
         onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}>
-        <Avatar agent={agent} size="xs" state={state} />
+        <Avatar agent={colorOnly(agent)} size="xs" state={state} />
         {chief && <Crown aria-hidden="true" className="dsh-boo-crown" />}
         {state !== 'idle' && <span aria-hidden="true" className="dsh-boo-state" data-state={state} />}
       </Button>}
@@ -567,7 +567,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       {isOpen('needs') && items.length > shown.length && <Button type="button" variant="ghost" size={null} className="dsh-overflow" onClick={() => setAllNeeds(true)}>Ver mais {items.length - shown.length}</Button>}
     </section>
   }
-  const hireLink = !browserMode && onOpenHome && <Button type="button" variant="ghost" size={null} className="dsh-overflow dsh-hire" onClick={() => onOpenHome('marketplace')}><Store />Contratar equipe</Button>
+  const hireLink = onOpenHome && <Button type="button" variant="ghost" size={null} className="dsh-overflow dsh-hire" onClick={() => onOpenHome('marketplace')}><Store />Contratar equipe</Button>
   const companySection = onOpenHome && <section aria-label="Empresa" className="dsh-section">
     <div className="dsh-section-header">
       {sectionTitle('company', 'Empresa')}
@@ -576,8 +576,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     {!companyCollapsed && <nav aria-label="Empresa" className="dsh-panel-list">
       {companyItem('board', <ClipboardList />, 'Board da empresa', !!openBoardTasks && <span className="ds-count">{openBoardTasks}</span>)}
       {companyItem('office', <Building2 />, 'Escritório', !!workingCount && <span className="ds-count" aria-label={`${workingCount} trabalhando`}>{workingCount}</span>)}
-      {!browserMode && companyItem('routines', <CalendarClock />, 'Rotinas', !!enabledRoutines && <span className="ds-count">{enabledRoutines}</span>)}
-      {!browserMode && companyItem('marketplace', <Store />, 'Marketplace')}
+      {companyItem('routines', <CalendarClock />, 'Rotinas', !!enabledRoutines && <span className="ds-count">{enabledRoutines}</span>)}
+      {companyItem('marketplace', <Store />, 'Marketplace')}
     </nav>}
   </section>
 
@@ -586,7 +586,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     <section aria-labelledby="dsh-projects" className="dsh-section">
       <div className="dsh-section-header">
         {sectionTitle('projects', 'Projetos', 'dsh-projects')}
-        {!browserMode && <Menu open={projectCreateMenuOpen} onClose={() => setProjectCreateMenuOpen(false)} align="end" portal autoFocus
+        <Menu open={projectCreateMenuOpen} onClose={() => setProjectCreateMenuOpen(false)} align="end" portal autoFocus
           anchor={<Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Novo projeto ou pasta" title="Novo projeto ou pasta" aria-haspopup="menu" aria-expanded={projectCreateMenuOpen}
             onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setProjectCreateMenuOpen(value => !value) } }} onClick={() => setProjectCreateMenuOpen(value => !value)}><Plus /></Button>}
           items={[{ id: 'new-workspace', label: 'Novo projeto', icon: <FolderPlus /> }, { id: 'new-group', label: 'Nova pasta de projetos', icon: <Folder /> }]}
@@ -594,7 +594,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
             setProjectCreateMenuOpen(false)
             if (id === 'new-workspace') onOpenEditor({ kind: 'workspace' })
             else if (id === 'new-group') openGroupDialog('create')
-          }} />}
+          }} />
       </div>
       {isOpen('projects') && <>
       {(!!favoriteProjects.length || !!favoriteSessions.length) && <div role="group" aria-label="Favoritos" className="dsh-rows dsh-pinned">
@@ -612,7 +612,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     <section aria-labelledby="dsh-boos" className="dsh-section">
       <div className="dsh-section-header">
         {sectionTitle('boos', 'Boos', 'dsh-boos')}
-        {!browserMode && <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Novo Boo" title="Novo Boo" onClick={() => onOpenEditor({ kind: 'agent' })}><Plus /></Button>}
+        <Button variant="ghost" size={null} className="dsh-icon-button" aria-label="Novo Boo" title="Novo Boo" onClick={() => onOpenEditor({ kind: 'agent' })}><Plus /></Button>
       </div>
       {isOpen('boos') && <>
       {!!strip.length && <div className="dsh-boos">
@@ -631,31 +631,23 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   // A navegação faz parte do chrome da janela: mesma superfície da barra superior, sem bordas internas.
   return <aside className="boobot-sidebar flex h-full min-w-0 flex-col" aria-label="Barra lateral do Boobot">
     <header className="space-y-2">
-      {browserMode && <>
-        <div className="flex h-7 items-center justify-between px-1">
-          <h2 className="text-xs font-semibold tracking-tight">Espaço de trabalho</h2>
-          {/* A PWA só cria sessões livres: ação direta em vez de um menu com um único item. */}
-          <Button variant="ghost" size="sm" disabled={!canChat} className="h-7 gap-1.5 px-2 text-xs" title="Nova sessão livre" onClick={() => void onStartConversation()}><MessageSquarePlus className="size-3.5" />Nova sessão</Button>
-        </div>
-        <WorkspaceSearch snapshot={snapshot} canChat={canChat} browserMode onSelectWorkspace={onSelectWorkspace} onSelectConversation={onSelectConversation} onStartConversation={onStartConversation} onOpenAgent={onOpenAgent} onOpenEditor={onOpenEditor} onSectionChange={onSectionChange ?? (() => undefined)} />
-      </>}
       {/* Uma única ação de criar no topo; cada seção cria o seu (projeto, Boo) pelo próprio +. */}
-      {!browserMode && <div className="dsh-new-row">
-        <Button variant="outline" size={null} disabled={!canChat} onClick={() => void onStartConversation()} aria-keyshortcuts="Control+N" title="Nova sessão (Ctrl+N)" className="dsh-new-session"><CirclePlus />Nova sessão<Kbd aria-hidden="true" className="dsh-kbd">Ctrl N</Kbd></Button>
-      </div>}
+      <div className="dsh-new-row">
+        <Button variant="outline" size={null} onClick={() => void onStartConversation()} aria-keyshortcuts="Control+N" title="Nova sessão (Ctrl+N)" className="dsh-new-session"><CirclePlus />Nova sessão<Kbd aria-hidden="true" className="dsh-kbd">Ctrl N</Kbd></Button>
+      </div>
     </header>
     {onOpenHome && <nav aria-label="Trabalho" className="dsh-panel-list">
       <Button type="button" variant={null} size={null} aria-current={view === 'home' ? 'page' : undefined} onClick={() => onOpenHome('home')} className="dsh-panel-row">
-        <span className="dsh-glyph">{chiefAgent ? <Avatar agent={chiefAgent} size="xxs" state={agentStates[chiefAgent.id] || 'idle'} /> : <LayoutDashboard />}</span>
+        <span className="dsh-glyph">{chiefAgent ? <Avatar agent={colorOnly(chiefAgent)} size="xxs" state={agentStates[chiefAgent.id] || 'idle'} /> : <LayoutDashboard />}</span>
         <span className="min-w-0 flex-1 truncate">Central {chiefAgent ? `do ${chiefAgent.name}` : 'do Chief'}</span>
         {attentionCount > 0 && <span aria-label={`${attentionCount} pendências`} className="ds-count" data-tone="attention">{attentionCount > 9 ? '9+' : attentionCount}</span>}
       </Button>
     </nav>}
     {project ? projectView(project) : overview}
-    {!browserMode && <footer className="dsh-foot">
+    <footer className="dsh-foot">
       <div className="dsh-foot-host"><HostSelector /></div>
       <Button variant="ghost" size={null} onClick={onOpenSettings} className="dsh-panel-row dsh-foot-settings"><Settings2 />Configurações</Button>
-    </footer>}
+    </footer>
     <div aria-live="polite" role="status" aria-label="Ordem do sidebar" className="sr-only">{announcement}</div>
     <GroupDialog draft={groupDialog} onChange={value => setGroupDialog(current => current ? { ...current, value } : current)} onCancel={() => setGroupDialog(null)} onConfirm={confirmGroupDialog} />
     <Modal open={!!deleteRequest} onClose={() => setDeleteRequest(null)} title={deleteRequest?.title || 'Confirmar exclusão'} description={deleteRequest?.description} closeLabel="Fechar"

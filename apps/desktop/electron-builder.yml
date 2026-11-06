@@ -17,8 +17,6 @@ asar: true
 extraResources:
   - from: update-feed.json
     to: update-feed.json
-  - from: src/main/pwa/assets
-    to: pwa
   - from: src/main/marketplace/catalog
     to: marketplace
 # As dependências nativas devem ser validadas no Electron empacotado.

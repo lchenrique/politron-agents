@@ -54,7 +54,7 @@ export default function ComposerGallery() {
       <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0, alignItems: 'center', justifyContent: 'center', padding: 24, color: 'var(--dsw-alias-label-tertiary)', textAlign: 'center' }}>
         <p>Dados fictícios. O campo, a fila e as interações desta galeria não enviam mensagens ao agente.</p>
       </div>
-      {takeover ? <ComposerTakeover approval={takeover} onNotice={setNotice} canApprove /> : <Composer
+      {takeover ? <ComposerTakeover approval={takeover} onNotice={setNotice} /> : <Composer
         conversationId="gallery-composer"
         mentionAgents={[agent]}
         working={mode === 'busy'}

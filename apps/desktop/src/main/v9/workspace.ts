@@ -34,7 +34,7 @@ import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
 import { agentModelInput, CHIEF_READ_TOOLS, CHIEF_TOOLS, chiefToolDefinitions, runChiefTool, type ChiefCall } from './chief-control'
 import { SessionUnavailableError, type AgentInput, type AgentRuntime, type RuntimeThread } from './agent-runtime'
 import { ClaudeCredentialStore } from './credentials'
-import { AttachmentStore } from '../pwa/attachment-store'
+import { AttachmentStore } from '../attachments/attachment-store'
 import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
 import { SkillsService } from './skills/service'
 import { reflectionPrompt, shouldReflect, skillsPromptBlock } from './skills/learning'
@@ -238,6 +238,7 @@ export class AppService extends EventEmitter {
     super()
     this.runtime = runtime
     this.store = new WorkspaceStore(dataDirectory)
+    // Nome legado do diretório: os anexos já salvos do usuário continuam nele.
     this.attachments = new AttachmentStore(join(dataDirectory, 'pwa-attachments'))
     // Após reinício, delegações antigas foram interrompidas: não deixar Boos temporários presos em "working".
     for (const boo of this.store.agents().filter(item => item.temporary && item.temporaryStatus === 'working'))

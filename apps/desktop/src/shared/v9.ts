@@ -57,8 +57,6 @@ export interface Conversation {
   parentConversationId?: string
   /** Só no snapshot: criação da última mensagem (derivado de v9_messages); ausente sem mensagens. */
   updatedAt?: string
-  /** Só no snapshot do PWA: prévia curta da última mensagem, para a lista de conversas sem enviar o histórico. */
-  lastMessage?: { text: string; author: string; role: 'user' | 'assistant'; createdAt: string }
 }
 export interface Message {
   id: string; conversationId: string; agentId: string | null; author: string
@@ -179,7 +177,7 @@ export interface Model {
   defaultVariant?: string
   supportsFastMode?: boolean
 }
-/** Ordem manual do sidebar, salva no banco para valer no desktop e na PWA. Ids ausentes entram no topo. */
+/** Ordem manual do sidebar, salva no banco para valer no desktop local e no remoto. Ids ausentes entram no topo. */
 export interface SidebarLayout { projectOrder: string[]; groups: { name: string; workspaceIds: string[] }[]; sessionOrder: Record<string, string[]>; agentOrder: string[] }
 export interface Snapshot { assistant: Agent; agents: Agent[]; workspaces: Workspace[]; conversations: Conversation[]; messages: Message[]; runs: Run[]; fileChanges: FileChange[]; approvals: Approval[]; terminalEnabled: boolean; steeringRuntimes?: Agent['runtime'][]; imageRuntimes?: Agent['runtime'][]; missions?: Mission[]; routines?: Routine[]; board?: BoardSnapshot }
 export interface VoiceStatus { transcription: boolean; speech: boolean; provider?: 'realtime' | 'openrouter' | 'local' | 'pits' | 'pocket'; engine: 'piper' | 'chatterbox-pt-br' | 'openrouter' | 'pit-voices' | 'pocket-tts'; language: 'pt-BR'; voiceKeyConfigured: boolean; localSpeechInstalled: boolean; defaultVoiceReady: boolean; pitSpeechInstalled: boolean; pocketSpeechInstalled: boolean; transcriptionEngine?: 'whisper-small-fast' | 'whisper-tiny' }

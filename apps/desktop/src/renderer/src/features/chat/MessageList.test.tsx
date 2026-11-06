@@ -1,7 +1,7 @@
 ﻿import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent, Approval, Conversation, FileChange, Message } from '../../../../shared/v9'
-import { MessageList } from './MessageList'
+import { MessageList } from '@/test/runtime-message-list'
 
 /** jsdom não calcula layout real; simula um container com scrollHeight/clientHeight próprios para testar o auto-scroll. */
 function mockScrollMetrics(element: HTMLElement, { scrollHeight, clientHeight, scrollTop = 0 }: { scrollHeight: number; clientHeight: number; scrollTop?: number }) {

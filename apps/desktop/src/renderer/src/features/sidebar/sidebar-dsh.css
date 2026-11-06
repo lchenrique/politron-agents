@@ -37,7 +37,7 @@
 }
 
 /* Moldura: canvas encostado à direita e embaixo, só o canto superior esquerdo arredondado. */
-[data-sidebar-collapsed]:not([data-pwa-shell]) .boobot-canvas.ds-canvas {
+[data-sidebar-collapsed] .boobot-canvas.ds-canvas {
   border: 0;
   border-radius: 16px 0 0 0;
   box-shadow: none;

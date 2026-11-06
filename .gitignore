@@ -83,6 +83,3 @@ vite.config.ts.timestamp-*
 
 # Graphify - extração local, sem versionar artefatos
 graphify-out/
-
-# PWA compiled from the same Electron React renderer
-/apps/desktop/src/main/pwa/assets/web/

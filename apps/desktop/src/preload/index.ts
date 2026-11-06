@@ -201,15 +201,6 @@ const hostsAPI: import('../shared/hosts').HostsAPI = {
 }
 contextBridge.exposeInMainWorld('hostsAPI', hostsAPI)
 
-const pwaAPI: import('../shared/pwa-desktop').PwaDesktopAPI = {
-  status: () => ipcRenderer.invoke('pwa:status'),
-  issueCode: () => ipcRenderer.invoke('pwa:issueCode'),
-  revokeAll: () => ipcRenderer.invoke('pwa:revokeAll'),
-  setDevicePermissions: (id, grants) => ipcRenderer.invoke('pwa:setDevicePermissions', id, grants),
-  revokeDevice: (id) => ipcRenderer.invoke('pwa:revokeDevice', id),
-}
-contextBridge.exposeInMainWorld('pwaAPI', pwaAPI)
-
 const platformBrowserAPI: import('../shared/platform-browser').PlatformBrowserAPI = {
   navigate: url => ipcRenderer.invoke('platformBrowser:navigate', url),
   state: () => ipcRenderer.invoke('platformBrowser:state'),

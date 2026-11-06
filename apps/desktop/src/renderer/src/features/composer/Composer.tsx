@@ -24,7 +24,7 @@ const initialModelOptions = (models: ComposerModel[], name?: string): ModelRunti
   }
 }
 
-export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, canAttachFiles = true, onCancelQueued, onSendQueuedNow }: {
+export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow }: {
   reviewChanges?: FileChange[]
   reviewKey?: string
   working?: boolean
@@ -33,8 +33,6 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   onCancelQueued?: (messageId: string) => Promise<void>
   onSendQueuedNow?: (messageId: string) => Promise<void>
   canAttachImages?: boolean
-  /** Botão de anexar: no PWA só quando o host aceita anexos deste dispositivo. */
-  canAttachFiles?: boolean
   conversationId?: string
   mentionAgents?: Agent[]
   models: ComposerModel[]
@@ -268,7 +266,6 @@ ${message.text}` : message.text)
         }}
         suggestions={mention && mentionAgents.length > 0 ? <MentionSuggestions id={mentionListId} agents={mentionOptions} activeIndex={activeMention} onSelect={chooseMention} /> : null}
         files={files}
-        showAttachments={canAttachFiles}
         onFilesChange={setFiles}
         showModelPicker={false}
         pending={false}

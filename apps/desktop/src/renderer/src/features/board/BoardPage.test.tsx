@@ -34,14 +34,14 @@ afterEach(() => { window.appAPI = original })
 
 describe('BoardPage', () => {
   it('mostra o estado vazio e mantém a criação explícita do board separada do chat', () => {
-    render(<BoardPage snapshot={{ ...base, board: { teams: [], tasks: [], events: [], missions: [], evidence: [] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board: { teams: [], tasks: [], events: [], missions: [], evidence: [] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     expect(screen.getByRole('heading', { name: 'Board da empresa' })).toBeInTheDocument()
     expect(screen.getByText('Nenhuma tarefa no board ainda')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Nova equipe' })).toBeInTheDocument()
   })
 
   it('cria uma equipe, cria um card e inicia o responsável/revisor escolhidos', async () => {
-    render(<BoardPage snapshot={{ ...base, board: { teams: [], tasks: [], events: [], missions: [], evidence: [] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board: { teams: [], tasks: [], events: [], missions: [], evidence: [] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Nova equipe' }))
     fireEvent.change(screen.getByLabelText('Nome da equipe'), { target: { value: 'Desenvolvimento' } })
     fireEvent.click(screen.getByLabelText('Ana'))
@@ -62,9 +62,9 @@ describe('BoardPage', () => {
     await waitFor(() => expect(window.appAPI.assignBoardTask).toHaveBeenCalledWith('new-task', 'worker', 'reviewer'))
   })
 
-  it('permite abrir a conversa do revisor e oculta mutações em leitura PWA', async () => {
+  it('permite abrir a conversa do revisor e agir na revisão', async () => {
     const openConversation = vi.fn()
-    const { rerender } = render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={openConversation} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={openConversation} onNotice={vi.fn()} />)
     expect(screen.queryByRole('button', { name: 'Abrir conversa do revisor' })).not.toBeInTheDocument()
     openCard()
     fireEvent.click(screen.getByRole('button', { name: 'Abrir conversa do revisor' }))
@@ -79,18 +79,13 @@ describe('BoardPage', () => {
     fireEvent.change(screen.getByLabelText('Nova evidência Corrigir login'), { target: { value: 'Teste de expiração passou.' } })
     fireEvent.click(screen.getByRole('button', { name: 'Anexar evidência' }))
     await waitFor(() => expect(window.appAPI.addBoardEvidence).toHaveBeenCalledWith('task', { kind: 'note', label: 'Evidência', summary: 'Teste de expiração passou.' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar detalhes' }))
-    rerender(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={openConversation} onNotice={vi.fn()} readOnly />)
-    openCard()
-    expect(screen.queryByRole('button', { name: 'Nova tarefa' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Aprovar revisão' })).not.toBeInTheDocument()
   })
 
   it('exige evidência para fechar integração e filtra tarefas por texto e status', async () => {
     const onNotice = vi.fn()
     const integrationTask = { ...task, status: 'integration' as const }
     const integrationBoard = { ...board, teams: [team, otherTeam], tasks: [integrationTask, { ...integrationTask, id: 'other', title: 'Atualizar perfil', kind: 'general' as const, teamId: 'marketing', assigneeAgentId: 'reviewer', workspaceId: 'other-project', status: 'done' as const }] }
-    render(<BoardPage snapshot={{ ...base, board: integrationBoard } as Snapshot} onOpenConversation={vi.fn()} onNotice={onNotice} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board: integrationBoard } as Snapshot} onOpenConversation={vi.fn()} onNotice={onNotice} />)
     expect(screen.getAllByRole('article')).toHaveLength(2)
     fireEvent.change(screen.getByLabelText('Buscar tarefas'), { target: { value: 'login' } })
     expect(screen.getAllByRole('article')).toHaveLength(1)
@@ -111,7 +106,7 @@ describe('BoardPage', () => {
 
   it('permite reatribuir uma tarefa bloqueada por uma equipe', async () => {
     const blocked = { ...task, status: 'blocked' as const, blockedReason: 'Aguardando credenciais.' }
-    render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [blocked] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [blocked] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     openCard()
     fireEvent.click(screen.getByRole('button', { name: 'Reatribuir' }))
     fireEvent.change(screen.getByLabelText('Responsável para Corrigir login'), { target: { value: 'reviewer' } })
@@ -122,7 +117,7 @@ describe('BoardPage', () => {
 
   it('permite atribuir depois um card que ficou na fila sem responsáveis', async () => {
     const backlog = { ...task, status: 'backlog' as const, assigneeAgentId: null, reviewerAgentId: null, currentMissionId: null, currentReviewMissionId: null }
-    render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [backlog] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [backlog] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     openCard()
     fireEvent.click(screen.getByRole('button', { name: 'Atribuir' }))
     fireEvent.change(screen.getByLabelText('Responsável para Corrigir login'), { target: { value: 'worker' } })
@@ -133,7 +128,7 @@ describe('BoardPage', () => {
 
   it('edita os dados do card enquanto ele ainda não tem execução', async () => {
     const backlog = { ...task, status: 'backlog' as const, assigneeAgentId: null, reviewerAgentId: null, currentMissionId: null, currentReviewMissionId: null }
-    render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [backlog] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [backlog] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     openCard()
     fireEvent.click(screen.getByRole('button', { name: 'Editar tarefa' }))
     fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Atualizar login' } })
@@ -145,7 +140,7 @@ describe('BoardPage', () => {
     const queuedTask = { ...task, status: 'doing' as const, currentMissionId: 'worker-mission' }
     const queuedBoard = { ...board, tasks: [queuedTask] }
     const queuedRun = { id: 'queued-run', conversationId: 'worker-chat', status: 'queued', createdAt: '2026-10-29T10:00:00.000Z' }
-    render(<BoardPage snapshot={{ ...base, runs: [queuedRun], board: queuedBoard } as unknown as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, runs: [queuedRun], board: queuedBoard } as unknown as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     expect(screen.getByText('Aguardando vaga · posição 1')).toBeInTheDocument()
     expect(screen.queryByText(/limite global de duas execuções/)).not.toBeInTheDocument()
     openCard()
@@ -153,7 +148,7 @@ describe('BoardPage', () => {
   })
 
   it('mostra um cartão compacto, sem descrição nem critérios, e abre os detalhes com Enter', () => {
-    render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     const card = screen.getByRole('article', { name: 'Tarefa Corrigir login' })
     expect(card).toHaveAttribute('tabindex', '0')
     expect(card.querySelector('h3')).toHaveClass('line-clamp-2')
@@ -170,11 +165,11 @@ describe('BoardPage', () => {
 
   it('mantém colunas com rolagem própria e cartões truncados com 0, 1 e 30 tarefas', () => {
     const many = Array.from({ length: 30 }, (_, index) => ({ ...task, id: `task-${index}`, status: 'doing' as const, currentMissionId: null, title: `Tarefa ${index} ${'muito longa '.repeat(20)}`, updatedAt: `2026-10-29T10:00:${String(index).padStart(2, '0')}.000Z` }))
-    const { rerender } = render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    const { rerender } = render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     expect(screen.getByText('Nenhuma tarefa no board ainda')).toBeInTheDocument()
-    rerender(<BoardPage snapshot={{ ...base, board: { ...board, tasks: many.slice(0, 1) } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    rerender(<BoardPage snapshot={{ ...base, board: { ...board, tasks: many.slice(0, 1) } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     expect(screen.getAllByRole('article')).toHaveLength(1)
-    rerender(<BoardPage snapshot={{ ...base, board: { ...board, tasks: many } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    rerender(<BoardPage snapshot={{ ...base, board: { ...board, tasks: many } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     const region = screen.getByRole('region', { name: 'Colunas do board' })
     expect(region).toHaveClass('overflow-x-auto', 'overflow-y-hidden')
     const column = screen.getByRole('region', { name: 'Coluna Em execução' })
@@ -186,7 +181,7 @@ describe('BoardPage', () => {
   })
 
   it('acessibilidade: Espaço abre o dialog nomeado, Esc fecha e o foco volta ao cartão', async () => {
-    render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} readOnly={false} />)
+    render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     const card = screen.getByRole('article', { name: 'Tarefa Corrigir login' })
     card.focus()
     fireEvent.keyDown(card, { key: ' ' })

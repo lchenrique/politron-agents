@@ -2,7 +2,7 @@ import { existsSync, promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import type { MarketplaceMember, MarketplaceTeam } from '../../shared/marketplace'
 
-/** Empacotado: `resources/marketplace`; em desenvolvimento e testes: a pasta do código (mesmo padrão dos assets da PWA). */
+/** Empacotado: `resources/marketplace`; em desenvolvimento e testes: a pasta do código. */
 export function marketplaceRoot(): string {
   const packaged = process.resourcesPath ? join(process.resourcesPath, 'marketplace') : ''
   return packaged && existsSync(packaged) ? packaged : join(process.cwd(), 'src', 'main', 'marketplace', 'catalog')

@@ -9,7 +9,6 @@ import { createIdentity, defaultSettings, pairingLink, parsePairing, validateSet
 import { HostClient } from './client'
 import { HostServer } from './server'
 import { HostRpc, type HostRouting } from './rpc'
-import { assertPwaRpcAuthorized, type PwaCapability } from '../../shared/pwa-host-policy'
 import { openSshTunnel } from './ssh'
 import { validateEndpoint, type RemoteEvent } from './wire'
 
@@ -34,11 +33,6 @@ export class HostManager implements HostRouting {
   }
   get remote(): boolean { return this.data.selectedId !== 'local' }
   register(method: string, handler: (...args: never[]) => unknown): void { this.rpc.register(method, handler) }
-  /** Browser capability gate remains active even when selecting an existing remote host. */
-  dispatchFromPwa(method: string, args: unknown[], grants: readonly PwaCapability[]): unknown {
-    assertPwaRpcAuthorized(method, args, grants)
-    return this.invoke(method, args, () => this.rpc.dispatch(method, args))
-  }
   invoke(method: string, args: unknown[], local: () => unknown, sender?: Electron.WebContents): unknown {
     if (!this.remote) return local()
     if (method === 'v9:pickFolder' && sender) return this.pickFolder(sender)

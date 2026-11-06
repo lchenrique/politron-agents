@@ -6,9 +6,8 @@ import { ASSISTANT_ID, type Agent, type Run } from '../../../../shared/v9'
 import { Avatar } from './Avatar'
 
 const statusLabels: Record<Run['status'], string> = { queued: 'Na fila', running: 'Trabalhando', waiting: 'Aguardando aprovação', completed: 'Concluído', failed: 'Falhou', interrupted: 'Interrompido', cancelled: 'Cancelada' }
-export function AgentDetails({ agent, runs, onClose, onEdit, onOpenMascot, browserMode = false }: {
+export function AgentDetails({ agent, runs, onClose, onEdit, onOpenMascot }: {
   agent?: Agent; runs: Run[]; onClose: () => void; onEdit: (agent: Agent) => void; onOpenMascot: (agent: Agent) => void
-  browserMode?: boolean
 }) {
   const recent = agent ? runs.filter(run => run.agentId === agent.id).slice(-8).reverse() : []
   const active = recent.find(run => ['running', 'waiting', 'queued'].includes(run.status))
@@ -21,8 +20,8 @@ export function AgentDetails({ agent, runs, onClose, onEdit, onOpenMascot, brows
           <SheetDescription>{agent.description || 'Seu agente de trabalho.'}</SheetDescription>
           <p role="status" className="text-xs text-muted-foreground">{active ? statusLabels[active.status] : 'Disponível'}</p>
           <div className="flex gap-2">
-            {!browserMode && <Button variant="outline" size="sm" onClick={() => onOpenMascot(agent)}><Phone data-icon="inline-start" />Conversar por voz</Button>}
-            {!browserMode && agent.id !== ASSISTANT_ID && <Button variant="ghost" size="icon" aria-label={`Editar ${agent.name}`} onClick={() => onEdit(agent)}><Pencil /></Button>}
+            <Button variant="outline" size="sm" onClick={() => onOpenMascot(agent)}><Phone data-icon="inline-start" />Conversar por voz</Button>
+            {agent.id !== ASSISTANT_ID && <Button variant="ghost" size="icon" aria-label={`Editar ${agent.name}`} onClick={() => onEdit(agent)}><Pencil /></Button>}
           </div>
         </SheetHeader>
         <Tabs defaultValue="activity" className="px-4 pb-4">

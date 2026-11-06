@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { Minus, Square, X, PanelsTopLeft, PanelLeftClose, PanelLeftOpen, PanelRight, Files, Terminal, Globe, UserRound, FileDiff, MessageSquare, PictureInPicture2 } from 'lucide-react'
+import { Minus, Square, X, PanelsTopLeft, PanelLeftClose, PanelLeftOpen, Files, Terminal, Globe, UserRound, FileDiff, MessageSquare, PictureInPicture2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from './ThemeSelector'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -16,8 +16,6 @@ interface TitleBarProps {
   /** Onde o usuário está: projeto da conversa, Central, Rotinas ou visão do projeto. */
   location?: { label: string; detail?: string }
   className?: string
-  browserMode?: boolean
-  browserCanReadFiles?: boolean
 }
 const tools = [
   { kind: 'files', label: 'Arquivos', icon: Files },
@@ -31,24 +29,16 @@ const tools = [
 // Botões do chrome: mesma medida e estados em toda a barra, sobre a superfície contínua da janela.
 const chromeButton = 'dsh-chrome-button flex shrink-0 items-center justify-center'
 
-function OpenToolsMenu({ onOpenTool, onDevelopmentLayout, browserMode = false, browserCanReadFiles = false }: Pick<TitleBarProps, 'onOpenTool' | 'onDevelopmentLayout' | 'browserMode' | 'browserCanReadFiles'>) {
-  const availableTools = browserMode ? tools.filter(tool => tool.kind === 'diff' || tool.kind === 'chat' || tool.kind === 'files' && browserCanReadFiles) : tools
+function OpenToolsMenu({ onOpenTool, onDevelopmentLayout }: Pick<TitleBarProps, 'onOpenTool' | 'onDevelopmentLayout'>) {
   return <DropdownMenu>
     <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size={null} aria-label="Abrir painéis e abas" title="Abrir arquivos, terminal, navegador ou mascote" className={chromeButton}><PanelsTopLeft className="size-4" /></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end" className="w-56">
       <DropdownMenuLabel>Abrir painel</DropdownMenuLabel>
-      <DropdownMenuGroup>{availableTools.map(tool => { const Icon = tool.icon; return <DropdownMenuItem key={tool.kind} onSelect={() => onOpenTool(tool.kind, tool.kind === 'chat' ? 'main' : 'side')}><Icon />{tool.label}</DropdownMenuItem> })}</DropdownMenuGroup>
-      {!browserMode && <><DropdownMenuSeparator />
-      <DropdownMenuGroup><DropdownMenuItem onSelect={onDevelopmentLayout}><PanelsTopLeft />Layout de programação</DropdownMenuItem></DropdownMenuGroup></>}
+      <DropdownMenuGroup>{tools.map(tool => { const Icon = tool.icon; return <DropdownMenuItem key={tool.kind} onSelect={() => onOpenTool(tool.kind, tool.kind === 'chat' ? 'main' : 'side')}><Icon />{tool.label}</DropdownMenuItem> })}</DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup><DropdownMenuItem onSelect={onDevelopmentLayout}><PanelsTopLeft />Layout de programação</DropdownMenuItem></DropdownMenuGroup>
     </DropdownMenuContent>
   </DropdownMenu>
-}
-
-function NavigationButtons({ sidebarCollapsed, onToggleSidebar, onOpenTool, panelTool }: { sidebarCollapsed: boolean; onToggleSidebar: () => void; onOpenTool: TitleBarProps['onOpenTool']; panelTool: DockTool }) {
-  return <>
-    <Button type="button" variant="ghost" size={null} onClick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Expandir sidebar' : 'Recolher sidebar'} title="Recolher/expandir sidebar · Ctrl+B" className={chromeButton}>{sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}</Button>
-    <Button type="button" variant="ghost" size={null} onClick={() => onOpenTool(panelTool, 'side')} aria-label="Abrir painel direito" title="Abrir painel direito · Arquivos, Terminal, Navegador, Mascote e Alterações" className={chromeButton}><PanelRight className="size-4" /></Button>
-  </>
 }
 
 // Texto da janela, não um controle: continua arrastável no desktop e trunca antes dos controles.
@@ -61,16 +51,11 @@ function WindowLocation({ location }: Pick<TitleBarProps, 'location'>) {
   </div>
 }
 
-export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarCollapsed, onToggleSidebar, onOpenHome, search, location, className, browserMode = false, browserCanReadFiles = false }: TitleBarProps) {
+export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarCollapsed, onToggleSidebar, onOpenHome, search, location, className }: TitleBarProps) {
   const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
   const drag = { WebkitAppRegion: 'drag' } as CSSProperties
   const isWindows = window.vibeAPI?.platform === 'win32'
   // A barra da janela é parte do chrome (mesma superfície da navegação), sem borda: o canvas abaixo traz o contorno.
-  if (browserMode) return <div className={'flex h-10 shrink-0 items-center gap-1.5 bg-chrome px-2 ' + (className || '')}>
-    <div className="flex shrink-0 items-center gap-1"><span className="flex size-8 items-center justify-center"><img src="/icon.svg" alt="" width={16} height={14} className="shrink-0" /></span><span className={'mr-1 text-[11px] font-bold tracking-[0.08em] ' + (location ? 'hidden sm:inline' : '')}>BOOBOT</span><NavigationButtons sidebarCollapsed={sidebarCollapsed} onToggleSidebar={onToggleSidebar} onOpenTool={onOpenTool} panelTool={browserCanReadFiles ? 'files' : 'diff'} /></div>
-    <WindowLocation location={location} />
-    <div className="flex shrink-0 items-center gap-1"><ThemeSelector compact /><OpenToolsMenu browserMode browserCanReadFiles={browserCanReadFiles} onOpenTool={onOpenTool} onDevelopmentLayout={onDevelopmentLayout} /></div>
-  </div>
   const navigation = <div className="flex shrink-0 items-center gap-0.5 px-1.5" style={noDrag}>
     <Button type="button" variant="ghost" size={null} onClick={onOpenHome} aria-label="Ir para a central" title="Central do Chief" className={chromeButton}><img src={logo} alt="" width={18} height={16} /></Button>
     <Button type="button" variant="ghost" size={null} onClick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'} title="Recolher/expandir barra lateral · Ctrl+B" className={chromeButton}>{sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}</Button>

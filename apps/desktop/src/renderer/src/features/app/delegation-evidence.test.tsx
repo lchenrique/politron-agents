@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { Approval, FileChange, Message } from '../../../../shared/v9'
 import { selectVisibleRunEvidence } from './delegation-evidence'
-import { MessageList } from '../chat/MessageList'
+import { MessageList } from '@/test/runtime-message-list'
 
 const message: Message = { id: 'result', conversationId: 'private', agentId: 'specialist', author: 'Especialista', role: 'assistant', text: 'Preciso gravar o arquivo.', status: 'waiting', runId: 'child-run', delegationId: 'delegation', createdAt: '' }
 const change: FileChange = { id: 'change', runId: 'child-run', messageId: message.id, toolCallId: 'write-1', agentId: 'specialist', workspaceId: 'workspace', path: 'plan.md', status: 'applied', before: 'versão antiga', after: 'versão nova', additions: 1, deletions: 1, truncated: false, binary: false, createdAt: '' }

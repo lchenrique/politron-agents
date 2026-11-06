@@ -32,7 +32,7 @@ function layoutIds(value: unknown, limit = 5000): string[] {
   if (!Array.isArray(value) || value.length > limit || !value.every(id => typeof id === 'string' && id.length > 0 && id.length <= 200)) throw new Error(LAYOUT_ERROR)
   return [...new Set(value as string[])]
 }
-/** Valida a entrada (fronteira IPC/PWA) e mescla sobre o layout anterior. */
+/** Valida a entrada (fronteira IPC/host remoto) e mescla sobre o layout anterior. */
 export function validateSidebarLayout(input: unknown, previous: SidebarLayout): SidebarLayout {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error(LAYOUT_ERROR)
   const value = input as Record<string, unknown>

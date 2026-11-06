@@ -72,13 +72,11 @@ export function useSidebarIndex(snapshot: Snapshot) {
 }
 
 /** Itens da busca rapida. A paleta fica fechada na maior parte do tempo, entao a lista e memorizada. */
-export function buildPaletteItems(snapshot: Snapshot, options: { canChat: boolean; browserMode: boolean }, workspacesById: Map<string, Workspace>, agentsById: Map<string, Agent>): CommandItem[] {
+export function buildPaletteItems(snapshot: Snapshot, workspacesById: Map<string, Workspace>, agentsById: Map<string, Agent>): CommandItem[] {
   return [
-    ...(options.canChat ? [{ id: 'create:session', group: 'Criar', label: 'Nova sessão livre', icon: <MessageSquarePlus className="size-4" />, keywords: ['conversa', 'chat', 'livre'] }] : []),
-    ...(!options.browserMode ? [
-      { id: 'create:workspace', group: 'Criar', label: 'Novo projeto', icon: <FolderOpen className="size-4" />, keywords: ['pasta', 'workspace'] },
-      { id: 'create:agent', group: 'Criar', label: 'Novo Boo', icon: <Plus className="size-4" />, keywords: ['boo', 'boos', 'bot'] },
-    ] : []),
+    { id: 'create:session', group: 'Criar', label: 'Nova sessão livre', icon: <MessageSquarePlus className="size-4" />, keywords: ['conversa', 'chat', 'livre'] },
+    { id: 'create:workspace', group: 'Criar', label: 'Novo projeto', icon: <FolderOpen className="size-4" />, keywords: ['pasta', 'workspace'] },
+    { id: 'create:agent', group: 'Criar', label: 'Novo Boo', icon: <Plus className="size-4" />, keywords: ['boo', 'boos', 'bot'] },
     ...snapshot.workspaces.filter(workspace => workspace.name && !workspace.archived).map(workspace => ({
       id: 'workspace:' + workspace.id, group: 'Projetos', label: workspace.name,
       keywords: [workspace.path, workspace.branch || '', 'workspace', 'projeto'],

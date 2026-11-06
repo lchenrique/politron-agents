@@ -47,12 +47,6 @@ describe('cabeçalho da conversa', () => {
     expect(onEditConversation).toHaveBeenCalledOnce()
   })
 
-  it('na PWA sem leitura de arquivos não oferece um menu de ações vazio', () => {
-    render(<ChatHeader browserMode canReadFiles={false} selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: 'Ações da conversa' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' })).toBeInTheDocument()
-  })
-
   it('mostra grupo com avatares sobrepostos e permite editar participantes', () => {
     const second = { ...agent, id: 'a2', name: 'Nina', alias: 'nina' }
     const group: Conversation = { ...conversation, id: 'g1', kind: 'group', name: 'Equipe de pesquisa', agentIds: ['a1', 'a2'] }

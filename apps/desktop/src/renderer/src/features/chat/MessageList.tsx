@@ -3,12 +3,11 @@ import { ArrowDown, ChevronDown, FolderOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Message } from '../../../../shared/v9'
 import type { Approval, FileChange } from '../../../../shared/v9'
-import { ToolCallTree } from '@/components/dsh'
 import { MessageItem } from './MessageItem'
 import { DelegationCard } from './DelegationCard'
 import { PolitronToolApproval } from './PolitronToolApproval'
 import { CompletedFileReview } from '../diff/CompletedFileReview'
-import { activityToolCall } from './tool-call'
+import { ActivityParts, RuntimeMessage } from './AssistantUIMessageBridge'
 import { buildTurns, endsWithReply, finalReply, foldsAway, messagesInTurn, turnFoldable, turnHeaderText, type TurnItem } from './turns'
 import { TurnNavigator } from './TurnNavigator'
 import { useTurnNavigation } from './useTurnNavigation'
@@ -23,7 +22,7 @@ const STICK_TO_BOTTOM_PX = 96
 const ESTIMATED_TURN_HEIGHT = 220
 const OVERSCAN_PX = 900
 
-export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canSpeak = true, canApprove = true, canCancelQueued = false, workspaceName }: {
+export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId = null, approvals, conversations, agentOf, selectedAgents, onOpenRelatedConversation, onNotice, hasOlderMessages, onLoadOlder, focusedMessageId, hasNewerMessages, onReturnToLatest, canCancelQueued = false, workspaceName }: {
   messages: Message[]
   fileChanges: FileChange[]
   /** Run cuja revisão já aparece acima do composer; não é repetido no histórico. */
@@ -39,8 +38,6 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
   focusedMessageId?: string | null
   hasNewerMessages?: boolean
   onReturnToLatest?: () => void
-  canSpeak?: boolean
-  canApprove?: boolean
   canCancelQueued?: boolean
   /** Nome do workspace da conversa; a ausência é apresentada sem oferecer uma ação falsa de seleção. */
   workspaceName?: string
@@ -272,13 +269,13 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
       const showLatestActions = !!latestReply && endsWithReply(turn) && turn.id === turns.at(-1)?.id
       const turnItems = messagesInTurn(turn)
       const appliedExtra = (message: Message) => appliedByMessage.get(message.id) && <CompletedFileReview changes={appliedByMessage.get(message.id)!} label={INLINE_REVIEW_LABEL} />
-      const approvalExtra = (message: Message) => message.runId && lastMessageByRun.get(message.runId) === message.id && (approvalsByRun.get(message.runId) || []).map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} canApprove={canApprove} />)
+      const approvalExtra = (message: Message) => message.runId && lastMessageByRun.get(message.runId) === message.id && (approvalsByRun.get(message.runId) || []).map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} />)
       const extras = (message: Message) => <>{appliedExtra(message)}{approvalExtra(message)}</>
       return <section key={turn.id} ref={turnRef(turn.id)} data-turn-id={turn.id} className={`${css.turn}${enteringTurnId === turn.id ? ' chat-message-enter' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && enteringTurnId === turn.id) setEnteringTurnId(null) }}>
-        {turn.user && <div data-message-id={turn.user.id} data-part="user" className={focusedMessageId === turn.user.id ? css.focused : undefined}>
+        {turn.user && <RuntimeMessage message={turn.user} data-part="user" className={focusedMessageId === turn.user.id ? css.focused : undefined}>
           <MessageItem message={turn.user} agent={agentOf(turn.user.agentId)} relatedConversation={undefined} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={false} canCancelQueued={canCancelQueued} presentation="dsh" alwaysShowActions={turn.id === turns.at(-1)?.id} />
           {extras(turn.user)}
-        </div>}
+        </RuntimeMessage>}
         {header && <div data-part="header">{foldable
           ? <button type="button" className={css.header} aria-expanded={expanded} onClick={() => setExpandedTurns(previous => { const next = new Set(previous); if (next.has(turn.id)) next.delete(turn.id); else next.add(turn.id); return next })}>
             <span className={css.headerLabel}>{header}</span><ChevronDown className={css.headerChevron} aria-hidden="true" />
@@ -289,28 +286,28 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
           if (!expanded && foldable && foldsAway(item)) return null
           if (item.kind === 'reply') {
             const message = item.message
-            return <div key={item.id} data-message-id={message.id} data-part="reply" className={focusedMessageId === message.id ? css.focused : undefined}>
-              <MessageItem message={message} agent={agentOf(message.agentId)} relatedConversation={undefined} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} canSpeak={canSpeak} presentation="dsh" showAgent={item.boo} alwaysShowActions={showLatestActions && latestReply?.id === message.id} />
+            return <RuntimeMessage key={item.id} message={message} data-part="reply" className={focusedMessageId === message.id ? css.focused : undefined}>
+              <MessageItem message={message} agent={agentOf(message.agentId)} relatedConversation={undefined} onOpenRelatedConversation={onOpenRelatedConversation} onNotice={onNotice} presentation="dsh" showAgent={item.boo} alwaysShowActions={showLatestActions && latestReply?.id === message.id} />
               {extras(message)}
-            </div>
+            </RuntimeMessage>
           }
           if (item.kind === 'tools') {
             const active = turn.status === 'running'
             return <div key={item.id} data-part="process">
               <DshToolGroup messages={item.messages} turnActive={active} agent={agentOf(item.messages[0]?.agentId ?? null)} autoOpen={!!focusedMessageId && item.messages.some(message => message.id === focusedMessageId)}>
-                {item.messages.map(message => <div key={message.id} data-message-id={message.id} className={focusedMessageId === message.id ? css.focused : undefined}>
-                  <ToolCallTree call={activityToolCall(message, active)} />
+                {item.messages.map(message => <RuntimeMessage key={message.id} message={message} toolActive={active} className={focusedMessageId === message.id ? css.focused : undefined}>
+                  <ActivityParts />
                   {appliedExtra(message)}
-                </div>)}
+                </RuntimeMessage>)}
               </DshToolGroup>
               {item.messages.map(message => <div key={`approval:${message.id}`} data-part="extra">{approvalExtra(message)}</div>)}
             </div>
           }
           if (item.kind === 'reasoning') {
             const message = item.message
-            return <div key={item.id} data-part="process" data-message-id={message.id} className={focusedMessageId === message.id ? css.focused : undefined}>
+            return <RuntimeMessage key={item.id} message={message} data-part="process" className={focusedMessageId === message.id ? css.focused : undefined}>
               <ReasoningDisclosure message={message} autoOpen={focusedMessageId === message.id} />{extras(message)}
-            </div>
+            </RuntimeMessage>
           }
           if (item.kind === 'delegations') {
             return <div key={item.id} data-part="extra" data-message-id={item.messages[0]?.id}>
@@ -319,12 +316,12 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
           }
           const message = item.message
           const relatedConversation = message.relatedConversationId ? conversationsById.get(message.relatedConversationId) : undefined
-          return <div key={item.id} data-part="extra" data-message-id={message.id} className={css.note}>
+          return <RuntimeMessage key={item.id} message={message} data-part="extra" className={css.note}>
             <span>{message.text}</span>
             {relatedConversation && <Button type="button" variant="link" size={null} onClick={() => onOpenRelatedConversation(relatedConversation.id)} className={css.noteLink}>Abrir conversa relacionada: {relatedConversation.name}</Button>}
             {message.delegationId && ['queued', 'running', 'waiting'].includes(message.status) && <Button type="button" variant="link" size={null} onClick={() => void window.appAPI.cancelDelegation(message.delegationId!).catch(error => onNotice(error instanceof Error ? error.message : 'Não foi possível cancelar a delegação.'))} className={css.noteLink} data-tone="danger">Cancelar pedido</Button>}
             {extras(message)}
-          </div>
+          </RuntimeMessage>
         })}
         {(turn.status === 'running' || turn.status === 'waiting') && <RunningTurnStatus turn={turn} />}
       </section>

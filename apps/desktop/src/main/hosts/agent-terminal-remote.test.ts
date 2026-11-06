@@ -15,7 +15,7 @@ import type { AgentTerminalSession, AgentTerminalSessionWithOutput, WorkspaceEve
 
 class IdleRuntime extends EventEmitter { async models() { return [] } close() {} }
 
-it('PTY do agente roda no host, transmite eventos, sobrevive à desconexão do cliente e para após reconectar; PWA não controla', async () => {
+it('PTY do agente roda no host, transmite eventos, sobrevive à desconexão do cliente e para após reconectar', async () => {
   const root = mkdtempSync(join(tmpdir(), 'boobot-remote-pty-'))
   const service = new AppService(join(root, 'data'), new IdleRuntime() as unknown as AgentRuntime, new IdleRuntime() as unknown as AgentRuntime)
   const rpc = new HostRpc()
@@ -54,10 +54,6 @@ it('PTY do agente roda no host, transmite eventos, sobrevive à desconexão do c
     await second.call('v9:agentTerminalStop', [session.id, conversation.id, workspace.id]) as AgentTerminalSession
     await vi.waitFor(async () => expect((await second!.call('v9:agentTerminalSessions', [conversation.id, workspace.id]) as AgentTerminalSession[])[0].status).toBe('interrupted'), { timeout: 10000 })
 
-    // A PWA não recebe listagem nem controle, mesmo com todas as capacidades.
-    const grants = ['read', 'chat', 'approvals', 'files:read', 'files:write'] as const
-    expect(() => rpc.dispatchFromPwa('v9:agentTerminalSessions', [conversation.id, workspace.id], grants)).toThrow(/não está disponível/)
-    expect(() => rpc.dispatchFromPwa('v9:agentTerminalStop', [session.id, conversation.id, workspace.id], grants)).toThrow(/não está disponível/)
     expect(rpc.supports('v9:openExternalTerminal')).toBe(false)
   } finally {
     second?.close()

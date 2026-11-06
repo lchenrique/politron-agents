@@ -12,7 +12,7 @@ const titles: [BoardTaskStatus, string][] = [
   ['ready', 'Atalhos de teclado no board'], ['doing', 'Aplicar modo plano/revisão às ferramentas nativas de escrita e terminal'],
   ['doing', 'Corrigir selects/dropdowns não clicáveis nas Configurações'], ['review', 'Reduzir erros de lint (187 erros) até build limpo'],
   ['rework', 'Estabilizar teste EPERM e atualizar documentação de delegação'], ['blocked', 'Publicar no canal beta'],
-  ['integration', 'PWA agent-first com painel de delegações'], ['done', 'Cards estilo Jira no BoardPage'], ['done', 'Antigravity sem travar'],
+  ['integration', 'Painel de delegações na Central do Chief'], ['done', 'Cards estilo Jira no BoardPage'], ['done', 'Antigravity sem travar'],
 ]
 const tasks: BoardTask[] = titles.map(([status, title], index) => ({
   id: `task-${index}`, title, description: 'Descrição detalhada da tarefa com contexto suficiente para o responsável começar sem perguntar.', acceptanceCriteria: '- Critério 1\n- Critério 2',
@@ -26,6 +26,6 @@ const snapshot = { ...emptySnapshot, agents, workspaces: [{ id: 'project', name:
 
 export default function BoardGallery() {
   return <div className="h-dvh overflow-auto bg-background text-foreground" data-board-gallery>
-    <BoardPage snapshot={snapshot} onOpenConversation={() => undefined} onNotice={() => undefined} readOnly={false} />
+    <BoardPage snapshot={snapshot} onOpenConversation={() => undefined} onNotice={() => undefined} />
   </div>
 }

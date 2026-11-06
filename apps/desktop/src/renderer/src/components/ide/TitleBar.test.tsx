@@ -74,23 +74,10 @@ it.each(['win32', 'darwin'])('mostra o local atual depois da navegação em %s',
   expect(location.compareDocumentPosition(within(toolbar).getByRole('button', { name: 'Abrir painéis e abas' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })
 
-it('mostra o local atual também na PWA', () => {
-  render(<TitleBar browserMode sidebarCollapsed={false} onToggleSidebar={vi.fn()} onOpenTool={vi.fn()} location={{ label: 'Central do Chief' }} />)
-  expect(screen.getByTestId('window-location')).toHaveTextContent('Central do Chief')
-})
-
-it.each([false, true])('oferece somente Light e Dark na barra (PWA: %s)', browserMode => {
+it('oferece somente Light e Dark na barra', () => {
   vi.stubGlobal('vibeAPI', { platform: 'win32' })
-  render(<TitleBar browserMode={browserMode} onOpenTool={vi.fn()} sidebarCollapsed={false} onToggleSidebar={vi.fn()} />)
+  render(<TitleBar onOpenTool={vi.fn()} sidebarCollapsed={false} onToggleSidebar={vi.fn()} />)
   const modes = screen.getByRole('radiogroup', { name: 'Modo de cor' })
   expect(within(modes).getAllByRole('radio').map(radio => radio.getAttribute('aria-label'))).toEqual(['Light', 'Dark'])
   expect(screen.queryByRole('combobox', { name: 'Selecionar tema' })).not.toBeInTheDocument()
-})
-
-it('mantém a navegação própria da PWA sem controles desktop extras', () => {
-  const props = { browserMode: true, sidebarCollapsed: false, onToggleSidebar: vi.fn(), onOpenTool: vi.fn(), search: <ActionSearchBar iconOnly label="Busca rápida" /> }
-  render(<TitleBar {...props} />)
-  expect(screen.getByRole('button', { name: 'Recolher sidebar' })).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Abrir painel direito' })).toBeVisible()
-  expect(screen.queryByRole('button', { name: 'Busca rápida' })).not.toBeInTheDocument()
 })

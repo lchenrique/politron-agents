@@ -41,7 +41,7 @@ describe('superfície IPC da V9', () => {
     expect(handlers.has('v9:externalBrowserStatus')).toBe(false)
     expect(handlers.has('v9:setExternalBrowserGrant')).toBe(false)
   })
-  it('respondApproval do host remoto/PWA é marcado como remoto; a janela local não', async () => {
+  it('respondApproval do host remoto é marcado como remoto; a janela local não', async () => {
     const respondApproval = vi.fn(async () => undefined)
     const service = { on: vi.fn(), off: vi.fn(), respondApproval } as unknown as AppService
     const remote = new Map<string, (...args: unknown[]) => unknown>()

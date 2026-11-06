@@ -1,5 +1,4 @@
 import type { RemoteEvent, RpcHandler } from './wire'
-import { assertPwaRpcAuthorized, type PwaCapability } from '../../shared/pwa-host-policy'
 
 // Lista explícita: pareamento não expõe IPC arbitrário nem ações da janela local.
 const METHODS = new Set([
@@ -8,7 +7,7 @@ const METHODS = new Set([
   'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'reviewPlan', 'approvalGrants', 'removeApprovalGrant', 'setVisibleConversation', 'getVisibleConversation',
   'respondToAgent', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'cancelQueuedMessage', 'sendQueuedNow', 'stop', 'cancelDelegation', 'models',
   'openRouterDecisionStatus', 'saveOpenRouterDecisionModel',
-  // Somente o desktop pareado lista/para PTYs de agentes; a PWA não tem capacidade para estes métodos.
+  // PTYs de agentes: o desktop pareado lista e para os processos que rodam no host.
   'agentTerminalSessions', 'agentTerminalStop',
 ].map(method => `v9:${method}`).concat(['providers:list', 'providers:refresh', 'providers:detect', 'skills:list', 'skills:readContent', 'hosts:browse']))
 
@@ -21,11 +20,6 @@ export class HostRpc {
     return handler(...args as never[])
   }
   supports(method: string): boolean { return METHODS.has(method) }
-  /** Browser gateway must call this instead of dispatch; the desktop transport remains unchanged. */
-  dispatchFromPwa(method: string, args: unknown[], grants: readonly PwaCapability[]): unknown {
-    assertPwaRpcAuthorized(method, args, grants)
-    return this.dispatch(method, args)
-  }
 }
 
 export interface HostRouting {

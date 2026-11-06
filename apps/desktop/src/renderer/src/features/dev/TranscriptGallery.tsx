@@ -1,4 +1,6 @@
+import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { MessageList } from '@/features/chat/MessageList'
+import { useV1ThreadRuntime } from '@/features/chat/assistant-ui-adapter'
 import type { Agent, Message } from '../../../../shared/v9'
 
 const agent: Agent = {
@@ -80,13 +82,14 @@ const currentMessages: Message[] = [
 const messages = [...history, ...currentMessages]
 
 export default function TranscriptGallery() {
+  const { runtime } = useV1ThreadRuntime(messages)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', minHeight: 0, background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' }} data-transcript-gallery>
       <header style={{ flex: 'none', padding: '12px 24px', borderBottom: '1px solid var(--dsw-alias-border-l2)', font: 'var(--dsw-font-s-14)' }}>
         <strong>Prévia da transcrição</strong><span style={{ marginLeft: 12, color: 'var(--dsw-alias-label-tertiary)' }}>Dados fictícios · não envia mensagens nem altera o banco</span>
       </header>
       <main style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <MessageList messages={messages} fileChanges={[]} approvals={[]} conversations={[]} agentOf={id => id === agent.id ? agent : undefined} selectedAgents={[agent]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+        <AssistantRuntimeProvider runtime={runtime}><MessageList messages={messages} fileChanges={[]} approvals={[]} conversations={[]} agentOf={id => id === agent.id ? agent : undefined} selectedAgents={[agent]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} /></AssistantRuntimeProvider>
       </main>
     </div>
   )

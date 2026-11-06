@@ -30,7 +30,7 @@ export function legacySidebarLayout(): SidebarLayout {
 }
 
 /**
- * Ordem e pastas do sidebar, salvas no banco (valem também na PWA). Na primeira leitura com banco vazio,
+ * Ordem e pastas do sidebar, salvas no banco (valem também no host remoto). Na primeira leitura com banco vazio,
  * os grupos antigos do localStorage são migrados; se o host não responder, o localStorage segue como reserva.
  * O estado recolhido das pastas é preferência do aparelho e continua no localStorage.
  */

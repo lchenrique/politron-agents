@@ -70,7 +70,7 @@ describe('Markdown compartilhado do chat', () => {
     expect(handlers.blocked).toHaveBeenCalledOnce()
   })
 
-  it('sem roteamento do Desktop (PWA) mantém o link web em nova aba', () => {
+  it('sem roteamento do Desktop mantém o link web em nova aba', () => {
     render(<MessageMarkdown>{'[Site](https://example.com)'}</MessageMarkdown>)
     expect(screen.getByRole('link', { name: 'Site' })).toHaveAttribute('target', '_blank')
   })

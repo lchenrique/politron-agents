@@ -7,9 +7,8 @@ import type { UpdatesAPI } from '../../shared/updates'
 
 declare global {
 interface Window {
-  pwaAPI?: import('../../shared/pwa-desktop').PwaDesktopAPI
   hostsAPI?: import('../../shared/hosts').HostsAPI
-  /** Só no Electron Desktop; ausente na PWA. */
+  /** Ausente nos testes do renderer sem preload. */
   platformBrowserAPI?: import('../../shared/platform-browser').PlatformBrowserAPI
  vibeAPI: {
  windowControls: {

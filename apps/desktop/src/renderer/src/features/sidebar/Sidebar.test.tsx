@@ -75,6 +75,14 @@ describe('acabamento da barra lateral', () => {
     expect(onOpenEditor).toHaveBeenCalledWith({ kind: 'agent' })
   })
 
+  it('diferencia Boos na faixa só pela cor: sem foto nem acessórios', () => {
+    const custom = { ...agent, avatar: 'data:image/png;base64,AAAA', pitsHeadAccessory: 'boo-king-crown' } as Agent
+    const { container } = renderSidebar({ snapshot: { ...snapshot, agents: [custom] } })
+    const strip = screen.getByRole('heading', { name: 'Boos' }).closest('section')!
+    expect(strip.querySelector('img')).toBeNull()
+    expect(container.innerHTML).toContain('#7565e8')
+  })
+
   it('rodapé com Configurações; "Abrir pasta" fica no menu do projeto', () => {
     const openFolder = vi.fn(async () => undefined)
     window.appAPI = { openFolder } as unknown as typeof window.appAPI
@@ -139,17 +147,6 @@ describe('contatos de agentes na barra lateral', () => {
     expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
   })
 
-  it('a PWA mantém a busca inline e mostra Projetos e Boos juntos, sem ações de desktop', () => {
-    renderSidebar({ browserMode: true, onOpenHome: vi.fn() })
-    expect(screen.getByRole('combobox', { name: 'Busca rápida' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Busca rápida' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Lyra/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Instruções de Paz/ })).toBeInTheDocument()
-    for (const name of ['Novo Boo', 'Contratar equipe', 'Configurações', 'Novo projeto ou pasta']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Rotinas/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Escritório/ })).toBeInTheDocument()
-  })
-
   it('não duplica no sidebar desktop os controles da barra da janela', () => {
     renderSidebar({ onOpenHome: vi.fn() })
     expect(screen.queryByRole('button', { name: 'Ir para a central' })).not.toBeInTheDocument()
@@ -157,23 +154,6 @@ describe('contatos de agentes na barra lateral', () => {
     expect(screen.queryByRole('button', { name: 'Busca rápida' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Nova sessão' })).toBeVisible()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-  })
-
-  it('cria sessão livre na PWA por ação direta, sem menu de um item só', () => {
-    const onStartConversation = vi.fn()
-    renderSidebar({ browserMode: true, onStartConversation })
-    expect(screen.queryByRole('button', { name: 'Criar novo' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão' }))
-    expect(onStartConversation).toHaveBeenCalledOnce()
-  })
-
-  it('encontra um projeto pela busca rápida da PWA', () => {
-    const onSelectWorkspace = vi.fn()
-    renderSidebar({ browserMode: true, onSelectWorkspace })
-    const palette = screen.getByRole('combobox', { name: 'Busca rápida' })
-    fireEvent.change(palette, { target: { value: 'Instruções de Paz' } })
-    fireEvent.keyDown(palette, { key: 'Enter' })
-    expect(onSelectWorkspace).toHaveBeenCalledWith(workspace.id)
   })
 
   it('inicia uma conversa no projeto pela linha e pela visão do projeto', () => {

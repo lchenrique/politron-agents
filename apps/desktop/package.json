@@ -5,7 +5,7 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "set ELECTRON_RUN_AS_NODE=&& electron-vite dev",
-    "build": "set ELECTRON_RUN_AS_NODE=&& electron-vite build && npm run build:pwa",
+    "build": "set ELECTRON_RUN_AS_NODE=&& electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:hosts:electron": "node scripts/verify-hosts-electron.cjs",
@@ -22,14 +22,12 @@
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "pack:win": "npm run build && electron-builder --win dir --x64 --publish never",
     "stage:update": "node scripts/stage-update-release.mjs",
-    "build:pwa": "vite build --config vite.pwa.config.mts",
-    "predev": "npm run build:pwa",
-    "test:redesign:web": "node scripts/verify-redesign-web.cjs",
-    "test:pwa": "vitest run src/main/pwa/gateway.test.ts src/main/hosts/pwa-policy.test.ts && node scripts/verify-pwa-web.cjs",
-    "pretest": "npm run build:pwa"
+    "test:redesign:web": "node scripts/verify-redesign-web.cjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.301",
+    "@assistant-ui/react": "^0.15.32",
+    "@assistant-ui/react-markdown": "^0.14.24",
     "@base-ui/react": "^1.9.0",
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
