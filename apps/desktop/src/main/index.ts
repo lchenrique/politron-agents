@@ -11,6 +11,7 @@ import { safeWebUrl } from '../shared/platform-browser'
 import { createAppWindow, destroyAppWindow } from './windows/manager'
 import { AppService } from './v9/workspace'
 import { registerV9Ipc } from './v9/ipc'
+import { VoiceService } from './v9/voice'
 import { RealtimeService, registerRealtimeIpc } from './v9/realtime/service'
 import { detectProviders, registerProviderDetectionIpc } from './v9/providers/detect'
 import { ProviderRegistry } from './v9/providers/registry'
@@ -272,7 +273,8 @@ app.whenReady().then(async () => {
   } })
   appService.store.applyAutonomyDefaults()
   hosts = new HostManager(new HostStore(app.getPath('userData')), () => realtimeService?.stop())
-  registerV9Ipc(appService, hosts)
+  const voice = new VoiceService()
+  registerV9Ipc(appService, hosts, voice)
   realtimeService = new RealtimeService(app.getPath('userData'), appService)
   registerRealtimeIpc(realtimeService, () => !!hosts?.remote)
   const antigravityRuntime = new AntigravityRuntime()
@@ -302,7 +304,7 @@ app.whenReady().then(async () => {
     // Missões e rotinas dependem do catálogo de modelos; retoma depois dele, com o chat aberto ou não.
     .finally(() => setTimeout(() => appService?.resumeAutonomy(), 3_000))
   // Canal Telegram: long polling de saída, sem porta aberta; o IPC fica fora da RPC de hosts.
-  telegram = new TelegramService(app.getPath('userData'), appService)
+  telegram = new TelegramService(app.getPath('userData'), appService, { transcriber: voice })
   registerTelegramIpc(telegram)
   void telegram.start().catch(error => console.error('[Telegram] Falha ao iniciar', error instanceof Error ? error.message : 'erro'))
   registerSkillsIpc(new SkillsService(app.getPath('userData'), join(marketplaceRoot(), 'skills')), hosts)

@@ -8,11 +8,12 @@ import type { Agent, Model } from '../../shared/v9'
 import { SessionUnavailableError, type AgentRuntime, type ExternalBrowserRegistration, type RuntimeThread } from './agent-runtime'
 import type { DynamicTool } from './codex'
 import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
+import { COMPUTER_USE_MCP } from './computer-use'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { claudeRuntimePermissions, hasFullAccess } from './runtime-permissions'
 
 type ClaudeTurn = { id: string; controller: AbortController; terminal: boolean; initialized: Deferred; initializedResolved: boolean; eventGate?: Deferred; query?: Query }
-type ClaudeThread = { id: string; sessionId: string | null; agent: Agent; directory: string; tools: DynamicTool[]; projectInstructions: string; externalBrowser?: ExternalBrowserRegistration; activeTurn?: ClaudeTurn }
+type ClaudeThread = { id: string; sessionId: string | null; agent: Agent; directory: string; tools: DynamicTool[]; projectInstructions: string; externalBrowser?: ExternalBrowserRegistration; computerUse?: ExternalBrowserRegistration; activeTurn?: ClaudeTurn }
 type ToolWait = { turn: ClaudeTurn; resolve: (value: unknown) => void; reject: (error: Error) => void }
 type Deferred = { promise: Promise<void>; resolve: () => void; reject: (error: Error) => void }
 const execFileAsync = promisify(execFile)
@@ -93,9 +94,9 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
     } finally { clearTimeout(timer); finish(); session.close() }
   }
 
-  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions = '', externalBrowser?: ExternalBrowserRegistration): Promise<RuntimeThread> {
+  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions = '', externalBrowser?: ExternalBrowserRegistration, computerUse?: ExternalBrowserRegistration): Promise<RuntimeThread> {
     const id = threadId || randomUUID()
-    this.threads.set(id, { id, sessionId: threadId || null, agent, directory, tools, projectInstructions, externalBrowser })
+    this.threads.set(id, { id, sessionId: threadId || null, agent, directory, tools, projectInstructions, externalBrowser, computerUse })
     return { id, history: threadId ? 'resume-pending' : 'empty' }
   }
 
@@ -131,7 +132,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
       return { content: [{ type: 'text' as const, text: resolved.contentItems?.map(item => item.text || '').join('\n') || '' }], isError: !resolved.success }
     }))
     const server = createSdkMcpServer({ name: 'politron', version: '1.0.0', instructions: 'Todas as operações de arquivo, navegador e delegação devem usar estas ferramentas do Boobot.', tools })
-    const browser = context.externalBrowser
+    const browser = context.externalBrowser, desktop = context.computerUse
     const session = this.querySdk({
       prompt,
       options: {
@@ -142,8 +143,8 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         ...claudeRuntimePermissions(context.agent),
         // Acesso total (como o bypass do Paseo): ferramentas nativas ligadas; perguntas e planos nativos ficam fora para não travar sem resposta.
         ...(hasFullAccess(context.agent) ? { disallowedTools: ['AskUserQuestion', 'ExitPlanMode'] } : { tools: [], disallowedTools: ['Write', 'Edit', 'Bash', 'NotebookEdit', 'MultiEdit'] }),
-        allowedTools: [...context.tools.map(item => `mcp__politron__${item.name}`), ...(browser?.tools.map(name => `mcp__${EXTERNAL_BROWSER_MCP}__${name}`) || [])],
-        mcpServers: { politron: server, ...(browser ? { [EXTERNAL_BROWSER_MCP]: { type: 'http' as const, url: browser.url, headers: { Authorization: `Bearer ${browser.token}` } } } : {}) },
+        allowedTools: [...context.tools.map(item => `mcp__politron__${item.name}`), ...(browser?.tools.map(name => `mcp__${EXTERNAL_BROWSER_MCP}__${name}`) || []), ...(desktop?.tools.map(name => `mcp__${COMPUTER_USE_MCP}__${name}`) || [])],
+        mcpServers: { politron: server, ...(browser ? { [EXTERNAL_BROWSER_MCP]: { type: 'http' as const, url: browser.url, headers: { Authorization: `Bearer ${browser.token}` } } } : {}), ...(desktop ? { [COMPUTER_USE_MCP]: { type: 'http' as const, url: desktop.url, headers: { Authorization: `Bearer ${desktop.token}` } } } : {}) },
         systemPrompt: { type: 'preset', preset: 'claude_code', append: buildAgentSystemPrompt(context.agent, context.projectInstructions, context.tools) },
       model: typeof params.model === 'string' ? params.model : context.agent.model || undefined,
       effort: typeof params.effort === 'string' ? params.effort as Agent['effort'] : context.agent.effort,

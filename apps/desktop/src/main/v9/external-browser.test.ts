@@ -65,6 +65,8 @@ describe('sonda da ponte oficial do navegador externo', () => {
 async function setup(computerUse = true, runtime: 'opencode' | 'codex' | 'claude' = 'opencode', agentRuntime?: AgentRuntime) {
   const root = temp('politron-external-')
   const service = new AppService(join(root, 'profile'), agentRuntime); services.push(service)
+  // Estes testes não podem iniciar o cua-driver real da máquina.
+  service.computerUseDeps = { exists: () => false, run: async () => ({ code: 1, stdout: '' }), env: {}, userData: root, platform: 'win32' }
   const agent = service.saveAgent({ name: 'Boo Externo', runtime, model: runtime === 'codex' ? 'gpt-5.4' : runtime === 'claude' ? 'claude-sonnet-4-5' : 'opencode/big-pickle', instructions: 'Teste.', canWrite: false, computerUse, approvalMode: 'bypass' })
   const workspace = await service.saveWorkspace({ name: 'QA', path: root, permissions: { chiefCreateAgents: false, chiefEditAgents: false, chiefManageTeam: false, chiefCreateSessions: false, filesWrite: 'inherit', computerUse: 'inherit' } })
   const conversation = service.saveConversation({ name: 'QA', workspaceId: workspace.id, agentIds: [agent.id] })

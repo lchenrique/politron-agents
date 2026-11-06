@@ -369,6 +369,18 @@ export class WorkspaceStore {
     if (enabled) this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, new Date().toISOString())
     else this.db.prepare('DELETE FROM v9_meta WHERE key=?').run(key)
   }
+  /** Consentimento do Computer Use (controle do Windows), por conversa e Boo; ausência significa não autorizado. */
+  computerUseGrant(conversationId: string, agentId: string): boolean {
+    return !!this.db.prepare('SELECT 1 FROM v9_meta WHERE key=?').get(`computer_use:${conversationId}:${agentId}`)
+  }
+  saveComputerUseGrant(conversationId: string, agentId: string, enabled: boolean): void {
+    const key = `computer_use:${conversationId}:${agentId}`
+    if (enabled) this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, new Date().toISOString())
+    else this.db.prepare('DELETE FROM v9_meta WHERE key=?').run(key)
+  }
+  computerUseGrants(): Array<{ conversationId: string; agentId: string }> {
+    return (this.db.prepare("SELECT key FROM v9_meta WHERE key LIKE 'computer_use:%'").all() as { key: string }[]).map(row => { const [, conversationId, agentId] = row.key.split(':'); return { conversationId, agentId } })
+  }
   agent(id: string): Agent { if (id === ASSISTANT_ID) return { ...ASSISTANT, ...this.assistantPreferences() }; const value = this.get<Agent>('v9_agents', id); if (!value) throw new Error('Agente não encontrado.'); return normalizeAgent(value) }
   conversation(id: string): Conversation { const value = this.get<Conversation>('v9_conversations', id); if (!value) throw new Error('Conversa não encontrada.'); return normalizeConversation(value) }
   message(id: string): Message | undefined { return this.get('v9_messages', id) }

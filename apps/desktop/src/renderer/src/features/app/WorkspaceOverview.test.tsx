@@ -13,7 +13,8 @@ describe('visão geral do workspace', () => {
     render(<WorkspaceOverview workspace={workspace} workspaces={[workspace]} conversations={[]} agents={[agent]} onCreateSession={onCreateSession} onOpenConversation={vi.fn()} onEdit={vi.fn()} onOpenAgent={onOpenAgent} />)
     expect(screen.getByRole('heading', { name: 'Politron' })).toBeInTheDocument()
     expect(screen.getByText('Nenhuma sessão criada')).toBeInTheDocument()
-    expect(screen.getByText('Projeto')).toBeInTheDocument()
+    expect(screen.getByText('C:/politron')).toBeInTheDocument()
+    expect(document.querySelector('.ds-eyebrow')).toBeNull()
     // Sem sessões, só há um convite para criar a primeira.
     expect(screen.queryByRole('button', { name: /Nova sessão/ })).not.toBeInTheDocument()
     expect(onCreateSession).not.toHaveBeenCalled()

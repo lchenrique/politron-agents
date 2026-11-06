@@ -98,36 +98,13 @@
 .dsh-new-session svg { width: 14px; height: 14px; color: currentColor; }
 .boobot-sidebar .dsh-new-session svg.lucide { stroke-width: 1.15; }
 
-/* Painéis globais: Central, Rotinas, Remoto. */
-.dsh-panel-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
-.dsh-panel-row {
-  display: flex;
-  width: auto;
-  min-height: 36px;
-  height: auto;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  margin: 0 2px;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--dsh-label-primary);
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 22px;
-  text-align: left;
-  box-shadow: none;
-  transition: none;
-}
-.dsh-panel-row:hover,
-.dsh-panel-row[aria-expanded="true"] { background: var(--dsh-hover); color: var(--dsh-label-primary); }
-/* Item ativo: tom suave da cor primária do tema, com o ícone na mesma cor. */
-.dsh-panel-row[aria-current="page"] { background: color-mix(in srgb, var(--primary) 16%, transparent); color: var(--dsh-label-primary); font-weight: 500; }
-.dsh-panel-row[aria-current="page"] .dsh-glyph > svg.lucide { color: var(--primary); }
-.dsh-panel-row svg.lucide { width: 16px; height: 16px; flex: none; }
-.dsh-panel-row .dsh-meta { margin-left: auto; }
+/* Controle segmentado Projetos | Boos, no topo da barra. */
+.dsh-segmented { display: flex; gap: 2px; margin: 8px 2px 0 0; padding: 2px; border-radius: 10px; background: var(--dsh-hover); }
+.dsh-segmented button { flex: 1; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--dsh-label-tertiary); font-size: 13px; font-weight: 400; box-shadow: none; }
+.dsh-segmented button:hover { color: var(--dsh-label-primary); background: transparent; }
+.dsh-segmented button[aria-pressed="true"] { background: var(--dsh-fill); color: var(--dsh-label-primary); font-weight: 500; box-shadow: 0 0 0 0.5px var(--dsh-hover), 0 1px 2px rgb(0 0 0 / 0.12); }
+.dsh-context { color: var(--dsh-label-caption); }
+
 .dsh-glyph { display: inline-flex; flex: none; width: 16px; height: 16px; align-items: center; justify-content: center; }
 /* Avatar de 20px centrado no espaço de 16px do ícone: o texto alinha com as outras linhas. */
 .dsh-glyph > [data-slot="avatar"] { margin: 0 -2px; }
@@ -328,15 +305,6 @@
 .dsh-back svg.lucide { width: 14px; height: 14px; }
 .dsh-project-title { height: 38px; margin-bottom: 4px; font-weight: 600; }
 .dsh-project-title .dsh-title { font-size: 15px; }
-
-/* Rodapé: linhas de 32px sem divisória. */
-.dsh-foot { display: flex; align-items: center; gap: 2px; margin: 4px 0; padding-top: 6px; border-top: 0.5px solid var(--dsh-hover); }
-.dsh-foot-host { display: flex; flex: 1; min-width: 0; flex-direction: column; }
-.dsh-foot-host:empty { display: none; }
-.dsh-foot-host:empty + .dsh-foot-settings { flex: 1; }
-.dsh-foot .dsh-foot-settings { flex: none; padding-inline: 8px; }
-.dsh-foot .dsh-panel-row { min-height: 32px; margin: 0 -2px; padding: 6px 2px 6px 6px; line-height: 20px; }
-.dsh-foot .dsh-panel-row:disabled { opacity: 1; color: var(--dsh-label-caption); }
 
 @media (prefers-reduced-motion: reduce) {
   .boobot-sidebar, .dsh-row, .dsh-spinner g, .dsh-spinner circle { animation: none; }

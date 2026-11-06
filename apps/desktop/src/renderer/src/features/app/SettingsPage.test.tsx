@@ -32,7 +32,7 @@ describe('carregamento leve das configurações', () => {
   it('mantém SVG por padrão e permite optar pelo Rive sem tornar a escolha irreversível', () => {
     localStorage.removeItem('boobot.avatar.renderer')
     vi.stubGlobal('appAPI', appAPI)
-    const { unmount } = render(<SettingsPage open onOpenChange={vi.fn()} />)
+    const { unmount } = render(<SettingsPage open />)
     const choice = screen.getByRole('checkbox', { name: 'Experimentar renderer Rive (incompleto)' })
     expect(choice).not.toBeChecked()
     fireEvent.click(choice)
@@ -47,7 +47,7 @@ describe('carregamento leve das configurações', () => {
     vi.clearAllMocks()
     appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: false, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed', terminalEnabled: true })
     vi.stubGlobal('appAPI', appAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    render(<SettingsPage open />)
     fireEvent.click(screen.getByRole('button', { name: /^Assistente$/ }))
     const writing = await screen.findByRole('checkbox', { name: 'Permitir edição de arquivos do workspace' })
     await waitFor(() => expect(writing).not.toBeChecked())
@@ -58,7 +58,7 @@ describe('carregamento leve das configurações', () => {
   it('oferece acesso total do Codex para o Assistente padrão', async () => {
     vi.clearAllMocks()
     vi.stubGlobal('appAPI', appAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} initialSection="assistente" />)
+    render(<SettingsPage open initialSection="assistente" />)
     fireEvent.click(await screen.findByRole('combobox', { name: 'Permissões do Codex' }))
     fireEvent.click(await screen.findByRole('option', { name: 'Acesso total · full access do Codex' }))
     await waitFor(() => expect(appAPI.saveAssistantPreferences).toHaveBeenCalledWith(expect.objectContaining({ runtimePermissionMode: 'bypass' })))
@@ -68,8 +68,8 @@ describe('carregamento leve das configurações', () => {
   it('ao abrir Geral não pede snapshot completo nem consulta chaves desnecessárias', async () => {
     vi.clearAllMocks()
     vi.stubGlobal('appAPI', appAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
-    expect(screen.getByRole('dialog')).toHaveAttribute('data-dsh-modal', 'true')
+    render(<SettingsPage open />)
+    expect(screen.getByRole('heading', { level: 1, name: 'Configurações' })).toBeInTheDocument()
     expect(screen.getByText('Aparência')).toBeInTheDocument()
     expect(appAPI.snapshot).not.toHaveBeenCalled()
     expect(appAPI.settingsPreferences).not.toHaveBeenCalled()
@@ -80,7 +80,7 @@ describe('carregamento leve das configurações', () => {
   it('carrega apenas preferências pequenas quando entra em Assistente', async () => {
     vi.clearAllMocks()
     vi.stubGlobal('appAPI', appAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    render(<SettingsPage open />)
     fireEvent.click(screen.getByRole('button', { name: /^Assistente$/ }))
     await waitFor(() => expect(appAPI.settingsPreferences).toHaveBeenCalledTimes(1))
     expect(appAPI.snapshot).not.toHaveBeenCalled()
@@ -93,7 +93,7 @@ describe('carregamento leve das configurações', () => {
     vi.clearAllMocks()
     vi.stubGlobal('appAPI', appAPI)
     vi.stubGlobal('providersAPI', providersAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    render(<SettingsPage open />)
     fireEvent.click(screen.getByRole('button', { name: /^Provedores$/ }))
     await waitFor(() => {
       expect(appAPI.hasClaudeCredential).toHaveBeenCalledTimes(1)
@@ -105,20 +105,20 @@ describe('carregamento leve das configurações', () => {
 })
 
 describe('painel de configurações', () => {
-  it('não renderiza nada fechado, e abre como diálogo (não substitui o chat)', () => {
+  it('não renderiza nada com open=false', () => {
     vi.stubGlobal('appAPI', appAPI)
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
-    render(<SettingsPage open={false} onOpenChange={vi.fn()} />)
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const { container } = render(<SettingsPage open={false} />)
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('abre em Geral e navega para Provedores mostrando os CLIs detectados', async () => {
     vi.stubGlobal('appAPI', appAPI)
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    render(<SettingsPage open />)
+    expect(screen.getByRole('heading', { level: 1, name: 'Configurações' })).toBeInTheDocument()
     expect(screen.getByText('Aparência')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Provedores/ }))
     await waitFor(() => expect(providersAPI.list).toHaveBeenCalled())
@@ -129,14 +129,16 @@ describe('painel de configurações', () => {
     expect(screen.getByText('claude-opus-4-6 (anthropic)')).toBeInTheDocument()
   })
 
-  it('fechar chama onOpenChange, não desmonta a conversa por trás (ela nem é renderizada aqui)', () => {
+  it('é uma página do PageShell: sem botão Fechar nem diálogo, com a navegação de seções ao lado', () => {
     vi.stubGlobal('appAPI', appAPI)
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
-    const onOpenChange = vi.fn()
-    render(<SettingsPage open onOpenChange={onOpenChange} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }))
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    const { container } = render(<SettingsPage />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Fechar' })).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Seções de configurações' })).toBeInTheDocument()
+    expect(container.querySelector('[data-page-shell]')).toBeInTheDocument()
+    expect(container.querySelector('.ds-eyebrow')).toBeNull()
   })
 
   it('explica origem do catálogo e indisponibilidade de credencial no diagnóstico', async () => {
@@ -148,7 +150,7 @@ describe('painel de configurações', () => {
     vi.stubGlobal('appAPI', appAPI)
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    render(<SettingsPage open />)
     fireEvent.click(screen.getByRole('button', { name: /Provedores/ }))
     expect(await screen.findByText('Configure uma chave de API Anthropic no Politron.')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Claude Code').closest('summary')!)
@@ -162,7 +164,7 @@ describe('painel de configurações', () => {
     vi.stubGlobal('appAPI', appAPI)
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    render(<SettingsPage open />)
     fireEvent.click(screen.getByRole('button', { name: /^Skills$/ }))
     expect(await screen.findByText('brag')).toBeInTheDocument()
     expect(screen.getByText('Codex')).toBeInTheDocument()
@@ -174,15 +176,15 @@ describe('painel de configurações', () => {
 describe('hierarquia das seções', () => {
   const sections: [string, RegExp][] = [
     ['Geral', /Modo visual/], ['Assistente', /Assistente padrão/], ['Ferramentas', /terminal/],
-    ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex, Antigravity/], ['Skills', /SKILL\.md/], ['Memória', /lembram entre conversas/], ['Voz em tempo real', /transcrição/],
+    ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex, Antigravity/], ['Skills', /SKILL\.md/], ['Memória', /lembram entre conversas/], ['Computer Use', /cua-driver/], ['Voz em tempo real', /transcrição/],
     ['Conexões', /outros dispositivos/], ['Telegram', /Chief/], ['Atualizações', /canal de atualização/],
   ]
 
-  it('mantém as onze seções na navegação e dá a cada página título e propósito próprios', () => {
+  it('mantém as doze seções na navegação e dá a cada página título e propósito próprios', () => {
     vi.stubGlobal('appAPI', { ...appAPI, voiceStatus: vi.fn().mockResolvedValue({ voiceKeyConfigured: false }) })
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
-    const { unmount } = render(<SettingsPage open onOpenChange={vi.fn()} />)
+    const { unmount } = render(<SettingsPage open />)
     const nav = screen.getByRole('navigation', { name: 'Seções de configurações' })
     expect(within(nav).getAllByRole('button').map(button => button.textContent)).toEqual(sections.map(([label]) => label))
     // Troca somente o título/descrição do topo; os painéis pesados de Voz/Conexões/Atualizações não são exercitados aqui.
@@ -191,7 +193,7 @@ describe('hierarquia das seções', () => {
       expect(within(nav).getByRole('button', { name: label })).toHaveAttribute('aria-current', 'page')
       expect(screen.getByRole('heading', { level: 2, name: label })).toBeInTheDocument()
       const page = screen.getByRole('region', { name: label })
-      expect(page).toHaveClass('overflow-y-auto', 'min-h-0')
+      expect(page).toHaveClass('space-y-4')
       expect(screen.getByRole('heading', { level: 2, name: label }).nextElementSibling?.textContent).toMatch(purpose)
     }
     unmount()
@@ -199,7 +201,7 @@ describe('hierarquia das seções', () => {
 
   it('agrupa os controles em cartões nomeados abaixo do título da página', () => {
     vi.stubGlobal('appAPI', appAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    render(<SettingsPage open />)
     const page = screen.getByRole('region', { name: 'Geral' })
     const cards = within(page).getAllByRole('region')
     expect(cards.map(card => within(card).getByRole('heading', { level: 3 }).textContent)).toEqual(['Aparência', 'Animação dos Boos'])
@@ -210,7 +212,7 @@ describe('hierarquia das seções', () => {
     vi.clearAllMocks()
     appAPI.settingsPreferences.mockResolvedValueOnce({ canWrite: true, computerUse: false, approvalMode: 'bypass', runtimePermissionMode: 'managed', terminalEnabled: true })
     vi.stubGlobal('appAPI', appAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} initialSection="assistente" />)
+    render(<SettingsPage open initialSection="assistente" />)
     const warning = await screen.findByText(/No Bypass, o terminal pode alterar outros caminhos/)
     await waitFor(() => expect(warning).toHaveAttribute('data-tone', 'warning'))
     expect(warning.previousElementSibling).toContainElement(screen.getByRole('combobox', { name: 'Modo de aprovação' }))
@@ -230,7 +232,7 @@ describe('atualizações em Configurações', () => {
     }
     vi.stubGlobal('appAPI', appAPI)
     vi.stubGlobal('updatesAPI', updatesAPI)
-    render(<SettingsPage open onOpenChange={vi.fn()} />)
+    render(<SettingsPage open />)
     fireEvent.click(screen.getByRole('button', { name: /^Atualizações$/ }))
     expect(await screen.findByText(/Modo desenvolvimento/)).toBeInTheDocument()
     expect(updatesAPI.status).toHaveBeenCalledTimes(1)
@@ -244,7 +246,7 @@ describe('Geração de imagens', () => {
 
   it('mostra quando o motor escolhido não está logado', async () => {
     vi.stubGlobal('appAPI', { ...appAPI, imageGenerationStatus: vi.fn().mockResolvedValue({ ...base, provider: 'codex' }) })
-    render(<SettingsPage open onOpenChange={vi.fn()} initialSection="imagens" />)
+    render(<SettingsPage open initialSection="imagens" />)
     expect(await screen.findByText(/não parece logado/)).toBeInTheDocument()
   })
 
@@ -257,7 +259,7 @@ describe('Geração de imagens', () => {
       testImageGeneration: vi.fn().mockResolvedValue({ dataUrl: 'data:image/png;base64,AAAA', provider: 'api' }),
     }
     vi.stubGlobal('appAPI', api)
-    render(<SettingsPage open onOpenChange={vi.fn()} initialSection="imagens" />)
+    render(<SettingsPage open initialSection="imagens" />)
     const key = await screen.findByLabelText('Chave de API de imagens')
     fireEvent.change(key, { target: { value: 'sk-test-0123456789abcdefghij' } })
     expect(screen.getByRole('button', { name: 'Testar' })).toBeDisabled()

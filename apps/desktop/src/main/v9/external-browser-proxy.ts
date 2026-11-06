@@ -10,6 +10,9 @@ export const EXTERNAL_BROWSER_MCP = 'politron_external_browser'
 const TURN_METADATA = 'x-codex-turn-metadata'
 export interface NodeReplServer { command: string; args: string[]; env: Record<string, string> }
 /** Devolve null quando a chamada pode seguir; caso contrário, o motivo da recusa mostrado ao modelo. */
+/** Servidor MCP republicado pelo proxy: nome, rótulo das mensagens e quais ferramentas do upstream passam. */
+export interface ProxyVariant { name: string; label: string; allow: (tool: string) => boolean }
+const BROWSER_VARIANT: ProxyVariant = { name: EXTERNAL_BROWSER_MCP, label: 'node_repl oficial', allow: tool => ALLOWED_TOOLS.has(tool) }
 export type ExternalBrowserAuthorizer = (tool: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<string | null>
 
 // A skill oficial control-chrome usa somente `js`; nada além disso é republicado (nem CDP completo).
@@ -71,7 +74,7 @@ export class ExternalBrowserProxy {
   private readonly server = createServer((request, response) => { void this.handle(request, response).catch(() => this.json(response, 500, { error: 'Falha no proxy do navegador externo.' })) })
 
   constructor(private readonly spec: NodeReplServer, private readonly authorize: ExternalBrowserAuthorizer, private readonly startTimeoutMs = 10_000, private readonly guide = '',
-    private readonly turnMetadata: () => string | null = () => null) {}
+    private readonly turnMetadata: () => string | null = () => null, private readonly variant: ProxyVariant = BROWSER_VARIANT) {}
   get url(): string { if (!this.address) throw new Error('Proxy do navegador externo não iniciado.'); return `${this.address}/mcp` }
   get toolNames(): string[] { return this.tools.map(tool => tool.name) }
   get ready(): boolean { return !!this.address && !this.closed }
@@ -84,16 +87,16 @@ export class ExternalBrowserProxy {
     const signal = AbortSignal.timeout(this.startTimeoutMs)
     try {
       await client.connect(new StdioClientTransport({ command: this.spec.command, args: this.spec.args, env: this.spec.env, stderr: 'ignore' }), { signal, timeout: this.startTimeoutMs })
-      this.tools = (await client.listTools(undefined, { signal, timeout: this.startTimeoutMs })).tools.filter(tool => ALLOWED_TOOLS.has(tool.name))
+      this.tools = (await client.listTools(undefined, { signal, timeout: this.startTimeoutMs })).tools.filter(tool => this.variant.allow(tool.name))
         // O Codex entrega o guia pela skill; aqui ele vai na descrição para qualquer runtime saber iniciar a ponte.
         .map(tool => this.guide ? { ...tool, description: `${this.guide}\n\n${tool.description || ''}`.trim() } : tool)
     } catch {
       await client.close().catch(() => undefined)
-      throw new Error('O node_repl oficial não pôde ser iniciado; nenhuma aba foi acessada.')
+      throw new Error(`O ${this.variant.label} não pôde ser iniciado; nada foi acessado.`)
     }
     if (this.closed || !this.tools.length) {
       await client.close().catch(() => undefined)
-      throw new Error(this.closed ? 'Proxy do navegador externo encerrado.' : 'O node_repl oficial não expõe a ferramenta js; nenhuma aba foi acessada.')
+      throw new Error(this.closed ? 'Proxy do navegador externo encerrado.' : `O ${this.variant.label} não expõe as ferramentas esperadas; nada foi acessado.`)
     }
     this.upstream = client
     // node_repl caiu depois de iniciado: encerra o proxy; a próxima execução tenta uma ponte nova.
@@ -134,7 +137,7 @@ export class ExternalBrowserProxy {
     const abort = new AbortController()
     response.once('close', () => abort.abort())
     // Transporte MCP oficial em modo stateless: cada requisição pertence a esta sessão privada.
-    const server = new Server({ name: EXTERNAL_BROWSER_MCP, version: '1.0.0' }, { capabilities: { tools: {} } })
+    const server = new Server({ name: this.variant.name, version: '1.0.0' }, { capabilities: { tools: {} } })
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: this.tools }))
     server.setRequestHandler(CallToolRequestSchema, async input => {
       try { return await this.call(input.params.name, input.params.arguments || {}, abort.signal, input.params._meta || {}) }

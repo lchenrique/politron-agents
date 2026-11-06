@@ -15,7 +15,10 @@ export type TelegramHost = Pick<AppService, 'snapshot' | 'send' | 'saveConversat
   store: Pick<AppService['store'], 'approval' | 'agent' | 'conversation' | 'memories'>
 }
 type Chat = { id: number; type: string; first_name?: string; username?: string }
-type TgMessage = { message_id: number; chat: Chat; from?: { id: number; is_bot?: boolean }; text?: string; reply_to_message?: { message_id: number } }
+type TgAudio = { file_id: string; file_size?: number; duration?: number }
+type TgMessage = { message_id: number; chat: Chat; from?: { id: number; is_bot?: boolean }; text?: string; voice?: TgAudio; audio?: TgAudio; reply_to_message?: { message_id: number } }
+/** O que o canal usa do serviço de voz: `issue` é o motivo de não poder transcrever (ou null). Injetável nos testes. */
+export type AudioTranscriber = { audioTranscriptionIssue(): Promise<string | null>; transcribeAudio(audio: Uint8Array): Promise<string> }
 type Update = { update_id: number; message?: TgMessage; callback_query?: { id: string; from: { id: number }; data?: string; message?: TgMessage } }
 type Button = { text: string; callback_data: string }
 type Persisted = { enabled: boolean; offset: number; chats: TelegramChat[]; conversations: Record<string, string> }
@@ -33,6 +36,9 @@ const UNAUTHORIZED_NOTICE_EVERY = 60 * 60_000
 const POLL_TIMEOUT_S = 25
 const TYPING_EVERY = 4_500
 const TYPING_MAX = 30 * 60_000
+const AUDIO_MAX_BYTES = 20 * 1024 * 1024
+const AUDIO_MAX_SECONDS = 5 * 60
+const NO_TRANSCRIBER = 'este build não inclui o serviço de voz'
 const HELP = [
   '<b>Boobot no Telegram</b>',
   'Escreva normalmente para falar com o Chief (ou com a conversa escolhida).',
@@ -55,6 +61,8 @@ export class TelegramService {
   private readonly token: SecretStore
   private readonly fetcher: typeof fetch
   private readonly now: () => number
+  private readonly transcriber: AudioTranscriber | null
+  private audioIssue: string | null = NO_TRANSCRIBER
   private data: Persisted = { enabled: false, offset: 0, chats: [], conversations: {} }
   private hasToken = false
   private state: TelegramStatus['state'] = 'off'
@@ -77,11 +85,12 @@ export class TelegramService {
   private saving: Promise<void> = Promise.resolve()
   private readonly listener = (event: WorkspaceEvent) => { void this.onWorkspaceEvent(event).catch(() => undefined) }
 
-  constructor(directory: string, private readonly host: TelegramHost, options: { token?: SecretStore; fetcher?: typeof fetch; now?: () => number } = {}) {
+  constructor(directory: string, private readonly host: TelegramHost, options: { token?: SecretStore; fetcher?: typeof fetch; now?: () => number; transcriber?: AudioTranscriber } = {}) {
     this.file = join(directory, 'telegram.json')
     this.token = options.token || new EncryptedKey(join(directory, 'telegram-bot-token.enc'))
     this.fetcher = options.fetcher || fetch
     this.now = options.now || Date.now
+    this.transcriber = options.transcriber || null
   }
 
   /** Lê o estado salvo e liga o polling se houver token e o canal estiver ligado. */
@@ -96,6 +105,7 @@ export class TelegramService {
       }
     } catch { /* primeira execução */ }
     this.hasToken = await this.token.has()
+    await this.refreshAudio()
     this.host.on('workspace-event', this.listener)
     if (loop) this.restart()
   }
@@ -112,6 +122,7 @@ export class TelegramService {
   status(): TelegramStatus {
     const pairing = this.pairing && this.pairing.expiresAt > this.now() ? this.pairing : null
     return {
+      audio: { available: !this.audioIssue, reason: this.audioIssue },
       hasToken: this.hasToken, enabled: this.data.enabled, state: this.state, botUsername: this.botUsername, error: this.error,
       chats: this.data.chats.map(chat => ({ ...chat })),
       pairing: pairing ? { code: pairing.code, expiresAt: new Date(pairing.expiresAt).toISOString(), link: this.botUsername ? telegramStartLink(this.botUsername, pairing.code) : null } : null,
@@ -193,6 +204,7 @@ export class TelegramService {
       if (!this.botUsername) this.botUsername = (await this.call<{ username?: string }>('getMe', {})).username || null
       const updates = await this.call<Update[]>('getUpdates', { offset: this.data.offset, timeout: POLL_TIMEOUT_S, allowed_updates: ['message', 'callback_query'] }, undefined, (POLL_TIMEOUT_S + 10) * 1000)
       this.state = 'connected'; this.error = null; this.pollFailures = 0
+      await this.refreshAudio()
       if (updates.length) {
         // Offset salvo antes de tratar: uma falha no meio nunca reenvia um pedido ou aprovação ao reiniciar.
         this.data.offset = Math.max(this.data.offset, ...updates.map(update => update.update_id + 1))
@@ -216,6 +228,10 @@ export class TelegramService {
       this.error = `Sem conexão com o Telegram. Tentando de novo em ${Math.round(delay / 1000)} s.`
       return delay
     }
+  }
+
+  private async refreshAudio(): Promise<void> {
+    this.audioIssue = this.transcriber ? await this.transcriber.audioTranscriptionIssue().catch(() => 'não foi possível verificar o transcritor') : NO_TRANSCRIBER
   }
 
   private async call<T>(method: string, body: Record<string, unknown>, token?: string, timeout = 15_000): Promise<T> {
@@ -251,12 +267,10 @@ export class TelegramService {
       if ((name === 'parear' || name === 'start') && argument) return this.pair(message.chat, argument)
       return this.unauthorized(chatId)
     }
-    if (!text) { await this.sendHtml(chatId, 'Por enquanto o Boobot recebe só texto pelo Telegram.'); return }
-    if (!command) {
-      const questionId = message.reply_to_message && this.questionMessages.get(`${chatId}:${message.reply_to_message.message_id}`)
-      if (questionId) return this.answerQuestion(chatId, questionId, text)
-      return this.forward(chatId, text, message.message_id)
-    }
+    const media = message.voice || message.audio
+    if (!text && media) return this.handleAudio(chatId, message, media)
+    if (!text) { await this.sendHtml(chatId, 'O Boobot entende texto e áudio (mensagem de voz ou arquivo de áudio) pelo Telegram.'); return }
+    if (!command) return this.plain(chatId, text, message)
     if (name === 'start' && !argument || name === 'ajuda' || name === 'help') { await this.sendHtml(chatId, HELP); return }
     if (name === 'start' || name === 'parear') { await this.sendHtml(chatId, 'Este chat já está pareado com o Boobot.'); return }
     if (name === 'status') return this.sendStatus(chatId)
@@ -266,6 +280,46 @@ export class TelegramService {
     if (name === 'lembrar') return this.remember(chatId, argument)
     if (name === 'nova') { this.setConversation(chatId, this.chiefConversation(true)); await this.sendHtml(chatId, 'Nova conversa com o Chief criada. Pode escrever.'); return }
     await this.sendHtml(chatId, HELP)
+  }
+
+  /** Texto sem comando: resposta a uma pergunta pendente ou mensagem normal para a conversa ativa. */
+  private async plain(chatId: number, text: string, message: TgMessage): Promise<void> {
+    const questionId = message.reply_to_message && this.questionMessages.get(`${chatId}:${message.reply_to_message.message_id}`)
+    if (questionId) return this.answerQuestion(chatId, questionId, text)
+    return this.forward(chatId, text, message.message_id)
+  }
+
+  /** Voice note ou arquivo de áudio: baixa em memória (nada vai para o disco nem para o histórico), transcreve e segue como texto digitado. */
+  private async handleAudio(chatId: number, message: TgMessage, media: TgAudio): Promise<void> {
+    await this.refreshAudio()
+    if (!this.transcriber || this.audioIssue) { await this.sendHtml(chatId, escapeHtml(`A transcrição de áudio não está disponível: ${this.audioIssue}. Enquanto isso, escreva a mensagem em texto.`)); return }
+    if ((media.file_size ?? 0) > AUDIO_MAX_BYTES) { await this.sendHtml(chatId, 'Este áudio passa de 20 MB, o limite do Telegram para bots. Mande um mais curto ou escreva.'); return }
+    if ((media.duration ?? 0) > AUDIO_MAX_SECONDS) { await this.sendHtml(chatId, 'Este áudio passa de 5 minutos. Mande um mais curto ou escreva.'); return }
+    await this.sendHtml(chatId, '🎧 <i>Transcrevendo o áudio…</i>')
+    let text: string
+    try { text = (await this.transcriber.transcribeAudio(await this.download(media.file_id))).trim() } catch (error) {
+      // Sem a mensagem original: ela pode conter caminho de arquivo; o token nunca entra em erro algum.
+      console.error('[Telegram] Falha ao transcrever áudio', error instanceof TelegramApiError ? error.message : 'erro')
+      await this.sendHtml(chatId, 'Não consegui baixar ou transcrever este áudio. Tente de novo ou escreva a mensagem.')
+      return
+    }
+    if (!text) { await this.sendHtml(chatId, 'Não entendi nada neste áudio. Pode repetir?'); return }
+    await this.sendHtml(chatId, `<b>Entendi:</b> ${escapeHtml(text.slice(0, 3500))}`, undefined, `Entendi: ${text.slice(0, 3500)}`)
+    return this.plain(chatId, text, message)
+  }
+
+  private async download(fileId: string): Promise<Uint8Array> {
+    const file = await this.call<{ file_path?: string; file_size?: number }>('getFile', { file_id: fileId })
+    if (!file.file_path || !/^[\w./-]+$/.test(file.file_path) || file.file_path.includes('..') || (file.file_size ?? 0) > AUDIO_MAX_BYTES) throw new Error('arquivo inválido')
+    const secret = await this.token.load()
+    if (!secret) throw new TelegramApiError(401, 'Sem token.')
+    // A URL leva o token: só o status HTTP sai daqui.
+    const response = await this.fetcher(`https://api.telegram.org/file/bot${secret}/${file.file_path}`, { signal: AbortSignal.timeout(60_000), redirect: 'error' })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    if (Number(response.headers.get('content-length')) > AUDIO_MAX_BYTES) throw new Error('arquivo grande')
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.length > AUDIO_MAX_BYTES) throw new Error('arquivo grande')
+    return bytes
   }
 
   /** Mesmas funções da tela Configurações → Memória, no escopo da conversa atual (global, Boos dela e o projeto). */

@@ -36,8 +36,9 @@ describe('BoardPage', () => {
   it('mostra o estado vazio e mantém a criação explícita do board separada do chat', () => {
     render(<BoardPage snapshot={{ ...base, board: { teams: [], tasks: [], events: [], missions: [], evidence: [] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     expect(screen.getByRole('heading', { name: 'Board da empresa' })).toBeInTheDocument()
-    expect(screen.getByText('Nenhuma tarefa no board ainda')).toBeInTheDocument()
+    expect(screen.getByText('Nenhuma equipe ainda')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Nova equipe' })).toBeInTheDocument()
+    expect(document.querySelector('.ds-eyebrow')).toBeNull()
   })
 
   it('cria uma equipe, cria um card e inicia o responsável/revisor escolhidos', async () => {
@@ -163,6 +164,18 @@ describe('BoardPage', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
+  it('omite as colunas Bloqueadas e Canceladas enquanto estão vazias', () => {
+    render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
+    expect(screen.getByRole('region', { name: 'Coluna Fila' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Coluna Canceladas' })).not.toBeInTheDocument()
+  })
+
+  it('usa o PageShell na variante wide, sem controle de largura', () => {
+    render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
+    expect(document.querySelector('[data-page-shell]')).toHaveAttribute('data-variant', 'wide')
+    expect(screen.queryByRole('button', { name: /Largura do conteúdo/ })).not.toBeInTheDocument()
+  })
+
   it('mantém colunas com rolagem própria e cartões truncados com 0, 1 e 30 tarefas', () => {
     const many = Array.from({ length: 30 }, (_, index) => ({ ...task, id: `task-${index}`, status: 'doing' as const, currentMissionId: null, title: `Tarefa ${index} ${'muito longa '.repeat(20)}`, updatedAt: `2026-10-29T10:00:${String(index).padStart(2, '0')}.000Z` }))
     const { rerender } = render(<BoardPage snapshot={{ ...base, board: { ...board, tasks: [] } } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
@@ -173,7 +186,7 @@ describe('BoardPage', () => {
     const region = screen.getByRole('region', { name: 'Colunas do board' })
     expect(region).toHaveClass('overflow-x-auto', 'overflow-y-hidden')
     const column = screen.getByRole('region', { name: 'Coluna Em execução' })
-    expect(column).toHaveClass('w-[18.5rem]', 'shrink-0', 'min-h-0')
+    expect(column).toHaveClass('min-w-[14rem]', 'flex-1', 'min-h-0')
     expect(column.querySelector('.overflow-y-auto')).toHaveClass('min-h-0', 'flex-1')
     expect(column.querySelectorAll('article')).toHaveLength(30)
     expect(column.querySelector('article')).toHaveClass('shrink-0', 'max-w-full')

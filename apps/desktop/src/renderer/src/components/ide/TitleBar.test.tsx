@@ -63,13 +63,12 @@ it('mantém a busca e Ctrl+K disponíveis depois de recolher a lateral', () => {
   expect(onSectionChange).toHaveBeenCalledWith('projects')
 })
 
-it.each(['win32', 'darwin'])('mostra o local atual depois da navegação em %s', platform => {
+it.each(['win32', 'darwin'])('mostra só o nome do app, sem repetir o contexto da página, em %s', platform => {
   vi.stubGlobal('vibeAPI', { platform })
-  render(<TitleBar onOpenTool={vi.fn()} sidebarCollapsed={false} onToggleSidebar={vi.fn()} onOpenHome={vi.fn()} location={{ label: 'Politron', detail: 'feature/topo' }} />)
+  render(<TitleBar onOpenTool={vi.fn()} sidebarCollapsed={false} onToggleSidebar={vi.fn()} onOpenHome={vi.fn()} />)
   const toolbar = screen.getByRole('toolbar', { name: 'Barra da janela' })
-  const location = within(toolbar).getByTestId('window-location')
-  expect(location).toHaveTextContent('Politron')
-  expect(location).toHaveTextContent('feature/topo')
+  const location = within(toolbar).getByTestId('window-title')
+  expect(location).toHaveTextContent(/^Boobot$/)
   expect(within(toolbar).getByRole('button', { name: 'Recolher barra lateral' }).compareDocumentPosition(location) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(location.compareDocumentPosition(within(toolbar).getByRole('button', { name: 'Abrir painéis e abas' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })
@@ -80,4 +79,13 @@ it('oferece somente Light e Dark na barra', () => {
   const modes = screen.getByRole('radiogroup', { name: 'Modo de cor' })
   expect(within(modes).getAllByRole('radio').map(radio => radio.getAttribute('aria-label'))).toEqual(['Light', 'Dark'])
   expect(screen.queryByRole('combobox', { name: 'Selecionar tema' })).not.toBeInTheDocument()
+})
+
+it('mostra o host (computador local ou remoto) na barra da janela', async () => {
+  vi.stubGlobal('vibeAPI', { platform: 'win32' })
+  const snapshot = { selectedId: 'local', hosts: [{ id: 'local', name: 'Este PC', endpoint: 'local', transport: 'local', status: 'connected' }], local: { enabled: false } }
+  vi.stubGlobal('hostsAPI', { snapshot: vi.fn(async () => snapshot), onChanged: () => () => undefined })
+  render(<TitleBar onOpenTool={vi.fn()} sidebarCollapsed={false} onToggleSidebar={vi.fn()} />)
+  const toolbar = screen.getByRole('toolbar', { name: 'Barra da janela' })
+  expect(await within(toolbar).findByRole('button', { name: 'Selecionar host' })).toHaveTextContent('Este PC')
 })

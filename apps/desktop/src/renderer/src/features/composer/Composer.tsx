@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { ClipboardList, LoaderCircle, Mic, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { ModelChoice, ModelProviderChoice } from './model-options'
@@ -11,7 +12,12 @@ import { VoiceRecorder } from '../voice/voice-recorder'
 import { PromptInput } from '@/components/ai/prompt-input'
 import { MentionSuggestions } from './MentionSuggestions'
 import { getMentionQuery, replaceMention, type MentionQuery } from './mentions'
+import { useModelSlotNode } from './modelSlotContext'
 import styles from './Composer.module.css'
+
+function ComposerFrame({ children }: { children: ReactNode }) {
+  return <div className={styles.root}><div className={styles.column}>{children}</div></div>
+}
 
 export type ComposerModel = ModelChoice
 const INHERIT_OPTION: ComposerModel = { name: INHERIT_MODEL_NAME, description: 'Cada participante usa o modelo configurado no seu perfil' }
@@ -44,6 +50,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   onStop: () => void
   onVoiceNotice?: (error: string) => void
 }) {
+  const modelSlot = useModelSlotNode()
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const [error, setError] = useState('')
@@ -221,8 +228,11 @@ ${message.text}` : message.text)
     pendingCaret.current = Number.MAX_SAFE_INTEGER
   })
 
-  return <div className={styles.root}>
-    <div className={styles.column}>
+  const modelPicker = <AIModelSelector key={conversationId} compact={!modelSlot} side={modelSlot ? 'bottom' : 'top'} models={models} providers={modelProviders}
+    value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort, ...modelOptions }}
+    onChange={changeModel} disabled={busy} />
+
+  return <ComposerFrame>
       {reviewChanges.length > 0 && <CompletedFileReview key={reviewKey} changes={reviewChanges} />}
       <QueuedMessages messages={queued} onEdit={editQueued} onSendNow={message => runQueued(() => onSendQueuedNow ? onSendQueuedNow(message.id) : window.appAPI.sendQueuedNow(message.id))} onRemove={message => runQueued(() => onCancelQueued ? onCancelQueued(message.id) : window.appAPI.cancelQueuedMessage(message.id))} />
       <PromptInput
@@ -284,9 +294,7 @@ ${message.text}` : message.text)
             className="size-8 shrink-0 rounded-full p-0 text-muted-foreground hover:text-foreground aria-pressed:bg-primary-soft aria-pressed:text-primary-soft-foreground">
             <ClipboardList className="size-4" />
           </Button>
-          <AIModelSelector key={conversationId} compact models={models} providers={modelProviders}
-            value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort, ...modelOptions }}
-            onChange={changeModel} disabled={busy} />
+          {!modelSlot && modelPicker}
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground" aria-label={recording ? 'Parar gravação de voz' : 'Gravar áudio'} title={recording ? 'Parar e transcrever' : 'Ditado por voz local'} disabled={transcribing} onClick={() => void toggleRecord()}>
             {transcribing ? <LoaderCircle /> : recording ? <Square /> : <Mic />}
           </Button>
@@ -294,6 +302,6 @@ ${message.text}` : message.text)
       />
       {(recording || transcribing) && <p role="status" className="px-3 pt-1 text-[11px] text-muted-foreground">{recording ? 'Gravando áudio… clique no quadrado para transcrever.' : 'Transcrevendo sua fala localmente…'}</p>}
       {error && <p role="alert" className="px-3 pt-1 text-[11px] text-destructive">{error}</p>}
-    </div>
-  </div>
+      {modelSlot && createPortal(modelPicker, modelSlot)}
+  </ComposerFrame>
 }

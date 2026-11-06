@@ -68,6 +68,7 @@ export function TelegramPanel() {
     </div>
     {status?.hasToken && <div className="space-y-2">
       <label className="flex items-center gap-2 text-xs font-medium"><Checkbox aria-label="Canal Telegram ligado" checked={status.enabled} disabled={busy} onCheckedChange={value => void run(() => api.setEnabled(value === true))} />Canal Telegram ligado</label>
+      <p className="text-xs leading-5 text-muted-foreground">O bot também aceita áudio: mensagens de voz e arquivos de áudio são transcritos aqui no computador (até 5 minutos e 20 MB) e o texto entendido é mostrado antes de seguir para a conversa.{status.audio?.reason ? <> <span className="text-foreground">Transcrição de áudio indisponível: {status.audio.reason}.</span></> : null}</p>
       <p role="status" data-tone={tone} className="rounded-md text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground">{STATE_TEXT(status)}</p>
     </div>}
     {status?.hasToken && <section aria-label="Parear o celular" className="space-y-3">

@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import type { Agent, Model } from '../../shared/v9'
 import { SessionUnavailableError, type AgentRuntime, type ExternalBrowserRegistration, type RuntimeThread } from './agent-runtime'
 import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
+import { COMPUTER_USE_MCP } from './computer-use'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { spawnCli } from './cli-launch'
 import { codexRuntimePermissions, hasFullAccess } from './runtime-permissions'
@@ -122,7 +123,7 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
     }
     return [...models.values()]
   }
-  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string, externalBrowser?: ExternalBrowserRegistration): Promise<RuntimeThread> {
+  async thread(agent: Agent, directory: string, tools: DynamicTool[], threadId?: string, projectInstructions?: string, externalBrowser?: ExternalBrowserRegistration, computerUse?: ExternalBrowserRegistration): Promise<RuntimeThread> {
     await this.start()
     // File access is mediated by the workspace tools. Built-in command execution is disabled.
     // Native browser integration remains disabled until it has its own consent and routing.
@@ -144,6 +145,8 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       for (const key of Object.keys(config)) if (key.startsWith(`mcp_servers.${EXTERNAL_BROWSER_MCP}.`)) delete config[key]
       config[`mcp_servers.${EXTERNAL_BROWSER_MCP}`] = { url: externalBrowser.url, http_headers: { Authorization: `Bearer ${externalBrowser.token}` }, enabled_tools: externalBrowser.tools, default_tools_approval_mode: 'approve', tool_timeout_sec: 600 }
     }
+    // Computer Use: proxy do cua-driver, registrado so em execucao autorizada pelo Politron.
+    if (computerUse) config[`mcp_servers.${COMPUTER_USE_MCP}`] = { url: computerUse.url, http_headers: { Authorization: `Bearer ${computerUse.token}` }, enabled_tools: computerUse.tools, default_tools_approval_mode: 'approve', tool_timeout_sec: 600 }
     const runtimePermissions = codexRuntimePermissions(agent)
     // A escolha de acesso do Codex controla o sandbox do runtime. As ferramentas nativas de
     // execução continuam desabilitadas: arquivos e terminal passam pelo broker do Politron,

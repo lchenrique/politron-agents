@@ -5,6 +5,7 @@ import TitleBar from '@/components/ide/TitleBar'
 import { ASSISTANT_ID, type Agent, type Conversation, type MessageAttachment, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import { Sidebar } from '../sidebar/Sidebar'
+import { NavRail, type HomeView } from '../sidebar/NavRail'
 import { WorkspaceSearch } from '../sidebar/WorkspaceSearch'
 import { WorkspaceOverview } from './WorkspaceOverview'
 import { PoliAvatar } from './PoliAvatar'
@@ -18,6 +19,8 @@ import { MessageLinkContext, type MessageLinkHandlers } from '../chat/MessageMar
 import { linkFileWorkspaceId } from '../chat/message-link'
 import { useConversationHistory } from '../chat/useConversationHistory'
 import { Composer } from '../composer/Composer'
+import { ModelSlotProvider } from '../composer/ComposerModelSlot'
+import { useContentWidth } from '@/components/layout/content-width'
 import { ComposerTakeover } from '../composer/ComposerTakeover'
 import { modelOptions } from '../composer/model-options'
 import { DockWorkspace, type DockWorkspaceHandle, type DockTool, type DockZone } from '../panels/DockWorkspace'
@@ -31,14 +34,14 @@ import { ChiefHome } from '../work/ChiefHome'
 import { RoutinesPage } from '../work/RoutinesPage'
 import { MissionStrip } from '../work/MissionStrip'
 import { BoardPage } from '../board/BoardPage'
-import { OfficePage } from '../office/OfficePage'
-import { MarketplacePage } from '../marketplace/MarketplacePage'
 
 const Editor = lazy(() => import('../editors/Editor').then(module => ({ default: module.Editor })))
 const SettingsPage = lazy(() => import('./SettingsPage').then(module => ({ default: module.SettingsPage })))
 const UpdateReadyCallout = lazy(() => import('./UpdateReadyCallout').then(module => ({ default: module.UpdateReadyCallout })))
 
 export default function AppShell() {
+  // Mantém --content-width em <html>: a largura escolhida vale para páginas, chat e composer.
+  useContentWidth()
   useEffect(() => window.platformBrowserAPI?.onReveal(() => dockRef.current?.revealTool('web')), [])
   const [snapshot, setSnapshot] = useState<Snapshot>(emptySnapshot)
   const [models, setModels] = useState<Model[]>([])
@@ -52,7 +55,7 @@ export default function AppShell() {
   const setSelectedEffort = useCallback((effort: Agent['effort']) => { setSelectedEffortState(effort); try { localStorage.setItem('politron.composer.effort', effort || 'medium') } catch { /* preferência opcional */ } }, [])
   const [selectedId, setSelectedId] = useState('')
   // A Central do Chief é a tela inicial; conversas e projetos continuam a um clique.
-  const [view, setView] = useState<'home' | 'routines' | 'board' | 'office' | 'marketplace' | null>('home')
+  const [view, setView] = useState<HomeView | null>('home')
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const activeWorkspaceIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
@@ -87,9 +90,7 @@ export default function AppShell() {
   }
   const [workspaceDiff, setWorkspaceDiff] = useState('')
   const [loading, setLoading] = useState(true)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('geral')
-  useEffect(() => { const open = (event: Event) => { const section = (event as CustomEvent).detail; setSettingsSection(section === 'voz' || section === 'conexoes' || section === 'atualizacoes' ? section : 'geral'); setSettingsOpen(true) }; window.addEventListener('boobot:open-settings', open); return () => window.removeEventListener('boobot:open-settings', open) }, [])
   const [detailsAgentId, setDetailsAgentId] = useState<string | null>(null)
   const [mascotAgentId, setMascotAgentId] = useState<string | null>(null)
   useEffect(() => { selectedIdRef.current = selectedId; if (selectedId) setUnreadCounts(current => { if (!current[selectedId]) return current; const next = { ...current }; delete next[selectedId]; return next }) }, [selectedId])
@@ -345,26 +346,20 @@ export default function AppShell() {
       ...(Object.keys(options.modelOptions).length ? { modelOptions: options.modelOptions } : {}),
     })
   }
-  const chatRuntime = useV1ThreadRuntime(messages, submitMessage)
+  const chatRuntime = useV1ThreadRuntime(submitMessage)
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
-  const openHome = useCallback((next: 'home' | 'routines' | 'board' | 'office' | 'marketplace') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next) }, [])
+  const openHome = useCallback((next: HomeView) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next) }, [])
+  useEffect(() => { const open = (event: Event) => { const section = (event as CustomEvent).detail; setSettingsSection(section === 'voz' || section === 'conexoes' || section === 'atualizacoes' ? section : 'geral'); openHome('settings') }; window.addEventListener('boobot:open-settings', open); return () => window.removeEventListener('boobot:open-settings', open) }, [openHome])
   const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
+  const openBoardTasks = snapshot.board?.tasks.filter(item => !['done', 'cancelled'].includes(item.status)).length || 0
+  const enabledRoutines = snapshot.routines?.filter(item => item.enabled).length || 0
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length
   const conversationRuns = snapshot.runs.filter(run => run.conversationId === selected?.id && !run.parentId && ['queued', 'running', 'waiting'].includes(run.status))
   const queuedMessages = useMemo(() => messages.filter(message => message.role === 'user' && message.status === 'queued'), [messages])
-  // A barra da janela diz onde se está; quem participa e as ações da conversa ficam na faixa da conversa.
+  const mainTabLabel = view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : view === 'settings' ? 'Configurações' : activeWorkspace ? 'Projeto' : undefined
+  // A barra da janela mostra só o app; o contexto (projeto, conversa) vive no cabeçalho de cada página.
   const chiefName = snapshot.agents.find(agent => agent.role === 'chief')?.name
-  const contextWorkspace = activeWorkspace || selectedWorkspace
-  const parentWorkspace = contextWorkspace?.kind === 'worktree' ? snapshot.workspaces.find(item => item.id === contextWorkspace.parentWorkspaceId) : undefined
-  const windowLocation = view === 'home' ? { label: `Central do ${chiefName || 'Chief'}` }
-    : view === 'routines' ? { label: 'Rotinas' }
-    : view === 'board' ? { label: 'Board da empresa' }
-    : view === 'office' ? { label: 'Escritório' }
-    : view === 'marketplace' ? { label: 'Marketplace' }
-    : contextWorkspace && (parentWorkspace?.name || contextWorkspace.name) ? { label: parentWorkspace?.name || contextWorkspace.name, detail: contextWorkspace.kind === 'worktree' ? contextWorkspace.branch || contextWorkspace.name : undefined }
-    : undefined
-  const mainTabLabel = view === 'home' ? 'Central' : view === 'routines' ? 'Rotinas' : view === 'board' ? 'Board' : view === 'office' ? 'Escritório' : view === 'marketplace' ? 'Marketplace' : activeWorkspace ? 'Projeto' : undefined
   // Mesmos dados para a faixa da conversa (chat sozinho) e para a aba do chat (com outras abas): nunca as duas ao mesmo tempo.
   const conversationChrome: ConversationChromeProps | null = selected ? {
     agentActivities: Object.fromEntries([snapshot.assistant, ...snapshot.agents].map(agent => [agent.id, booActivity(agent.id, selected.id, snapshot.runs, messages)])),
@@ -385,10 +380,12 @@ export default function AppShell() {
   } : null
   const conversationTitle = selected ? conversationIdentity(selected, snapshot.agents, snapshot.assistant) : null
 
-  return <div data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-chrome font-sans text-foreground">
-    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()} location={windowLocation}
+  return <ModelSlotProvider><div data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-chrome font-sans text-foreground">
+    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()}
       search={<WorkspaceSearch snapshot={snapshot} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} onSectionChange={setSidebarSection} />} />
     <div className="flex min-h-0 flex-1 overflow-hidden">
+      {/* A faixa fica fora do painel redimensionável: continua visível com a barra lateral recolhida. */}
+      <NavRail view={view} chiefName={chiefName} attentionCount={attentionCount} openTasks={openBoardTasks} enabledRoutines={enabledRoutines} onOpenHome={openHome} />
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
       <ResizablePanelGroup key={sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
         defaultLayout={sidebarCollapsed ? { main: 100 } : { sidebar: sidebarSize, main: 100 - sidebarSize }}
@@ -408,12 +405,8 @@ export default function AppShell() {
         onOpenAgent={(agent, newConversation) => void openAgent(agent, newConversation)}
         onOpenWorkspaceAgent={(workspaceId, agent) => void openWorkspaceAgent(workspaceId, agent)}
         onOpenEditor={setEditor}
-        onOpenSettings={() => setSettingsOpen(true)}
-        view={view}
-        onOpenHome={openHome}
         section={sidebarSection}
         onSectionChange={setSidebarSection}
-        attentionCount={attentionCount}
         onDeleteWorkspace={deleteWorkspace}
         onDeleteConversation={deleteConversation}
         onDeleteConversations={deleteConversations}
@@ -433,9 +426,8 @@ export default function AppShell() {
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => void openAgent(agent)} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} />
         : view === 'routines' ? <RoutinesPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
-        : view === 'office' ? <OfficePage snapshot={snapshot} onOpenConversation={selectConversation} onOpenAgent={agent => void openAgent(agent)} />
-        : view === 'marketplace' ? <MarketplacePage snapshot={snapshot} models={models} onNotice={setNotice} onHired={conversationId => { void refresh().then(() => selectConversation(conversationId)) }} />
         : view === 'board' ? <BoardPage snapshot={snapshot} onOpenConversation={selectConversation} onNotice={setNotice} />
+        : view === 'settings' ? <Suspense fallback={null}><SettingsPage initialSection={settingsSection} /></Suspense>
         : selected ? <>
           {selectedMission && <MissionStrip mission={selectedMission} runs={snapshot.runs} approvals={snapshot.approvals} onNotice={setNotice} />}
           <div className="flex min-h-0 flex-1 flex-col">
@@ -454,7 +446,6 @@ export default function AppShell() {
               approvals={transcriptApprovals}
               conversations={snapshot.conversations}
               agentOf={agentOf}
-              selectedAgents={selectedAgents}
               workspaceName={selectedWorkspace?.name}
               onOpenRelatedConversation={selectConversation}
               onNotice={setNotice}
@@ -492,12 +483,11 @@ export default function AppShell() {
       </div>
     </div>
     <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} />
-    <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} /></Suspense>
+    <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); openHome('settings') }} /></Suspense>
     {/* No celular o composer ocupa toda a largura: o aviso sobe para não cobrir o botão de enviar. */}
     {notice && <div role="status" className="fixed inset-x-3 bottom-32 z-[60] mx-auto max-w-md rounded-lg sm:inset-x-auto sm:bottom-5 sm:right-5 sm:mx-0 border border-border bg-popover px-4 py-3 text-[13px] leading-5 text-popover-foreground shadow-lg">{notice}</div>}
     <Suspense fallback={null}>
-      <SettingsPage open={settingsOpen} onOpenChange={setSettingsOpen} initialSection={settingsSection} />
       {editor && <Editor kind={editor.kind} initial={editor.initial} workspaceId={editor.workspaceId} defaultAgentIds={editor.workspaceId ? snapshot.workspaces.find(workspace => workspace.id === editor.workspaceId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'workspace' ? saveWorkspace : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
     </Suspense>
-  </div>
+  </div></ModelSlotProvider>
 }

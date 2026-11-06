@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { TelegramService, type TelegramHost } from './service'
@@ -23,9 +23,14 @@ function setup(opts: { now?: () => number } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'boobot-tg-')); dirs.push(dir)
   const calls: Call[] = []
   const queue: Response[] = []
+  const files: string[] = []
+  let downloadFails = false
+  const transcriber = { audioTranscriptionIssue: vi.fn(async (): Promise<string | null> => null), transcribeAudio: vi.fn(async (_audio: Uint8Array) => 'liste os arquivos') }
   const fetcher = vi.fn(async (url: string, init: RequestInit) => {
+    if (String(url).includes('/file/bot')) { files.push(String(url)); if (downloadFails) throw new TypeError(`fetch failed ${url}`); return new Response(new Uint8Array([79, 103, 103, 83])) }
     const method = String(url).split('/').pop()!
     calls.push({ method, body: JSON.parse(String(init.body)) })
+    if (method === 'getFile') return ok({ file_path: 'voice/file_1.oga', file_size: 5000 })
     const next = queue.shift()
     if (next) return next
     if (method === 'getMe') return ok({ username: 'boobot_bot' })
@@ -41,8 +46,8 @@ function setup(opts: { now?: () => number } = {}) {
       memories: { list: vi.fn(() => [{ text: 'Prefere <b>curto</b>', scope: 'global', inclusion: 'essencial' }]), save: vi.fn((input: { text: string }) => { if (input.text.includes('sk-')) throw new Error('Isto parece um token'); return { memory: input, note: '' } }) } },
   }) as unknown as TelegramHost & EventEmitter
   const memory = { v: null as string | null, has: async () => memory.v !== null, load: async () => memory.v, save: async (x: string) => { memory.v = x }, clear: async () => { memory.v = null } }
-  const service = new TelegramService(dir, host, { token: memory, fetcher, now: opts.now })
-  return { dir, calls, queue, host, service, approval, memory }
+  const service = new TelegramService(dir, host, { token: memory, fetcher, now: opts.now, transcriber })
+  return { dir, calls, queue, host, service, approval, memory, files, transcriber, failDownloads: () => { downloadFails = true } }
 }
 type S = ReturnType<typeof setup>
 const msg = (id: number, chat: number, text: string) => ({ update_id: id, message: { message_id: id, chat: { id: chat, type: 'private', first_name: 'Carlos' }, from: { id: chat }, text } })
@@ -288,5 +293,67 @@ describe('formatação', () => {
   it('divide em blocos de até 4096', () => {
     const chunks = telegramChunks('y'.repeat(10_000))
     expect(chunks.length).toBeGreaterThan(2); expect(chunks.every(c => c.length <= 4096)).toBe(true)
+  })
+})
+
+const voice = (id: number, chat: number, extra: Record<string, unknown> = {}) => ({ update_id: id, message: { message_id: id, chat: { id: chat, type: 'private', first_name: 'Carlos' }, from: { id: chat }, voice: { file_id: 'abc', file_size: 5000, duration: 4, ...extra } } })
+
+describe('áudio', () => {
+  it('voice note pareado é baixado, transcrito e enviado como texto, com aviso e "Entendi"', async () => {
+    const s = setup(); await ready(s); await pair(s)
+    await pollWith(s, voice(5, 7))
+    expect(s.transcriber.transcribeAudio).toHaveBeenCalledWith(new Uint8Array([79, 103, 103, 83]))
+    expect(s.host.send).toHaveBeenCalledWith(CONV, 'liste os arquivos', undefined, undefined, undefined, false, true, false, expect.objectContaining({ delivery: 'queue' }))
+    const texts = sent(s.calls)
+    expect(texts[0]).toContain('Transcrevendo'); expect(texts[1]).toContain('Entendi:'); expect(texts[1]).toContain('liste os arquivos'); expect(texts[2]).toContain('Trabalhando')
+  })
+  it('áudio de chat não pareado é ignorado: nada baixado nem transcrito', async () => {
+    const s = setup(); await ready(s)
+    await pollWith(s, voice(5, 99))
+    expect(s.files).toEqual([]); expect(s.transcriber.transcribeAudio).not.toHaveBeenCalled(); expect(s.host.send).not.toHaveBeenCalled()
+    expect(sent(s.calls).join()).toContain('não está autorizado')
+  })
+  it('áudio acima de 20 MB ou de 5 minutos é recusado sem baixar', async () => {
+    const s = setup(); await ready(s); await pair(s)
+    await pollWith(s, voice(5, 7, { file_size: 21 * 1024 * 1024 }), voice(6, 7, { duration: 301 }))
+    expect(sent(s.calls)[0]).toContain('20 MB'); expect(sent(s.calls)[1]).toContain('5 minutos')
+    expect(s.files).toEqual([]); expect(s.host.send).not.toHaveBeenCalled()
+  })
+  it('transcrição vazia pede para repetir e não envia nada', async () => {
+    const s = setup(); await ready(s); await pair(s)
+    s.transcriber.transcribeAudio.mockResolvedValueOnce('  ')
+    await pollWith(s, voice(5, 7))
+    expect(sent(s.calls).at(-1)).toContain('Pode repetir?'); expect(s.host.send).not.toHaveBeenCalled()
+  })
+  it('falha de download ou de transcrição vira mensagem amigável, sem derrubar o polling e sem vazar o token', async () => {
+    const s = setup(); await ready(s); await pair(s)
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    s.failDownloads()
+    expect(await pollWith(s, voice(5, 7))).toBe(0)
+    s.transcriber.transcribeAudio.mockRejectedValueOnce(new Error(`boom ${TOKEN}`))
+    expect(await pollWith(s, voice(6, 7))).toBe(0)
+    const shown = JSON.stringify([sent(s.calls), log.mock.calls])
+    expect(sent(s.calls).filter(t => t.includes('Não consegui'))).toHaveLength(2)
+    expect(shown).not.toContain(TOKEN); expect(shown).not.toContain('AAAAAAAA')
+    expect(s.service.status().state).toBe('connected')
+    log.mockRestore()
+  })
+  it('sem transcritor disponível explica o motivo e o status expõe isso ao painel', async () => {
+    const s = setup(); await ready(s); await pair(s)
+    s.transcriber.audioTranscriptionIssue.mockResolvedValue('falta instalar o faster-whisper')
+    await pollWith(s, voice(5, 7))
+    expect(sent(s.calls)[0]).toContain('falta instalar o faster-whisper'); expect(s.files).toEqual([])
+    expect(s.service.status().audio).toEqual({ available: false, reason: 'falta instalar o faster-whisper' })
+  })
+  it('nenhum arquivo de áudio é gravado no disco (só telegram.json)', async () => {
+    const s = setup(); await ready(s); await pair(s)
+    await pollWith(s, voice(5, 7))
+    expect(readdirSync(s.dir).sort()).toEqual(['telegram.json'])
+  })
+  it('o token só aparece na URL de download, nunca nas mensagens enviadas', async () => {
+    const s = setup(); await ready(s); await pair(s)
+    await pollWith(s, voice(5, 7))
+    expect(s.files[0]).toBe(`https://api.telegram.org/file/bot${TOKEN}/voice/file_1.oga`)
+    expect(JSON.stringify(s.calls.map(c => c.body))).not.toContain(TOKEN)
   })
 })

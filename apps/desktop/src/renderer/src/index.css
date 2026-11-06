@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./components/dsh/theme.css";
+@import "tw-shimmer";
 @plugin "@tailwindcss/typography";
 
 html.floating-mascot-document, body.floating-mascot-document, body.floating-mascot-document #root { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent !important; }
@@ -23,8 +24,8 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   color-scheme: light;
 
   /* Superfícies: chrome (janela + navegação) < canvas (trabalho) < card/popover (elevados). */
-  --chrome: #f9fafb;
-  --background: #ffffff;
+  --chrome: #eceef3;
+  --background: #f6f7f9;
   --foreground: #0f1115;
   --card: #ffffff;
   --card-foreground: #0f1115;
@@ -39,10 +40,10 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
 
   --secondary: #f1f3f5;
   --secondary-foreground: #17171c;
-  --muted: #f1f3f5;
+  --muted: #eaedf1;
   --muted-foreground: #61666b;
   --faint-foreground: #8a8b96;
-  --accent: #f1f3f5;
+  --accent: #e8ebf0;
   --accent-foreground: #0f1115;
 
   /* Estados semânticos com texto legível sobre canvas e card. */
@@ -54,14 +55,14 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   --warning-soft: #fbf1df;
   --info: #4176e6;
 
-  --border: #e1e5ee;
-  --border-strong: #cfd3d6;
+  --border: #d3d8e0;
+  --border-strong: #bcc2cc;
   --input: #cfd3d6;
   --ring: #4176e6;
 
-  --segmented-track: #f1f3f5;
+  --segmented-track: #e1e5eb;
   --segmented-thumb: #ffffff;
-  --canvas-border: #e1e5ee;
+  --canvas-border: #d3d8e0;
 
   --chart-1: #4176e6;
   --chart-2: #7aaaff;
@@ -69,13 +70,13 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   --chart-4: #1c8656;
   --chart-5: #a8670a;
 
-  --sidebar: #f9fafb;
+  --sidebar: #eceef3;
   --sidebar-foreground: #353638;
   --sidebar-primary: #4176e6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ebeef2;
+  --sidebar-accent: #dde1e8;
   --sidebar-accent-foreground: #0f1115;
-  --sidebar-border: #e1e5ee;
+  --sidebar-border: #d3d8e0;
   --sidebar-ring: #4176e6;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -149,14 +150,14 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   --warning-soft: #2c2314;
   --info: #7aaaff;
 
-  --border: #353536;
-  --border-strong: #434547;
+  --border: #404144;
+  --border-strong: #505256;
   --input: #434547;
   --ring: #7aaaff;
 
   --segmented-track: #232324;
   --segmented-thumb: #434547;
-  --canvas-border: #353536;
+  --canvas-border: #404144;
 
   --chart-1: #7aaaff;
   --chart-2: #4176e6;
@@ -303,6 +304,16 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
     transform: translateX(0); }
   to {
     transform: translateX(-50%); } }
+  @keyframes collapsible-down {
+  from {
+    height: 0; }
+  to {
+    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto)); } }
+  @keyframes collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto)); }
+  to {
+    height: 0; } }
 }
 
 @layer base {
@@ -366,6 +377,17 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   }
 }
 
+
+/* Tokens de layout compartilhados por todas as páginas: espaçamento 4/8/12/16/24/32, tipografia 12/13/14/16/20. */
+:root {
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
+  --text-xs: 12px; --text-sm: 13px; --text-md: 14px; --text-lg: 16px; --text-xl: 20px;
+  --card-radius: 12px;
+  /* Largura da coluna de leitura; o valor vem da preferência do usuário (components/layout/content-width.ts). */
+  --content-width: 880px;
+  --header-height: 56px;
+}
+
 /*
  * Componentes do sistema. Composição, não só cor:
  * a janela e a navegação formam um chrome contínuo; o trabalho fica num canvas elevado.
@@ -379,69 +401,66 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
     overflow: hidden;
   }
 
-  .ds-eyebrow {
-    font-size: 12px;
-    line-height: 16px;
-    font-weight: 500;
-    color: var(--muted-foreground);
+  /* Navegação lateral de uma página (Configurações): o cabeçalho recua a mesma largura para alinhar com o conteúdo. */
+  [data-page-shell] { --aside-w: 0px; }
+  [data-page-shell][data-aside] { --aside-w: 13rem; }
+  @media (max-width: 720px) {
+    [data-page-shell][data-aside] { --aside-w: 3rem; }
   }
 
-  .ds-page {
-    margin-inline: auto;
+  /* Coluna de conteúdo única: páginas, transcript do chat e composer usam a mesma largura (--content-width). */
+  .ds-content {
     width: 100%;
-    padding: 28px 16px 56px;
+    max-width: calc(var(--content-width) + 2 * var(--sp-8));
+    margin-inline: auto;
+    padding-inline: var(--sp-8);
   }
-  @media (min-width: 640px) {
-    .ds-page { padding: 44px 32px 72px; }
+  @media (max-width: 720px) {
+    .ds-content { padding-inline: var(--sp-4); }
   }
 
   .ds-page-title {
     font-family: var(--font-display);
-    font-size: 1.3125rem;
-    line-height: 1.875rem;
-    font-weight: 700;
+    font-size: var(--text-xl);
+    line-height: 24px;
+    font-weight: 600;
     letter-spacing: -0.012em;
-    text-wrap: balance;
     color: var(--foreground);
   }
 
   .ds-page-lede {
-    margin-top: 6px;
-    max-width: 40rem;
-    font-size: 14px;
-    line-height: 22px;
+    font-size: var(--text-sm);
+    line-height: 16px;
     color: var(--muted-foreground);
   }
 
   .ds-section-title {
-    font-size: 13px;
+    font-size: var(--text-md);
     line-height: 20px;
     font-weight: 600;
     letter-spacing: -0.006em;
     color: var(--foreground);
   }
 
-  /* Superfícies DSH: contorno de 0,5px no box-shadow e halo quase invisível; a separação vem do contorno. */
+  /* Receita única de cartão: fundo, borda e raio iguais em toda página; a borda cobre o contraste nos dois temas. */
   .ds-panel,
   .ds-card,
   .ds-list {
     background: var(--card);
     color: var(--card-foreground);
-    border: 0;
-    border-radius: var(--dsw-radius-lg, 16px);
-    box-shadow: 0 0 0 0.5px var(--border-strong), 0 3px 8px 0 rgb(0 0 0 / 0.03), 0 0 16px 0 rgb(0 0 0 / 0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    box-shadow: var(--shadow-xs);
   }
-  .ds-card { border-radius: var(--dsw-radius-lg, 16px); }
-  .ds-list { overflow: hidden; border-radius: var(--dsw-radius-lg, 16px); }
-  .ds-list > * + * { border-top: 0.5px solid var(--border); }
+  .ds-list { overflow: hidden; }
+  .ds-list > * + * { border-top: 1px solid var(--border); }
 
   /* Coluna do board: camada rebaixada que abriga os cartões. */
   .ds-column {
     background: var(--muted);
-    border-radius: var(--dsw-radius-lg, 16px);
-    box-shadow: 0 0 0 0.5px var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
   }
-  .ds-column .ds-card { box-shadow: 0 0 0 0.5px var(--border-strong), 0 1px 2px 0 rgb(0 0 0 / 0.04); }
 
   .ds-empty {
     border: 0.5px dashed var(--border-strong);
@@ -896,3 +915,11 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
   font-size: 0.88em;
   font-weight: 500;
 }
+/*
+ ---break---
+ */
+@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+/*
+ ---break---
+ */
+@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));

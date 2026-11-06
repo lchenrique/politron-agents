@@ -6,6 +6,7 @@ import type { SkillsAPI } from '../shared/skills'
 import type { UpdatesAPI } from '../shared/updates'
 import type { TelegramAPI } from '../shared/telegram'
 import type { MemoryAPI } from '../shared/memory'
+import type { ComputerUseAPI } from '../shared/computer-use'
 
 type EventCallback<T> = (data: T) => void
 
@@ -49,8 +50,6 @@ const appAPI: AppAPI = {
   snapshot: () => ipcRenderer.invoke('v9:snapshot'),
   settingsPreferences: () => ipcRenderer.invoke('v9:settingsPreferences'),
   saveAgent: (input) => ipcRenderer.invoke('v9:saveAgent', input),
-  marketplaceTeams: () => ipcRenderer.invoke('v9:marketplaceTeams'),
-  hireTeam: (input) => ipcRenderer.invoke('v9:hireTeam', input),
   saveAssistantPreferences: (input) => ipcRenderer.invoke('v9:saveAssistantPreferences', input),
   approvalGrants: (agentId) => ipcRenderer.invoke('v9:approvalGrants', agentId),
   removeApprovalGrant: (grantId, agentId) => ipcRenderer.invoke('v9:removeApprovalGrant', grantId, agentId),
@@ -190,6 +189,12 @@ const memoryAPI: MemoryAPI = {
   exportJson: () => ipcRenderer.invoke('memory:exportJson'),
 }
 contextBridge.exposeInMainWorld('memoryAPI', memoryAPI)
+
+const computerUseAPI: ComputerUseAPI = {
+  status: () => ipcRenderer.invoke('computerUse:status'),
+  revoke: (conversationId, agentId) => ipcRenderer.invoke('computerUse:revoke', conversationId, agentId),
+}
+contextBridge.exposeInMainWorld('computerUseAPI', computerUseAPI)
 
 const providersAPI: ProvidersAPI = {
   list: () => ipcRenderer.invoke('providers:list'),

@@ -5,8 +5,7 @@ import type { HostRouting } from '../hosts/rpc'
 import { writeFile } from 'node:fs/promises'
 import type { MemoryInput } from '../../shared/memory'
 
-export function registerV9Ipc(service: AppService, routing?: HostRouting) {
-  const voice = new VoiceService()
+export function registerV9Ipc(service: AppService, routing?: HostRouting, voice: VoiceService = new VoiceService()) {
   // Carrega o reconhecedor de portugues em paralelo com a inicializacao do app.
   void voice.prewarmTranscription().catch(() => undefined)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
@@ -41,6 +40,17 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     if (routing?.remote) throw new Error('O board pode ser alterado somente no desktop.')
     return handler(...args)
   })
+  // Computer Use (cua-driver): estado e revogação só no desktop local.
+  const computerUseHandlers: Record<string, (...args: never[]) => unknown> = {
+    status: () => service.computerUseOverview(),
+    revoke: (conversationId: string, agentId: string) => service.revokeComputerUse(conversationId, agentId),
+  }
+  for (const [channel, handler] of Object.entries(computerUseHandlers)) ipcMain.handle(`computerUse:${channel}`, (event, ...args) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
+    if (routing?.remote) throw new Error('O Computer Use fica neste computador; volte para o host local.')
+    return handler(...args as never[])
+  })
   // Memória dos Boos: banco local deste computador, fora da RPC de hosts remotos.
   const memoryHandlers: Record<string, (...args: never[]) => unknown> = {
     list: (filter: unknown) => service.store.memories.list(filter && typeof filter === 'object' ? filter : {}),
@@ -74,8 +84,6 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   invokeBoardDesktop('addBoardEvidence', (taskId, evidence) => service.addBoardEvidence(taskId, evidence))
   invoke('settingsPreferences', () => service.settingsPreferences())
   invoke('saveAgent', (input) => service.saveAgent(input))
-  invoke('marketplaceTeams', () => service.marketplaceTeams())
-  invoke('hireTeam', (input) => service.hireTeam(input))
   invoke('saveAssistantPreferences', (input) => service.saveAssistantPreferences(input))
   invoke('approvalGrants', (agentId) => service.approvalGrants(agentId))
   invoke('removeApprovalGrant', (grantId, agentId) => service.removeApprovalGrant(grantId, agentId))
@@ -176,6 +184,7 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     voice.close()
     ipcMain.removeHandler('v9:clearClaudeCredential')
     for (const channel of Object.keys(memoryHandlers)) ipcMain.removeHandler(`memory:${channel}`)
-    for (const channel of ['snapshot', 'boardSnapshot', 'saveBoardTeam', 'deleteBoardTeam', 'createBoardTask', 'updateBoardTask', 'assignBoardTask', 'reassignBoardTask', 'boardTaskAction', 'addBoardEvidence', 'settingsPreferences', 'saveAgent', 'marketplaceTeams', 'hireTeam', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'sidebarLayout', 'saveSidebarLayout', 'saveWorkspace', 'createWorktree', 'createProjectFolder', 'cloneRepository', 'cancelClone', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'imageGenerationStatus', 'saveImageGeneration', 'clearImageGenerationKey', 'testImageGeneration', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'startMission', 'missionAction', 'saveRoutine', 'deleteRoutine', 'runRoutine', 'models', 'pickFolder', 'openFolder', 'agentTerminalSessions', 'agentTerminalStop', 'openExternalTerminal', 'externalBrowserStatus', 'setExternalBrowserGrant']) ipcMain.removeHandler(`v9:${channel}`)
+    for (const channel of Object.keys(computerUseHandlers)) ipcMain.removeHandler(`computerUse:${channel}`)
+    for (const channel of ['snapshot', 'boardSnapshot', 'saveBoardTeam', 'deleteBoardTeam', 'createBoardTask', 'updateBoardTask', 'assignBoardTask', 'reassignBoardTask', 'boardTaskAction', 'addBoardEvidence', 'settingsPreferences', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'sidebarLayout', 'saveSidebarLayout', 'saveWorkspace', 'createWorktree', 'createProjectFolder', 'cloneRepository', 'cancelClone', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'imageGenerationStatus', 'saveImageGeneration', 'clearImageGenerationKey', 'testImageGeneration', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'startMission', 'missionAction', 'saveRoutine', 'deleteRoutine', 'runRoutine', 'models', 'pickFolder', 'openFolder', 'agentTerminalSessions', 'agentTerminalStop', 'openExternalTerminal', 'externalBrowserStatus', 'setExternalBrowserGrant']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

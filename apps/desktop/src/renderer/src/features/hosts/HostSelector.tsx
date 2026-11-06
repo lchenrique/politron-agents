@@ -8,6 +8,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui
 import type { HostsSnapshot } from '../../../../shared/hosts'
 
 const statuses = { connected: 'Conectado', connecting: 'Conectando…', disconnected: 'Desconectado', error: 'Sem conexão' }
+/** Botão da barra da janela: nome do host e estado da conexão. */
 export function HostSelector() {
   const api = window.hostsAPI
   const [snapshot, setSnapshot] = useState<HostsSnapshot | null>(null)
@@ -22,9 +23,9 @@ export function HostSelector() {
   const openLocal = () => window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'conexoes' }))
   return <>
     <Menu open={menuOpen} onClose={() => setMenuOpen(false)} align="start" portal listClassName="w-80" autoFocus
-      anchor={<Button variant="ghost" size={null} className="dsh-panel-row" aria-label="Selecionar host" title={selected?.name || 'Host indisponível'}
+      anchor={<Button variant="ghost" size={null} className="flex h-7 max-w-48 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[var(--dsh-label-secondary)] hover:bg-[var(--dsh-hover)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring" aria-label="Selecionar host" title={[selected?.name || 'Host indisponível', selected ? statuses[selected.status] : '', selected?.error].filter(Boolean).join(' · ')}
         aria-haspopup="menu" aria-expanded={menuOpen} onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setMenuOpen(value => !value) } }} onClick={() => setMenuOpen(value => !value)}>
-        <Monitor data-icon="inline-start" /><span className="min-w-0 flex-1 truncate text-left">Remoto</span><span className="dsh-meta">{selected ? statuses[selected.status] : ''}</span><ChevronDown data-icon="inline-end" className="text-[var(--dsh-label-caption)]" />
+        <><Monitor className="size-3.5 shrink-0" /><span className="min-w-0 truncate">{selected?.name || 'Host'}</span>{selected && <span aria-label={statuses[selected.status]} className={'size-1.5 shrink-0 rounded-full ' + (selected.status === 'connected' ? 'bg-success' : selected.status === 'connecting' ? 'bg-warning' : 'bg-destructive')} />}<ChevronDown className="size-3 shrink-0 opacity-70" /></>
       </Button>}>
       <MenuGroup label="Hosts">
         {snapshot.hosts.map(host => <MenuItemButton key={host.id} disabled={busy} icon={<Monitor />} onSelect={() => { setMenuOpen(false); void run(() => api.select(host.id)) }}>
@@ -37,8 +38,8 @@ export function HostSelector() {
         {snapshot.selectedId !== 'local' && <MenuItemButton icon={<Unplug />} disabled={busy} onSelect={() => { setMenuOpen(false); void run(() => api.remove(snapshot.selectedId)) }}>Remover conexão selecionada</MenuItemButton>}
       </MenuGroup>
     </Menu>
-    {selected?.error && <p role="status" className="px-3 text-xs text-destructive">{selected.error}</p>}
-    {!modal && feedback && <p role="status" className="px-3 text-xs text-muted-foreground">{feedback}</p>}
+    {selected?.error && <p role="status" className="sr-only">{selected.error}</p>}
+    {!modal && feedback && <p role="status" className="sr-only">{feedback}</p>}
     <Dialog open={modal !== null} onOpenChange={open => { if (!open && !busy) { setModal(null); setPairing(''); setFeedback('') } }}><DialogContent className="max-h-[85dvh] overflow-y-auto">
       <DialogHeader><DialogTitle>Adicionar host</DialogTitle><DialogDescription>No Boobot do outro computador, ative o host em Configurações → Conexões e copie o link de pareamento. Projetos e tarefas serão executados lá.</DialogDescription></DialogHeader>
       <form onSubmit={event => { event.preventDefault(); void run(async () => { const host = await api.add({ pairing, name, endpoint, ssh }); setPairing(''); await api.select(host.id); setModal(null) }) }}>
