@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 import quality from "./eslint-rules/index.cjs";
 
 export default tseslint.config(
-  { ignores: ["out", "dist", "node_modules", "src/main/marketplace/catalog", "src/renderer/src/components/assistant-ui"] }, // código do registro do assistant-ui, mantido como veio
+  { ignores: ["out", "dist", "node_modules", "src/main/marketplace/catalog", "src/renderer/src/components/assistant-ui", "src/renderer/src/hooks/use-attachment-src.ts", "src/renderer/src/hooks/use-copy-to-clipboard.ts"] }, // código do registro do assistant-ui, mantido como veio
   {
     files: ["src/**/*.{ts,tsx}"],
     plugins: { quality },
