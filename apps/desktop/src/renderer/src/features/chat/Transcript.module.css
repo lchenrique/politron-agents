@@ -3,6 +3,16 @@
  * Tokens --dsw-* vêm de components/dsh/theme.css (claro em :root, escuro em :root.dark).
  */
 
+.root {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.messages { display: flex; flex-direction: column; }
+
 .scroll {
   position: relative;
   flex: 1 1 auto;
@@ -82,8 +92,14 @@
 .turn {
   display: flex;
   flex-direction: column;
+  margin-top: 24px;
   padding-bottom: 6px;
 }
+
+/* A mensagem do usuário e o turno do assistente são mensagens irmãs do runtime. */
+.userTurn { margin-top: 24px; }
+.userTurn + .turn { margin-top: 12px; }
+.messages > :first-child { margin-top: 0; }
 
 /* Ritmo do DSH: linhas de processo a 4px, respostas a 12px, cabeçalho do turno a 16px. */
 .turn > * + * { margin-top: 4px; }
@@ -215,8 +231,6 @@
   transition: color 100ms ease;
 }
 
-.header:disabled { cursor: default; }
-
 @media (hover: hover) {
   .header:hover:not(:disabled) { color: var(--dsw-alias-label-secondary); }
 }
@@ -229,16 +243,6 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-
-.headerChevron {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  margin-left: 4px;
-  transition: transform 100ms ease;
-}
-
-.header[aria-expanded="true"] .headerChevron { transform: rotate(180deg); }
 
 /* Grupo de passos (ChatGroupSeat): ícone da atividade que vira chevron no hover. */
 .group { min-width: 0; }
@@ -486,6 +490,7 @@
 }
 
 .toBottom svg { width: 16px; height: 16px; }
+.toBottom:disabled { visibility: hidden; }
 
 @media (hover: hover) {
   .toBottom:hover { background: var(--dsw-alias-button-floating-hover); }
@@ -497,5 +502,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .header, .headerChevron, .groupTitle, .groupIcon, .groupChevron { transition: none; }
+  .header, .groupTitle, .groupIcon, .groupChevron { transition: none; }
 }

@@ -8,7 +8,7 @@ import { formatRunDuration } from './tool-call'
 
 export type TurnStatus = 'running' | 'waiting' | 'completed' | 'failed' | 'interrupted'
 
-/** Bloco dentro do turno. `reply` é texto do agente; o resto é processo (recolhe quando o turno termina). */
+/** Bloco dentro do turno. `reply` é texto do agente; o resto é processo. */
 export type TurnItem =
   | { kind: 'reply'; id: string; message: Message; /** Primeiro bloco de uma resposta: mostra avatar e nome do Boo. */ boo: boolean }
   | { kind: 'tools'; id: string; messages: Message[] }
@@ -119,16 +119,6 @@ export function buildTurns(messages: Message[]): Turn[] {
   close()
   return turns
 }
-
-/** Itens que o turno concluído esconde atrás do cabeçalho; delegações ainda ativas continuam à vista. */
-export function foldsAway(item: TurnItem): boolean {
-  if (item.kind === 'reply') return false
-  if (item.kind === 'delegations') return !item.messages.some(message => ACTIVE.has(message.status))
-  return true
-}
-
-/** O DSH mantém abertos turnos que falharam ou foram interrompidos; só os concluídos recolhem. */
-export const turnFoldable = (turn: Turn) => turn.status === 'completed' && turn.items.some(foldsAway)
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
 

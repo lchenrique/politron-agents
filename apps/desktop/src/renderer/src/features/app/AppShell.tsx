@@ -345,7 +345,7 @@ export default function AppShell() {
       ...(Object.keys(options.modelOptions).length ? { modelOptions: options.modelOptions } : {}),
     })
   }
-  const chatRuntime = useV1ThreadRuntime(messages, submitMessage)
+  const chatRuntime = useV1ThreadRuntime(submitMessage)
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
   const openHome = useCallback((next: 'home' | 'routines' | 'board' | 'office' | 'marketplace') => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next) }, [])
@@ -454,7 +454,6 @@ export default function AppShell() {
               approvals={transcriptApprovals}
               conversations={snapshot.conversations}
               agentOf={agentOf}
-              selectedAgents={selectedAgents}
               workspaceName={selectedWorkspace?.name}
               onOpenRelatedConversation={selectConversation}
               onNotice={setNotice}

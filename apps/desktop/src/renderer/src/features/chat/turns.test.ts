@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Message } from '../../../../shared/v9'
-import { buildTurns, endsWithReply, finalReply, foldsAway, turnFoldable, turnHeaderText } from './turns'
+import { buildTurns, endsWithReply, finalReply, turnHeaderText } from './turns'
 import { activityToolCall, formatRunDuration, liveStep, processTitle, stepActivity } from './tool-call'
 
 const at = (seconds: number) => new Date(Date.UTC(2026, 9, 28, 12, 0, seconds)).toISOString()
@@ -31,8 +31,6 @@ describe('agrupamento em turnos', () => {
     const turns = buildTurns([user('u1'), activity('r', 'Raciocínio', 1, { tool: { name: 'reasoning', output: 'pensando', status: 'completed', startedAt: at(1) } }), activity('ask', 'Delegação · Mimir', 2), origin, activity('n', 'Missão retomada', 3, { runId: null })])
     expect(turns[0]!.items.map(item => item.kind)).toEqual(['reasoning', 'delegations', 'note'])
     expect(turns[0]!.toolCount).toBe(0)
-    // Delegação ativa não recolhe com o turno.
-    expect(foldsAway(turns[0]!.items[1]!)).toBe(false)
   })
 
   it('cabeçalho do Boo no primeiro bloco de cada resposta e a cada troca de autor', () => {
@@ -49,7 +47,6 @@ describe('estado e cabeçalho do turno', () => {
     expect(turnHeaderText(running)).toBeNull()
     const done = buildTurns([user('u1'), activity('a1', 'Terminal · ls', 2), reply('r', 'Fim.', 3, { finishedAt: at(83) })])[0]!
     expect(turnHeaderText(done)).toBe('Concluído em 1min 23s · 1 ferramenta')
-    expect(turnFoldable(done)).toBe(true)
   })
 
   it('usa o fim da ferramenta quando a resposta não registrou finishedAt e no mínimo 1 s', () => {
@@ -58,10 +55,9 @@ describe('estado e cabeçalho do turno', () => {
     expect(turnHeaderText(buildTurns([user('u1'), reply('r', 'Oi', 0)])[0]!)).toBe('Concluído em 1s')
   })
 
-  it('falha e interrupção substituem a duração e não recolhem', () => {
+  it('falha e interrupção substituem a duração', () => {
     const failed = buildTurns([user('u1'), activity('a', 'Terminal · ls', 1), reply('r', 'Erro', 2, { status: 'failed' })])[0]!
     expect(turnHeaderText(failed)).toBe('Falhou · 1 ferramenta')
-    expect(turnFoldable(failed)).toBe(false)
     const stopped = buildTurns([user('u1'), reply('r', '', 2, { status: 'interrupted' })])[0]!
     expect(turnHeaderText(stopped)).toBe('Interrompido')
     expect(buildTurns([user('u1'), reply('r', 'Aprova?', 2, { status: 'waiting' })])[0]!.status).toBe('waiting')

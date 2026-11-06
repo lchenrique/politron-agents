@@ -1,14 +1,8 @@
-﻿import { act, fireEvent, render, screen, within } from '@testing-library/react'
+﻿import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { renderToString } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent, Approval, Conversation, FileChange, Message } from '../../../../shared/v9'
-import { MessageList } from '@/test/runtime-message-list'
-
-/** jsdom não calcula layout real; simula um container com scrollHeight/clientHeight próprios para testar o auto-scroll. */
-function mockScrollMetrics(element: HTMLElement, { scrollHeight, clientHeight, scrollTop = 0 }: { scrollHeight: number; clientHeight: number; scrollTop?: number }) {
-  Object.defineProperty(element, 'scrollHeight', { configurable: true, value: scrollHeight })
-  Object.defineProperty(element, 'clientHeight', { configurable: true, value: clientHeight })
-  element.scrollTop = scrollTop
-}
+import { MessageList } from '@/features/chat/MessageList'
 
 const message: Message = { id: 'message-1', conversationId: 'conversation-1', agentId: 'agent-1', author: 'Revisora', role: 'assistant', text: 'Revisei o arquivo.', status: 'completed', runId: 'run-1', createdAt: '' }
 const change: FileChange = { id: 'change-1', runId: 'run-1', messageId: message.id, toolCallId: 'tool-1', agentId: 'agent-1', workspaceId: 'workspace-1', path: 'notes.md', status: 'applied', before: 'antes', after: 'depois', additions: 1, deletions: 1, truncated: false, binary: false, createdAt: '' }
@@ -16,7 +10,7 @@ const approval: Approval = { id: 'approval-1', runId: 'run-1', conversationId: m
 
 describe('diffs e aprovações no chat', () => {
   it('não duplica no histórico o run revisado acima do composer e mantém a decisão pendente inline', () => {
-    render(<MessageList messages={[message]} fileChanges={[change]} reviewRunId="run-1" approvals={[approval]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    render(<MessageList messages={[message]} fileChanges={[change]} reviewRunId="run-1" approvals={[approval]} conversations={[]} agentOf={() => undefined} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(screen.queryByRole('region', { name: 'Arquivos modificados nesta resposta' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Arquivos alterados neste turno' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Aprovação de ferramenta' })).toHaveTextContent('Aguardando sua decisão')
@@ -30,7 +24,7 @@ describe('diffs de runs anteriores no histórico', () => {
   const reply = (id: string, runId: string): Message => ({ ...message, id, runId, text: `Resposta ${id}` })
   const write = (id: string, messageId: string, runId: string, path: string, status: FileChange['status'] = 'applied'): FileChange =>
     ({ ...change, id, messageId, runId, toolCallId: `tool-${id}`, path, status, before: `antes ${path}\n`, after: `depois ${path}\n` })
-  const list = (messages: Message[], fileChanges: FileChange[], reviewRunId: string | null = null) => <MessageList messages={messages} fileChanges={fileChanges} reviewRunId={reviewRunId} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+  const list = (messages: Message[], fileChanges: FileChange[], reviewRunId: string | null = null) => <MessageList messages={messages} fileChanges={fileChanges} reviewRunId={reviewRunId} approvals={[]} conversations={[]} agentOf={() => undefined} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
   const wrapperOf = (container: HTMLElement, id: string) => container.querySelector<HTMLElement>(`[data-message-id="${id}"]`)!
   const expandedText = (region: HTMLElement) => { fireEvent.click(within(region).getByRole('button', { name: 'Revisar arquivos modificados' })); return region.textContent || '' }
 
@@ -79,22 +73,16 @@ describe('diffs de runs anteriores no histórico', () => {
     expect(within(wrapperOf(container, 'm1')).queryByRole('region', { name: 'Arquivos modificados nesta resposta' })).not.toBeInTheDocument()
   })
 
-  it('mantém a revisão dentro do wrapper observado pela virtualização', () => {
-    const observed: Element[] = []
-    class TestResizeObserver { observe = (element: Element) => { observed.push(element) }; unobserve = () => undefined; disconnect = () => undefined }
-    vi.stubGlobal('ResizeObserver', TestResizeObserver)
+  it('mantém a revisão dentro da mensagem do turno que a produziu', () => {
     const { container } = render(list([reply('m1', 'run-1')], [write('c1', 'm1', 'run-1', 'src/primeiro.ts')]))
-    const wrapper = container.querySelector<HTMLElement>('[data-turn-id="turn:m1"]')!
-    expect(observed).toContain(wrapper)
-    expect(wrapper).toContainElement(screen.getByRole('region', { name: 'Arquivos modificados nesta resposta' }))
-    vi.unstubAllGlobals()
+    expect(wrapperOf(container, 'm1')).toContainElement(screen.getByRole('region', { name: 'Arquivos modificados nesta resposta' }))
   })
 })
 
 describe('balão do usuário', () => {
   it('usa o balão neutro do DSH em vez da cor primary dos temas', () => {
     const userMessage: Message = { ...message, id: 'human-1', agentId: null, role: 'user', author: 'Você', text: 'Mensagem do usuário', runId: null }
-    render(<MessageList messages={[userMessage]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    render(<MessageList messages={[userMessage]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     const bubble = screen.getByText('Mensagem do usuário').closest('[data-slot="dsh-user-message-bubble"]')
     expect(bubble).toBeInTheDocument()
     expect(bubble).not.toHaveClass('bg-primary')
@@ -102,75 +90,104 @@ describe('balão do usuário', () => {
   })
 })
 
-describe('scroll automático da conversa', () => {
+/** Ids das mensagens V1 no DOM; a mensagem assistant do runtime leva o id do turno e fica de fora. */
+const v1Ids = (container: HTMLElement) => [...container.querySelectorAll('[data-message-id]')].map(node => node.getAttribute('data-message-id')!).filter(id => !id.startsWith('turn:'))
+
+describe('rolagem e posição de leitura', () => {
   const makeMessage = (id: string, text: string): Message => ({ id, conversationId: 'conversation-1', agentId: 'agent-1', author: 'Pits', role: 'assistant', text, status: 'completed', runId: null, createdAt: '' })
+  const human = (id: string, text: string): Message => ({ ...makeMessage(id, text), role: 'user', agentId: null, author: 'Você' })
+  const props = { fileChanges: [], approvals: [], conversations: [], agentOf: () => undefined, onOpenRelatedConversation: () => undefined, onNotice: () => undefined }
 
-  it('acompanha o final quando o usuário já estava lá e uma mensagem nova chega', () => {
-    const { container, rerender } = render(<MessageList messages={[makeMessage('m1', 'Oi')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    const scroller = container.firstElementChild as HTMLElement
-    mockScrollMetrics(scroller, { scrollHeight: 400, clientHeight: 300, scrollTop: 100 })
-    rerender(<MessageList messages={[makeMessage('m1', 'Oi'), makeMessage('m2', 'Nova resposta')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(scroller.scrollTop).toBe(scroller.scrollHeight)
+  it('já mostra o histórico no primeiro render, sem esperar o runtime sincronizar', () => {
+    const html = renderToString(<MessageList messages={[human('u1', 'Pergunta inicial'), makeMessage('m1', 'Resposta inicial')]} {...props} />)
+    expect(html).toContain('Pergunta inicial')
+    expect(html).toContain('Resposta inicial')
   })
 
-  it('não interrompe quem rolou para cima lendo o histórico', () => {
-    const { container, rerender } = render(<MessageList messages={[makeMessage('m1', 'Oi')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    const scroller = container.firstElementChild as HTMLElement
-    mockScrollMetrics(scroller, { scrollHeight: 1000, clientHeight: 300, scrollTop: 50 })
-    fireEvent.scroll(scroller)
-    rerender(<MessageList messages={[makeMessage('m1', 'Oi'), makeMessage('m2', 'Nova resposta')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(scroller.scrollTop).toBe(50)
+  it('usa o viewport e o botão de fim do assistant-ui', () => {
+    const { container } = render(<MessageList messages={[makeMessage('m1', 'Oi')]} {...props} />)
+    expect(container.querySelector('[data-aui-thread-root]')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ir para as mensagens mais recentes' })).toBeInTheDocument()
   })
 
-  it('desativa a ancoragem nativa para deixar o scroller controlar a âncora por ID', () => {
-    const { container } = render(<MessageList messages={[makeMessage('m1', 'Oi')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect((container.firstElementChild as HTMLElement).style.overflowAnchor).toBe('none')
+  it('o streaming não desmonta a mensagem já montada ao receber fragmentos', async () => {
+    const streaming = (text: string) => [human('u1', 'Pergunta'), { ...makeMessage('m1', text), status: 'running' as const, runId: 'run-1' }]
+    const { container, rerender } = render(<MessageList messages={streaming('Primeiro')} {...props} />)
+    const reply = container.querySelector('[data-message-id="m1"]')!
+    const turn = reply.parentElement!
+    rerender(<MessageList messages={streaming('Primeiro fragmento')} {...props} />)
+    rerender(<MessageList messages={streaming('Primeiro fragmento e mais um')} {...props} />)
+    expect(container.querySelector('[data-message-id="m1"]')).toBe(reply)
+    expect(reply.parentElement).toBe(turn)
+    await waitFor(() => expect(reply).toHaveTextContent('Primeiro fragmento e mais um'))
+    // Ao concluir, o mesmo bloco continua na tela com o texto final.
+    rerender(<MessageList messages={[human('u1', 'Pergunta'), { ...makeMessage('m1', 'Primeiro fragmento e mais um. Fim.'), runId: 'run-1' }]} {...props} />)
+    expect(container.querySelector('[data-message-id="m1"]')).toBe(reply)
+    await waitFor(() => expect(reply).toHaveTextContent('Fim.'))
   })
 
-  it('mostra marcadores acessíveis e navega para um turno carregado', () => {
-    const messages = [
-      makeMessage('m1', 'Resposta um'),
-      { ...makeMessage('m2', 'Pergunta dois'), role: 'user' as const, agentId: null, author: 'Você' },
-      makeMessage('m3', 'Resposta dois'),
-      { ...makeMessage('m4', 'Pergunta três'), role: 'user' as const, agentId: null, author: 'Você' },
-      makeMessage('m5', 'Resposta três'),
-    ]
-    const { container } = render(<MessageList messages={messages} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    const scroller = container.firstElementChild as HTMLElement
-    mockScrollMetrics(scroller, { scrollHeight: 1200, clientHeight: 300 })
-    fireEvent.scroll(scroller)
+  it('mostra marcadores acessíveis e navega para o turno escolhido', () => {
+    const scrollIntoView = vi.fn()
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)
+    const { container } = render(<MessageList messages={[human('u1', 'Pergunta um'), makeMessage('m2', 'Resposta um'), human('u3', 'Pergunta dois'), makeMessage('m4', 'Resposta dois'), human('u5', 'Pergunta três'), makeMessage('m6', 'Resposta três')]} {...props} />)
     fireEvent.click(screen.getByRole('button', { name: 'Ir para o turno 2' }))
-    expect(scroller.scrollTop).toBeGreaterThan(0)
+    expect(scrollIntoView).toHaveBeenCalledOnce()
+    expect(scrollIntoView.mock.contexts[0]).toBe(container.querySelector('[data-message-id="u3"]'))
     expect(screen.getByRole('button', { name: 'Ir para o turno 2' })).toHaveAttribute('aria-current', 'location')
+    vi.restoreAllMocks()
   })
 
-  it('corrige a âncora de leitura quando o ResizeObserver mede crescimento acima dela', () => {
-    const observers: Array<{ callback: ResizeObserverCallback; observed: Element[] }> = []
-    class TestResizeObserver {
-      observed: Element[] = []
-      constructor(callback: ResizeObserverCallback) { this.callback = callback; observers.push(this) }
-      callback: ResizeObserverCallback
-      observe = (element: Element) => { this.observed.push(element) }
-      unobserve = (element: Element) => { this.observed = this.observed.filter(item => item !== element) }
-      disconnect = () => { this.observed = [] }
-    }
-    vi.stubGlobal('ResizeObserver', TestResizeObserver)
-    const { container, rerender } = render(<MessageList messages={[makeMessage('m1', 'Um'), makeMessage('m2', 'Dois'), makeMessage('m3', 'Três')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    const scroller = container.firstElementChild as HTMLElement
-    mockScrollMetrics(scroller, { scrollHeight: 1000, clientHeight: 300, scrollTop: 220 })
-    fireEvent.scroll(scroller)
-    const observer = observers[0]
-    const firstTurn = observer.observed.find(element => (element as HTMLElement).dataset.turnId === 'turn:m1')
-    expect(firstTurn).toBeTruthy()
-    act(() => observer.callback([{ target: firstTurn!, contentRect: { height: 260 }, borderBoxSize: [] } as unknown as ResizeObserverEntry], observer as unknown as ResizeObserver))
-    rerender(<MessageList messages={[makeMessage('m1', 'Um com conteúdo expandido'), makeMessage('m2', 'Dois'), makeMessage('m3', 'Três')]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(scroller.scrollTop).toBeGreaterThanOrEqual(220)
-    vi.unstubAllGlobals()
+  it('rola até a mensagem focada pela busca e a destaca, sem puxar para o fim', () => {
+    const scrollIntoView = vi.fn()
+    vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)
+    const messages = [human('u1', 'Pergunta um'), makeMessage('m2', 'Resposta um'), human('u3', 'Pergunta dois'), makeMessage('m4', 'Resposta dois')]
+    const { container, rerender } = render(<MessageList messages={messages} {...props} hasNewerMessages />)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    rerender(<MessageList messages={messages} {...props} hasNewerMessages focusedMessageId="m2" />)
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(container.querySelector('[data-message-id="m2"]'))
+    expect(container.querySelector('[data-message-id="m2"]')!.className).toMatch(/focused/)
+    vi.restoreAllMocks()
+  })
+
+  it('oferece voltar às mensagens recentes quando há mensagens mais novas fora da janela', () => {
+    const onReturnToLatest = vi.fn()
+    render(<MessageList messages={[makeMessage('m1', 'Antiga')]} {...props} hasNewerMessages onReturnToLatest={onReturnToLatest} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar às mensagens recentes' }))
+    expect(onReturnToLatest).toHaveBeenCalledOnce()
+  })
+
+  it('carrega mensagens anteriores e mantém a linha que o usuário estava lendo', async () => {
+    const recent = [human('u3', 'Pergunta recente'), makeMessage('m4', 'Resposta recente')]
+    const older = [human('u1', 'Pergunta antiga'), makeMessage('m2', 'Resposta antiga')]
+    let load!: () => void
+    const onLoadOlder = vi.fn(() => new Promise<void>(resolve => { load = resolve }))
+    const { container, rerender } = render(<MessageList messages={recent} {...props} hasOlderMessages onLoadOlder={onLoadOlder} />)
+    const scroller = container.querySelector<HTMLElement>('[data-aui-thread-root] > div')!
+    // Layout simulado: cada turno ocupa 200px.
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => container.querySelectorAll('[data-turn-start]').length * 200 })
+    scroller.scrollTop = 30
+    fireEvent.click(screen.getByRole('button', { name: 'Carregar mensagens anteriores' }))
+    expect(onLoadOlder).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Carregando…' })).toBeDisabled()
+    rerender(<MessageList messages={[...older, ...recent]} {...props} hasOlderMessages onLoadOlder={onLoadOlder} />)
+    await act(async () => { load() })
+    expect(container).toHaveTextContent('Pergunta antiga')
+    expect(scroller.scrollTop).toBe(30 + 200)
+  })
+
+  it('avisa quando o carregamento de mensagens anteriores falha e não mexe na posição', async () => {
+    const onNotice = vi.fn()
+    const { container } = render(<MessageList messages={[makeMessage('m1', 'Oi')]} {...props} onNotice={onNotice} hasOlderMessages onLoadOlder={() => Promise.reject(new Error('Sem rede.'))} />)
+    const scroller = container.querySelector<HTMLElement>('[data-aui-thread-root] > div')!
+    scroller.scrollTop = 40
+    fireEvent.click(screen.getByRole('button', { name: 'Carregar mensagens anteriores' }))
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Sem rede.'))
+    expect(scroller.scrollTop).toBe(40)
   })
 })
 
 describe('estado vazio da conversa', () => {
-  const emptyList = (workspaceName?: string) => <MessageList messages={[]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} workspaceName={workspaceName} />
+  const emptyList = (workspaceName?: string) => <MessageList messages={[]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => undefined} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} workspaceName={workspaceName} />
 
   it('mostra o título e o workspace da conversa sem duplicar o avatar do cabeçalho', () => {
     render(emptyList('Politron'))
@@ -193,7 +210,7 @@ describe('estado vazio da conversa', () => {
 describe('identificação de agentes no chat', () => {
   it('mostra avatar e nome discreto do Boo no primeiro bloco da resposta', () => {
     const agent = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as import('../../../../shared/v9').Agent
-    render(<MessageList messages={[message]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} selectedAgents={[agent, { ...agent, id: 'agent-2', name: 'Atlas', alias: 'atlas' }]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    render(<MessageList messages={[message]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(screen.getByText('Lyra')).toBeInTheDocument()
     expect(screen.getByTitle('Lyra')).toHaveTextContent('Lyra')
     expect(screen.getByRole('img', { name: 'Lyra — idle' })).toBeInTheDocument()
@@ -205,13 +222,13 @@ describe('linha de atividade do agente', () => {
   const reply = (id: string, text: string, status: Message['status'], seconds: number): Message => ({ ...message, id, text, status, runId: 'run-9', createdAt: at(seconds) })
   const act = (id: string, text: string, seconds: number): Message => ({ ...message, id, role: 'activity', text, status: 'completed', runId: 'run-9', createdAt: at(seconds) })
   const browser = (n: number) => Array.from({ length: n }, (_, index) => act(`a${index}`, `Navegador real · js · alvo https://example.com/\nawait tab.goto(${index})`, 2 + index))
-  const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+  const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
 
   it('mostra o Boo do agente digitando no card enquanto roda, e nunca para agente com foto', () => {
     const lyra = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as import('../../../../shared/v9').Agent
     const calls = browser(2)
     calls[1] = { ...calls[1]!, status: 'running' }
-    const view = (agent: typeof lyra) => <MessageList messages={[reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+    const view = (agent: typeof lyra) => <MessageList messages={[reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
     const { container, rerender } = render(view(lyra))
     const working = within(container.querySelector('[data-part="work-card"]') as HTMLElement).getByRole('img', { name: 'Lyra está trabalhando' })
     expect(working.style.getPropertyValue('--boo-body')).toBe('#7565e8')
@@ -221,13 +238,19 @@ describe('linha de atividade do agente', () => {
     rerender(view(lyra))
   })
 
-  it('ao terminar a ferramenta, o card volta a ser a linha recolhida', () => {
+  it('ao terminar a ferramenta, o card vira a linha do turno e nada some', () => {
     const calls = browser(2)
     const { container, rerender } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls.slice(0, 1), { ...calls[1]!, status: 'running' }]))
     expect(container.querySelector('[data-part="work-card"]')).toBeInTheDocument()
-    rerender(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]))
+    const turn = container.querySelector('[data-part="reply"]')!.parentElement!
+    rerender(list([reply('pre', 'Vou abrir o site.', 'completed', 0), ...calls, reply('final', 'Pronto.', 'completed', 5)]))
     expect(container.querySelector('[data-part="work-card"]')).not.toBeInTheDocument()
-    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
+    // O mesmo turno continua montado, o texto anterior e a ferramenta seguem visíveis.
+    expect(container.querySelector('[data-part="reply"]')!.parentElement).toBe(turn)
+    expect(v1Ids(container)).toEqual(['pre', 'final'])
+    expect(screen.getByRole('button', { name: 'Navegou na web' })).toBeInTheDocument()
+    expect(container).toHaveTextContent('Vou abrir o site.')
+    expect(container).toHaveTextContent('Pronto.')
   })
 
   it('durante uma ferramenta ativa, abre o card "Executando tarefa" com os passos em ordem e mantém o status do turno genérico', () => {
@@ -270,17 +293,38 @@ describe('linha de atividade do agente', () => {
     expect(screen.getByRole('status')).not.toHaveTextContent('Navegando')
   })
 
-  it('ao terminar, resume no passado recolhido, expande a lista e mantém a resposta final abaixo', () => {
+  it('ao terminar, mantém o resumo no rodapé, as ferramentas na ordem e a resposta final abaixo', () => {
     const { container } = render(list([reply('pre', 'Vou abrir o site.', 'completed', 0), ...browser(6), act('t1', 'Terminal · npm test', 30), act('t2', 'Terminal · ls', 35), reply('final', 'Pronto.', 'completed', 38)]))
-    const summary = screen.getByRole('button', { name: /Concluído em 38s · 8 ferramentas/ })
+    // Nada é recolhido por trás de um cabeçalho: o resumo é só um rodapé informativo.
+    expect(screen.queryByRole('button', { name: /Concluído em/ })).not.toBeInTheDocument()
+    expect(container.querySelector('[data-part="header"]')).toHaveTextContent('Concluído em 38s · 8 ferramentas')
     expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(0)
-    fireEvent.click(summary)
     fireEvent.click(screen.getByRole('button', { name: /Navegou na web e executou comandos/ }))
     expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(8)
     expect(container.querySelector('[data-chat-call-id="t1"]')).toBeInTheDocument()
     const lastTool = container.querySelectorAll('[data-chat-call-id]')[7]!
+    const firstReply = container.querySelector('[data-message-id="pre"]')!
     const finalReply = container.querySelector('[data-message-id="final"]')!
+    expect(firstReply.compareDocumentPosition(lastTool) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(lastTool.compareDocumentPosition(finalReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('o estado aberto escolhido pelo usuário persiste quando o turno termina', () => {
+    const calls = browser(2)
+    const { container, rerender } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]))
+    fireEvent.click(screen.getByRole('button', { name: 'Navegou na web' }))
+    expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(2)
+    rerender(list([reply('pre', 'Vou abrir o site.', 'completed', 0), ...calls, reply('final', 'Pronto.', 'completed', 9)]))
+    expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(2)
+  })
+
+  it('mantém raciocínio, delegação e nota na ordem original do histórico', () => {
+    const reasoning = act('r1', 'Raciocínio', 1)
+    const origin: Message = { ...message, id: 'origin', role: 'activity', text: 'Pedido para Mimir: revisar\nExecutando.', status: 'running', runId: null, delegationId: 'del', relatedConversationId: 'child', delegationTask: 'revisar', createdAt: at(3) }
+    const note: Message = { ...message, id: 'note', role: 'activity', text: 'Missão retomada', status: 'completed', runId: null, createdAt: at(4) }
+    const { container } = render(list([reply('a', 'Primeiro.', 'completed', 0), { ...reasoning, tool: { name: 'reasoning', output: 'pensando alto', status: 'completed', startedAt: at(1) } }, act('t', 'Terminal · ls', 2), origin, note, reply('z', 'Último.', 'running', 5)]))
+    expect(v1Ids(container)).toEqual(['a', 'r1', 'origin', 'note', 'z'])
+    expect(screen.getByRole('button', { name: 'Executou comandos' })).toBeInTheDocument()
   })
 
   it('mostra aprovações do run uma única vez, sob a última linha, e oculta a resposta vazia concluída', () => {
@@ -291,10 +335,18 @@ describe('linha de atividade do agente', () => {
     expect(container.querySelector('[data-message-id="empty"]')).toBeNull()
   })
 
+  it('mantém a aprovação visível quando a última mensagem do run é uma resposta vazia aguardando', () => {
+    const pending = { ...approval, runId: 'run-9' }
+    const { container } = render(list([reply('pre', 'Vou escrever.', 'running', 0), ...browser(1), reply('espera', '', 'waiting', 3)], [pending]))
+    expect(screen.getAllByRole('region', { name: 'Aprovação de ferramenta' })).toHaveLength(1)
+    expect(container.querySelector('[data-part="running"]')).toHaveTextContent('Aguardando sua aprovação')
+    expect(v1Ids(container)).not.toContain('espera')
+  })
+
   it('mensagens na fila ou removidas da fila não aparecem no chat', () => {
     const user = (id: string, status: Message['status']): Message => ({ id, conversationId: 'conversation-1', agentId: null, author: 'Você', role: 'user', text: `Texto ${id}`, status, runId: null, createdAt: '' })
     const { container } = render(list([user('sent', 'completed'), message, user('waiting', 'queued'), user('removed', 'cancelled')]))
-    expect([...container.querySelectorAll('[data-message-id]')].map(node => node.getAttribute('data-message-id'))).toEqual(['sent', 'message-1'])
+    expect(v1Ids(container)).toEqual(['sent', 'message-1'])
   })
 })
 
@@ -308,13 +360,13 @@ describe('cartão de delegações', () => {
     delegationId: `delegation-${index}`, relatedConversationId: `child-${index}`, delegationTask: task(index), createdAt: '',
     text: status === 'completed' ? `Pedido concluído por ${boos[index]!.name}. Resultado disponível na conversa relacionada.\n\nResultado da parte ${index}.` : `Pedido para ${boos[index]!.name}: ${task(index)}\nExecutando na conversa privada do agente.`,
   })
-  const renderCard = (messages: Message[], onOpen = vi.fn()) => render(<MessageList messages={messages} fileChanges={[]} approvals={[]} conversations={conversations} agentOf={id => boos.find(boo => boo.id === id)} selectedAgents={[]} onOpenRelatedConversation={onOpen} onNotice={() => undefined} />)
+  const renderCard = (messages: Message[], onOpen = vi.fn()) => render(<MessageList messages={messages} fileChanges={[]} approvals={[]} conversations={conversations} agentOf={id => boos.find(boo => boo.id === id)} onOpenRelatedConversation={onOpen} onNotice={() => undefined} />)
 
   it('agrupa 4 delegações num cartão com uma linha por Boo, sem repetir "Delegando tarefa"', () => {
     const { container } = renderCard([ask(0), origin(0), ask(1), origin(1), ask(2), origin(2, 'completed'), ask(3), origin(3, 'failed')])
     const card = screen.getByRole('region', { name: 'Delegou para 4 Boos' })
     expect(within(card).getAllByRole('listitem')).toHaveLength(4)
-    expect(container.querySelectorAll('[data-message-id]')).toHaveLength(1)
+    expect(v1Ids(container)).toEqual(['origin-0'])
     expect(container).not.toHaveTextContent(/Delega(ndo|ção ·)/)
     expect(within(card).getAllByRole('img', { name: 'Trabalhando' })).toHaveLength(2)
     expect(within(card).getByRole('img', { name: 'Concluído' })).toBeInTheDocument()

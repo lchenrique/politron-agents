@@ -8,7 +8,6 @@ import { RunProgress } from './RunProgress'
 import { speakVoice, stopVoice } from '../voice/voice-player'
 import { Message as ChatMessage, MessageContent, MessageFooter, MessageHeader } from '@/components/ui/message'
 import { Trace, TraceLine, TraceTitle } from '@/components/ui/trace'
-import { MessagePrimitive } from '@assistant-ui/react'
 import { AssistantUIMessageText, MessageMarkdown } from './MessageMarkdown'
 import { StreamingText } from './StreamingText'
 import { MessageBubble as PastaMessageBubble } from '@/components/ai/message-bubble'
@@ -56,10 +55,8 @@ function CopyMessageButton({ text, onNotice, className }: { text: string; onNoti
   </Button>
 }
 
+/** Texto concluído vem da parte de texto do runtime assistant-ui (renderizada dentro do escopo dessa parte). */
 const ignoreNotice = () => undefined
-/** Texto concluído vem da parte de texto do runtime assistant-ui, com as políticas de link e código do Desktop. */
-const TEXT_PARTS = { Text: AssistantUIMessageText }
-
 function AttachmentPreview({ conversationId, attachment, onNotice }: { conversationId: string; attachment: MessageAttachment; onNotice: (value: string) => void }) {
   const [source, setSource] = useState('')
   const [failed, setFailed] = useState(false)
@@ -148,7 +145,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
       </div>}
       {statusLabel && <div className={transcriptCss.note} role={message.status === 'waiting' ? 'status' : undefined}>{statusLabel}</div>}
       <div className={transcriptCss.reply}>
-        {message.status === 'running' || message.status === 'waiting' ? <StreamingText text={message.text || ' '} /> : <MessagePrimitive.Parts components={TEXT_PARTS} />}
+        {message.status === 'running' || message.status === 'waiting' ? <StreamingText text={message.text || ' '} /> : <AssistantUIMessageText />}
       </div>
       {(canCopy || time || (canSpeak && message.status === 'completed' && message.text.trim())) && <div role="group" aria-label="Ações da mensagem" className={transcriptCss.actions}>
         {time && <time dateTime={message.createdAt} title={time.full} className={transcriptCss.timeStart}>{time.short}</time>}

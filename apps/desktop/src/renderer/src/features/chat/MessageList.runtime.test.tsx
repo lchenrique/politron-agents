@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import type { Approval, Message } from '../../../../shared/v9'
-import { MessageList } from '@/test/runtime-message-list'
+import { MessageList } from './MessageList'
 import { Composer } from '../composer/Composer'
 import { MessageLinkContext, type MessageLinkHandlers } from './MessageMarkdown'
 import { useV1ThreadRuntime, type SendMessage } from './assistant-ui-adapter'
@@ -11,9 +11,9 @@ afterEach(() => { vi.unstubAllGlobals(); localStorage.clear() })
 
 const at = (seconds: number) => new Date(Date.UTC(2026, 10, 6, 12, 0, seconds)).toISOString()
 const message = (overrides: Partial<Message>): Message => ({ id: 'reply', conversationId: 'chat', agentId: 'boo', author: 'Boo', role: 'assistant', text: '', status: 'completed', runId: 'run-1', createdAt: at(0), ...overrides })
-const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} selectedAgents={[]} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
 
-describe('transcript renderizado pelo runtime assistant-ui', () => {
+describe('transcrição renderizada pelos primitivos do assistant-ui', () => {
   it('mostra a resposta concluída pela parte de texto do runtime, com a política de links e blocos de código', async () => {
     const handlers: MessageLinkHandlers = { openUrl: vi.fn(), openFile: vi.fn(), blocked: vi.fn(), workspaceRoot: 'D:/workspace' }
     const { container } = render(<MessageLinkContext.Provider value={handlers}>{list([
@@ -39,7 +39,7 @@ describe('transcript renderizado pelo runtime assistant-ui', () => {
   it('mostra a atividade concluída como tool-call do runtime com a árvore existente', () => {
     const activity = message({ id: 'tool', role: 'activity', text: 'Terminal · npm test', createdAt: at(1), tool: { name: 'workspace_run_command', args: '{"command":"npm test"}', status: 'completed', output: 'ok', startedAt: at(1), finishedAt: at(2) } })
     const { container } = render(list([message({ text: 'Vou testar.' }), activity, message({ id: 'final', text: 'Pronto.', createdAt: at(3) })]))
-    fireEvent.click(screen.getByRole('button', { name: /Concluído/ }))
+    // A ferramenta concluída continua visível como linha do turno; o clique só abre o detalhe.
     fireEvent.click(screen.getByRole('button', { name: /comando/i }))
     expect(container.querySelector('[data-message-id="tool"] [data-chat-call-id="tool"]')).toBeInTheDocument()
   })
@@ -59,7 +59,7 @@ describe('transcript renderizado pelo runtime assistant-ui', () => {
 
 describe('Composer ligado ao runtime', () => {
   function ComposerWithRuntime({ onSend }: { onSend: SendMessage }) {
-    const { runtime, send } = useV1ThreadRuntime([], onSend)
+    const { runtime, send } = useV1ThreadRuntime(onSend)
     return <AssistantRuntimeProvider runtime={runtime}>
       <Composer conversationId="runtime-test" models={[{ name: 'Modelo real', efforts: ['medium'], defaultEffort: 'medium' }]} defaultModelName="Modelo real" onModelChange={vi.fn()} onSubmit={send} onStop={vi.fn()} />
     </AssistantRuntimeProvider>
