@@ -232,7 +232,7 @@ export function SettingsPage({ open = true, initialSection = 'geral' }: { open?:
 
   const current = SECTIONS.find(item => item.id === section) || SECTIONS[0]
 
-  const nav = <nav aria-label="Seções de configurações" className="flex w-52 shrink-0 flex-col gap-px overflow-y-auto border-r border-border bg-chrome p-3 max-[720px]:w-12">
+  const nav = <nav aria-label="Seções de configurações" className="flex w-[var(--aside-w)] shrink-0 flex-col gap-px overflow-y-auto border-r border-border bg-chrome p-3 max-[720px]:px-1.5">
     {SECTIONS.map(item => <Button key={item.id} type="button" variant={null} size={null} onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined} title={item.label}
       className="ds-nav-item flex h-9 shrink-0 items-center justify-start gap-2.5 whitespace-nowrap rounded-md px-2.5 text-left text-[13px] font-medium focus-visible:ring-0 max-[720px]:justify-center max-[720px]:px-0">
       <item.icon className="size-4 shrink-0" /><span className="max-[720px]:sr-only">{item.label}</span>

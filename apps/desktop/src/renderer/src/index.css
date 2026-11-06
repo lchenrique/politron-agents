@@ -401,6 +401,13 @@ html.floating-mascot-document, body.floating-mascot-document, body.floating-masc
     overflow: hidden;
   }
 
+  /* Navegação lateral de uma página (Configurações): o cabeçalho recua a mesma largura para alinhar com o conteúdo. */
+  [data-page-shell] { --aside-w: 0px; }
+  [data-page-shell][data-aside] { --aside-w: 13rem; }
+  @media (max-width: 720px) {
+    [data-page-shell][data-aside] { --aside-w: 3rem; }
+  }
+
   /* Coluna de conteúdo única: páginas, transcript do chat e composer usam a mesma largura (--content-width). */
   .ds-content {
     width: 100%;

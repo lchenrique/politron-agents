@@ -36,11 +36,13 @@ export interface PageHeaderProps {
   wide?: boolean
   titleId?: string
   testId?: string
+  /** Reserva a mesma calha de rolagem do corpo, para o título alinhar com o conteúdo (usado pelo PageShell). */
+  gutter?: boolean
 }
 
 /** Barra de cabeçalho de 56 px, igual em todas as páginas. O conteúdo dela alinha com a coluna do corpo. */
-export function PageHeader({ title, subtitle, leading, actions, wide = false, titleId, testId }: PageHeaderProps) {
-  return <header data-page-header data-testid={testId} className="@container/page shrink-0 border-b border-border bg-background" style={{ height: 'var(--header-height)' }}>
+export function PageHeader({ title, subtitle, leading, actions, wide = false, titleId, testId, gutter = false }: PageHeaderProps) {
+  return <header data-page-header data-testid={testId} className={cn('@container/page shrink-0 border-b border-border bg-background pl-[var(--aside-w,0px)]', gutter && 'overflow-y-hidden [scrollbar-gutter:stable_both-edges]')} style={{ height: 'var(--header-height)' }}>
     <div className={cn('flex h-full items-center gap-3', wide ? 'px-8 max-[720px]:px-4' : 'ds-content')}>
       {leading && <div className="shrink-0">{leading}</div>}
       <div className="min-w-0 flex-1">
@@ -68,13 +70,13 @@ export interface PageShellProps extends PageHeaderProps {
  */
 export function PageShell({ children, aside, className, ...header }: PageShellProps) {
   const { wide = false } = header
-  return <div data-page-shell data-variant={wide ? 'wide' : 'column'} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-    <PageHeader {...header} />
+  return <div data-page-shell data-aside={aside ? '' : undefined} data-variant={wide ? 'wide' : 'column'} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <PageHeader {...header} gutter={!wide} />
     <div className="flex min-h-0 min-w-0 flex-1">
       {aside}
       {wide
         ? <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden', className)}>{children}</div>
-        : <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+        : <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable_both-edges]">
             <div className={cn('ds-content py-8', className)}>{children}</div>
           </div>}
     </div>

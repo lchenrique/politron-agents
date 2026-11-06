@@ -198,6 +198,8 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice }: { snapshot
   }
 
   const empty = !board.tasks.length
+  // Bloqueadas e Canceladas só ocupam espaço quando têm tarefas (ou o filtro de status as escolhe): menos rolagem lateral.
+  const visibleColumns = statuses.filter(column => !['blocked', 'cancelled'].includes(column.id) || statusFilter === column.id || board.tasks.some(task => taskMatches(task) && taskColumn(task) === column.id))
   const selectedTask = board.tasks.find(task => task.id === selectedTaskId)
   const openCount = board.tasks.filter(task => !['done', 'cancelled'].includes(task.status)).length
   const actions = <>{teams.length > 0 && <Button type="button" variant="outline" onClick={() => { setTaskForm(value => !value); setTeamForm(false); setEditTaskId(null); setDraft(blankTask(teams[0]?.id)) }}><Plus className="size-4" />Nova tarefa</Button>}<Button type="button" onClick={() => { setTeamForm(value => !value); setTaskForm(false) }}><Users className="size-4" />Nova equipe</Button></>
@@ -227,9 +229,9 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice }: { snapshot
     </div>
     {!!teams.length && (empty
       ? <div className="ds-empty mx-8 mb-6 px-6 py-8 text-center max-[720px]:mx-4"><p className="text-sm font-medium">Nenhuma tarefa no board ainda</p><p className="mt-1 text-[13px] text-muted-foreground">Crie uma tarefa para começar.</p></div>
-      : <div role="region" tabIndex={0} aria-label="Colunas do board" className="flex min-h-[18rem] min-w-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden px-8 pb-6 pt-4 max-[720px]:px-4">{statuses.map(column => {
+      : <div role="region" tabIndex={0} aria-label="Colunas do board" className="flex min-h-[18rem] min-w-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden px-8 pb-6 pt-4 max-[720px]:px-4">{visibleColumns.map(column => {
         const cards = board.tasks.filter(taskMatches).filter(task => taskColumn(task) === column.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        return <section key={column.id} className="ds-column flex h-full min-h-0 min-w-[15rem] max-w-[20rem] flex-1 basis-0 flex-col" aria-label={`Coluna ${column.label}`}>
+        return <section key={column.id} className="ds-column flex h-full min-h-0 min-w-[14rem] max-w-[20rem] flex-1 basis-0 flex-col" aria-label={`Coluna ${column.label}`}>
           <header className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-3"><h2 className="truncate text-[13px] font-semibold">{column.label}</h2><span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{cards.length}</span></header>
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2">{cards.map(renderTaskCard)}{cards.length === 0 && <p className="rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">Sem tarefas</p>}</div>
         </section>

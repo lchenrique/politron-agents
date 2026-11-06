@@ -12,7 +12,7 @@ import { VoiceRecorder } from '../voice/voice-recorder'
 import { PromptInput } from '@/components/ai/prompt-input'
 import { MentionSuggestions } from './MentionSuggestions'
 import { getMentionQuery, replaceMention, type MentionQuery } from './mentions'
-import { useModelSlotNode } from './ComposerModelSlot'
+import { useModelSlotNode } from './modelSlotContext'
 import styles from './Composer.module.css'
 
 function ComposerFrame({ children }: { children: ReactNode }) {

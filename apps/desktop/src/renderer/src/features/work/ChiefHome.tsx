@@ -124,7 +124,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
         <h2 id="chief-brief-title" className="ds-section-title mb-3">O que {chiefName} deve resolver?</h2>
         {/* Mesmo cartão e mesma coluna do composer do chat; só o conteúdo (projeto e responsável) muda. */}
         <PromptInput className={composer.promptCard} inline showModelPicker={false} showAttachments={false} value={goal} onValueChange={setGoal}
-          textareaLabel={`Objetivo para ${chiefName}`} placeholder="Descreva o objetivo. Ele planeja, monta a equipe e executa." submitLabel="Atribuir" submitDisabled={sending}
+          textareaLabel={`Objetivo para ${chiefName}`} placeholder="Descreva o objetivo" submitLabel="Atribuir" submitDisabled={sending}
           onTextareaKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void assign() } }}
           onSubmit={() => void assign()}
           extraControls={<>

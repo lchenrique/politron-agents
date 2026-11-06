@@ -164,6 +164,12 @@ describe('BoardPage', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
+  it('omite as colunas Bloqueadas e Canceladas enquanto estão vazias', () => {
+    render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
+    expect(screen.getByRole('region', { name: 'Coluna Fila' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Coluna Canceladas' })).not.toBeInTheDocument()
+  })
+
   it('usa o PageShell na variante wide, sem controle de largura', () => {
     render(<BoardPage snapshot={{ ...base, board } as Snapshot} onOpenConversation={vi.fn()} onNotice={vi.fn()} />)
     expect(document.querySelector('[data-page-shell]')).toHaveAttribute('data-variant', 'wide')
@@ -180,7 +186,7 @@ describe('BoardPage', () => {
     const region = screen.getByRole('region', { name: 'Colunas do board' })
     expect(region).toHaveClass('overflow-x-auto', 'overflow-y-hidden')
     const column = screen.getByRole('region', { name: 'Coluna Em execução' })
-    expect(column).toHaveClass('min-w-[15rem]', 'flex-1', 'min-h-0')
+    expect(column).toHaveClass('min-w-[14rem]', 'flex-1', 'min-h-0')
     expect(column.querySelector('.overflow-y-auto')).toHaveClass('min-h-0', 'flex-1')
     expect(column.querySelectorAll('article')).toHaveLength(30)
     expect(column.querySelector('article')).toHaveClass('shrink-0', 'max-w-full')
