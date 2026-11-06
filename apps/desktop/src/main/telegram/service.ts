@@ -3,6 +3,7 @@ import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { ASSISTANT_ID, type Approval, type Message, type WorkspaceEvent } from '../../shared/v9'
+import { MEMORY_SCOPE_LABEL } from '../../shared/memory'
 import { telegramStartLink, type TelegramChat, type TelegramStatus } from '../../shared/telegram'
 import { EncryptedKey, type SecretStore } from '../v9/image-generation'
 import type { AppService } from '../v9/workspace'
@@ -10,7 +11,7 @@ import { escapeHtml, telegramChunks, TELEGRAM_LIMIT } from './format'
 
 /** O que o canal usa do núcleo V9: o mesmo envio e as mesmas decisões de aprovação da janela do desktop. */
 export type TelegramHost = Pick<AppService, 'snapshot' | 'send' | 'saveConversation' | 'respondApproval' | 'reviewPlan' | 'answerQuestion' | 'on' | 'off'> & {
-  store: Pick<AppService['store'], 'approval' | 'agent' | 'conversation'>
+  store: Pick<AppService['store'], 'approval' | 'agent' | 'conversation' | 'memories'>
 }
 type Chat = { id: number; type: string; first_name?: string; username?: string }
 type TgMessage = { message_id: number; chat: Chat; from?: { id: number; is_bot?: boolean }; text?: string; reply_to_message?: { message_id: number } }
@@ -39,6 +40,8 @@ const HELP = [
   '/conversas: escolher uma das últimas 10 conversas',
   '/nova: nova conversa com o Chief',
   '/chief: voltar para a conversa do Chief',
+  '/memoria: as 10 memórias mais recentes desta conversa',
+  '/lembrar &lt;texto&gt;: guardar uma memória global essencial',
   '/parear &lt;código&gt;: parear este chat',
   '',
   'Aprovações chegam com botões Aprovar e Recusar; nada é executado sem o seu toque.',
@@ -256,8 +259,27 @@ export class TelegramService {
     if (name === 'status') return this.sendStatus(chatId)
     if (name === 'conversas' || name === 'conversa') return this.listConversations(chatId)
     if (name === 'chief') { this.setConversation(chatId, this.chiefConversation(false)); await this.sendHtml(chatId, `Agora você fala com ${escapeHtml(this.conversationName(this.conversationFor(chatId)))}.`); return }
+    if (name === 'memoria' || name === 'memorias') return this.listMemories(chatId)
+    if (name === 'lembrar') return this.remember(chatId, argument)
     if (name === 'nova') { this.setConversation(chatId, this.chiefConversation(true)); await this.sendHtml(chatId, 'Nova conversa com o Chief criada. Pode escrever.'); return }
     await this.sendHtml(chatId, HELP)
+  }
+
+  /** Mesmas funções da tela Configurações → Memória, no escopo da conversa atual (global, Boos dela e o projeto). */
+  private async listMemories(chatId: number): Promise<void> {
+    const conversation = this.host.store.conversation(this.conversationFor(chatId))
+    const memories = this.host.store.memories.list({ limit: 10 }, { agentIds: conversation.agentIds || [], workspaceId: conversation.workspaceId || '' })
+    await this.sendHtml(chatId, memories.length
+      ? ['<b>Memórias desta conversa</b>', ...memories.map(memory => `• ${escapeHtml(memory.text)} <i>(${MEMORY_SCOPE_LABEL[memory.scope]}${memory.inclusion === 'essencial' ? ', essencial' : ''})</i>`)].join('\n')
+      : 'Nenhuma memória nesta conversa ainda. Use /lembrar &lt;texto&gt; para guardar uma.')
+  }
+
+  private async remember(chatId: number, text: string): Promise<void> {
+    if (!text) { await this.sendHtml(chatId, 'Escreva o que guardar: /lembrar &lt;texto&gt;'); return }
+    try {
+      this.host.store.memories.save({ text, scope: 'global', inclusion: 'essencial' }, { kind: 'usuario' })
+      await this.sendHtml(chatId, 'Guardado como memória global essencial. Todos os Boos passam a ver isso.')
+    } catch (error) { await this.sendHtml(chatId, escapeHtml(error instanceof Error ? error.message : 'Não foi possível guardar.')) }
   }
 
   private isAuthorized(chatId: number) { return this.data.chats.some(chat => chat.id === chatId) }

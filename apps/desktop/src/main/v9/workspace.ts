@@ -43,12 +43,17 @@ import { BoardService } from './board'
 import { toolActivityText } from '../../shared/activity'
 import { clipText, finishedTool, reasoningText, redactSecrets, startedTool, TOOL_OUTPUT_MAX } from './tool-activity'
 import { delegatedConversationName } from '../../shared/delegation-title'
+import { MEMORY_KINDS, type MemoryInput } from '../../shared/memory'
+import type { MemoryActor } from './memories'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
 
 type RunContext = { nativeItems?: Map<string, Message>; run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
   /** Autoaprendizado: chamadas de ferramenta (fora as de skill), erro seguido de sucesso, skill já gravada e revisão final em curso. */
-  voiceReply?: boolean; toolCalls?: number; toolFailed?: boolean; recovered?: boolean; savedSkill?: boolean; reflecting?: boolean }
+  voiceReply?: boolean; toolCalls?: number; toolFailed?: boolean; recovered?: boolean; savedSkill?: boolean; reflecting?: boolean
+  /** remember/update_memory/forget_memory do turno: só gravam se o turno terminar bem. */
+  pendingMemories?: Array<{ op: 'save'; input: MemoryInput } | { op: 'forget'; id: string }> }
+const MEMORY_WRITE_TOOLS = ['remember', 'update_memory', 'forget_memory']
 const SKILL_TOOLS = new Set(['list_skills', 'read_skill', 'save_skill'])
 const REFLECTION_TIMEOUT_MS = 60_000
 const text = (value: unknown, max = 12000) => { if (typeof value !== 'string' || value.length > max) throw new Error('Texto de ferramenta inválido.'); return value }
@@ -131,6 +136,8 @@ export class AppService extends EventEmitter {
   readonly decisionRouting: OpenRouterDecisionService
   readonly imageGeneration: ImageGenerationService
   private platformBrowser: PlatformBrowser | null = null
+  /** Último bloco de memórias entregue por thread: sessão retomada só recebe o bloco quando ele muda. */
+  private readonly memoryDelivered = new Map<string, string>()
   setPlatformBrowser(browser: PlatformBrowser) { this.platformBrowser = browser }
   private browserBusyBy(owner: PlatformBrowserOwner): { agent: string; conversation: string } | null {
     const current = this.platformBrowser?.sharingState?.()
@@ -1130,20 +1137,31 @@ export class AppService extends EventEmitter {
       let turnContext = makeTurnContext()
       // Lista curta de skills no turno (não no prompt de sistema, que fica fixo numa sessão retomada).
       const skillsBlock = skillsPromptBlock(await this.skills.forAgent(agent.skillIds).catch(() => []))
-      const withSkills = (value: string) => skillsBlock ? `${skillsBlock}\n\n${value}` : value
+      // Memórias essenciais também vão no turno; numa sessão retomada, só quando o bloco mudou.
+      let memorySent: [string, string] | undefined
+      const withSkills = (value: string, current: RuntimeThread) => {
+        const block = this.store.memories.promptBlock({ agentIds: [agent.id], workspaceId: run.workspaceId })
+        const send = current.history !== 'retained' || this.memoryDelivered.get(current.id) !== block
+        memorySent = send ? [current.id, block] : undefined
+        return [skillsBlock, send ? block : '', value].filter(Boolean).join('\n\n')
+      }
       let threadId = thread.id
       run.threadId = threadId; run.status = 'running'; this.store.putRun(run)
       this.updateMessage(message, 'running', message.text)
       const runtimeOptions = { ...(agent.effort ? { effort: agent.effort } : {}), ...(run.modelOptions || {}) }
       let result
-      try { result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000, runtimeOptions) }
+      try { result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text, thread)), agent.model || undefined, 600000, runtimeOptions) }
       catch (error) {
         if (!(error instanceof SessionUnavailableError) || didRetryUnavailable || !binding?.threadId || thread.history !== 'resume-pending') throw error
         this.store.deleteSessionBinding(bindingKey); binding = undefined; didRetryUnavailable = true
         thread = await runtime.thread(runtimeAgent, directory, tools, undefined, workspaceInstructions, externalBrowser)
         threadId = thread.id; run.threadId = threadId; this.store.putRun(run)
         turnContext = makeTurnContext()
-        result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text)), agent.model || undefined, 600000, runtimeOptions)
+        result = await runtime.send(threadId, await this.runtimeInput(run, withSkills(turnContext.text, thread)), agent.model || undefined, 600000, runtimeOptions)
+      }
+      if (memorySent) {
+        this.memoryDelivered.delete(memorySent[0]); this.memoryDelivered.set(...memorySent)
+        if (this.memoryDelivered.size > 500) this.memoryDelivered.delete(this.memoryDelivered.keys().next().value!)
       }
       if (result.thread?.id) { run.threadId = result.thread.id; this.store.putRun(run) }
       const turn = result.turn
@@ -1181,6 +1199,7 @@ export class AppService extends EventEmitter {
         const abort = () => { runtime.off('event', done); reject(new Error('Execução interrompida.')) }
         runtime.on('event', done); signal.addEventListener('abort', abort, { once: true })
       })
+      if (!['completed', 'interrupted', 'failed'].includes(context.run.status)) this.applyPendingMemories(context)
       await this.finish(context, 'completed', context.message.text)
       const deliveredReply = this.store.message(context.message.id)
       if (deliveredReply && context.sessionBindingKey && context.deliveredDigests) {
@@ -1301,6 +1320,12 @@ export class AppService extends EventEmitter {
       tool('group_members', context.agent.role === 'chief' ? 'Lista o catálogo de Boos e informa separadamente disponibilidade e se este Chief pode delegar para cada um neste workspace. Reutilize especialistas elegíveis antes de criar novos.' : 'Mostra os agentes desta conversa e a equipe padrão do workspace, com disponibilidade e elegibilidade para delegação.', {}, []),
       tool('search_history', 'Busca mensagens nesta conversa para recuperar o pedido e o contexto antes de responder a um follow-up curto ou ambíguo, como “encaminha”, “faz isso” ou “continua”. Consulte o histórico antes de pedir ao usuário que repita algo já explicado. A busca é limitada à conversa atual.', { query: { type: 'string', description: 'Termos concretos do pedido anterior, da correção ou do assunto citado pelo usuário.' } }, ['query']),
       tool('save_context_checkpoint', 'Salva um resumo de continuidade deste trabalho para uma futura sessão nova. Use em trabalhos longos ou antes de uma troca de contexto; não substitui os registros originais nem repete ações.', { summary: { type: 'string', description: 'Objetivo, progresso com evidências e próximos passos.' }, decisions: { type: 'array', items: { type: 'string' }, maxItems: 20 }, pending: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, ['summary']),
+      tool('search_memories', 'Busca nas memórias salvas (globais, suas e deste projeto) as que não estão no bloco <memorias_salvas> do turno. Até 10 resultados, com id para update_memory ou forget_memory.', { query: { type: 'string', description: 'Termos do assunto procurado.' } }, ['query']),
+      ...(!planning ? [
+        tool('remember', 'Salva um fato curto e durável (até 500 caracteres): preferência do usuário, decisão, fato do projeto ou resumo de trabalho. Nunca salve tokens, chaves ou senhas. Só é gravado se este turno terminar com sucesso. Texto igual ao de uma memória existente não duplica. Ao concluir uma missão ou delegação relevante, salve type=resumo (escopo do projeto) com o que foi feito, decisões e pendências.', { text: { type: 'string', description: 'O fato, autossuficiente, em uma ou duas frases.' }, type: { type: 'string', enum: MEMORY_KINDS }, scope: { type: 'string', enum: ['agent', 'workspace', 'global'], description: 'agent = só você (padrão); workspace = este projeto (padrão de resumo); global = vale para todos os Boos.' }, inclusion: { type: 'string', enum: ['essencial', 'pesquisavel'], description: 'essencial entra em todo turno (orçamento limitado); pesquisavel só via search_memories (padrão).' } }, ['text']),
+        tool('update_memory', 'Corrige o texto, o tipo ou a inclusão de uma memória pelo id. A inclusão fixada pelo usuário não muda. Só é gravado se este turno terminar com sucesso.', { memory_id: { type: 'string' }, text: { type: 'string' }, type: { type: 'string', enum: MEMORY_KINDS }, inclusion: { type: 'string', enum: ['essencial', 'pesquisavel'] } }, ['memory_id']),
+        tool('forget_memory', 'Apaga uma memória pelo id quando ela ficou errada ou o usuário pediu para esquecer. Só é aplicado se este turno terminar com sucesso.', { memory_id: { type: 'string' } }, ['memory_id']),
+      ] : []),
       tool('list_skills', 'Lista as skills disponíveis (nome e quando usar cada uma): as já instaladas no Codex/Claude Code desta máquina, as que o usuário adicionou e as que você ou outro agente já aprenderam. Use antes de uma tarefa para ver se já existe um procedimento conhecido; chame read_skill para ler o conteúdo completo de uma antes de segui-la.', {}, []),
       tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id ou nome devolvido por list_skills. Com file, lê um arquivo auxiliar dentro da pasta da skill (ex.: references/social.md).', { id: { type: 'string' }, file: { type: 'string', description: 'Opcional: caminho relativo de um arquivo auxiliar dentro da pasta da skill.' } }, ['id']),
       ...(!planning ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
@@ -1310,7 +1335,7 @@ export class AppService extends EventEmitter {
       tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. A delegação do Chief nunca prende a conversa: sempre roda em segundo plano, mesmo com mode=wait; você recebe um recibo na hora, deve encerrar o turno e será acionado automaticamente quando o Boo terminar (sucesso ou falha). Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
     ]
-    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill', 'generate_image'].includes(item.name)) : available
+    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill', 'generate_image', ...MEMORY_WRITE_TOOLS].includes(item.name)) : available
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
@@ -1468,8 +1493,51 @@ export class AppService extends EventEmitter {
       }
       return `Arquivo salvo: ${relative(root, target)}`
   }
+  private memoryActor(context: RunContext): Extract<MemoryActor, { kind: 'agente' }> {
+    return { kind: 'agente', agentId: context.agent.id, conversationId: context.conversation.id, context: { agentIds: [context.agent.id], workspaceId: context.run.workspaceId } }
+  }
+  /** Busca na hora; gravações são validadas agora e ficam pendentes até o turno terminar bem. */
+  private memoryTool(context: RunContext, name: string, args: Record<string, unknown>): string {
+    const bank = this.store.memories
+    const actor = this.memoryActor(context)
+    if (name === 'search_memories') {
+      const hits = bank.list({ query: text(args.query, 200), limit: 10 }, actor.context)
+      return hits.length ? JSON.stringify(hits.map(item => ({ id: item.id, scope: item.scope, type: item.kind, inclusion: item.inclusion, text: item.text, updatedAt: item.updatedAt }))) : 'Nenhuma memória encontrada.'
+    }
+    if (name === 'forget_memory') {
+      const id = text(args.memory_id, 100)
+      const memory = bank.get(id)
+      if (!memory || !bank.visible(memory, actor.context)) throw new Error('Memória não encontrada para este Boo ou projeto.')
+      ;(context.pendingMemories ??= []).push({ op: 'forget', id })
+      return 'Memória marcada para esquecer; é apagada quando este turno terminar com sucesso.'
+    }
+    const input: MemoryInput = {
+      ...(name === 'update_memory' ? { id: text(args.memory_id, 100) } : { scope: (args.scope ?? (args.type === 'resumo' ? 'workspace' : 'agent')) as MemoryInput['scope'] }),
+      ...(args.text !== undefined ? { text: text(args.text, 4000) } : {}),
+      ...(args.type !== undefined ? { kind: args.type as MemoryInput['kind'] } : {}),
+      ...(args.inclusion !== undefined ? { inclusion: args.inclusion as MemoryInput['inclusion'] } : {}),
+    }
+    if (name === 'remember' && input.text === undefined) throw new Error('Informe o texto da memória.')
+    const { memory, note } = bank.save(input, actor, true)
+    ;(context.pendingMemories ??= []).push({ op: 'save', input })
+    return `Memória pronta (${memory.scope}, ${memory.inclusion}); é gravada quando este turno terminar com sucesso.${note ? ` ${note}` : ''}`
+  }
+  private applyPendingMemories(context: RunContext): void {
+    const operations = context.pendingMemories?.splice(0) || []
+    if (!operations.length) return
+    const actor = this.memoryActor(context)
+    const done: string[] = []
+    for (const operation of operations) {
+      // Algo mudou durante o turno (memória apagada pelo usuário, por exemplo): a operação é descartada.
+      try {
+        if (operation.op === 'forget') { if (this.store.memories.remove(operation.id, actor.context)) done.push('esqueceu 1') }
+        else { const saved = this.store.memories.save(operation.input, actor).memory.text; done.push(`lembrou "${saved.length > 80 ? `${saved.slice(0, 80)}…` : saved}"`) }
+      } catch { /* descartada */ }
+    }
+    if (done.length) this.addMessage(context.conversation.id, context.agent, 'activity', `Memória · ${done.join(' · ')}`, 'completed', context.run.id)
+  }
   private async callTool(context: RunContext, name: string, args: Record<string, unknown>, callId = ''): Promise<unknown> {
-    if (context.conversation && this.boardReviewerConversations.has(context.conversation.id) && (CHIEF_TOOLS.has(name) || name.startsWith('browser_') || name.startsWith('external_browser_') || ['workspace_write', 'generate_image', 'workspace_run_command', 'workspace_start_process', 'workspace_stop_process', 'ask_agent', 'agent_create', 'self_update', 'propose_self_profile', 'save_skill'].includes(name)))
+    if (context.conversation && this.boardReviewerConversations.has(context.conversation.id) && (CHIEF_TOOLS.has(name) || name.startsWith('browser_') || name.startsWith('external_browser_') || ['workspace_write', 'generate_image', 'workspace_run_command', 'workspace_start_process', 'workspace_stop_process', 'ask_agent', 'agent_create', 'self_update', 'propose_self_profile', 'save_skill', ...MEMORY_WRITE_TOOLS].includes(name)))
       throw new Error('A revisão do board é somente leitura; não é possível alterar arquivos, executar comandos ou delegar alterações.')
     if (context.reflecting && !SKILL_TOOLS.has(name)) throw new Error('Na revisão de aprendizado só as ferramentas de skill estão disponíveis.')
     const root = context.run.workspacePath
@@ -1513,8 +1581,9 @@ export class AppService extends EventEmitter {
         : 'Plano registrado no Boobot. Continue a execução da tarefa autorizada e valide o resultado.'
     }
     if (context.run.planMode && !['workspace_list', 'workspace_read', 'ask_user', 'propose_plan',
-      'group_members', 'search_history', 'list_skills', 'read_skill'].includes(name))
+      'group_members', 'search_history', 'search_memories', 'list_skills', 'read_skill'].includes(name))
       throw new Error('Modo plano: ferramenta de alteração indisponível.')
+    if (name === 'search_memories' || MEMORY_WRITE_TOOLS.includes(name)) return this.memoryTool(context, name, args)
     if (name === 'workspace_run_command') {
       if (!this.store.terminalEnabled()) throw new Error('A execução de comandos no terminal está desativada nas configurações globais.')
       if (!context.agent.canWrite) throw new Error('Este agente não tem permissão de escrita para executar comandos.')

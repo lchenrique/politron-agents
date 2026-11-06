@@ -2,6 +2,8 @@ import { ipcMain, BrowserWindow, dialog } from 'electron'
 import type { AppService } from './workspace'
 import { VoiceService } from './voice'
 import type { HostRouting } from '../hosts/rpc'
+import { writeFile } from 'node:fs/promises'
+import type { MemoryInput } from '../../shared/memory'
 
 export function registerV9Ipc(service: AppService, routing?: HostRouting) {
   const voice = new VoiceService()
@@ -38,6 +40,24 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
     if (routing?.remote) throw new Error('O board pode ser alterado somente no desktop.')
     return handler(...args)
+  })
+  // Memória dos Boos: banco local deste computador, fora da RPC de hosts remotos.
+  const memoryHandlers: Record<string, (...args: never[]) => unknown> = {
+    list: (filter: unknown) => service.store.memories.list(filter && typeof filter === 'object' ? filter : {}),
+    save: (input: MemoryInput) => service.store.memories.save(input, { kind: 'usuario' }).memory,
+    remove: (id: string) => { service.store.memories.remove(String(id)) },
+    exportJson: async () => {
+      const target = await dialog.showSaveDialog({ title: 'Exportar memórias do Boobot', defaultPath: `boobot-memorias-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (target.canceled || !target.filePath) return null
+      await writeFile(target.filePath, JSON.stringify({ app: 'Boobot', exportedAt: new Date().toISOString(), memories: service.store.memories.list({ limit: 1000 }) }, null, 2), 'utf8')
+      return target.filePath
+    },
+  }
+  for (const [channel, handler] of Object.entries(memoryHandlers)) ipcMain.handle(`memory:${channel}`, (event, ...args) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    if (!owner || owner.isDestroyed()) throw new Error('Janela do Boobot indisponível.')
+    if (routing?.remote) throw new Error('A memória dos Boos fica neste computador; volte para o host local para editá-la.')
+    return handler(...args as never[])
   })
   invokeDesktopOnly('externalBrowserStatus', (owner) => service.externalBrowserStatus(owner))
   invokeDesktopOnly('setExternalBrowserGrant', (owner, enabled) => service.setExternalBrowserGrant(owner, enabled === true))
@@ -154,6 +174,7 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting) {
     service.off('workspace-event', send)
     voice.close()
     ipcMain.removeHandler('v9:clearClaudeCredential')
+    for (const channel of Object.keys(memoryHandlers)) ipcMain.removeHandler(`memory:${channel}`)
     for (const channel of ['snapshot', 'boardSnapshot', 'saveBoardTeam', 'deleteBoardTeam', 'createBoardTask', 'updateBoardTask', 'assignBoardTask', 'reassignBoardTask', 'boardTaskAction', 'addBoardEvidence', 'settingsPreferences', 'saveAgent', 'marketplaceTeams', 'hireTeam', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'sidebarLayout', 'saveSidebarLayout', 'saveWorkspace', 'createWorktree', 'createProjectFolder', 'cloneRepository', 'cancelClone', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff', 'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'answerQuestion', 'setVisibleConversation', 'getVisibleConversation', 'respondToAgent', 'hasClaudeCredential', 'saveClaudeCredential', 'openRouterDecisionStatus', 'openRouterDecisionModels', 'saveOpenRouterDecision', 'saveOpenRouterDecisionModel', 'clearOpenRouterDecision', 'imageGenerationStatus', 'saveImageGeneration', 'clearImageGenerationKey', 'testImageGeneration', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'stop', 'voiceStatus', 'pitVoices', 'setPitVoice', 'pitVoiceSample', 'pocketVoices', 'setPocketVoice', 'importPocketVoice', 'optimizePocketVoice', 'voiceInstall', 'voiceTranscribe', 'voiceSpeak', 'voiceNew', 'voiceResetAgent', 'voiceSetProvider', 'voiceSaveOpenRouterKey', 'voiceClearOpenRouterKey', 'cancelDelegation', 'startMission', 'missionAction', 'saveRoutine', 'deleteRoutine', 'runRoutine', 'models', 'pickFolder', 'openFolder', 'agentTerminalSessions', 'agentTerminalStop', 'openExternalTerminal', 'externalBrowserStatus', 'setExternalBrowserGrant']) ipcMain.removeHandler(`v9:${channel}`)
   }
 }

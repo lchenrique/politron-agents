@@ -4,8 +4,9 @@ import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type ApprovalGrant, type BoardEvidence, type BoardEvent, type BoardTask, type BoardTaskMission, type BoardTeam, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type SidebarLayout, type Snapshot, type Workspace } from '../../shared/v9'
 import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
+import { ensureMemorySchema, MemoryBank } from './memories'
 
-export const SCHEMA_VERSION = 11
+export const SCHEMA_VERSION = 12
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
   instructions: 'Você é o Assistente padrão do Boobot. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
@@ -72,6 +73,7 @@ export function canonicalDirectory(value: unknown): string | null {
 export class WorkspaceStore {
   readonly db: DatabaseSync
   readonly dataDirectory: string
+  readonly memories: MemoryBank
   constructor(directory: string) {
     this.dataDirectory = directory
     mkdirSync(directory, { recursive: true })
@@ -126,6 +128,9 @@ export class WorkspaceStore {
     if (previousSchema !== null && previousSchema < 9) this.migrateCommandEvidence()
     if (previousSchema !== null && previousSchema < 10) this.db.prepare("UPDATE v9_meta SET value='10' WHERE key='schema'").run()
     if (previousSchema !== null && previousSchema < 11) this.db.prepare("UPDATE v9_meta SET value='11' WHERE key='schema'").run()
+    // 12: memória dos Boos (tabelas novas; nada existente muda).
+    ensureMemorySchema(this.db)
+    if (previousSchema !== null && previousSchema < 12) this.db.prepare("UPDATE v9_meta SET value='12' WHERE key='schema'").run()
     if (previousSchema === null) this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
     // Agrupar sessões livres antigas sem mover seus diretórios originais.
     const existingWorkspaces = this.workspaces()
@@ -157,6 +162,7 @@ export class WorkspaceStore {
       }
     }
     this.ensureMessageSearchIndex()
+    this.memories = new MemoryBank(this.db)
     for (const approval of this.approvals().filter(item => item.status === 'pending')) this.putApproval({ ...approval, status: 'interrupted', resolvedAt: new Date().toISOString() })
   }
   private schemaVersion(): number | null {
@@ -608,6 +614,7 @@ export class WorkspaceStore {
     this.db.prepare('DELETE FROM v9_file_changes WHERE workspace_id=?').run(id)
     this.db.prepare('DELETE FROM v9_approval_grants WHERE workspace_id=?').run(id)
     this.db.prepare('DELETE FROM v9_workspaces WHERE id=?').run(id)
+    this.memories.removeOwner('workspace', id)
   }
   deleteAgent(id: string): void {
     if (id === ASSISTANT_ID) throw new Error('O Assistente padrão não pode ser excluído.')
@@ -624,6 +631,7 @@ export class WorkspaceStore {
       this.put('v9_workspaces', { ...workspace, defaultAgentIds: defaultAgentIds.filter(agentId => agentId !== id) })
     }
     this.db.prepare('DELETE FROM v9_agents WHERE id=?').run(id)
+    this.memories.removeOwner('agent', id)
     this.db.prepare('DELETE FROM v9_checkpoints WHERE agent_id=?').run(id)
     this.db.prepare('DELETE FROM v9_approval_grants WHERE agent_id=?').run(id)
   }

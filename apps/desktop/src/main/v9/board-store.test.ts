@@ -66,15 +66,15 @@ describe('WorkspaceStore para o board da empresa', () => {
     expect(() => store.putBoardEvidence({ id: 'too-large', taskId: task.id, round: 0, kind: 'note', label: 'Nota', summary: 'x'.repeat(20_001), createdAt: now })).toThrow(/limite/i)
   })
 
-  it('migra schema 10 para 11 e cria um backup antes de abrir as tabelas do board', () => {
+  it('migra schema 10 para 12 e cria um backup antes de abrir as tabelas do board', () => {
     const directory = mkdtempSync(join(tmpdir(), 'politron-board-schema-10-'))
     directories.push(directory)
     const database = new DatabaseSync(join(directory, 'politron-v9.sqlite'))
     database.exec("CREATE TABLE v9_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO v9_meta VALUES ('schema','10');")
     database.close()
-    expect(SCHEMA_VERSION).toBe(11)
+    expect(SCHEMA_VERSION).toBe(12)
     const store = openStore(directory)
-    expect(store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get()).toEqual({ value: '11' })
+    expect(store.db.prepare("SELECT value FROM v9_meta WHERE key='schema'").get()).toEqual({ value: '12' })
     expect(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='v9_board_teams'").get()).toEqual({ name: 'v9_board_teams' })
     expect(readdirSync(directory).some(file => file.startsWith('politron-v9.backup-schema10-'))).toBe(true)
   })
