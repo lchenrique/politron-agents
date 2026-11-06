@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { ASSISTANT_ID, type Agent, type Mission, type MissionAction, type Routine, type Run, type StartMissionInput, type WorkspaceEvent } from '../../shared/v9'
 import { DEFAULT_MISSION_TURNS, DEFAULT_ROUTINE_TURNS, decideAfterTurn, missionBrief, nextRoutineRun, normalizeSteps, validateTrigger } from '../../shared/missions'
 import type { WorkspaceStore } from './store'
+import { wakeBlock } from './waits'
 
 const ACTIVE_RUN = ['queued', 'running', 'waiting']
 const text = (value: unknown, label: string, max: number) => { if (typeof value !== 'string' || !value.trim() || value.length > max) throw new Error(`${label}: informe um texto de até ${max} caracteres.`); return value.trim() }
@@ -213,8 +214,10 @@ export class MissionEngine {
     if (conversationId && this.store.openMission(conversationId)) throw new Error(`A rotina ${routine.name} ainda tem uma missão em andamento.`)
     if (!conversationId) conversationId = this.store.saveConversation({ name: `Rotina: ${routine.name}`, kind: 'direct', agentIds: routine.agentId === ASSISTANT_ID ? [] : [routine.agentId], workspaceId: routine.workspaceId }).id
     const now = new Date()
+    // Esperas do Boo (sem rotina ou desta rotina) são retomadas por esta execução.
+    const woken = routine.agentId === ASSISTANT_ID ? [] : this.store.waits.wake(routine.agentId, routine.id, randomUUID(), now)
     this.store.putRoutine({ ...routine, conversationId, lastRunAt: now.toISOString(), nextRunAt: nextRoutineRun(routine.trigger, now), updatedAt: now.toISOString() })
-    const mission = this.start({ goal: `${routine.instructions}\n\n(Rotina "${routine.name}", disparada por ${reason} em ${now.toLocaleString('pt-BR')}. Compare com as execuções anteriores desta conversa e entregue um resumo objetivo do que verificou, corrigiu e do que precisa da decisão do usuário.)`,
+    const mission = this.start({ goal: `${routine.instructions}\n\n(Rotina "${routine.name}", disparada por ${reason} em ${now.toLocaleString('pt-BR')}. Compare com as execuções anteriores desta conversa e entregue um resumo objetivo do que verificou, corrigiu e do que precisa da decisão do usuário.)${wakeBlock(woken)}`,
       title: `${routine.name} · ${now.toLocaleDateString('pt-BR')}`, conversationId, agentId: routine.agentId, maxTurns: routine.maxTurns, model: routine.model, routineId: routine.id })
     this.store.putRoutine({ ...this.store.routine(routine.id), lastMissionId: mission.id })
     this.host.emit({ type: 'changed' })
@@ -227,6 +230,13 @@ export class MissionEngine {
       this.store.putRoutine({ ...routine, nextRunAt: nextRoutineRun(routine.trigger, new Date()), updatedAt: new Date().toISOString() })
       console.warn('[Rotinas]', routine.name, error instanceof Error ? error.message : error)
     }
+  }
+  /** Uma espera encerra a missão aberta da conversa: sem isso a rotina não roda de novo e o laço insistiria no Boo. */
+  parkForWait(conversationId: string, agentId: string, note: string) {
+    const mission = this.store.openMission(conversationId)
+    if (!mission) return
+    const now = new Date().toISOString()
+    this.save(this.note({ ...mission, status: 'completed', result: `Em espera: ${note}`, question: null, options: [], completedAt: now, lastProgressAt: now }, 'result', `Em espera: ${note}`, agentId))
   }
   tickRoutines(now = new Date()) {
     if (this.disposed) return

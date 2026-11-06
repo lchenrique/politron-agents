@@ -5,6 +5,7 @@ import { basename, isAbsolute, join, resolve } from 'node:path'
 import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type ApprovalGrant, type BoardEvidence, type BoardEvent, type BoardTask, type BoardTaskMission, type BoardTeam, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type SidebarLayout, type Snapshot, type Workspace } from '../../shared/v9'
 import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 import { ensureMemorySchema, MemoryBank } from './memories'
+import { ensureWaitSchema, WaitBank } from './waits'
 
 export const SCHEMA_VERSION = 12
 export const ASSISTANT: Agent = {
@@ -74,6 +75,7 @@ export class WorkspaceStore {
   readonly db: DatabaseSync
   readonly dataDirectory: string
   readonly memories: MemoryBank
+  readonly waits: WaitBank
   constructor(directory: string) {
     this.dataDirectory = directory
     mkdirSync(directory, { recursive: true })
@@ -131,6 +133,8 @@ export class WorkspaceStore {
     // 12: memória dos Boos (tabelas novas; nada existente muda).
     ensureMemorySchema(this.db)
     if (previousSchema !== null && previousSchema < 12) this.db.prepare("UPDATE v9_meta SET value='12' WHERE key='schema'").run()
+    // Esperas por evento: tabela nova e aditiva (IF NOT EXISTS), sem mudar o esquema nem recusar versões anteriores.
+    ensureWaitSchema(this.db)
     if (previousSchema === null) this.db.prepare("UPDATE v9_meta SET value=? WHERE key='schema'").run(String(SCHEMA_VERSION))
     // Agrupar sessões livres antigas sem mover seus diretórios originais.
     const existingWorkspaces = this.workspaces()
@@ -163,6 +167,7 @@ export class WorkspaceStore {
     }
     this.ensureMessageSearchIndex()
     this.memories = new MemoryBank(this.db)
+    this.waits = new WaitBank(this.db)
     for (const approval of this.approvals().filter(item => item.status === 'pending')) this.putApproval({ ...approval, status: 'interrupted', resolvedAt: new Date().toISOString() })
   }
   private schemaVersion(): number | null {
@@ -632,6 +637,7 @@ export class WorkspaceStore {
     }
     this.db.prepare('DELETE FROM v9_agents WHERE id=?').run(id)
     this.memories.removeOwner('agent', id)
+    this.waits.removeOwner(id)
     this.db.prepare('DELETE FROM v9_checkpoints WHERE agent_id=?').run(id)
     this.db.prepare('DELETE FROM v9_approval_grants WHERE agent_id=?').run(id)
   }

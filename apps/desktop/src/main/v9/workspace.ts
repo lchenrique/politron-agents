@@ -1379,6 +1379,14 @@ export class AppService extends EventEmitter {
       tool('group_members', context.agent.role === 'chief' ? 'Lista o catálogo de Boos e informa separadamente disponibilidade e se este Chief pode delegar para cada um neste workspace. Reutilize especialistas elegíveis antes de criar novos.' : 'Mostra os agentes desta conversa e a equipe padrão do workspace, com disponibilidade e elegibilidade para delegação.', {}, []),
       tool('search_history', 'Busca mensagens nesta conversa para recuperar o pedido e o contexto antes de responder a um follow-up curto ou ambíguo, como “encaminha”, “faz isso” ou “continua”. Consulte o histórico antes de pedir ao usuário que repita algo já explicado. A busca é limitada à conversa atual.', { query: { type: 'string', description: 'Termos concretos do pedido anterior, da correção ou do assunto citado pelo usuário.' } }, ['query']),
       tool('save_context_checkpoint', 'Salva um resumo de continuidade deste trabalho para uma futura sessão nova. Use em trabalhos longos ou antes de uma troca de contexto; não substitui os registros originais nem repete ações.', { summary: { type: 'string', description: 'Objetivo, progresso com evidências e próximos passos.' }, decisions: { type: 'array', items: { type: 'string' }, maxItems: 20 }, pending: { type: 'array', items: { type: 'string' }, maxItems: 20 } }, ['summary']),
+      tool('await_event', 'Pare o trabalho de propósito porque ele depende de algo de fora (build, deploy, retorno de alguém, próxima rodada de uma rotina). Registra a espera com uma nota e você DEVE encerrar o turno em seguida. Você é retomado quando uma rotina sua disparar. Exige que você tenha ao menos uma rotina ativa; sem ela, crie uma antes. Máximo de 20 esperas abertas.', {
+        note: { type: 'string', description: 'O que está esperando e o que fazer quando acontecer.' },
+        routineId: { type: 'string', description: 'Opcional: id da rotina que deve retomar esta espera. Sem ele, qualquer rotina sua retoma.' },
+      }, ['note']),
+      tool('list_waits', 'Lista as suas esperas abertas, com id, nota e se já foram retomadas.', {}, []),
+      tool('close_wait', 'Fecha uma espera sua quando o trabalho dela terminou.', {
+        waitId: { type: 'string' },
+      }, ['waitId']),
       tool('search_memories', 'Busca nas memórias salvas (globais, suas e deste projeto) as que não estão no bloco <memorias_salvas> do turno. Até 10 resultados, com id para update_memory ou forget_memory.', { query: { type: 'string', description: 'Termos do assunto procurado.' } }, ['query']),
       ...(!planning ? [
         tool('remember', 'Salva um fato curto e durável (até 500 caracteres): preferência do usuário, decisão, fato do projeto ou resumo de trabalho. Nunca salve tokens, chaves ou senhas. Só é gravado se este turno terminar com sucesso. Texto igual ao de uma memória existente não duplica. Ao concluir uma missão ou delegação relevante, salve type=resumo (escopo do projeto) com o que foi feito, decisões e pendências.', { text: { type: 'string', description: 'O fato, autossuficiente, em uma ou duas frases.' }, type: { type: 'string', enum: MEMORY_KINDS }, scope: { type: 'string', enum: ['agent', 'workspace', 'global'], description: 'agent = só você (padrão); workspace = este projeto (padrão de resumo); global = vale para todos os Boos.' }, inclusion: { type: 'string', enum: ['essencial', 'pesquisavel'], description: 'essencial entra em todo turno (orçamento limitado); pesquisavel só via search_memories (padrão).' } }, ['text']),
@@ -1394,7 +1402,7 @@ export class AppService extends EventEmitter {
       tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. A delegação do Chief nunca prende a conversa: sempre roda em segundo plano, mesmo com mode=wait; você recebe um recibo na hora, deve encerrar o turno e será acionado automaticamente quando o Boo terminar (sucesso ou falha). Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
     ]
-    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill', 'generate_image', ...MEMORY_WRITE_TOOLS].includes(item.name)) : available
+    return boardReview ? available.filter(item => !CHIEF_TOOLS.has(item.name) && !item.name.startsWith('browser_') && !item.name.startsWith('external_browser_') && !['ask_agent', 'agent_create', 'mission_start', 'propose_self_profile', 'self_update', 'save_skill', 'generate_image', 'await_event', 'close_wait', ...MEMORY_WRITE_TOOLS].includes(item.name)) : available
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
@@ -1556,6 +1564,27 @@ export class AppService extends EventEmitter {
     return { kind: 'agente', agentId: context.agent.id, conversationId: context.conversation.id, context: { agentIds: [context.agent.id], workspaceId: context.run.workspaceId } }
   }
   /** Busca na hora; gravações são validadas agora e ficam pendentes até o turno terminar bem. */
+  private waitTool(context: RunContext, name: string, args: Record<string, unknown>): string {
+    const agentId = context.agent.id
+    if (name === 'list_waits') {
+      const open = this.store.waits.open(agentId)
+      return open.length ? open.map(wait => `- ${wait.id}: ${wait.note}${wait.wokenAt ? ' (retomada)' : ''}`).join('\n') : 'Nenhuma espera aberta.'
+    }
+    if (name === 'close_wait') {
+      const waitId = text(args.waitId, 200).trim()
+      this.store.waits.close(waitId, agentId)
+      return 'Espera fechada.'
+    }
+    const note = text(args.note, 500).trim()
+    const routines = this.store.routines().filter(routine => routine.agentId === agentId)
+    if (!routines.length) throw new Error('Você não tem nenhuma rotina: é ela que retoma a espera. Crie uma rotina antes de usar await_event.')
+    const routineId = args.routineId === undefined ? null : text(args.routineId, 200).trim()
+    if (routineId && !routines.some(routine => routine.id === routineId)) throw new Error('Essa rotina não é sua.')
+    const wait = this.store.waits.create({ agentId, conversationId: context.conversation.id, routineId, note, requestText: context.run.input || '' })
+    // A espera encerra a missão aberta: sem isso a rotina não roda de novo e o laço de continuação insistiria no Boo.
+    this.missions.parkForWait(context.conversation.id, agentId, note)
+    return `Espera ${wait.id} registrada. Encerre o turno agora com um resumo curto; você será retomado quando uma rotina sua disparar.`
+  }
   private memoryTool(context: RunContext, name: string, args: Record<string, unknown>): string {
     const bank = this.store.memories
     const actor = this.memoryActor(context)
@@ -1646,9 +1675,10 @@ export class AppService extends EventEmitter {
         : 'Plano registrado no Boobot. Continue a execução da tarefa autorizada e valide o resultado.'
     }
     if (context.run.planMode && !['workspace_list', 'workspace_read', 'ask_user', 'ask_ui', 'propose_plan',
-      'group_members', 'search_history', 'search_memories', 'list_skills', 'read_skill'].includes(name))
+      'group_members', 'search_history', 'search_memories', 'list_waits', 'list_skills', 'read_skill'].includes(name))
       throw new Error('Modo plano: ferramenta de alteração indisponível.')
     if (name === 'search_memories' || MEMORY_WRITE_TOOLS.includes(name)) return this.memoryTool(context, name, args)
+    if (name === 'await_event' || name === 'list_waits' || name === 'close_wait') return this.waitTool(context, name, args)
     if (name === 'workspace_run_command') {
       if (!this.store.terminalEnabled()) throw new Error('A execução de comandos no terminal está desativada nas configurações globais.')
       if (!context.agent.canWrite) throw new Error('Este agente não tem permissão de escrita para executar comandos.')
