@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Modal } from '@/components/dsh'
+import { PageShell } from '@/components/layout/PageShell'
 import { ThemeSelector } from '@/components/ide/ThemeSelector'
 import { errorText } from './appShellShared'
 import { setRivePreview, useRivePreview } from './booRendererPreference'
@@ -42,10 +42,10 @@ const SOURCE_LABEL: Record<SkillInfo['source'], string> = { codex: 'Codex', clau
 
 function Field({ icon: Icon, title, description, children }: { icon?: typeof Palette; title: string; description: string; children: React.ReactNode }) {
   const titleId = useId()
-  return <section aria-labelledby={titleId} className="ds-panel p-4 sm:p-5">
+  return <section aria-labelledby={titleId} className="ds-card p-4">
     <div className="flex items-start gap-3">
       {Icon && <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground"><Icon className="size-4" /></span>}
-      <div className="min-w-0"><h3 id={titleId} className="ds-section-title">{title}</h3><p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p></div>
+      <div className="min-w-0"><h3 id={titleId} className="ds-section-title">{title}</h3><p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">{description}</p></div>
     </div>
     <div className="mt-4 space-y-4 border-t border-border pt-4">{children}</div>
   </section>
@@ -142,7 +142,8 @@ function SpeechKeySettings() {
   return <Field icon={KeyRound} title="OpenRouter para leitura de mensagens" description="Chave usada pela síntese de voz das mensagens quando esse motor está selecionado. É independente da chave de decisão dos grupos."><FieldGroup><FormField><FieldLabel htmlFor="speech-router-key">Chave OpenRouter de voz</FieldLabel><Input id="speech-router-key" type="password" autoComplete="off" value={key} onChange={event => setKey(event.target.value)} placeholder={configured ? 'Chave configurada; cole outra para substituir' : 'Cole a chave OpenRouter'} /></FormField><div className="flex flex-wrap gap-2"><Button disabled={busy || !key.trim()} onClick={() => void save()}>{configured ? 'Substituir chave de voz' : 'Salvar chave de voz'}</Button>{configured && <Button variant="outline" disabled={busy} onClick={() => void save(true)}>Remover chave de voz</Button>}</div>{feedback && <p role="status" className="text-xs text-muted-foreground">{feedback}</p>}</FieldGroup></Field>
 }
 
-export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: { open: boolean; onOpenChange: (open: boolean) => void; initialSection?: SettingsSection }) {
+/** Página de Configurações: navegação de seções à esquerda e o conteúdo na coluna do PageShell. */
+export function SettingsPage({ open = true, initialSection = 'geral' }: { open?: boolean; initialSection?: SettingsSection }) {
   const [section, setSection] = useState<Section>('geral')
   const rivePreview = useRivePreview()
   useEffect(() => { if (open) setSection(initialSection) }, [open, initialSection])
@@ -231,30 +232,17 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
 
   const current = SECTIONS.find(item => item.id === section) || SECTIONS[0]
 
-  return <Modal open={open} onClose={() => onOpenChange(false)} title="Configurações" headless backdropBlur={false}
-    className={css.dialog}>
-    {/* Em janelas estreitas a navegação vira uma faixa rolável acima do conteúdo; o X do diálogo fica fora das duas áreas de rolagem. */}
-      <button type="button" aria-label="Fechar" onClick={() => onOpenChange(false)}
-        className="absolute right-3 top-3 z-20 flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <X className="size-4" aria-hidden="true" />
-      </button>
-      <nav aria-label="Seções de configurações" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-chrome p-2 pr-12 sm:flex-col sm:gap-px sm:overflow-y-auto sm:overflow-x-hidden sm:border-b-0 sm:border-r sm:p-2.5">
-        <p className="ds-eyebrow hidden px-2 pb-2 pt-1.5 sm:block">Configurações</p>
-        {SECTIONS.map(item => <Button key={item.id} type="button" variant={null} size={null} onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined}
-          className="ds-nav-item flex h-8 shrink-0 items-center justify-start gap-2.5 whitespace-nowrap rounded-md px-2.5 text-left text-[13px] font-medium focus-visible:ring-0">
-          <item.icon className="size-4 shrink-0" />{item.label}
-        </Button>)}
-      </nav>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-        <header className="flex shrink-0 items-start gap-3 border-b border-border px-5 py-4 sm:px-8 sm:py-5 sm:pr-14">
-          <span aria-hidden="true" className="mt-0.5 hidden size-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground sm:flex"><current.icon className="size-[18px]" /></span>
-          <div className="min-w-0">
-            <h2 id="settings-section-title" className="ds-page-title text-xl">{current.label}</h2>
-            <p className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">{current.description}</p>
-          </div>
-        </header>
-        <div role="region" aria-labelledby="settings-section-title" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-8 sm:py-6">
-        <div className="mx-auto max-w-3xl space-y-4">
+  const nav = <nav aria-label="Seções de configurações" className="flex w-52 shrink-0 flex-col gap-px overflow-y-auto border-r border-border bg-chrome p-3 max-[720px]:w-12">
+    {SECTIONS.map(item => <Button key={item.id} type="button" variant={null} size={null} onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined} title={item.label}
+      className="ds-nav-item flex h-9 shrink-0 items-center justify-start gap-2.5 whitespace-nowrap rounded-md px-2.5 text-left text-[13px] font-medium focus-visible:ring-0 max-[720px]:justify-center max-[720px]:px-0">
+      <item.icon className="size-4 shrink-0" /><span className="max-[720px]:sr-only">{item.label}</span>
+    </Button>)}
+  </nav>
+
+  if (!open) return null
+  return <PageShell title="Configurações" subtitle="Preferências deste computador" aside={nav}>
+    <div role="region" aria-labelledby="settings-section-title" className="space-y-4">
+      <div><h2 id="settings-section-title" className="ds-section-title">{current.label}</h2><p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">{current.description}</p></div>
         {section === 'geral' && <>
           <Field icon={Palette} title="Aparência" description="O Boobot usa um único sistema visual com dois modos. A escolha fica salva neste dispositivo."><ThemeSelector /></Field>
           <Field title="Animação dos Boos" description="O SVG original preserva brilho, sombra, acessórios e reações. O renderer Rive ainda está em desenvolvimento e não possui paridade visual.">
@@ -316,8 +304,6 @@ export function SettingsPage({ open, onOpenChange, initialSection = 'geral' }: {
           <Field icon={AudioLines} title="Ligações do mascote" description="Configure aqui as chaves, transcrição e vozes. O mascote dentro do app e o flutuante usam estas mesmas preferências."><RealtimeSettingsPanel /></Field>
           <SpeechKeySettings />
         </>}
-        </div>
-        </div>
-      </div>
-  </Modal>
+    </div>
+  </PageShell>
 }
