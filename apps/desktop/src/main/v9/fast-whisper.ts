@@ -76,7 +76,7 @@ export class FastWhisperService {
     return this.starting
   }
 
-  async transcribe(wav: Uint8Array): Promise<string> {
+  async transcribe(wav: Uint8Array, timeoutMs = 35_000): Promise<string> {
     await this.warmup()
     const child = this.child
     if (!child || !child.stdin.writable) throw new Error('Transcritor indisponivel.')
@@ -84,8 +84,8 @@ export class FastWhisperService {
     return new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.requests.delete(id)
-        reject(new Error('Transcricao demorou mais de 35 segundos.'))
-      }, 35_000)
+        reject(new Error('Transcricao demorou mais de ' + Math.round(timeoutMs / 1000) + ' segundos.'))
+      }, timeoutMs)
       this.requests.set(id, { resolve, reject, timeout })
       child.stdin.write(JSON.stringify({ id, wav: Buffer.from(wav).toString('base64') }) + '\n', error => {
         if (!error) return

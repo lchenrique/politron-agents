@@ -7,6 +7,8 @@ export interface TelegramStatus {
   botUsername: string | null
   error: string | null
   chats: TelegramChat[]
+  /** Áudio (voice notes) vira texto com o transcritor local; `reason` explica quando não dá. */
+  audio: { available: boolean; reason: string | null }
   /** Código de uso único em vigor; o link de pareamento só existe com o @username do bot conhecido. */
   pairing: { code: string; expiresAt: string; link: string | null } | null
 }

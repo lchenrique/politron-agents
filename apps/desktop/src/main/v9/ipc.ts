@@ -5,8 +5,7 @@ import type { HostRouting } from '../hosts/rpc'
 import { writeFile } from 'node:fs/promises'
 import type { MemoryInput } from '../../shared/memory'
 
-export function registerV9Ipc(service: AppService, routing?: HostRouting) {
-  const voice = new VoiceService()
+export function registerV9Ipc(service: AppService, routing?: HostRouting, voice: VoiceService = new VoiceService()) {
   // Carrega o reconhecedor de portugues em paralelo com a inicializacao do app.
   void voice.prewarmTranscription().catch(() => undefined)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo

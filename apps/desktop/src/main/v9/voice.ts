@@ -103,6 +103,18 @@ export class VoiceService {
     return await this.request('transcribe', { samples }, 120_000) as string
   }
 
+  /** Motivo de o áudio compactado (OGG/Opus do Telegram) não poder ser transcrito, ou null. Só o faster-whisper decodifica: o PyAV dele embute o ffmpeg. */
+  async audioTranscriptionIssue(): Promise<string | null> {
+    return (await this.fastWhisper.installed()) ? null : 'falta instalar o transcritor local (faster-whisper) em Configurações → Voz'
+  }
+
+  /** Áudio em qualquer formato que o PyAV leia (OGG/Opus, MP3, M4A, WAV), sem passar por arquivo. */
+  async transcribeAudio(audio: Uint8Array): Promise<string> {
+    const issue = await this.audioTranscriptionIssue()
+    if (issue) throw new Error(issue)
+    return this.fastWhisper.transcribe(audio, 180_000)
+  }
+
   async setProvider(provider: VoiceProvider): Promise<VoiceStatus> {
     await this.openRouter.setProvider(provider)
     return this.status()
