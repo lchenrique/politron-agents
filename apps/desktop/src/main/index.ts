@@ -21,6 +21,7 @@ import { marketplaceRoot } from './marketplace/catalog'
 import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
 import { initAutoUpdater } from './v9/auto-updater'
+import { TelegramService, registerTelegramIpc } from './telegram/service'
 import { databaseFailureDetails, retryTransient, setAsideStaleWalIndex } from './startup'
 
 process.on('uncaughtException', (error) => {
@@ -47,6 +48,7 @@ let appService: AppService | null = null
 let realtimeService: RealtimeService | null = null
 let hosts: HostManager | null = null
 let platformBrowser: PlatformBrowser | null = null
+let telegram: TelegramService | null = null
 
 // Marca nova, mantendo os dados do Politron já instalado. Em uma instalação nova,
 // o diretório de dados é boobot-desktop. Não renomear o banco nem copiar cegamente.
@@ -299,6 +301,10 @@ app.whenReady().then(async () => {
   void providerRegistry.list().catch(error => console.error('[Providers] Falha ao carregar catálogo', error))
     // Missões e rotinas dependem do catálogo de modelos; retoma depois dele, com o chat aberto ou não.
     .finally(() => setTimeout(() => appService?.resumeAutonomy(), 3_000))
+  // Canal Telegram: long polling de saída, sem porta aberta; o IPC fica fora da RPC de hosts.
+  telegram = new TelegramService(app.getPath('userData'), appService)
+  registerTelegramIpc(telegram)
+  void telegram.start().catch(error => console.error('[Telegram] Falha ao iniciar', error instanceof Error ? error.message : 'erro'))
   registerSkillsIpc(new SkillsService(app.getPath('userData'), join(marketplaceRoot(), 'skills')), hosts)
   await hosts.initialize()
   hosts.registerIpc()
@@ -342,6 +348,7 @@ app.on('before-quit', () => {
   mascotWindow = null
   destroyAppWindow()
   realtimeService?.stop()
+  telegram?.dispose(); telegram = null
   void hosts?.close()
   platformBrowser?.close()
   appService?.dispose()

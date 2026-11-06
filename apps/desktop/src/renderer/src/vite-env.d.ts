@@ -8,6 +8,7 @@ import type { UpdatesAPI } from '../../shared/updates'
 declare global {
 interface Window {
   hostsAPI?: import('../../shared/hosts').HostsAPI
+  telegramAPI?: import('../../shared/telegram').TelegramAPI
   /** Ausente nos testes do renderer sem preload. */
   platformBrowserAPI?: import('../../shared/platform-browser').PlatformBrowserAPI
  vibeAPI: {

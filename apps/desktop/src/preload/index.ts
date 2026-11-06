@@ -4,6 +4,7 @@ import type { RealtimeAPI } from '../shared/realtime'
 import type { ProvidersAPI } from '../shared/providers'
 import type { SkillsAPI } from '../shared/skills'
 import type { UpdatesAPI } from '../shared/updates'
+import type { TelegramAPI } from '../shared/telegram'
 
 type EventCallback<T> = (data: T) => void
 
@@ -169,6 +170,16 @@ const realtimeAPI: RealtimeAPI = {
   onEvent: callback => onChannel('realtime:event', callback),
 }
 contextBridge.exposeInMainWorld('realtimeAPI', realtimeAPI)
+
+const telegramAPI: TelegramAPI = {
+  status: () => ipcRenderer.invoke('telegram:status'),
+  saveToken: token => ipcRenderer.invoke('telegram:saveToken', token),
+  clearToken: () => ipcRenderer.invoke('telegram:clearToken'),
+  setEnabled: enabled => ipcRenderer.invoke('telegram:setEnabled', enabled),
+  createPairingCode: () => ipcRenderer.invoke('telegram:createPairingCode'),
+  revokeChat: chatId => ipcRenderer.invoke('telegram:revokeChat', chatId),
+}
+contextBridge.exposeInMainWorld('telegramAPI', telegramAPI)
 
 const providersAPI: ProvidersAPI = {
   list: () => ipcRenderer.invoke('providers:list'),

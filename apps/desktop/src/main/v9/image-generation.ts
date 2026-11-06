@@ -7,7 +7,7 @@ import { spawnCli } from './cli-launch'
 
 export type ImageMime = 'image/png' | 'image/jpeg' | 'image/webp'
 export type GeneratedImage = { bytes: Buffer; mimeType: ImageMime }
-type SecretStore = { has(): Promise<boolean>; load(): Promise<string | null>; save(value: string): Promise<void>; clear(): Promise<void> }
+export type SecretStore = { has(): Promise<boolean>; load(): Promise<string | null>; save(value: string): Promise<void>; clear(): Promise<void> }
 type CliResult = { code: number | null; stdout: string; stderr: string }
 export type CliRunner = (binary: string, args: string[], options: { cwd?: string; timeout: number }) => Promise<CliResult>
 
@@ -53,7 +53,7 @@ export function findImageData(body: unknown, depth = 0): string | null {
   return null
 }
 
-class EncryptedKey implements SecretStore {
+export class EncryptedKey implements SecretStore {
   constructor(private readonly path: string) {}
   async has() { try { return (await fs.stat(this.path)).isFile() } catch { return false } }
   async load() {

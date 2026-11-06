@@ -175,10 +175,10 @@ describe('hierarquia das seções', () => {
   const sections: [string, RegExp][] = [
     ['Geral', /Modo visual/], ['Assistente', /Assistente padrão/], ['Ferramentas', /terminal/],
     ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex, Antigravity/], ['Skills', /SKILL\.md/], ['Voz em tempo real', /transcrição/],
-    ['Conexões', /outros dispositivos/], ['Atualizações', /canal de atualização/],
+    ['Conexões', /outros dispositivos/], ['Telegram', /Chief/], ['Atualizações', /canal de atualização/],
   ]
 
-  it('mantém as nove seções na navegação e dá a cada página título e propósito próprios', () => {
+  it('mantém as dez seções na navegação e dá a cada página título e propósito próprios', () => {
     vi.stubGlobal('appAPI', { ...appAPI, voiceStatus: vi.fn().mockResolvedValue({ voiceKeyConfigured: false }) })
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
