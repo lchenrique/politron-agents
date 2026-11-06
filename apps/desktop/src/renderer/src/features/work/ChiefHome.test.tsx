@@ -25,6 +25,16 @@ afterEach(() => { window.appAPI = original })
 const renderHome = () => render(<ChiefHome snapshot={snapshot} agentStates={{}} onOpenConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenRoutines={vi.fn()} onNotice={vi.fn()} />)
 
 describe('ChiefHome', () => {
+  it('segue o sistema de layout: Precisa de você, composer, Em andamento e Equipe, sem eyebrow', () => {
+    const { container } = renderHome()
+    const titles = screen.getAllByRole('heading', { level: 2 }).map(heading => heading.textContent?.trim())
+    expect(titles.slice(0, 4)).toEqual(['Precisa de você', 'O que Chefe deve resolver?', 'Em andamento', 'Equipe'])
+    expect(screen.getByRole('heading', { level: 1, name: 'Central do Chefe' })).toBeInTheDocument()
+    expect(container.querySelector('[data-page-shell]')).toHaveAttribute('data-variant', 'column')
+    expect(container.querySelector('.ds-eyebrow')).toBeNull()
+    expect(screen.getByLabelText(/Objetivo para/).closest('form')).toBeInTheDocument()
+  })
+
   it('usa Select acessível para projeto e responsável e atribui com os IDs escolhidos', async () => {
     renderHome()
     const project = screen.getByRole('combobox', { name: 'Projeto' })

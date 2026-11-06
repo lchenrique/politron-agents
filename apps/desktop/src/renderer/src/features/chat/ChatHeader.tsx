@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { FolderOpen, Globe, MoreHorizontal, Search, Settings2, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/layout/PageShell'
+import { ModelSlot } from '../composer/ComposerModelSlot'
 import { Menu, MenuSurface, useAnchoredPosition, useDismissOnOutsidePointer } from '@/components/dsh'
 import type { Agent, Conversation, MessageSearchHit, Workspace } from '../../../../shared/v9'
 import { Avatar } from '../app/Avatar'
@@ -138,17 +140,10 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
   </div>
 }
 
-/** Faixa da conversa quando o chat é a única aba; com outras abas, a própria aba do chat assume este papel. */
+/** Cabeçalho da conversa quando o chat é a única aba: o mesmo PageHeader das demais páginas, com o seletor de modelo nas ações. */
 export function ChatHeader(props: ConversationChromeProps) {
   const { title, subtitle } = conversationIdentity(props.selected, props.agents, props.assistant)
-  return <header data-testid="compact-chat-header" className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-3 sm:px-4">
-    <div className="flex min-w-0 flex-1 items-center gap-2.5">
-      <ConversationAvatar {...props} />
-      <div className="flex min-w-0 flex-col justify-center">
-        <h1 className="truncate font-display text-[14px] font-semibold leading-5 tracking-[-0.01em]" title={title}>{title}</h1>
-        {subtitle && <p className="truncate text-[11.5px] leading-4 text-muted-foreground" title={subtitle}>{subtitle}</p>}
-      </div>
-    </div>
-    <ConversationTools {...props} />
-  </header>
+  const context = [props.selectedWorkspace?.name, subtitle].filter(Boolean).join(' · ')
+  return <PageHeader testId="compact-chat-header" title={title} subtitle={context || undefined} leading={<ConversationAvatar {...props} />}
+    actions={<><ModelSlot /><ConversationTools {...props} /></>} />
 }

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { NavRail, railItems, type NavRailProps } from './NavRail'
 
-const props = (overrides: Partial<NavRailProps> = {}): NavRailProps => ({ view: 'home', chiefName: 'Lyra', attentionCount: 2, openTasks: 5, enabledRoutines: 0, settingsOpen: false, onOpenHome: vi.fn(), onOpenSettings: vi.fn(), ...overrides })
+const props = (overrides: Partial<NavRailProps> = {}): NavRailProps => ({ view: 'home', chiefName: 'Lyra', attentionCount: 2, openTasks: 5, enabledRoutines: 0, onOpenHome: vi.fn(), ...overrides })
 
 describe('faixa de ícones', () => {
   it('é uma navegação rotulada com as visões globais e Configurações no fim', () => {
@@ -22,15 +22,15 @@ describe('faixa de ícones', () => {
     expect(onOpenHome).toHaveBeenCalledExactlyOnceWith('routines')
   })
 
-  it('Configurações abre a janela e destaca enquanto aberta, sem aria-current', () => {
-    const onOpenSettings = vi.fn()
-    render(<NavRail {...props({ view: null, settingsOpen: true, onOpenSettings })} />)
+  it('Configurações é uma página como as outras: abre a visão e marca aria-current', () => {
+    const onOpenHome = vi.fn()
+    render(<NavRail {...props({ view: 'settings', onOpenHome })} />)
     const settings = screen.getByRole('button', { name: 'Configurações' })
     expect(settings).toHaveAttribute('data-active', 'true')
-    expect(settings).toHaveAttribute('aria-haspopup', 'dialog')
-    expect(settings).not.toHaveAttribute('aria-current')
+    expect(settings).toHaveAttribute('aria-current', 'page')
+    expect(settings).not.toHaveAttribute('aria-haspopup')
     fireEvent.click(settings)
-    expect(onOpenSettings).toHaveBeenCalled()
+    expect(onOpenHome).toHaveBeenCalledExactlyOnceWith('settings')
   })
 
   it('setas, Home e End andam entre os ícones', () => {

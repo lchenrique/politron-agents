@@ -4,21 +4,19 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 /** Visões globais da área principal; as sessões e projetos ficam na barra lateral. */
-export type HomeView = 'home' | 'routines' | 'board'
+export type HomeView = 'home' | 'routines' | 'board' | 'settings'
 
 interface RailItem {
   id: string
   label: string
   icon: LucideIcon
-  /** `top`: visões globais; `bottom`: ações no fim da faixa (Configurações). */
+  /** `top`: visões globais; `bottom`: no fim da faixa (Configurações). */
   placement: 'top' | 'bottom'
   active: boolean
   onSelect: () => void
   /** Contagem no canto do ícone (pendências, tarefas abertas...). */
   badge?: number
   badgeLabel?: string
-  /** Janela sobreposta (Configurações): destaca enquanto aberta, sem ser uma página. */
-  dialog?: boolean
 }
 
 export interface NavRailProps {
@@ -27,9 +25,7 @@ export interface NavRailProps {
   attentionCount: number
   openTasks: number
   enabledRoutines: number
-  settingsOpen: boolean
   onOpenHome: (view: HomeView) => void
-  onOpenSettings: () => void
 }
 
 /** Faixa vertical de ícones à esquerda: para novo item, acrescente uma entrada em `railItems`. */
@@ -38,7 +34,7 @@ export function railItems(props: NavRailProps): RailItem[] {
     { id: 'home', label: `Central do ${props.chiefName || 'Chief'}`, icon: LayoutDashboard, placement: 'top', active: props.view === 'home', onSelect: () => props.onOpenHome('home'), badge: props.attentionCount, badgeLabel: `${props.attentionCount} pendências` },
     { id: 'board', label: 'Board da empresa', icon: ClipboardList, placement: 'top', active: props.view === 'board', onSelect: () => props.onOpenHome('board'), badge: props.openTasks, badgeLabel: `${props.openTasks} tarefas abertas` },
     { id: 'routines', label: 'Rotinas', icon: CalendarClock, placement: 'top', active: props.view === 'routines', onSelect: () => props.onOpenHome('routines'), badge: props.enabledRoutines, badgeLabel: `${props.enabledRoutines} rotinas ativas` },
-    { id: 'settings', label: 'Configurações', icon: Settings2, placement: 'bottom', active: props.settingsOpen, onSelect: props.onOpenSettings, dialog: true },
+    { id: 'settings', label: 'Configurações', icon: Settings2, placement: 'bottom', active: props.view === 'settings', onSelect: () => props.onOpenHome('settings') },
   ]
 }
 
@@ -61,7 +57,7 @@ export function NavRail(props: NavRailProps) {
     return <Tooltip key={item.id}>
       <TooltipTrigger asChild>
         <Button type="button" variant="ghost" size={null} data-rail-item={item.id} data-active={item.active} aria-label={item.badge ? `${item.label}, ${item.badgeLabel}` : item.label}
-          aria-current={!item.dialog && item.active ? 'page' : undefined} aria-haspopup={item.dialog ? 'dialog' : undefined} onClick={item.onSelect}
+          aria-current={item.active ? 'page' : undefined} onClick={item.onSelect}
           className="relative size-9 rounded-xl p-0 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[active=true]:bg-primary/15 data-[active=true]:text-primary">
           <Icon aria-hidden="true" className="size-[18px]" strokeWidth={1.5} />
           {!!item.badge && <span aria-label={item.badgeLabel} className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium leading-none text-primary-foreground">{item.badge > 9 ? '9+' : item.badge}</span>}

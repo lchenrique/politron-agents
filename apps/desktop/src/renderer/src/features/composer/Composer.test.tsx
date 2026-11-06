@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Composer } from './Composer'
+import { ModelSlot, ModelSlotProvider } from './ComposerModelSlot'
 import type { Agent } from '../../../../shared/v9'
 
 vi.mock('../voice/voice-recorder', () => ({
@@ -26,6 +27,17 @@ function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
 }
 
 describe('Composer compacto e elástico', () => {
+  it('com a barra superior do chat presente, o seletor de modelo sai do composer e mantém a lógica de modelo', () => {
+    const onModelChange = vi.fn()
+    render(<ModelSlotProvider><ModelSlot /><Composer conversationId="slot-test" models={[{ name: 'Modelo real', efforts: ['medium'], defaultEffort: 'medium' }]} defaultModelName="Modelo real" onModelChange={onModelChange} onSubmit={vi.fn()} onStop={vi.fn()} /></ModelSlotProvider>)
+    const picker = screen.getByRole('button', { name: 'Selecionar modelo' })
+    expect(picker.closest('[data-model-slot]')).not.toBeNull()
+    const row = (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).parentElement!
+    expect(row).not.toContainElement(picker)
+    expect(picker).toHaveTextContent('Modelo real')
+    for (const name of ['Anexar arquivos', 'Modo planejamento', 'Gravar áudio', 'Enviar mensagem']) expect(row).toContainElement(screen.getByRole('button', { name }))
+  })
+
   it('fica numa linha: anexar, texto, plano, modelo, microfone e enviar', () => {
     const { textarea } = setup()
     const row = textarea.parentElement!

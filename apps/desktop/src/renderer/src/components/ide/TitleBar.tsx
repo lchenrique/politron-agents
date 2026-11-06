@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { Minus, Square, X, PanelsTopLeft, PanelLeftClose, PanelLeftOpen, Files, Terminal, Globe, UserRound, FileDiff, MessageSquare, PictureInPicture2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeSelector } from './ThemeSelector'
+import { HostSelector } from '../../features/hosts/HostSelector'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import type { DockTool, DockZone } from '../../features/panels/DockWorkspace'
 import logo from '../../../public/boobot-mascot.svg?url'
@@ -13,8 +14,6 @@ interface TitleBarProps {
   onToggleSidebar: () => void
   onOpenHome?: () => void
   search?: ReactNode
-  /** Onde o usuário está: projeto da conversa, Central, Rotinas ou visão do projeto. */
-  location?: { label: string; detail?: string }
   className?: string
 }
 const tools = [
@@ -41,17 +40,15 @@ function OpenToolsMenu({ onOpenTool, onDevelopmentLayout }: Pick<TitleBarProps, 
   </DropdownMenu>
 }
 
-// Texto da janela, não um controle: continua arrastável no desktop e trunca antes dos controles.
-function WindowLocation({ location }: Pick<TitleBarProps, 'location'>) {
-  if (!location) return <div className="min-w-0 flex-1" />
-  return <div data-testid="window-location" className="flex min-w-0 flex-1 items-center gap-2 self-center pr-2 text-[12.5px]" title={location.detail ? `${location.label} · ${location.detail}` : location.label}>
+// Só o nome do app: onde o usuário está vive no cabeçalho da página. Não é um controle, então continua arrastável.
+function WindowTitle() {
+  return <div data-testid="window-title" className="flex min-w-0 flex-1 items-center gap-2 self-center pr-2 text-[12.5px]">
     <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border-strong" />
-    <span className="truncate font-semibold tracking-[-0.005em] text-foreground">{location.label}</span>
-    {location.detail && <><span aria-hidden="true" className="hidden text-faint-foreground sm:inline">/</span><span className="hidden shrink truncate text-muted-foreground sm:inline">{location.detail}</span></>}
+    <span className="truncate font-semibold tracking-[-0.005em] text-foreground">Boobot</span>
   </div>
 }
 
-export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarCollapsed, onToggleSidebar, onOpenHome, search, location, className }: TitleBarProps) {
+export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarCollapsed, onToggleSidebar, onOpenHome, search, className }: TitleBarProps) {
   const noDrag = { WebkitAppRegion: 'no-drag' } as CSSProperties
   const drag = { WebkitAppRegion: 'drag' } as CSSProperties
   const isWindows = window.vibeAPI?.platform === 'win32'
@@ -60,6 +57,7 @@ export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarColla
     <Button type="button" variant="ghost" size={null} onClick={onOpenHome} aria-label="Ir para a central" title="Central do Chief" className={chromeButton}><img src={logo} alt="" width={18} height={16} /></Button>
     <Button type="button" variant="ghost" size={null} onClick={onToggleSidebar} aria-label={sidebarCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'} title="Recolher/expandir barra lateral · Ctrl+B" className={chromeButton}>{sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}</Button>
     {search}
+    <HostSelector />
   </div>
   const globalControls = <div className="flex shrink-0 items-center gap-1" style={noDrag}>
     <ThemeSelector compact className="mr-1" />
@@ -68,7 +66,7 @@ export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarColla
   </div>
   if (isWindows) return <div role="toolbar" aria-label="Barra da janela" className={'relative z-40 flex h-10 shrink-0 select-none items-stretch bg-chrome ' + (className || '')} style={drag}>
     {navigation}
-    <WindowLocation location={location} />
+    <WindowTitle />
     {globalControls}
     <div className="ml-2 flex shrink-0 items-stretch" style={noDrag}>
       <Button type="button" variant="ghost" size={null} title="Minimizar" aria-label="Minimizar" onClick={() => window.vibeAPI.windowControls.minimize()} className="flex h-auto w-11 items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-foreground/[0.07] hover:text-foreground"><Minus className="size-3.5" /></Button>
@@ -83,7 +81,7 @@ export default function TitleBar({ onOpenTool, onDevelopmentLayout, sidebarColla
       <Button variant={null} size={null} aria-label="Maximizar" onClick={() => window.vibeAPI.windowControls.maximize()} className="size-3 rounded-full bg-[#28c840]" />
     </div>
     {navigation}
-    <WindowLocation location={location} />
+    <WindowTitle />
     {globalControls}
   </div>
 }

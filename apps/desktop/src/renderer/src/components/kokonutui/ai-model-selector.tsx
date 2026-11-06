@@ -30,6 +30,8 @@ export interface AIModelSelectorProps {
   className?: string
   /** Só o ícone no gatilho; nome, esforço e opções ficam no título e no painel. */
   compact?: boolean
+  /** Lado em que o painel abre: no composer sobe (`top`); na barra superior desce (`bottom`). */
+  side?: 'top' | 'bottom'
 }
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const
@@ -102,7 +104,7 @@ const toTrackModel = (model: ModelChoice): ModelOption => ({
   supportsFastMode: model.supportsFastMode,
 })
 
-export default function AIModelSelector({ models, providers, value, onChange, disabled = false, className, compact = false }: AIModelSelectorProps) {
+export default function AIModelSelector({ models, providers, value, onChange, disabled = false, className, compact = false, side = 'top' }: AIModelSelectorProps) {
   const [open, setOpen] = useState(false)
   const [providerId, setProviderId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -113,7 +115,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
   const searchRef = useRef<HTMLInputElement>(null)
   const panelId = useId()
   const effortLabelId = useId()
-  const panelPosition = useAnchoredPosition({ open, anchorRef: triggerRef, panelRef, side: 'top', align: compact ? 'end' : 'start', gap: 8, margin: 12 })
+  const panelPosition = useAnchoredPosition({ open, anchorRef: triggerRef, panelRef, side, align: compact ? 'end' : 'start', gap: 8, margin: 12 })
 
   const providerList = useMemo(() => {
     const entries = new Map((providers || []).map(provider => [provider.id, provider]))

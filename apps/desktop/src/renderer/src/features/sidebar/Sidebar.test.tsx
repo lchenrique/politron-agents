@@ -40,13 +40,11 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> 
 }
 
 describe('hierarquia visual do sidebar', () => {
-  it('põe só o host no rodapé; a navegação mora na faixa de ícones', async () => {
+  it('não tem rodapé: o host mora na barra da janela e a navegação na faixa de ícones', async () => {
     installHostsAPI()
     renderSidebar()
-    const host = await screen.findByRole('button', { name: 'Selecionar host' })
-    expect(host).toHaveTextContent('Remoto')
-    const footer = host.closest('footer')!
-    expect(within(footer).getAllByRole('button')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Selecionar host' })).not.toBeInTheDocument()
+    expect(document.querySelector('footer')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Configurações' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Abrir pasta' })).not.toBeInTheDocument()
   })
@@ -472,8 +470,7 @@ describe('navegação orientada a workspaces', () => {
     const onSelectWorkspace = vi.fn()
     const onStartConversation = vi.fn()
     renderSidebar({ onSelectWorkspace, onStartConversation })
-    fireEvent.click(screen.getByTitle('Workspace livre'))
-    expect(onSelectWorkspace).not.toHaveBeenCalled()
+    // Entrar no projeto também abre a visão dele: barra e área principal falam do mesmo projeto.
     fireEvent.click(screen.getByTitle('Workspace livre'))
     expect(onSelectWorkspace).toHaveBeenCalledExactlyOnceWith(workspace.id)
     fireEvent.contextMenu(screen.getByTitle('Workspace livre'))

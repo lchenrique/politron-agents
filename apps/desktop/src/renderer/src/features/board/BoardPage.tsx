@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Check, GitBranch, MessageSquare, Plus, Search, ShieldCheck, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PageShell } from '@/components/layout/PageShell'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -11,7 +12,7 @@ import { errorText } from '../app/appShellShared'
 import { BoardCard } from './BoardCard'
 import { shortTaskId } from './boardTaskId'
 
-const field = 'h-9 w-full rounded-md border-[0.5px] border-input bg-card px-3 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
+const field = 'h-9 w-full rounded-md border border-input bg-card px-3 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
 const statuses: { id: BoardTask['status'] | 'queue'; label: string }[] = [
   { id: 'queue', label: 'Fila' }, { id: 'doing', label: 'Em execução' }, { id: 'review', label: 'Revisão' },
   { id: 'rework', label: 'Retrabalho' }, { id: 'integration', label: 'Integração' }, { id: 'blocked', label: 'Bloqueadas' }, { id: 'done', label: 'Concluídas' }, { id: 'cancelled', label: 'Canceladas' },
@@ -198,12 +199,10 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice }: { snapshot
 
   const empty = !board.tasks.length
   const selectedTask = board.tasks.find(task => task.id === selectedTaskId)
-  return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-    <div className="max-h-[55%] shrink-0 space-y-4 overflow-y-auto px-4 pb-3 pt-6 sm:px-8 sm:pt-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0"><p className="ds-eyebrow mb-2">Trabalho da empresa</p><h1 className="ds-page-title">Board da empresa</h1><p className="ds-page-lede max-w-2xl">Organize responsabilidades, execução e revisão em um fluxo visível. Conversas e missões continuam funcionando do mesmo jeito, fora do board.</p></div>
-        <div className="flex gap-2">{teams.length > 0 && <Button type="button" variant="outline" onClick={() => { setTaskForm(value => !value); setTeamForm(false); setEditTaskId(null); setDraft(blankTask(teams[0]?.id)) }}><Plus className="size-4" />Nova tarefa</Button>}<Button type="button" onClick={() => { setTeamForm(value => !value); setTaskForm(false) }}><Users className="size-4" />Nova equipe</Button></div>
-      </header>
+  const openCount = board.tasks.filter(task => !['done', 'cancelled'].includes(task.status)).length
+  const actions = <>{teams.length > 0 && <Button type="button" variant="outline" onClick={() => { setTaskForm(value => !value); setTeamForm(false); setEditTaskId(null); setDraft(blankTask(teams[0]?.id)) }}><Plus className="size-4" />Nova tarefa</Button>}<Button type="button" onClick={() => { setTeamForm(value => !value); setTaskForm(false) }}><Users className="size-4" />Nova equipe</Button></>
+  return <PageShell wide title="Board da empresa" subtitle={`${openCount} ${openCount === 1 ? 'tarefa aberta' : 'tarefas abertas'} · ${teams.length} ${teams.length === 1 ? 'equipe' : 'equipes'}`} actions={actions}>
+    <div className="max-h-[55%] shrink-0 space-y-4 overflow-y-auto px-8 pt-6 max-[720px]:px-4">
       {teamForm && <form onSubmit={event => void createTeam(event)} className="ds-card grid gap-4 p-4 sm:grid-cols-2" aria-label="Criar equipe">
         <label className="grid gap-1.5 text-xs text-muted-foreground">Nome da equipe<Input aria-label="Nome da equipe" value={teamName} onChange={event => setTeamName(event.target.value)} maxLength={80} required /></label>
         <label className="grid gap-1.5 text-xs text-muted-foreground">Descrição<Input aria-label="Descrição da equipe" value={teamDescription} onChange={event => setTeamDescription(event.target.value)} maxLength={500} /></label>
@@ -222,19 +221,19 @@ export function BoardPage({ snapshot, onOpenConversation, onNotice }: { snapshot
         {draft.assigneeAgentId && !draft.reviewerAgentId && <p className="text-xs text-warning sm:col-span-2">Escolha um revisor diferente para enviar a tarefa à execução.</p>}
         <div className="flex justify-end gap-2 sm:col-span-2"><Button type="button" variant="ghost" onClick={() => { setTaskForm(false); setEditTaskId(null) }}>Cancelar</Button><Button type="submit" disabled={saving || !draft.title.trim() || !draft.description.trim() || !draft.acceptanceCriteria.trim() || !draft.teamId || draft.kind === 'code' && !draft.workspaceId || !editTaskId && !!draft.assigneeAgentId !== !!draft.reviewerAgentId}>{editTaskId ? 'Salvar alterações' : `Criar ${draft.assigneeAgentId ? 'e iniciar' : 'tarefa'}`}</Button></div>
       </form>}
-      {!teams.length && !teamForm && <div className="ds-empty px-6 py-10 text-center"><p className="text-sm font-medium">Nenhuma tarefa no board ainda</p><p className="mt-1 text-xs font-medium text-muted-foreground">Nenhuma equipe ainda</p><p className="mx-auto mt-1 max-w-lg text-xs leading-5 text-muted-foreground">Crie uma equipe e selecione os agentes que podem receber tarefas. Cada trabalho terá um responsável e outro agente fará a revisão.</p><Button type="button" className="mt-4" onClick={() => setTeamForm(true)}><Plus className="size-4" />Criar primeira equipe</Button></div>}
+      {!teams.length && !teamForm && <div className="ds-empty px-6 py-8 text-center"><p className="text-sm font-medium">Nenhuma equipe ainda</p><p className="mt-1 text-[13px] text-muted-foreground">Cada tarefa tem um responsável e outro agente que revisa.</p><Button type="button" className="mt-3" onClick={() => setTeamForm(true)}><Plus className="size-4" />Criar primeira equipe</Button></div>}
       {!!teams.length && <div className="flex flex-wrap items-center gap-2"><label className="relative min-w-48 flex-1 sm:max-w-sm"><Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" /><Input aria-label="Buscar tarefas" className="pl-8" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar tarefas" /></label><select aria-label="Filtrar equipe" className={cn(field, 'w-auto min-w-40')} value={teamFilter} onChange={event => setTeamFilter(event.target.value)}><option value="all">Todas as equipes</option>{teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}</select><select aria-label="Filtrar responsável" className={cn(field, 'w-auto min-w-40')} value={assigneeFilter} onChange={event => setAssigneeFilter(event.target.value)}><option value="all">Todos os responsáveis</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select><select aria-label="Filtrar projeto" className={cn(field, 'w-auto min-w-40')} value={workspaceFilter} onChange={event => setWorkspaceFilter(event.target.value)}><option value="all">Todos os projetos</option>{snapshot.workspaces.filter(workspace => !workspace.archived && workspace.kind !== 'worktree').map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name || workspace.path}</option>)}</select><select aria-label="Filtrar tipo" className={cn(field, 'w-auto min-w-32')} value={kindFilter} onChange={event => setKindFilter(event.target.value)}><option value="all">Todos os tipos</option><option value="general">Geral</option><option value="code">Código</option></select><select aria-label="Filtrar status" className={cn(field, 'w-auto min-w-36')} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="all">Todos os status</option>{statuses.map(status => <option key={status.id} value={status.id}>{status.label}</option>)}</select></div>}
       {!empty && !board.tasks.some(taskMatches) && <div className="ds-empty px-6 py-6 text-center text-sm">Nenhuma tarefa corresponde aos filtros.</div>}
     </div>
     {!!teams.length && (empty
-      ? <div className="ds-empty mx-4 mb-4 px-6 py-10 text-center sm:mx-8"><p className="text-sm font-medium">Nenhuma tarefa no board ainda</p><p className="mt-1 text-xs text-muted-foreground">O board só recebe tarefas criadas aqui; mensagens comuns continuam nas conversas.</p></div>
-      : <div role="region" tabIndex={0} aria-label="Colunas do board" className="flex min-h-[18rem] min-w-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden px-4 pb-4 sm:px-8">{statuses.map(column => {
+      ? <div className="ds-empty mx-8 mb-6 px-6 py-8 text-center max-[720px]:mx-4"><p className="text-sm font-medium">Nenhuma tarefa no board ainda</p><p className="mt-1 text-[13px] text-muted-foreground">Crie uma tarefa para começar.</p></div>
+      : <div role="region" tabIndex={0} aria-label="Colunas do board" className="flex min-h-[18rem] min-w-0 flex-1 items-stretch gap-3 overflow-x-auto overflow-y-hidden px-8 pb-6 pt-4 max-[720px]:px-4">{statuses.map(column => {
         const cards = board.tasks.filter(taskMatches).filter(task => taskColumn(task) === column.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        return <section key={column.id} className="ds-column flex h-full min-h-0 w-[18.5rem] shrink-0 flex-col" aria-label={`Coluna ${column.label}`}>
-          <header className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-3"><h2 className="truncate text-xs font-semibold">{column.label}</h2><span className="shrink-0 rounded-full bg-background/70 px-2 py-0.5 text-[10px] tabular-nums text-muted-foreground">{cards.length}</span></header>
+        return <section key={column.id} className="ds-column flex h-full min-h-0 min-w-[15rem] max-w-[20rem] flex-1 basis-0 flex-col" aria-label={`Coluna ${column.label}`}>
+          <header className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-3"><h2 className="truncate text-[13px] font-semibold">{column.label}</h2><span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{cards.length}</span></header>
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2">{cards.map(renderTaskCard)}{cards.length === 0 && <p className="rounded-md border border-dashed border-border px-2 py-4 text-center text-xs text-muted-foreground">Sem tarefas</p>}</div>
         </section>
       })}</div>)}
     <Sheet open={!!selectedTask} onOpenChange={open => { if (!open) setSelectedTaskId(null) }}>{selectedTask && renderDetails(selectedTask)}</Sheet>
-  </div>
+  </PageShell>
 }

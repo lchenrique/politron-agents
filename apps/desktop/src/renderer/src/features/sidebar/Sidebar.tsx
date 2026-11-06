@@ -10,7 +10,6 @@ import type { Agent, Approval, Conversation, Snapshot, Workspace } from '../../.
 import { Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 import type { EditorKind } from '../editors/Editor'
-import { HostSelector } from '../hosts/HostSelector'
 import { useSidebarLayout } from './projectGroups'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableArea, SortableGroup, SortableRow, type SortableData } from './SortableRows'
@@ -352,7 +351,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const running = runningWorkspaces.has(workspace.id)
     const label = workspaceLabel(workspace)
     return <div key={workspace.id} className="dsh-row group" data-active={enteredId === workspace.id} onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
-      <Button variant="ghost" size={null} onClick={() => enterProject(workspace.id)} className="dsh-row-main" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
+      <Button variant="ghost" size={null} onClick={() => { enterProject(workspace.id); onSelectWorkspace?.(workspace.id) }} className="dsh-row-main" title={workspace.kind === 'free' ? 'Workspace livre' : workspace.path}>
         <span className="dsh-slot">{workspace.kind === 'worktree' ? <GitBranch /> : <FolderOpen />}</span>
         <span className="dsh-title">{label}</span>
         {isFavorite('workspace', workspace.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
@@ -667,9 +666,6 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       </div>
     </header>
     {section === 'agents' ? agentsView() : project ? projectView(project) : overview}
-    <footer className="dsh-foot">
-      <div className="dsh-foot-host"><HostSelector /></div>
-    </footer>
     <div aria-live="polite" role="status" aria-label="Ordem do sidebar" className="sr-only">{announcement}</div>
     <GroupDialog draft={groupDialog} onChange={value => setGroupDialog(current => current ? { ...current, value } : current)} onCancel={() => setGroupDialog(null)} onConfirm={confirmGroupDialog} />
     <Modal open={!!deleteRequest} onClose={() => setDeleteRequest(null)} title={deleteRequest?.title || 'Confirmar exclusão'} description={deleteRequest?.description} closeLabel="Fechar"

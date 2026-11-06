@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CalendarClock, MessageSquare, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PageShell } from '@/components/layout/PageShell'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -25,7 +26,7 @@ const fromRoutine = (routine: Routine): Draft => ({ id: routine.id, name: routin
   kind: routine.trigger.kind === 'event' ? routine.trigger.event : routine.trigger.kind, time: routine.trigger.kind === 'daily' ? routine.trigger.time : '09:00',
   weekdays: routine.trigger.kind === 'daily' ? routine.trigger.weekdays : [1, 2, 3, 4, 5], hours: routine.trigger.kind === 'interval' ? routine.trigger.minutes / 60 : 4 })
 
-const field = 'h-9 w-full rounded-md border border-input bg-card px-3 text-sm shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
+const field = 'h-10 w-full rounded-md border border-input bg-card px-3 text-sm shadow-xs outline-none transition-[border-color,box-shadow] placeholder:text-faint-foreground hover:border-border-strong focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20'
 
 export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snapshot: Snapshot; onOpenConversation: (id: string) => void; onNotice: (text: string) => void }) {
   const routines = snapshot.routines || []
@@ -81,28 +82,26 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
     <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setDraft(null)}>Cancelar</Button><Button type="submit" disabled={saving || !draft.name.trim() || !draft.instructions.trim() || !draft.workspaceId}>{draft.id ? 'Salvar rotina' : 'Criar rotina'}</Button></div>
   </form>
 
-  return <div className="min-h-0 flex-1 overflow-auto">
-    <div className="ds-page max-w-3xl space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0"><p className="ds-eyebrow mb-2">Automação</p><h1 className="ds-page-title">Rotinas</h1><p className="ds-page-lede max-w-xl">Responsabilidades contínuas. Cada execução vira uma missão do responsável e roda mesmo com o chat fechado, enquanto o Boobot estiver aberto ou na bandeja.</p></div>
-        {!draft && <Button onClick={() => setDraft(blank())}><Plus className="size-4" />Nova rotina</Button>}
-      </header>
+  const active = routines.filter(routine => routine.enabled).length
+  return <PageShell title="Rotinas" subtitle={routines.length ? `${active} de ${routines.length} ativas` : 'Responsabilidades contínuas dos Boos'}
+    actions={!draft && <Button onClick={() => setDraft(blank())}><Plus className="size-4" />Nova rotina</Button>}>
+    <div className="space-y-6">
       {draft && !draft.id && editor}
       {routines.length ? <ul className="ds-list">
         {routines.map(routine => {
           if (draft?.id === routine.id) return <li key={routine.id} className="p-3">{editor}</li>
           const mission = lastMission(routine)
           const workspace = snapshot.workspaces.find(item => item.id === routine.workspaceId)
-          return <li key={routine.id} className={cn('flex flex-wrap items-start gap-3 px-4 py-3', !routine.enabled && 'opacity-60')}>
-            <Avatar agent={agentOf(routine.agentId)} size="xs" />
+          return <li key={routine.id} className={cn('flex min-h-14 flex-wrap items-start gap-3 px-4 py-3', !routine.enabled && 'opacity-60')}>
+            <Avatar agent={agentOf(routine.agentId)} size="sm" />
             <div className="min-w-0 flex-1 space-y-1">
-              <p className="truncate text-sm font-medium">{routine.name}</p>
-              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+              <p className="truncate text-[14px] font-medium">{routine.name}</p>
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1"><CalendarClock className="size-3" />{describeTrigger(routine.trigger)}</span>
                 <span>{agentOf(routine.agentId)?.name || 'Agente removido'} · {workspace?.name || 'Projeto removido'}</span>
                 {routine.enabled && routine.nextRunAt && <span>Próxima {relativeTime(routine.nextRunAt)}</span>}
               </p>
-              {mission && <p className="flex items-center gap-2 text-[11px] text-muted-foreground">Última {relativeTime(routine.lastRunAt)} · <PhaseLabel phase={missionPhase(mission, snapshot.runs, snapshot.approvals)} /></p>}
+              {mission && <p className="flex items-center gap-2 text-xs text-muted-foreground">Última {relativeTime(routine.lastRunAt)} · <PhaseLabel phase={missionPhase(mission, snapshot.runs, snapshot.approvals)} /></p>}
             </div>
             <div className="flex items-center gap-0.5">
               <Button type="button" variant="ghost" size={null} role="switch" aria-checked={routine.enabled} aria-label={routine.enabled ? `Desativar ${routine.name}` : `Ativar ${routine.name}`} onClick={() => toggle(routine)} className={cn('relative mr-2 block h-5 w-9 rounded-full border p-0 transition-colors', routine.enabled ? 'border-primary/60 bg-primary hover:bg-primary' : 'border-border bg-muted hover:bg-muted')}><span className={cn('absolute top-0.5 size-3.5 rounded-full bg-background shadow-sm transition-[left] duration-200', routine.enabled ? 'left-[1.15rem]' : 'left-0.5')} /></Button>
@@ -113,11 +112,10 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
             </div>
           </li>
         })}
-      </ul> : !draft && <div className="ds-empty px-6 py-10 text-center">
+      </ul> : !draft && <div className="ds-empty px-6 py-8 text-center">
         <p className="text-sm font-medium">Nenhuma rotina ainda</p>
-        <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-muted-foreground">Crie aqui ou peça ao Chief: “acompanhe meus projetos diariamente e resolva o que estiver dentro das suas permissões”.</p>
-        <Button variant="outline" className="mt-4" onClick={() => setDraft(blank())}><Plus className="size-4" />Criar primeira rotina</Button>
+        <Button variant="outline" className="mt-3" onClick={() => setDraft(blank())}><Plus className="size-4" />Criar primeira rotina</Button>
       </div>}
     </div>
-  </div>
+  </PageShell>
 }

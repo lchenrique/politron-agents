@@ -1,4 +1,4 @@
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { Snapshot, WorkspaceEvent } from '../../../../shared/v9'
@@ -10,7 +10,7 @@ vi.mock('@/components/ide/TitleBar', () => ({ default: () => null }))
 vi.mock('../panels/DockWorkspace', () => ({ DockWorkspace: ({ children }: { children: ReactNode }) => children }))
 vi.mock('@/components/ui/resizable', () => ({ ResizablePanelGroup: ({ children, defaultLayout }: { children: ReactNode; defaultLayout?: { sidebar?: number } }) => { observed.sidebarSizes.push(defaultLayout?.sidebar); return children }, ResizablePanel: ({ children }: { children: ReactNode }) => children, ResizableHandle: () => null }))
 vi.mock('./AgentDetails', () => ({ AgentDetails: () => null }))
-vi.mock('./SettingsPage', () => ({ SettingsPage: () => null }))
+vi.mock('./SettingsPage', () => ({ SettingsPage: ({ initialSection }: { initialSection?: string }) => <div data-testid="settings-page">{initialSection}</div> }))
 vi.mock('./UpdateReadyCallout', () => ({ UpdateReadyCallout: () => null }))
 vi.mock('../editors/Editor', () => ({ Editor: () => null }))
 vi.mock('../composer/Composer', () => ({ Composer: () => null }))
@@ -87,4 +87,28 @@ it('não renderiza novamente a árvore ao receber dez snapshots IPC idênticos',
   expect(observed.snapshots[0].terminalEnabled).toBe(false)
   expect(observed.snapshots[0].agents).toBe(initial.agents)
   expect(observed.snapshots[0].assistant).toBe(initial.assistant)
+})
+
+it('abre Configurações como página na área principal, pelo ícone da faixa e pelo evento do app', async () => {
+  localStorage.clear()
+  vi.stubGlobal('appAPI', { snapshot: async () => emptySnapshot, onEvent: () => () => undefined, setVisibleConversation: async () => undefined })
+  vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
+  let container!: HTMLElement
+  await act(async () => { container = render(<AppShell />).container })
+  expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Configurações' }))
+  expect(container.querySelector('main')).toContainElement(await screen.findByTestId('settings-page'))
+  expect(screen.getByRole('button', { name: 'Configurações' })).toHaveAttribute('aria-current', 'page')
+  fireEvent.click(screen.getByRole('button', { name: /^Rotinas/ }))
+  expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument()
+  await act(async () => { window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'voz' })) })
+  expect(await screen.findByTestId('settings-page')).toHaveTextContent('voz')
+})
+
+it('aplica a largura de conteúdo salva em --content-width', async () => {
+  localStorage.setItem('politron.layout.content-width', 'wide')
+  vi.stubGlobal('appAPI', { snapshot: async () => emptySnapshot, onEvent: () => () => undefined, setVisibleConversation: async () => undefined })
+  vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
+  await act(async () => { render(<AppShell />) })
+  expect(document.documentElement.style.getPropertyValue('--content-width')).toBe('1080px')
 })

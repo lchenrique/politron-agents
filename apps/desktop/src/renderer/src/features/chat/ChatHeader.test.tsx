@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Agent, Conversation, MessageSearchHit } from '../../../../shared/v9'
+import type { Agent, Conversation, MessageSearchHit, Workspace } from '../../../../shared/v9'
 import { ChatHeader, ConversationAvatar, ConversationTools } from './ChatHeader'
 
 const agent: Agent = { id: 'a1', name: 'Lyra', alias: 'lyra', description: '', instructions: '', runtime: 'codex', model: '', color: '#7565e8', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '2026-10-16T12:00:00.000Z' }
@@ -24,13 +24,14 @@ describe('cabeçalho da conversa', () => {
     expect(screen.queryByRole('button', { name: 'Remover Lyra' })).not.toBeInTheDocument()
   })
 
-  it('usa barra compacta, com avatar no canto e titulo legivel', () => {
-    render(<ChatHeader selected={conversation} agents={[agent]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
+  it('usa o PageHeader de 56 px, com avatar, título legível e contexto do projeto', () => {
+    render(<ChatHeader selected={conversation} agents={[agent]} selectedWorkspace={{ name: 'Politron' } as Workspace} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
     const header = screen.getByTestId('compact-chat-header')
-    expect(header).toHaveClass('h-12')
+    expect(header).toHaveStyle({ height: 'var(--header-height)' })
     expect(header.tagName).toBe('HEADER')
     expect(screen.getByRole('heading', { name: 'Lyra' })).toBeInTheDocument()
-    expect(screen.getByText('Planejamento')).toBeInTheDocument()
+    expect(screen.getByText('Politron · Planejamento')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Largura do conteúdo/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ver detalhes de Lyra' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' })).toBeInTheDocument()
   })

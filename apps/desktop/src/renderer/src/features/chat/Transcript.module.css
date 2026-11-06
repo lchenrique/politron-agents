@@ -20,7 +20,7 @@
   overflow-x: clip;
   overflow-y: auto;
   overflow-anchor: none;
-  padding: 16px 32px 24px;
+  padding: 16px 0 24px;
   container-type: inline-size;
   color: var(--dsw-alias-label-primary);
 }
@@ -81,35 +81,40 @@
   .navigatorDock { display: none; }
 }
 
-/* Largura do DSH: clamp(680px, 64% da coluna, 920px), nunca além da área disponível. */
+/* Mesma coluna das páginas e do composer (.ds-content): largura e margens vêm de --content-width. */
 .column {
   position: relative;
   width: 100%;
-  max-width: min(100%, clamp(680px, 64cqw, 920px));
+  max-width: calc(var(--content-width) + 64px);
   margin: 0 auto;
+  padding-inline: 32px;
+}
+
+@media (max-width: 720px) {
+  .column { padding-inline: 16px; }
 }
 
 .turn {
   display: flex;
   flex-direction: column;
-  margin-top: 24px;
-  padding-bottom: 6px;
+  margin-top: 16px;
+  padding-bottom: 4px;
 }
 
 /* A mensagem do usuário e o turno do assistente são mensagens irmãs do runtime. */
-.userTurn { margin-top: 24px; }
-.userTurn + .turn { margin-top: 12px; }
+.userTurn { margin-top: 16px; }
+.userTurn + .turn { margin-top: 8px; }
 .messages > :first-child { margin-top: 0; }
 
 /* Ritmo do DSH: linhas de processo a 4px, respostas a 12px, cabeçalho do turno a 16px. */
 .turn > * + * { margin-top: 4px; }
 .turn > [data-part="reply"],
-.turn > [data-part="reply"] + * { margin-top: 12px; }
+.turn > [data-part="reply"] + * { margin-top: 8px; }
 .turn > [data-part="header"],
-.turn > [data-part="header"] + * { margin-top: 16px; }
+.turn > [data-part="header"] + * { margin-top: 12px; }
 .turn > [data-part="user"] { margin-top: 0; }
-.turn > [data-part="tail"] { margin-top: 12px; }
-.turn > [data-part="running"] { margin-top: 16px; }
+.turn > [data-part="tail"] { margin-top: 8px; }
+.turn > [data-part="running"] { margin-top: 12px; }
 .turn > [data-part="extra"] { margin-top: 8px; }
 
 /* Mensagem do usuário: balão à direita, relógio e ações abaixo. */
@@ -126,7 +131,7 @@
   align-items: flex-end;
   gap: 8px;
   min-width: 0;
-  max-width: min(calc(min(100%, clamp(680px, 64cqw, 920px)) * 0.702), 82%);
+  max-width: min(calc(min(100%, var(--content-width)) * 0.702), 82%);
 }
 
 .failedSend {
