@@ -36,7 +36,7 @@ function setup(opts: { now?: () => number } = {}) {
   const host = Object.assign(new EventEmitter(), {
     snapshot: vi.fn(() => ({ agents: [{ id: 'chief', name: 'Chief', role: 'chief' }], conversations: [{ id: CONV, name: 'Chief', kind: 'direct', agentIds: ['chief'], archived: false, createdAt: '2026-01-01' }], runs: [], approvals: [] })),
     send: vi.fn(async () => undefined), saveConversation: vi.fn(() => ({ id: CONV })),
-    respondApproval: vi.fn(async () => { approval.status = 'approved' }), reviewPlan: vi.fn(), answerQuestion: vi.fn(), answerCard: vi.fn(),
+    respondApproval: vi.fn(async () => { approval.status = 'approved' }), reviewPlan: vi.fn(), answerQuestion: vi.fn(), answerCard: vi.fn(), stop: vi.fn(async () => undefined),
     store: { approval: () => approval, agent: () => ({ name: 'Chief' }), conversation: () => ({ id: CONV, name: 'Chief', archived: false, agentIds: ['chief'], workspaceId: 'ws' }),
       memories: { list: vi.fn(() => [{ text: 'Prefere <b>curto</b>', scope: 'global', inclusion: 'essencial' }]), save: vi.fn((input: { text: string }) => { if (input.text.includes('sk-')) throw new Error('Isto parece um token'); return { memory: input, note: '' } }) } },
   }) as unknown as TelegramHost & EventEmitter
@@ -199,6 +199,42 @@ describe('cartões interativos', () => {
     const s = await withCard({ id: 'k', kind: 'confirm', title: 'Ok?' })
     await pollWith(s, callback(3, 99, `k:${APPROVAL_ID}:1`))
     expect(s.host.answerCard).not.toHaveBeenCalled()
+  })
+})
+
+describe('andamento e parada', () => {
+  const userMsg = (id: number, text: string) => ({ update_id: id, message: { message_id: id + 100, chat: { id: 7, type: 'private' }, from: { id: 7 }, text } })
+  async function working() {
+    const s = setup(); await ready(s); await pair(s)
+    ;(s.service as unknown as { data: { enabled: boolean }; botUsername: string }).data.enabled = true
+    await pollWith(s, userMsg(9, 'faça algo'))
+    await vi.waitFor(() => expect(sent(s.calls).some(text => text.includes('Trabalhando'))).toBe(true))
+    return s
+  }
+  const statusBody = (s: S) => s.calls.find(c => c.method === 'sendMessage' && String(c.body.text).includes('Trabalhando'))!.body as { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }
+
+  it('responde com Trabalhando… e botão Parar, e reage com 👀', async () => {
+    const s = await working()
+    expect(statusBody(s).reply_markup.inline_keyboard[0][0].text).toBe('Parar')
+    expect(s.calls.some(c => c.method === 'setMessageReaction' && JSON.stringify(c.body.reaction).includes('👀'))).toBe(true)
+  })
+
+  it('Parar chama stop da conversa certa; chat não autorizado e conversa antiga são recusados', async () => {
+    const s = await working()
+    const data = statusBody(s).reply_markup.inline_keyboard[0][0].callback_data
+    await pollWith(s, callback(11, 99, data))
+    expect(s.host.stop).not.toHaveBeenCalled()
+    await pollWith(s, callback(12, 7, `s:${'0'.repeat(8)}-0000-0000-0000-${'0'.repeat(12)}`))
+    expect(s.host.stop).not.toHaveBeenCalled()
+    await pollWith(s, callback(13, 7, data))
+    expect(s.host.stop).toHaveBeenCalledWith(CONV)
+  })
+
+  it('ao concluir, edita o status e reage com 👍', async () => {
+    const s = await working()
+    s.host.emit('workspace-event', { type: 'message', message: { id: 'm1', conversationId: CONV, role: 'assistant', status: 'completed', author: 'Chief', text: 'pronto', finishedAt: '2026-01-01' } })
+    await vi.waitFor(() => expect(s.calls.some(c => c.method === 'editMessageText' && c.body.text === '✅ Concluído.')).toBe(true))
+    expect(s.calls.some(c => c.method === 'setMessageReaction' && JSON.stringify(c.body.reaction).includes('👍'))).toBe(true)
   })
 })
 

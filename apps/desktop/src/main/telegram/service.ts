@@ -11,7 +11,7 @@ import type { AppService } from '../v9/workspace'
 import { escapeHtml, telegramChunks, TELEGRAM_LIMIT } from './format'
 
 /** O que o canal usa do núcleo V9: o mesmo envio e as mesmas decisões de aprovação da janela do desktop. */
-export type TelegramHost = Pick<AppService, 'snapshot' | 'send' | 'saveConversation' | 'respondApproval' | 'reviewPlan' | 'answerQuestion' | 'answerCard' | 'on' | 'off'> & {
+export type TelegramHost = Pick<AppService, 'snapshot' | 'send' | 'saveConversation' | 'respondApproval' | 'reviewPlan' | 'answerQuestion' | 'answerCard' | 'stop' | 'on' | 'off'> & {
   store: Pick<AppService['store'], 'approval' | 'agent' | 'conversation' | 'memories'>
 }
 type Chat = { id: number; type: string; first_name?: string; username?: string }
@@ -68,6 +68,8 @@ export class TelegramService {
   /** `${chatId}:${messageId}` da pergunta → aprovação, para aceitar resposta em texto por "Responder". */
   private readonly questionMessages = new Map<string, string>()
   private readonly forwarded = new Set<string>()
+  /** Mensagem "Trabalhando…" por chat: é editada com o resultado e traz o botão Parar. */
+  private readonly working = new Map<number, { statusId: number; userMessageId: number; conversationId: string }>()
   private readonly typing = new Map<number, { timer: ReturnType<typeof setInterval>; since: number }>()
   private generation = 0
   private pollFailures = 0
@@ -253,7 +255,7 @@ export class TelegramService {
     if (!command) {
       const questionId = message.reply_to_message && this.questionMessages.get(`${chatId}:${message.reply_to_message.message_id}`)
       if (questionId) return this.answerQuestion(chatId, questionId, text)
-      return this.forward(chatId, text)
+      return this.forward(chatId, text, message.message_id)
     }
     if (name === 'start' && !argument || name === 'ajuda' || name === 'help') { await this.sendHtml(chatId, HELP); return }
     if (name === 'start' || name === 'parear') { await this.sendHtml(chatId, 'Este chat já está pareado com o Boobot.'); return }
@@ -346,11 +348,20 @@ export class TelegramService {
   }
 
   /** Mesmo caminho do Composer do desktop: AppService.send com requestId, fila e retorno após aceitar. */
-  private async forward(chatId: number, text: string): Promise<void> {
+  private react(chatId: number, messageId: number, emoji: string) {
+    void this.call('setMessageReaction', { chat_id: chatId, message_id: messageId, reaction: [{ type: 'emoji', emoji }] }).catch(() => undefined)
+  }
+
+  private async forward(chatId: number, text: string, userMessageId?: number): Promise<void> {
     const conversationId = this.conversationFor(chatId)
     try {
       await this.host.send(conversationId, text, undefined, undefined, undefined, false, true, false, { requestId: randomUUID(), delivery: 'queue', returnAfterAcceptance: true })
       this.startTyping(chatId)
+      if (userMessageId !== undefined && !this.working.has(chatId)) {
+        this.react(chatId, userMessageId, '👀')
+        const statusId = await this.sendHtml(chatId, '⏳ <i>Trabalhando…</i>', [[{ text: 'Parar', callback_data: `s:${conversationId}` }]])
+        if (statusId !== null) this.working.set(chatId, { statusId, userMessageId, conversationId })
+      }
     } catch (error) {
       await this.sendHtml(chatId, escapeHtml(`Não foi possível enviar: ${error instanceof Error ? error.message : 'erro desconhecido'}`))
     }
@@ -388,6 +399,14 @@ export class TelegramService {
     if (message.status === 'running' || message.status === 'queued') { for (const chat of chats) this.startTyping(chat.id); return }
     for (const chat of chats) this.stopTyping(chat.id)
     if (!message.finishedAt || this.forwarded.has(message.id)) return
+    for (const chat of chats) {
+      const work = this.working.get(chat.id)
+      if (!work || work.conversationId !== message.conversationId) continue
+      this.working.delete(chat.id)
+      const done = message.status === 'completed'
+      void this.call('editMessageText', { chat_id: chat.id, message_id: work.statusId, text: done ? '✅ Concluído.' : '⏹ Interrompido.' }).catch(() => undefined)
+      this.react(chat.id, work.userMessageId, done ? '👍' : '👎')
+    }
     if (this.forwarded.size > 500) this.forwarded.clear()
     this.forwarded.add(message.id)
     const body = message.text.trim() || (message.status === 'completed' ? '(Sem resposta em texto.)' : 'A execução não terminou.')
@@ -479,6 +498,12 @@ export class TelegramService {
       this.setConversation(chatId, conversation[1])
       await answer('Conversa escolhida.')
       await this.sendHtml(chatId, `Agora você fala em ${escapeHtml(this.conversationName(conversation[1]))}.`)
+      return
+    }
+    const stop = /^s:([0-9a-f-]{36})$/.exec(data)
+    if (stop) {
+      if (this.conversationFor(chatId) !== stop[1]) { await answer('Esta conversa não está mais ativa.'); return }
+      try { await this.host.stop(stop[1]); await answer('Parando…') } catch { await answer('Não foi possível parar.') }
       return
     }
     const decision = /^([aqk]):([0-9a-f-]{36}):(\d{1,2})$/.exec(data)
