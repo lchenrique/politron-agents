@@ -197,10 +197,6 @@
 .dsh-section-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; line-height: 18px; }
 .dsh-section-main[aria-expanded="false"] .dsh-section-name { color: var(--dsh-label-secondary); }
 .dsh-section-icon { width: 14px; height: 14px; flex: none; color: var(--dsh-label-tertiary); }
-.dsh-section-chevron { transition: transform 120ms ease; }
-.dsh-section-chevron[data-open="true"] { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { .dsh-section-chevron { transition: none; } }
-
 /* Ações de linha e de seção: só no hover/foco. */
 .dsh-row-action {
   display: none;
