@@ -1297,6 +1297,13 @@ export class AppService extends EventEmitter {
     if (['completed', 'interrupted', 'failed'].includes(context.run.status)) return
     if (context.flushTimer) clearTimeout(context.flushTimer)
     context.run.status = status; this.store.putRun(context.run); context.message.finishedAt = new Date().toISOString(); this.updateMessage(context.message, status, value || (status === 'completed' ? '(Sem resposta em texto.)' : ''))
+    // Item nativo sem item/completed não pode deixar o turno "rodando" para sempre no chat.
+    for (const recorded of context.nativeItems?.values() ?? []) {
+      if (!recorded.tool) continue
+      const next = { ...recorded, tool: finishedTool(recorded.tool, 'failed', 'Não concluída: a execução terminou antes.', redactApprovalUrls) }
+      this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
+    }
+    context.nativeItems?.clear()
     // Encerra também as esperas de aprovação: uma decisão tardia não pode executar
     // uma ferramenta depois de timeout, falha de protocolo ou interrupção do motor.
     if (status === 'failed' || status === 'interrupted') this.active.get(context.run.id)?.abort()
@@ -1499,7 +1506,8 @@ export class AppService extends EventEmitter {
         this.updateMessage(context.message, 'running', context.message.text)
       }
     }
-    if (['execCommandApproval', 'commandExecutionRequestApproval', 'applyPatchApproval', 'item/permissions/requestApproval'].includes(event.method)) {
+    // Sem resposta o Codex espera para sempre: o app-server v2 usa item/commandExecution e item/fileChange.
+    if (['execCommandApproval', 'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'applyPatchApproval', 'item/permissions/requestApproval'].includes(event.method)) {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId)
       runtime.respond(event.id, { decision: context && hasFullAccess(effectiveRuntimeAgent(context.agent, { planMode: context.run.planMode, boardReview: this.boardReviewerConversations.has(context.conversation.id) })) ? 'accept' : 'decline' })
     }

@@ -169,6 +169,11 @@ export class WorkspaceStore {
     this.memories = new MemoryBank(this.db)
     this.waits = new WaitBank(this.db)
     for (const approval of this.approvals().filter(item => item.status === 'pending')) this.putApproval({ ...approval, status: 'interrupted', resolvedAt: new Date().toISOString() })
+    // Nenhuma execução sobrevive ao fechamento: ferramenta ainda "rodando" é registro órfão.
+    for (const { data } of this.db.prepare("SELECT data FROM v9_messages WHERE json_extract(data,'$.role')='activity' AND json_extract(data,'$.tool.status')='running'").all() as { data: string }[]) {
+      const message = JSON.parse(data) as Message
+      this.putMessage({ ...message, tool: { ...message.tool!, status: 'failed', finishedAt: new Date().toISOString() } })
+    }
   }
   private schemaVersion(): number | null {
     if (!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='v9_meta'").get()) return null

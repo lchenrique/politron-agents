@@ -9,6 +9,7 @@ import type { Agent, Conversation } from '../../shared/v9'
 
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false }, safeStorage: { isEncryptionAvailable: () => false } }))
 import { AppService } from './workspace'
+import { WorkspaceStore } from './store'
 
 class ControlledRuntime extends EventEmitter {
   threads: string[] = []
@@ -73,7 +74,7 @@ describe('auditoria de permissões por agente', () => {
     expect(codex.agents[1].runtimePermissionMode).toBe(mode === 'normal' ? 'bypass' : 'managed')
     expect(service.store.agent(agent.id).runtimePermissionMode).toBe('bypass')
     expect(codex.resumes[1]).toBe(mode === 'normal' ? codex.threads[0] : undefined)
-    for (const method of ['execCommandApproval', 'commandExecutionRequestApproval', 'applyPatchApproval', 'item/permissions/requestApproval']) {
+    for (const method of ['execCommandApproval', 'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'applyPatchApproval', 'item/permissions/requestApproval']) {
       codex.emit('event', { id: method, method, params: { threadId: codex.threads[1] } })
       expect(codex.respond).toHaveBeenLastCalledWith(method, { decision: mode === 'normal' ? 'accept' : 'decline' })
     }
@@ -87,6 +88,24 @@ describe('auditoria de permissões por agente', () => {
     expect(codex.resumes[2]).toBe(codex.threads[mode === 'normal' ? 1 : 0])
     codex.complete(codex.threads[2])
     await third
+  })
+
+  it('edição nativa sem item/completed não fica rodando depois da execução nem ao reabrir', async () => {
+    const { service, codex, conversation, directory } = setup()
+    const agent = service.saveAgent({ instructions: 'Fixture nativa.', name: 'Nativo', alias: 'nativo', canWrite: true })
+    const chat = conversation(agent)
+    const send = service.send(chat.id, 'Editar')
+    await vi.waitFor(() => expect(codex.inputs).toHaveLength(1))
+    codex.emit('event', { method: 'item/started', params: { threadId: codex.threads[0], turnId: 'shared-turn', item: { id: 'patch-1', type: 'fileChange', changes: [{ path: 'a.ts' }] } } })
+    const edit = () => service.store.history(chat.id).find(message => message.tool?.name === 'workspace_write')
+    await vi.waitFor(() => expect(edit()?.tool?.status).toBe('running'))
+    codex.complete(codex.threads[0])
+    await send
+    expect(edit()?.tool).toMatchObject({ status: 'failed', finishedAt: expect.any(String) })
+    // Registro órfão de versão anterior: a abertura do banco fecha.
+    service.store.putMessage({ ...edit()!, tool: { ...edit()!.tool!, status: 'running', finishedAt: undefined } })
+    const reopened = new WorkspaceStore(directory)
+    try { expect(reopened.message(edit()!.id)?.tool?.status).toBe('failed') } finally { reopened.close() }
   })
 
   it('Acesso total libera aprovações, mudanças no Boobot, perguntas e plano sem criar pendência', async () => {
