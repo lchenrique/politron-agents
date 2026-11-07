@@ -2073,6 +2073,15 @@ export class AppService extends EventEmitter {
     try { return await this.createWorktree({ sourceWorkspaceId: source.id, branch: `boo/${slug}-${randomUUID().slice(0, 8)}` }) } catch { return undefined }
   }
   private async delegate(parent: RunContext, recipient: Agent, task: string, idempotencyKey: string, inheritLease = false, previousDelegation?: Delegation): Promise<string> {
+    // A autonomia escolhida pelo usuário no agente que delega vale também para
+    // esta execução descendente. É um perfil efêmero do run: não altera o agente salvo.
+    const parentRuntimeAgent = effectiveRuntimeAgent(parent.agent, {
+      planMode: parent.run.planMode,
+      boardReview: this.boardReviewerConversations.has(parent.conversation.id),
+    })
+    if (hasFullAccess(parentRuntimeAgent)) {
+      recipient = { ...recipient, runtimePermissionMode: 'bypass', approvalMode: 'bypass' }
+    }
     const now = new Date().toISOString()
     this.store.db.exec('BEGIN IMMEDIATE')
     let targetConversation: Conversation
