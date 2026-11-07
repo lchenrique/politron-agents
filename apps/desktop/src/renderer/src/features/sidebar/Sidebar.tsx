@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, Check, Crown, Folder, FolderOpen, FolderPlus, GitBranch, ListChecks, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Settings2, SquarePen, Star, Trash2, X } from 'lucide-react'
+import { Archive, Check, ChevronRight, Crown, Folder, FolderOpen, FolderPlus, GitBranch, ListChecks, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Settings2, SquarePen, Star, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Menu, Modal, type MenuEntry, type MenuItem } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
@@ -302,6 +302,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const label = workspaceLabel(workspace)
     return <div className="dsh-section-row group" data-active={activeWorkspaceId === workspace.id} onContextMenu={event => { event.preventDefault(); setOpenWorkspaceMenuId(workspace.id) }}>
       <Button variant="ghost" size={null} className="dsh-section-main" aria-expanded={open} title={workspace.kind === 'free' ? 'Conversas sem projeto' : workspace.path} onClick={() => toggleSection('project:' + workspace.id)}>
+        <ChevronRight aria-hidden="true" className="dsh-section-icon dsh-section-chevron" data-open={open} />
         {workspace.kind === 'worktree' && <GitBranch aria-hidden="true" className="dsh-section-icon" />}
         <span className="dsh-section-name">{label}</span>
         {isFavorite('workspace', workspace.id) && <Star className="dsh-star fill-warning text-warning" aria-label="Favorito" />}
