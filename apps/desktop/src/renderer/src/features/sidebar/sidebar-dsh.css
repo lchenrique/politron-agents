@@ -58,11 +58,11 @@
 
 /* Coluna. */
 .boobot-sidebar {
-  padding: 6px 12px;
+  padding: 4px 8px;
   background: var(--dsh-fill);
   color: var(--dsh-label-primary);
   font-family: var(--dsh-font);
-  font-size: 14px;
+  font-size: 13px;
   font-feature-settings: normal;
   animation: dsh-wide-in 200ms var(--dsh-ease);
 }
@@ -73,36 +73,36 @@
 @keyframes dsh-wide-in { from { opacity: 0; } }
 
 /* Nova sessão: barra de 38px com contorno de 0,5px. */
-.dsh-new-row { display: flex; gap: 8px; margin: 8px 2px 12px 0; }
+.dsh-new-row { display: flex; gap: 8px; margin: 8px 2px 10px 0; }
 .dsh-new-session {
   display: flex;
   flex: 1;
   min-width: 0;
-  height: 38px;
+  height: 32px;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 0 10px;
   border: 0.5px solid var(--dsh-border-l3);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--dsh-elevated);
   color: var(--dsh-label-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 20px;
   box-shadow: none;
   transition: none;
 }
-.dsh-new-session.dsh-square { flex: none; width: 38px; padding: 0; }
+.dsh-new-session.dsh-square { flex: none; width: 32px; padding: 0; }
 .dsh-new-session:hover { background: var(--dsh-floating-hover); color: var(--dsh-label-primary); }
 .dsh-new-session svg { width: 14px; height: 14px; color: currentColor; }
 .boobot-sidebar .dsh-new-session svg.lucide { stroke-width: 1.15; }
 
 /* Controle segmentado Projetos | Boos, no topo da barra. */
-.dsh-segmented { display: flex; gap: 2px; margin: 8px 2px 0 0; padding: 2px; border-radius: 10px; background: var(--dsh-hover); }
-.dsh-segmented button { flex: 1; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--dsh-label-tertiary); font-size: 13px; font-weight: 400; box-shadow: none; }
+.dsh-segmented { display: flex; gap: 2px; margin: 6px 2px 0 0; padding: 2px; border-radius: 8px; background: var(--dsh-hover); }
+.dsh-segmented button { flex: 1; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--dsh-label-tertiary); font-size: 12px; font-weight: 400; box-shadow: none; }
 .dsh-segmented button:hover { color: var(--dsh-label-primary); background: transparent; }
-.dsh-segmented button[aria-pressed="true"] { background: var(--dsh-fill); color: var(--dsh-label-primary); font-weight: 500; box-shadow: 0 0 0 0.5px var(--dsh-hover), 0 1px 2px rgb(0 0 0 / 0.12); }
+.dsh-segmented button[aria-pressed="true"] { background: var(--dsh-bg-base); color: var(--dsh-label-primary); font-weight: 500; box-shadow: 0 0 0 0.5px var(--dsh-hover), 0 1px 2px rgb(0 0 0 / 0.12); }
 .dsh-context { color: var(--dsh-label-caption); }
 
 .dsh-glyph { display: inline-flex; flex: none; width: 16px; height: 16px; align-items: center; justify-content: center; }
@@ -113,8 +113,8 @@
 .dsh-list {
   flex: 1;
   min-height: 0;
-  margin: 0 -10px 0 0;
-  padding: 0 5px 16px 0;
+  margin: 0 -8px 0 0;
+  padding: 0 3px 16px 0;
   overflow-y: auto;
   scrollbar-width: auto;
   scrollbar-color: auto;
@@ -137,19 +137,19 @@
 /* Cabeçalho de seção ("Projetos", "Favoritos"). */
 .dsh-section-header {
   display: flex;
-  height: 36px;
+  height: 28px;
   align-items: center;
-  gap: 4px;
-  margin: 2px -4px 4px 0;
-  padding: 0 1px 0 12px;
+  gap: 2px;
+  margin: 2px -4px 2px 0;
+  padding: 0 1px 0 10px;
   color: var(--dsh-label-tertiary);
 }
 .dsh-section-label { flex: 1; min-width: 0; margin: 0; padding: 0; overflow: hidden; white-space: nowrap; font-size: 14px; font-weight: 400; line-height: 20px; letter-spacing: 0; text-transform: none; color: var(--dsh-label-tertiary); }
 .dsh-icon-button {
   display: inline-flex;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -161,31 +161,34 @@
   transition: none;
 }
 .dsh-icon-button:hover { background: var(--dsh-hover); color: var(--dsh-label-secondary); }
-.dsh-icon-button svg.lucide { width: 16px; height: 16px; }
+.dsh-icon-button svg.lucide { width: 14px; height: 14px; }
 
 /* Linhas de projeto, pasta e sessão: 3px de recuo pintado, raio 12, sem transição de hover. */
 .dsh-row {
   display: flex;
-  height: 34px;
+  height: 30px;
   align-items: center;
   gap: 6px;
-  padding: 0 8px 0 9px;
+  padding: 0 6px 0 7px;
   border-inline: 3px solid transparent;
-  border-radius: 12px;
+  border-radius: 8px;
   background-clip: padding-box;
   color: var(--dsh-label-primary);
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
   cursor: pointer;
   user-select: none;
   animation: dsh-row-in 100ms ease-out;
 }
-.dsh-row.dsh-session { height: 32px; }
+.dsh-row.dsh-session { height: 28px; color: var(--dsh-label-secondary); }
 .dsh-row:hover,
-.dsh-row[data-active="true"],
-.dsh-row:has([data-state="open"]) { background-color: var(--dsh-hover); }
+.dsh-row:has([data-state="open"]) { background-color: var(--dsh-hover); color: var(--dsh-label-primary); }
+/* Ativo = o que está aberto no centro: fundo no tom do foco, texto pleno e médio. */
+.dsh-row[data-active="true"] { background-color: color-mix(in srgb, var(--dsh-blue) 13%, transparent); color: var(--dsh-label-primary); }
+.dsh-row[data-active="true"] .dsh-title { font-weight: 500; }
+.dsh-row[data-active="true"] .dsh-slot { color: var(--dsh-blue); }
 @keyframes dsh-row-in { from { opacity: 0; } }
-.dsh-row + .dsh-row, .dsh-rows > * + * { margin-top: 2px; }
+.dsh-row + .dsh-row, .dsh-rows > * + * { margin-top: 1px; }
 /* O botão principal ocupa a linha; o fundo é da linha. */
 .dsh-row-main {
   display: flex;
@@ -200,23 +203,23 @@
   border-radius: 0;
   background: transparent;
   color: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 20px;
+  line-height: 18px;
   text-align: left;
   box-shadow: none;
   transition: none;
 }
 .dsh-row-main:hover { background: transparent; color: inherit; }
 .dsh-session .dsh-row-main { gap: 0; }
-.dsh-row-main:focus-visible { outline-offset: 0; border-radius: 12px; }
-.dsh-slot { display: inline-flex; flex: none; width: 16px; height: 20px; align-items: center; justify-content: center; color: var(--dsh-label-tertiary); }
-.dsh-slot svg.lucide { width: 16px; height: 16px; }
+.dsh-row-main:focus-visible { outline-offset: 0; border-radius: 8px; }
+.dsh-slot { display: inline-flex; flex: none; width: 16px; height: 18px; align-items: center; justify-content: center; color: var(--dsh-label-tertiary); }
+.dsh-slot svg.lucide { width: 15px; height: 15px; }
 .dsh-folder-active { color: var(--dsh-blue); }
 .dsh-session .dsh-slot svg.lucide { width: 14px; height: 14px; color: var(--dsh-label-caption); }
-.dsh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 20px; }
+.dsh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 18px; }
 .dsh-session .dsh-title { margin: 0 6px 0 4px; }
-.dsh-meta { flex: none; font-size: 10px; line-height: 16px; color: var(--dsh-label-tertiary); font-variant-numeric: tabular-nums; }
+.dsh-meta { flex: none; font-size: 11px; line-height: 16px; color: var(--dsh-label-caption); font-variant-numeric: tabular-nums; }
 .dsh-session .dsh-meta { margin-inline-end: -1px; }
 .dsh-sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .dsh-star { width: 12px; height: 12px; flex: none; }
@@ -243,11 +246,11 @@
 .dsh-row-action {
   display: inline-flex;
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   align-items: center;
   justify-content: center;
-  margin: -4px -4px -4px 2px;
+  margin: -4px -2px -4px 0;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -258,8 +261,8 @@
 }
 /* Fora do hover a ação sai do fluxo, como no DSH: o tempo/contagem encosta na borda direita. */
 .dsh-row .dsh-row-action { display: none; }
-.dsh-row-action:hover { background: transparent; color: var(--dsh-label-primary); }
-.dsh-row-action svg.lucide { width: 16px; height: 16px; }
+.dsh-row-action:hover { background: var(--dsh-hover); color: var(--dsh-label-primary); }
+.dsh-row-action svg.lucide { width: 14px; height: 14px; }
 .dsh-row:hover .dsh-row-action,
 .dsh-row:focus-within .dsh-row-action,
 .dsh-row .dsh-row-action[data-state="open"] { display: inline-flex; }
@@ -273,19 +276,20 @@
 .dsh-folder .dsh-slot .dsh-arrow[data-open="true"] { transform: rotate(90deg); }
 .dsh-folder:hover .dsh-slot .dsh-arrow { display: inline-flex; }
 .dsh-folder:hover .dsh-folder-icon { display: none; }
-.dsh-indent { padding-left: 16px; }
+/* Sessões sob o Boo ou a sessão mãe: recuo com uma guia fina à esquerda. */
+.dsh-indent { margin-left: 15px; padding-left: 6px; border-left: 1px solid var(--dsh-hover); }
 
 /* "Ver mais", delegações e vazios: botão de 28px recuado até o título. */
 .dsh-overflow {
   display: flex;
   width: 100%;
-  height: 28px;
+  height: 24px;
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
-  padding: 0 12px 0 34px;
+  padding: 0 10px 0 32px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   background: transparent;
   color: var(--dsh-label-tertiary);
   font-size: 12px;
@@ -293,18 +297,18 @@
   box-shadow: none;
   transition: none;
 }
-.dsh-overflow:hover { background: transparent; color: var(--dsh-label-secondary); }
+.dsh-overflow:hover { background: transparent; color: var(--dsh-label-primary); }
 .dsh-overflow svg { width: 12px; height: 12px; transition: rotate 150ms var(--dsh-ease); }
-.dsh-empty { padding: 16px 12px; color: var(--dsh-label-tertiary); font-size: 13px; line-height: 20px; }
+.dsh-empty { padding: 4px 10px 8px; color: var(--dsh-label-caption); font-size: 12px; line-height: 18px; }
 
 /* Projeto aberto: voltar + nome no estilo de linha. */
 /* Projeto aberto: "← Projetos" acima do nome, que fica como título da visão. */
 .dsh-project-head { display: flex; align-items: center; margin: 0 2px 2px; }
-.dsh-back { display: inline-flex; height: 28px; align-items: center; gap: 6px; padding: 0 10px 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--dsh-label-tertiary); font-size: 12px; font-weight: 500; box-shadow: none; transition: none; }
+.dsh-back { display: inline-flex; height: 24px; align-items: center; gap: 6px; padding: 0 10px 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--dsh-label-tertiary); font-size: 12px; font-weight: 500; box-shadow: none; transition: none; }
 .dsh-back:hover { background: var(--dsh-hover); color: var(--dsh-label-primary); }
 .dsh-back svg.lucide { width: 14px; height: 14px; }
-.dsh-project-title { height: 38px; margin-bottom: 4px; font-weight: 600; }
-.dsh-project-title .dsh-title { font-size: 15px; }
+.dsh-project-title { height: 32px; margin-bottom: 2px; font-weight: 600; }
+.dsh-project-title .dsh-title { font-size: 14px; font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
   .boobot-sidebar, .dsh-row, .dsh-spinner g, .dsh-spinner circle { animation: none; }
@@ -326,13 +330,18 @@
 /* Barra v2: Nova sessão com atalho, seções empilhadas (Precisa de você, Projetos, Boos, Empresa). */
 .dsh-new-session .dsh-kbd { margin-left: auto; height: 18px; padding: 0 5px; border-radius: 6px; background: var(--dsh-hover); color: var(--dsh-label-tertiary); font-size: 10px; font-weight: 500; letter-spacing: 0.02em; }
 .dsh-new-session:has(.dsh-kbd) { justify-content: flex-start; padding-inline: 12px 8px; }
-.dsh-section + .dsh-section { margin-top: 6px; }
-.dsh-section > .dsh-section-header { height: 30px; margin-bottom: 2px; }
-.dsh-section-label { font-size: 12px; font-weight: 500; line-height: 16px; letter-spacing: 0.01em; }
+.dsh-section + .dsh-section { margin-top: 10px; }
+.dsh-section > .dsh-section-header { height: 26px; margin-bottom: 1px; }
+/* Rótulo de seção discreto: 11px em caixa alta, para não competir com as linhas. */
+.dsh-section-label { font-size: 11px; font-weight: 600; line-height: 16px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dsh-label-caption); }
 .dsh-section-count { margin-right: 10px; }
 .dsh-section-heading { display: flex; flex: 1; min-width: 0; margin: 0; font: inherit; }
-.dsh-section-toggle { display: flex; flex: 1; min-width: 0; height: 28px; align-items: center; justify-content: flex-start; gap: 4px; margin-left: -6px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: inherit; box-shadow: none; transition: none; }
-.dsh-section-toggle:hover { background: var(--dsh-hover); color: inherit; }
+.dsh-section-toggle { display: flex; flex: 1; min-width: 0; height: 22px; align-items: center; justify-content: flex-start; gap: 4px; margin-left: -6px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; box-shadow: none; transition: none; }
+.dsh-section-toggle:hover { background: transparent; color: inherit; }
+.dsh-section-toggle:hover .dsh-section-label { color: var(--dsh-label-secondary); }
+/* Chevron da seção só no hover/foco ou quando recolhida. */
+.dsh-section-toggle .dsh-chevron { opacity: 0; }
+.dsh-section-toggle:hover .dsh-chevron, .dsh-section-toggle:focus-visible .dsh-chevron, .dsh-section-toggle[aria-expanded="false"] .dsh-chevron { opacity: 1; }
 .dsh-section-toggle .dsh-section-label { flex: none; }
 
 /* Chevron das seções recolhíveis: aponta para baixo quando aberto. */
@@ -343,7 +352,7 @@
 
 /* Boos: faixa de avatares que quebra linha; o ponto de estado fica no canto do avatar. */
 .dsh-boos { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 4px 2px 8px; }
-.dsh-boo { position: relative; display: inline-flex; width: 38px; height: 38px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: transparent; box-shadow: none; transition: none; }
+.dsh-boo { position: relative; display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: transparent; box-shadow: none; transition: none; }
 .dsh-boo:hover, .dsh-boo[aria-expanded="true"] { background: var(--dsh-hover); }
 .dsh-boo:focus-visible { outline-offset: 0; }
 .dsh-boo-crown { position: absolute; top: 0; right: 1px; width: 13px; height: 13px; padding: 1.5px; border-radius: 999px; background: var(--dsh-fill); color: var(--warning); }

@@ -310,7 +310,8 @@ describe('projeto aberto e exclusão', () => {
     expect(screen.queryByRole('button', { name: 'Empresa' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Nova sessão' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Novo Boo' })).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /Equipe do projeto/ })).toBeInTheDocument()
+    // Projeto sem equipe não mostra a seção vazia.
+    expect(screen.queryByRole('region', { name: /Equipe do projeto/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Contratar equipe' })).not.toBeInTheDocument()
   })
 
@@ -326,7 +327,7 @@ describe('projeto aberto e exclusão', () => {
     expect(within(pinned).queryByRole('button', { name: /^Alfa/ })).not.toBeInTheDocument()
   })
 
-  it('mostra a equipe do projeto e abre a conversa do Boo no projeto, ou aviso quando não há', () => {
+  it('mostra a equipe do projeto e abre a conversa do Boo no projeto, e esconde a seção quando não há', () => {
     const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Sem time' }
     const withTeam: Workspace = { ...workspace, defaultAgentIds: [agent.id] }
     const onOpenWorkspaceAgent = vi.fn()
@@ -340,7 +341,7 @@ describe('projeto aberto e exclusão', () => {
     expect(onOpenAgent).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Voltar aos projetos' }))
     enter('Sem time')
-    expect(screen.getByText('Este projeto ainda não tem equipe.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Equipe do projeto' })).not.toBeInTheDocument()
     first.unmount()
     localStorage.clear()
     // Sem conversa por projeto disponível, abre a conversa do Boo.

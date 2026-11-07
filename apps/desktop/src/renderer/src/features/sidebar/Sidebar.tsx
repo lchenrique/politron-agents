@@ -430,13 +430,11 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         {!conversations.length && !children.length && <p className="dsh-empty">Nenhuma conversa ainda.</p>}
         </>}
       </section>
-      <section aria-labelledby="dsh-team" className="dsh-section">
-        <div className="dsh-section-header">{sectionTitle('team', 'Equipe do projeto', 'dsh-team')}{!isOpen('team') && !!team.length && <span className="dsh-meta dsh-section-count">{team.length}</span>}</div>
-        {isOpen('team') && <>
-        {!!team.length && <div className="dsh-boos">{team.map(agent => <span key={agent.id}>{booButton(agent, openTeamAgent)}</span>)}</div>}
-        {!team.length && <p className="dsh-empty">Este projeto ainda não tem equipe.</p>}
-        </>}
-      </section>
+      {/* Sem equipe, a seção some: a equipe se define em "Editar projeto". */}
+      {!!team.length && <section aria-labelledby="dsh-team" className="dsh-section">
+        <div className="dsh-section-header">{sectionTitle('team', 'Equipe do projeto', 'dsh-team')}{!isOpen('team') && <span className="dsh-meta dsh-section-count">{team.length}</span>}</div>
+        {isOpen('team') && <div className="dsh-boos">{team.map(agent => <span key={agent.id}>{booButton(agent, openTeamAgent)}</span>)}</div>}
+      </section>}
     </div>
   }
 
