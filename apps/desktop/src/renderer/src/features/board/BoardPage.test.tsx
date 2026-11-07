@@ -186,7 +186,7 @@ describe('BoardPage', () => {
     const region = screen.getByRole('region', { name: 'Colunas do board' })
     expect(region).toHaveClass('overflow-x-auto', 'overflow-y-hidden')
     const column = screen.getByRole('region', { name: 'Coluna Em execução' })
-    expect(column).toHaveClass('min-w-[14rem]', 'flex-1', 'min-h-0')
+    expect(column).toHaveClass('min-w-[10rem]', 'flex-1', 'min-h-0')
     expect(column.querySelector('.overflow-y-auto')).toHaveClass('min-h-0', 'flex-1')
     expect(column.querySelectorAll('article')).toHaveLength(30)
     expect(column.querySelector('article')).toHaveClass('shrink-0', 'max-w-full')
