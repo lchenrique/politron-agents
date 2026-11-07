@@ -55,6 +55,7 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   const modelSlot = useModelSlotNode()
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
+  const [levels, setLevels] = useState<number[]>([])
   const [error, setError] = useState('')
   const [value, setValue] = useState('')
   const [mention, setMention] = useState<MentionQuery | null>(null)
@@ -172,14 +173,25 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
       const installed = await window.appAPI.voiceStatus()
       if (!installed.transcription) throw new Error('Instale o modelo de transcrição local nas configurações de voz antes de gravar.')
       setRecording(true)
-      const wav = await next.record()
+      setLevels([])
+      let inserted = ''
+      const apply = (text: string) => setValue(currentValue => {
+        const base = inserted && currentValue.endsWith(inserted) ? currentValue.slice(0, currentValue.length - inserted.length).replace(/\s+$/, '') : currentValue
+        inserted = text
+        return text ? (base ? `${base}${/\s$/.test(base) ? '' : ' '}${text}` : text) : base
+      })
+      const wav = await next.record(false, level => setLevels(old => [...old.slice(-31), Math.min(1, level * 4)]),
+        async partialWav => {
+          const partial = (await window.appAPI.voiceTranscribe(partialWav)).trim()
+          if (current === sequence.current && recorder.current === next && partial) apply(partial)
+        })
       if (current !== sequence.current) return
       setRecording(false)
       setTranscribing(true)
       const transcript = (await window.appAPI.voiceTranscribe(wav)).trim()
       if (current !== sequence.current) return
-      if (!transcript) throw new Error('Não consegui entender a gravação. Tente novamente.')
-      setValue(currentValue => currentValue ? `${currentValue}${/\s$/.test(currentValue) ? '' : ' '}${transcript}` : transcript)
+      if (!transcript && !inserted) throw new Error('Não consegui entender a gravação. Tente novamente.')
+      if (transcript) apply(transcript)
     } catch (cause) {
       if (current === sequence.current && !(cause instanceof Error && cause.message === 'Gravação cancelada.')) notify(cause)
     } finally {
@@ -302,7 +314,10 @@ ${message.text}` : message.text)
           </Button>
         </>}
       />
-      {(recording || transcribing) && <p role="status" className="px-3 pt-1 text-[11px] text-muted-foreground">{recording ? 'Gravando áudio… clique no quadrado para transcrever.' : 'Transcrevendo sua fala localmente…'}</p>}
+      {(recording || transcribing) && <div className="flex items-center gap-2 px-3 pt-1 text-[11px] text-muted-foreground">
+        {recording && <span aria-hidden="true" data-testid="dictation-wave" className="flex h-5 items-center gap-0.5">{Array.from({ length: 32 }, (_, i) => { const level = levels[levels.length - 32 + i] ?? 0; return <span key={i} className="w-0.5 rounded-full bg-primary/70 transition-[height] duration-100" style={{ height: `${Math.max(12, Math.round(level * 100))}%` }} /> })}</span>}
+        <p role="status">{recording ? 'Ouvindo… o texto aparece enquanto você fala. Clique no quadrado para finalizar.' : 'Finalizando a transcrição localmente…'}</p>
+      </div>}
       {error && <p role="alert" className="px-3 pt-1 text-[11px] text-destructive">{error}</p>}
       {modelSlot && createPortal(modelPicker, modelSlot)}
   </ComposerFrame>

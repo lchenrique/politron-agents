@@ -37,9 +37,10 @@ export class VoiceRecorder {
   private stream: MediaStream | null = null
   private context: AudioContext | null = null
   private timer: ReturnType<typeof setInterval> | null = null
+  private partialTimer: ReturnType<typeof setInterval> | null = null
   private cancelled = false
 
-  async record(autoSilence = false, onLevel?: (value: number) => void): Promise<Uint8Array> {
+  async record(autoSilence = false, onLevel?: (value: number) => void, onPartial?: (wav: Uint8Array) => Promise<void>, partialMs = 1800): Promise<Uint8Array> {
     if (this.media) throw new Error('Microfone ocupado.')
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) throw new Error('Microfone indisponível.')
     this.cancelled = false
@@ -68,6 +69,12 @@ export class VoiceRecorder {
         media.onerror = () => { this.cleanup(); reject(new Error('Falha ao gravar áudio.')) }
       })
       media.start(200)
+      let partialBusy = false
+      this.partialTimer = onPartial ? setInterval(() => {
+        if (partialBusy || !chunks.length || media.state !== 'recording') return
+        partialBusy = true
+        void toWav(new Blob([...chunks], { type: media.mimeType })).then(wav => onPartial(wav)).catch(() => undefined).finally(() => { partialBusy = false })
+      }, partialMs) : null
       this.timer = setInterval(() => {
         analyser.getByteTimeDomainData(data)
         const rms = Math.sqrt(data.reduce((sum, sample) => sum + (sample - 128) ** 2, 0) / data.length) / 128
@@ -85,6 +92,8 @@ export class VoiceRecorder {
   private cleanup() {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    if (this.partialTimer) clearInterval(this.partialTimer)
+    this.partialTimer = null
     this.stream?.getTracks().forEach(track => track.stop())
     this.stream = null
     this.media = null
