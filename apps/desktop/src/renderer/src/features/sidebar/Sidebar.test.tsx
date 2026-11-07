@@ -69,6 +69,35 @@ describe('estrutura da barra: busca, Boos e uma lista de conversas', () => {
     expect(onSelectConversation).toHaveBeenCalledExactlyOnceWith('c-1')
   })
 
+  it('o Boo e o grupo abrem a prévia, deixando a linha de cima para o título e a hora; erro vira rótulo curto', () => {
+    const conversations = [
+      session('c-1', 'Revisar login', workspace.id, { preview: 'Pronto.' }),
+      session('c-2', 'Equipe de lançamento', workspace.id, { kind: 'group', agentIds: [agent.id, 'x', 'y', 'z'], preview: 'Combinado.' }),
+      session('c-3', 'Deploy', workspace.id, { preview: 'Failed to authenticate: OAuth session expired', previewFailed: true }),
+    ]
+    renderSidebar({ snapshot: { ...snapshot, conversations } })
+    const top = (name: string) => screen.getByRole('button', { name }).querySelector('.dsh-chat-top')?.textContent
+    expect(top('Revisar login · Lyra')).not.toContain('Lyra')
+    expect(screen.getByRole('button', { name: 'Revisar login · Lyra' })).toHaveTextContent('Lyra: Pronto.')
+    expect(top('Equipe de lançamento · Grupo · 4')).not.toContain('Grupo')
+    expect(screen.getByRole('button', { name: 'Equipe de lançamento · Grupo · 4' })).toHaveTextContent('Grupo · 4: Combinado.')
+    const failed = screen.getByRole('button', { name: 'Deploy · Lyra' })
+    expect(failed).toHaveTextContent('Erro na última execução')
+    expect(failed).not.toHaveTextContent('Failed')
+    expect(failed.querySelector('[data-error]')).not.toBeNull()
+  })
+
+  it('worktrees não viram subgrupo com o nome cru da branch: as conversas ficam no projeto, e arquivar fica no menu da conversa', () => {
+    const local: Workspace = { ...workspace, id: 'ws-local', name: 'Politron', kind: 'local' }
+    const tree: Workspace = { ...workspace, id: 'ws-tree', name: 'board-34a6', kind: 'worktree', branch: 'board/34a631c8-dc24-46c1-ac00-000000000000', parentWorkspaceId: local.id }
+    const conversations = [session('c-root', 'Planejar', local.id, { updatedAt: '2026-10-01T00:00:00.000Z' }), session('c-tree', 'Board · Aplicar revisão', tree.id, { updatedAt: '2026-10-02T00:00:00.000Z' })]
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [local, tree], conversations } })
+    expect(screen.queryByText(/board\/34a631c8/)).not.toBeInTheDocument()
+    expect([...sectionOf('Politron').querySelectorAll('.dsh-chat-title')].map(item => item.textContent)).toEqual(['Board · Aplicar revisão', 'Planejar'])
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Board · Aplicar revisão · Lyra' }).parentElement!)
+    expect(screen.getByRole('menuitem', { name: 'Arquivar worktree' })).toBeInTheDocument()
+  })
+
   it('ordena da conversa mais recente para a mais antiga e limita cada projeto, sem esconder a aberta', () => {
     const conversations = Array.from({ length: 11 }, (_, index) => session('s' + index, 'Sessão ' + index, workspace.id, { updatedAt: `2026-10-${String(index + 1).padStart(2, '0')}T00:00:00.000Z` }))
     renderSidebar({ snapshot: { ...snapshot, conversations }, selected: conversations[0] })
@@ -156,7 +185,7 @@ describe('busca', () => {
     fireEvent.change(input, { target: { value: 'cupom' } })
     const results = () => [...screen.getByRole('region', { name: 'Resultados da busca' }).querySelectorAll('.dsh-chat-title')].map(item => item.textContent)
     expect(results()).toEqual(['Checkout'])
-    expect(screen.getByRole('button', { name: 'Checkout · Lyra' })).toHaveTextContent('Instruções de Paz · cupom aplicado')
+    expect(screen.getByRole('button', { name: 'Checkout · Lyra' })).toHaveTextContent('Instruções de Paz · Lyra: cupom aplicado')
     fireEvent.change(input, { target: { value: 'mira' } })
     expect(results()).toEqual(['Home'])
     fireEvent.change(input, { target: { value: 'nada disso' } })

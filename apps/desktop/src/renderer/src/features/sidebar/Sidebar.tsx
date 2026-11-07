@@ -177,6 +177,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const conversationMenuEntries = (conversation: Conversation): MenuEntry[] => [
     { id: 'edit-conversation', label: 'Renomear ou editar', icon: <Pencil /> },
     { id: 'favorite-conversation', label: isFavorite('conversation', conversation.id) ? 'Remover dos favoritos' : 'Favoritar sessão', icon: <Star /> },
+    // Worktrees não têm mais cabeçalho próprio; arquivar fica na conversa que vive nele.
+    ...(workspacesById.get(conversation.workspaceId)?.kind === 'worktree' ? [{ id: 'archive-worktree', label: 'Arquivar worktree', icon: <Archive /> }] : []),
     { id: 'delete-conversation', label: 'Excluir conversa', icon: <Trash2 />, danger: true },
   ]
   /** Linha de mensageiro: avatar do Boo com o estado no canto, título, Boo, hora e a prévia da última fala. */
@@ -188,7 +190,9 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     const agent = leadAgent(conversation)
     const title = titleOf(conversation, agent)
     const tag = conversation.kind === 'group' ? `Grupo · ${conversation.agentIds.length}` : agent && agent.name !== title ? agent.name : ''
-    const preview = attention || oneLine(conversation.preview) || 'Nenhuma mensagem ainda'
+    // Erro cru do provedor (em inglês, cortado) não ajuda na lista; o detalhe fica na conversa.
+    const failed = !attention && !!conversation.previewFailed
+    const preview = attention || (failed ? 'Erro na última execução' : oneLine(conversation.preview)) || 'Nenhuma mensagem ainda'
     const time = listTime(conversation.updatedAt || conversation.createdAt, now)
     const state = attention ? 'aguardando você' : running ? 'em execução' : unread ? `${unread} não lidas` : ''
     const label = [title, tag, state].filter(Boolean).join(' · ')
@@ -204,11 +208,14 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       <span className="dsh-chat-body">
         <span className="dsh-chat-top">
           <span className="dsh-chat-title" title={conversation.name}>{title}</span>
-          {tag && <span className="dsh-chat-tag">{tag}</span>}
           {isFavorite('conversation', conversation.id) && <Star className="dsh-star fill-warning text-warning" />}
           <span className="dsh-chat-time">{time}</span>
         </span>
-        <span className="dsh-chat-preview" data-attention={!!attention || undefined} title={preview}>{context ? `${context} · ` : ''}{preview}</span>
+        {/* O Boo (ou o grupo) abre a prévia, como o remetente num mensageiro; assim o título fica com a linha de cima inteira. */}
+        <span className="dsh-chat-preview" title={preview}>
+          {(context || tag) && <span className="dsh-chat-tag">{[context, tag].filter(Boolean).join(' · ')}: </span>}
+          <span data-attention={!!attention || undefined} data-error={failed || undefined}>{preview}</span>
+        </span>
       </span>
     </>
     if (selecting) return <div key={conversation.id} data-active={checked} className="dsh-chat">
@@ -224,6 +231,7 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
           setOpenConversationMenuId(null)
           if (id === 'edit-conversation') onOpenEditor({ kind: 'conversation', initial: conversation })
           else if (id === 'favorite-conversation') toggleFavorite(favoriteKey('conversation', conversation.id))
+          else if (id === 'archive-worktree') { const worktree = workspacesById.get(conversation.workspaceId); if (worktree) void archiveWorkspace(worktree) }
           else if (id === 'delete-conversation') removeConversation(conversation)
         }} />
     </div>
@@ -308,9 +316,9 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     </div>
   }
 
-  /** Corpo da seção: conversas da mais recente para a mais antiga e, abaixo, os worktrees do projeto. */
+  /** Corpo da seção: conversas do projeto e dos seus worktrees juntas, da mais recente para a mais antiga (branches como board/<uuid> não dizem nada a quem lê). */
   const projectBody = (workspace: Workspace) => {
-    const all = conversationsOf(workspace.id).filter(isTopLevel).sort(recency)
+    const all = projectFamily(workspace).flatMap(item => conversationsOf(item.id)).filter(isTopLevel).sort(recency)
     const showAll = expandedSessions.has(workspace.id) || selecting === workspace.id
     const shown = showAll ? all : all.slice(0, SESSION_LIMIT)
     if (selected && !shown.includes(selected) && all.includes(selected)) shown.push(selected)
@@ -320,7 +328,6 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       {selecting === workspace.id && bulkBar(selectable, selectable.filter(id => checkedIds.has(id)))}
       {shown.map(conversation => conversationRow(conversation))}
       {hidden > 0 && <Button type="button" variant="ghost" size={null} onClick={() => setExpandedSessions(current => new Set(current).add(workspace.id))} className="dsh-overflow">Ver mais {hidden} {hidden === 1 ? 'conversa' : 'conversas'}</Button>}
-      {childWorkspaces(workspace.id).map(child => <div key={child.id} className="dsh-subsection">{projectSection(child)}</div>)}
     </div>
   }
 

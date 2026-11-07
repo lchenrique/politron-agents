@@ -445,13 +445,13 @@ export class WorkspaceStore {
     const updated = new Map((this.db.prepare("SELECT conversation_id AS id, json_extract(data,'$.createdAt') AS at FROM v9_messages WHERE rowid IN (SELECT MAX(rowid) FROM v9_messages GROUP BY conversation_id)").all() as { id: string; at: string | null }[]).map(row => [row.id, row.at]))
     // Prévia da barra lateral: última fala com texto e primeiro pedido do usuário; cada busca desce pelo índice da conversa e para no primeiro achado.
     const spoken = "json_extract(m.data,'$.role') IN ('user','assistant') AND trim(json_extract(m.data,'$.text'))!=''"
-    const texts = new Map((this.db.prepare(`SELECT c.id AS id,
-      (SELECT substr(json_extract(m.data,'$.text'),1,160) FROM v9_messages m WHERE m.conversation_id=c.id AND ${spoken} ORDER BY m.rowid DESC LIMIT 1) AS preview,
+    const texts = new Map((this.db.prepare(`SELECT t.id AS id, substr(json_extract(p.data,'$.text'),1,160) AS preview, json_extract(p.data,'$.status')='failed' AS failed, t.first AS first FROM (SELECT c.id AS id,
+      (SELECT m.rowid FROM v9_messages m WHERE m.conversation_id=c.id AND ${spoken} ORDER BY m.rowid DESC LIMIT 1) AS last,
       (SELECT substr(json_extract(m.data,'$.text'),1,80) FROM v9_messages m WHERE m.conversation_id=c.id AND json_extract(m.data,'$.role')='user' AND ${spoken} ORDER BY m.rowid LIMIT 1) AS first
-      FROM v9_conversations c`).all() as { id: string; preview: string | null; first: string | null }[]).map(row => [row.id, row]))
+      FROM v9_conversations c) t LEFT JOIN v9_messages p ON p.rowid=t.last`).all() as { id: string; preview: string | null; failed: number | null; first: string | null }[]).map(row => [row.id, row]))
     const conversations = this.conversations().map(item => {
       const parent = parents.get(item.id), updatedAt = updated.get(item.id), text = texts.get(item.id)
-      return { ...item, ...(parent && parent !== item.id ? { parentConversationId: parent } : {}), ...(updatedAt ? { updatedAt } : {}), ...(text?.preview ? { preview: text.preview } : {}), ...(text?.first ? { firstPrompt: text.first } : {}) }
+      return { ...item, ...(parent && parent !== item.id ? { parentConversationId: parent } : {}), ...(updatedAt ? { updatedAt } : {}), ...(text?.preview ? { preview: text.preview } : {}), ...(text?.preview && text.failed ? { previewFailed: true } : {}), ...(text?.first ? { firstPrompt: text.first } : {}) }
     })
     return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations, messages: [], runs: this.recent<Run>('v9_runs', 100), fileChanges: this.recent<FileChange>('v9_file_changes', 500), approvals: this.approvals(), terminalEnabled: this.terminalEnabled(), missions: this.missions(100), routines: this.routines() }
   }

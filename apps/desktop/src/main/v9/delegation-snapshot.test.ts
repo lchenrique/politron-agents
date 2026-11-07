@@ -42,7 +42,10 @@ describe('vínculo de delegação no snapshot', () => {
       const item = conversations.find(entry => entry.id === conversation.id)
       expect(item?.preview).toBe('revisa o login')
       expect(item?.firstPrompt).toBe('oi')
+      expect(item?.previewFailed).toBeUndefined()
       expect(conversations.find(entry => entry.id === empty.id)?.preview).toBeUndefined()
+      store.putMessage({ id: 'm6', conversationId: conversation.id, agentId: null, author: 'x', role: 'assistant', text: 'Failed to authenticate', status: 'failed', runId: null, createdAt: new Date().toISOString() })
+      expect(store.snapshot().conversations.find(entry => entry.id === conversation.id)).toMatchObject({ preview: 'Failed to authenticate', previewFailed: true })
     } finally { store.db.close() }
   })
 })

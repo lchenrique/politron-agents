@@ -60,6 +60,8 @@ export interface Conversation {
   updatedAt?: string
   /** Só no snapshot: início da última mensagem com texto (usuário ou Boo), para a prévia da barra lateral. */
   preview?: string
+  /** Só no snapshot: a fala da prévia é uma resposta que falhou (o texto é o erro cru). */
+  previewFailed?: boolean
   /** Só no snapshot: início do primeiro pedido do usuário; título de reserva quando a conversa tem o nome do Boo. */
   firstPrompt?: string
 }

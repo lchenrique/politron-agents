@@ -197,7 +197,6 @@
 .dsh-section-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; line-height: 18px; }
 .dsh-section-main[aria-expanded="false"] .dsh-section-name { color: var(--dsh-label-secondary); }
 .dsh-section-icon { width: 14px; height: 14px; flex: none; color: var(--dsh-label-tertiary); }
-.dsh-subsection { margin: 2px 0 0 10px; }
 
 /* Ações de linha e de seção: só no hover/foco. */
 .dsh-row-action {
@@ -279,12 +278,14 @@
 .dsh-chat-badge .dsh-spinner { width: 12px; height: 12px; color: var(--dsh-blue); }
 .dsh-chat-body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
 .dsh-chat-top { display: flex; min-width: 0; align-items: center; gap: 6px; }
-.dsh-chat-title { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 600; line-height: 19px; }
-/* O nome do Boo é curto: fica inteiro e o título é que encurta. */
-.dsh-chat-tag { flex: 0 0 auto; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; border-radius: 6px; background: var(--dsh-hover); color: var(--dsh-label-tertiary); font-size: 11px; line-height: 17px; }
+/* O título tem a linha de cima só para ele e a hora. */
+.dsh-chat-title { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 600; line-height: 19px; }
 .dsh-chat-time { flex: none; margin-left: auto; padding-left: 4px; color: var(--dsh-label-caption); font-size: 11.5px; line-height: 19px; font-variant-numeric: tabular-nums; }
 .dsh-chat-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsh-label-tertiary); font-size: 12.5px; line-height: 18px; }
-.dsh-chat-preview[data-attention] { color: var(--dsh-amber); }
+/* Remetente da prévia: o Boo ou "Grupo · 4", como num mensageiro. */
+.dsh-chat-tag { color: var(--dsh-label-secondary); }
+.dsh-chat-preview [data-attention] { color: var(--dsh-amber); }
+.dsh-chat-preview [data-error] { color: color-mix(in srgb, var(--destructive) 85%, var(--dsh-label-tertiary)); }
 .dsh-chat[data-active="true"] .dsh-chat-preview { color: var(--dsh-label-secondary); }
 /* Menu da conversa sobre a hora, no hover. */
 .dsh-chat > .dsh-row-action { position: absolute; top: 6px; right: 6px; background: var(--dsh-hover-solid); }
