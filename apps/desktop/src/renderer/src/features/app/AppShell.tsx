@@ -27,7 +27,7 @@ import { DockWorkspace, type DockWorkspaceHandle, type DockTool, type DockZone }
 import type { EditorData, EditorKind } from '../editors/Editor'
 import type { SettingsSection } from './SettingsPage'
 import { INHERIT_MODEL_NAME, emptySnapshot, errorText } from './appShellShared'
-import { selectVisibleRunEvidence } from './delegation-evidence'
+import { selectDescendantApprovals, selectVisibleRunEvidence } from './delegation-evidence'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { replaceEqualDeep } from '@tanstack/react-query'
 import { ChiefHome } from '../work/ChiefHome'
@@ -108,7 +108,9 @@ export default function AppShell() {
   const visibleRunEvidence = useMemo(() => selectVisibleRunEvidence(messages, snapshot.fileChanges, snapshot.approvals), [messages, snapshot.fileChanges, snapshot.approvals])
   const visibleFileChanges = visibleRunEvidence.fileChanges
   const visibleApprovals = visibleRunEvidence.approvals
-  const composerTakeoverApproval = visibleApprovals.find(approval => approval.status === 'pending')
+  // Pendências das conversas delegadas sobem para a conversa do líder, depois das próprias.
+  const delegatedApprovals = useMemo(() => selected ? selectDescendantApprovals(selected.id, snapshot.conversations, snapshot.approvals) : [], [selected, snapshot.conversations, snapshot.approvals])
+  const composerTakeoverApproval = visibleApprovals.find(approval => approval.status === 'pending') || delegatedApprovals[0]
   const transcriptApprovals = composerTakeoverApproval
     ? visibleApprovals.filter(approval => approval.id !== composerTakeoverApproval.id)
     : visibleApprovals
@@ -468,7 +470,7 @@ export default function AppShell() {
               onVoiceNotice={setNotice}
             />
             </div>
-            {composerTakeoverApproval && <ComposerTakeover key={composerTakeoverApproval.id} approval={composerTakeoverApproval} agent={agentOf(composerTakeoverApproval.agentId)} onNotice={setNotice} />}
+            {composerTakeoverApproval && <ComposerTakeover key={composerTakeoverApproval.id} approval={composerTakeoverApproval} agent={agentOf(composerTakeoverApproval.agentId)} delegated={composerTakeoverApproval.conversationId !== selected.id} onNotice={setNotice} />}
             </AssistantRuntimeProvider>
           </div>
         </> : activeWorkspace ? <WorkspaceOverview workspace={activeWorkspace} conversations={snapshot.conversations} workspaces={snapshot.workspaces} agents={snapshot.agents} onCreateSession={() => void startConversation(activeWorkspace.id)} onOpenConversation={selectConversation} onEdit={() => setEditor({ kind: 'workspace', initial: activeWorkspace })} onOpenAgent={agent => void openWorkspaceAgent(activeWorkspace.id, agent)} /> : <div className="flex flex-1 items-center justify-center p-8"><div className="max-w-md text-center"><div className="mx-auto mb-5 flex items-center justify-center"><PoliAvatar agent={{ ...snapshot.assistant, name: 'Boo' }} size={104} /></div><h1 className="ds-page-title">Seu espaço de trabalho</h1><p className="ds-page-lede mx-auto">Converse agora com o Assistente padrão, sem cadastrar nada. Organize conversas em projetos e, quando quiser, crie agentes para formar uma equipe.</p><div className="mt-6 flex flex-wrap justify-center gap-2"><Button onClick={() => void startConversation()}><MessageSquarePlus className="size-4" /> Nova conversa</Button><Button variant="outline" onClick={() => setEditor({ kind: 'workspace' })}><FolderPlus className="size-4" /> Novo projeto</Button></div>{loading && <p className="mt-4 text-xs text-muted-foreground">Carregando conversas…</p>}</div></div>}

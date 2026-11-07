@@ -11,14 +11,33 @@
   margin-inline: auto;
 }
 
+.relayStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.relayDot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--warning);
+}
+
+/* Mesmo contêiner discreto do cartão de aprovação. */
 .questionPanel {
   overflow: auto;
   max-height: min(60vh, 520px);
-  padding: 16px 20px 20px;
-  border: 0.5px solid var(--dsw-alias-border-l1, var(--border));
-  border-radius: 28px;
-  background: var(--dsw-specific-input-major, var(--card));
-  box-shadow: var(--dsw-elevation-panel, var(--shadow-composer));
+  padding: 10px 12px 12px;
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
 }
 
 .questionStatus {
