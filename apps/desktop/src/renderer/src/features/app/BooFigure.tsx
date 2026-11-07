@@ -38,6 +38,13 @@ const STAR = 'M0 -7 L2 -2.4 L6.7 -2.2 L3.1 1 L4.2 5.7 L0 3.1 L-4.2 5.7 L-3.1 1 L
 const SPARK = 'M-4 -6 L-13 -18 M-9 2 L-23 -1 M3 -10 L2 -24'
 const EYES = [88.2, 154.7]
 
+/** Corpo quadradinho de cantos arredondados; as três formas têm os mesmos comandos para o "líquido" interpolar. */
+export const BOO_BODY = {
+  rest: 'M88 22 H152 C177 22 198 43 198 68 V132 C198 157 177 178 152 178 H88 C63 178 42 157 42 132 V68 C42 43 63 22 88 22 Z',
+  liquidA: 'M88 25 H152 C177 25 199 45 199 70 V133 C199 158 178 178 152 178 H88 C62 178 41 158 41 133 V70 C41 45 63 25 88 25 Z',
+  liquidB: 'M89 20 H151 C175 20 196 42 196 67 V132 C196 157 176 178 151 178 H89 C64 178 44 157 44 132 V67 C44 42 65 20 89 20 Z',
+}
+
 type Hand = [x: number, y: number, angle: number]
 const HANDS: Partial<Record<BooMood, Hand[]>> = {
   coding: [[77, 180, -12], [163, 180, 12]],
@@ -65,14 +72,6 @@ function Hands({ mood }: { mood: BooMood }) {
     </g>)}</g>
 }
 
-function Mouth({ d, tongue, className }: { d: string; tongue?: string; className?: string }) {
-  return <g className={className}>
-    <path className="boo__mouth" d={d} />
-    {tongue && <path className="boo__tongue" d={tongue} />}
-    <path className="boo__mouth-edge" d={d} />
-  </g>
-}
-
 function Eyes({ mood }: { mood: BooMood }) {
   if (mood === 'dizzy') return <g>{EYES.map(x => <g key={x} className="boo__spiral"><path className="boo__eye-line boo__spiral-line" d={spiral(x, 101, 13)} /></g>)}</g>
   if (mood === 'love') return <g>{EYES.map(x => <g key={x} transform={`translate(${x} 99) scale(1.3)`}><path className="boo__heart-eye" d={HEART} /></g>)}</g>
@@ -93,19 +92,6 @@ function Eyes({ mood }: { mood: BooMood }) {
 const BROWS: Partial<Record<BooMood, string>> = {
   dizzy: 'M78.2 76 L97.2 70 M164.7 76 L145.7 70',
   surprised: 'M78.2 69 Q88.2 61 98.2 68 M144.7 68 Q154.7 61 164.7 69',
-}
-
-function MoodMouth({ mood }: { mood: BooMood }) {
-  switch (mood) {
-    case 'idle': case 'coding': case 'thinking': case 'happy': case 'boop': case 'done': case 'sleep':
-      return <path className={`boo__reference-mouth${mood === 'sleep' ? ' boo__snore' : ''}`} d={mood === 'thinking' || mood === 'coding' ? BOO_REFERENCE_ART.idle.mouth : referencePose(mood).mouth} />
-    case 'speaking': return <g transform="translate(1.4 -13)"><Mouth className="boo__talk" d="M110 127 C110 120 130 120 130 127 C130 136 125 140 120 140 C115 140 110 136 110 127 Z" tongue="M113 135 C116 131 124 131 127 135 C125 139 122 140 120 140 C118 140 115 139 113 135 Z" /></g>
-    case 'dizzy': return <path className="boo__line" transform="translate(1.4 -13)" d="M106 130 q3.5 -5 7 0 t7 0 t7 0 t7 0" />
-    case 'love': return <path className="boo__line" transform="translate(1.4 -9)" d="M110 126 q5 6 10 0 q5 6 10 0" />
-    case 'surprised': return <g transform="translate(1.4 -13)"><Mouth d="M114 132 C114 124 126 124 126 132 C126 139 123 142 120 142 C117 142 114 139 114 132 Z" /></g>
-    default:
-      return <path className="boo__line" d="M113 122 Q120 128 127 122" />
-  }
 }
 
 function FrontEffects({ mood }: { mood: BooMood }) {
@@ -171,14 +157,14 @@ export const BooFigure = memo(function BooFigure({ mood, size, colors, label, an
   const tier = size < 40 ? 's' : size < 96 ? 'm' : 'l'
   const style = { width: size, height: size, ...(hidden ? { visibility: 'hidden' } : {}), ...booColorVars(colors) } as Record<string, string | number>
   const showBlush = blush && mood === 'love'
-  style['--boo-liquid-rest'] = `path('${art.body}')`
-  style['--boo-liquid-a'] = `path('${art.liquidA}')`
-  style['--boo-liquid-b'] = `path('${art.liquidB}')`
+  style['--boo-liquid-rest'] = `path('${BOO_BODY.rest}')`
+  style['--boo-liquid-a'] = `path('${BOO_BODY.liquidA}')`
+  style['--boo-liquid-b'] = `path('${BOO_BODY.liquidB}')`
   // Acessórios importados medem o Boo "Bolinha"; a cabeça nova é um pouco mais estreita.
   const accessory = { shape: 'round', bodyWidth: .92, bodyHeight: 1, eyeSize: 8, eyeSpacing: 33.25 / .92, mouthSize: 1, colors: accessoryColors }
   return <svg viewBox="20 0 200 200" className="boo" data-mood={mood} data-size={tier} data-animate={animate} data-liquid={liquid} style={style as CSSProperties} role="img" aria-label={label}>
     <g className="boo__float"><g className="poli-avatar__lean"><g className="boo__bounce"><g className="boo__pose">
-      <path className="boo__body" d={art.body} />
+      <path className="boo__body" d={BOO_BODY.rest} />
       {detail && mood === 'coding' && <g className="boo__typing" aria-hidden="true">
         {[108, 120, 132].map((x, i) => <circle key={x} cx={x} cy="182" r="2.5" style={{ animationDelay: `${i * .16}s` }} />)}
       </g>}
@@ -188,7 +174,6 @@ export const BooFigure = memo(function BooFigure({ mood, size, colors, label, an
         </g>)}
         <g className="poli-avatar__look"><Eyes mood={mood} /></g>
         {BROWS[mood] && <path className={`boo__brow boo__fine${mood === 'coding' || mood === 'thinking' ? ' boo__reference-brow' : ''}`} d={BROWS[mood]} />}
-        <MoodMouth mood={mood} />
         <g transform="translate(1.4 7)"><BooFaceAccessory kind={faceAccessory} {...accessory} /></g>
       </g>
       <Hands mood={mood} />

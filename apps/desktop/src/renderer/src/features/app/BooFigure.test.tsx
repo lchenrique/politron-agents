@@ -5,28 +5,32 @@ import { BOO_MOODS, BooFigure, type BooMood } from './BooFigure'
 const draw = (mood: BooMood, size = 200) => render(<BooFigure mood={mood} size={size} label={mood} animate />).container
 
 describe('Boo / 11 estados', () => {
-  it('pensa com o sorriso original e um olhar atento, sem sobrancelha de irritação', () => {
-    const { container, rerender } = render(<BooFigure mood="idle" size={200} label="Boo" />)
-    const smile = container.querySelector('.boo__reference-mouth')!.getAttribute('d')
-    rerender(<BooFigure mood="thinking" size={200} label="Boo" />)
-    expect(container.querySelector('.boo__reference-mouth')).toHaveAttribute('d', smile)
+  it('corpo quadradinho arredondado e sem boca em nenhum estado', () => {
+    for (const mood of BOO_MOODS) {
+      const container = draw(mood)
+      expect(container.querySelector('.boo__body')?.getAttribute('d')).toMatch(/^M88 22 H152/)
+      expect(container.querySelector('.boo__reference-mouth, .boo__mouth, .boo__talk'), mood).toBeNull()
+    }
+  })
+  it('pensa com um olhar atento, sem sobrancelha de irritação', () => {
+    const { container } = render(<BooFigure mood="thinking" size={200} label="Boo" />)
     expect(container.querySelector('.boo__brow')).toBeNull()
     expect(container.querySelector('.boo__thought-gaze')).not.toBeNull()
     expect(container.querySelectorAll('.boo__shine')).toHaveLength(2)
   })
   it('cada estado monta as partes que o caracterizam', () => {
     const parts: Record<BooMood, string[]> = {
-      idle: ['.boo__eye', '.boo__reference-mouth'],
+      idle: ['.boo__eye'],
       coding: ['.boo__typing', '.boo__eye'],
-      thinking: ['.boo__reference-mouth', '.boo__thought-gaze', '[data-boo-prop="thought"]'],
-      speaking: ['.boo__talk', '.boo__talk-lines'],
+      thinking: ['.boo__thought-gaze', '[data-boo-prop="thought"]'],
+      speaking: ['.boo__talk-lines'],
       done: ['[data-boo-prop="check"]', '.boo__eye-line'],
-      happy: ['.boo__reference-mouth', '.boo__eye-line'],
-      boop: ['.boo__eye-line', '.boo__reference-mouth'],
+      happy: ['.boo__eye-line'],
+      boop: ['.boo__eye-line'],
       dizzy: ['.boo__spiral', '[data-boo-prop="stars"]'],
       love: ['.boo__heart-eye', '[data-boo-prop="hearts"]'],
       surprised: ['[data-boo-prop="sparks"]', '.boo__brow'],
-      sleep: ['.boo__snore', '.boo__eye-line', '[data-boo-prop="zzz"]'],
+      sleep: ['.boo__eye-line', '[data-boo-prop="zzz"]'],
     }
     expect(BOO_MOODS).toHaveLength(11)
     for (const mood of BOO_MOODS) {
