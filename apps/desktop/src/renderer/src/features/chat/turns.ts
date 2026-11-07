@@ -66,13 +66,15 @@ function finishTurn(turn: Turn, raw: Message[]): Turn {
   const times = raw.flatMap(message => [time(message.createdAt), time(message.finishedAt), time(message.tool?.finishedAt)]).filter((value): value is number => value !== undefined)
   turn.startedAt = time(turn.user?.createdAt) ?? (times.length ? Math.min(...times) : undefined)
   turn.finishedAt = times.length ? Math.max(...times) : undefined
-  // Resposta de cada Boo: o primeiro texto do turno e cada troca de autor ganham o cabeçalho.
-  let lastAgent: string | null | undefined
-  for (const item of turn.items) {
-    if (item.kind !== 'reply' || !item.message.text.trim()) continue
-    const agent = item.message.agentId ?? item.message.author
-    item.boo = agent !== lastAgent
-    lastAgent = agent
+  // Nome do Boo só quando mais de um responde no turno: cada troca de autor ganha o cabeçalho. Com um Boo só, a resposta é texto puro.
+  const replies = turn.items.filter((item): item is Extract<TurnItem, { kind: 'reply' }> => item.kind === 'reply' && !!item.message.text.trim())
+  if (new Set(replies.map(item => item.message.agentId ?? item.message.author)).size > 1) {
+    let lastAgent: string | null | undefined
+    for (const item of replies) {
+      const agent = item.message.agentId ?? item.message.author
+      item.boo = agent !== lastAgent
+      lastAgent = agent
+    }
   }
   return turn
 }

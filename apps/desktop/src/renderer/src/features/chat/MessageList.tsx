@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import type { Agent, Approval, Conversation, FileChange, Message } from '../../../../shared/v9'
 import { assistantIdOf, useTranscriptRuntime } from './assistant-ui-adapter'
 import { TranscriptContext, TranscriptMessage, type TranscriptContextValue } from './TranscriptMessages'
-import { buildTurns, endsWithReply, finalReply } from './turns'
+import { buildTurns, endsWithReply, finalReply, turnHeaderText } from './turns'
 import { TurnNavigator } from './TurnNavigator'
 import { useTurnNavigation } from './useTurnNavigation'
 import css from './Transcript.module.css'
@@ -87,13 +87,17 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
   }, [messageRuns, fileChanges, reviewRunId])
 
   const context = useMemo<TranscriptContextValue>(() => {
-    const last = turns.at(-1)
-    const latest = last && endsWithReply(last) ? finalReply(last) : undefined
+    // Duração e ferramentas do turno saem da transcrição e vão para a barra de ações (hover) da última resposta.
+    const turnInfo = new Map(turns.flatMap(turn => {
+      const reply = endsWithReply(turn) ? finalReply(turn) : undefined
+      const info = reply && turnHeaderText(turn)
+      return reply && info ? [[reply.id, info] as const] : []
+    }))
     return {
       messagesById, lastMessageByRun, approvalsByRun, appliedByMessage, conversationsById, agentOf, focusedMessageId, canCancelQueued, onOpenRelatedConversation, onNotice,
       turnsById: new Map(turns.map(turn => [assistantIdOf(turn), turn])),
       booReplies: new Set(turns.flatMap(turn => turn.items.flatMap(item => item.kind === 'reply' && item.boo ? [item.message.id] : []))),
-      alwaysActionsId: latest?.id,
+      turnInfo,
     }
   }, [turns, messagesById, lastMessageByRun, approvalsByRun, appliedByMessage, conversationsById, agentOf, focusedMessageId, canCancelQueued, onOpenRelatedConversation, onNotice])
 

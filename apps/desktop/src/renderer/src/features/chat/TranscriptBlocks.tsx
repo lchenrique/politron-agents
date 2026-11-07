@@ -2,29 +2,22 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Brain, Wrench } from 'lucide-react'
 import { DisclosureRow, TextShimmer } from '@/components/dsh'
 import type { Agent, Message } from '../../../../shared/v9'
-import { WorkCard } from './WorkCard'
+import { Avatar } from '../app/Avatar'
 import { activityToolCall, formatRunDuration, liveStep, processTitle, stepActivity } from './tool-call'
 import { messagesInTurn, type Turn } from './turns'
 import css from './Transcript.module.css'
 
-export function DshToolGroup({ messages, turnActive, autoOpen, agent, children }: { messages: Message[]; turnActive: boolean; autoOpen?: boolean; agent?: Agent; children: ReactNode }) {
-  // null = segue o estado: aberto enquanto há ferramenta rodando; depois do clique vale a escolha do usuário.
-  const [manual, setManual] = useState<boolean | null>(null)
-  const calls = useMemo(() => messages.map(message => ({ message, call: activityToolCall(message, turnActive) })), [messages, turnActive])
-  // "Ao vivo" só com chamada realmente em execução; entre chamadas o turno mostra "Pensando".
-  const current = [...calls].reverse().find(({ message }) => turnActive && (message.tool?.status === 'running' || message.status === 'running'))
-  const title = current ? liveStep(current.call, stepActivity(current.call, current.message)) : processTitle(calls.map(({ call, message }) => stepActivity(call, message)))
-
-  useEffect(() => { if (autoOpen) setManual(true) }, [autoOpen])
-  const open = manual ?? !!current
-
-  const row = <DisclosureRow
+/** Ferramentas de um turno encerrado: uma linha discreta ("Leu arquivos e executou comandos"); os detalhes abrem no clique. */
+export function DshToolGroup({ messages, turnActive, autoOpen, children }: { messages: Message[]; turnActive: boolean; autoOpen?: boolean; agent?: Agent; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const title = useMemo(() => processTitle(messages.map(message => stepActivity(activityToolCall(message, turnActive), message))), [messages, turnActive])
+  useEffect(() => { if (autoOpen) setOpen(true) }, [autoOpen])
+  return <DisclosureRow
     icon={<Wrench aria-hidden="true" />}
     title={title}
     open={open}
     expandable
-    onToggle={() => setManual(!open)}
-    running={!!current}
+    onToggle={() => setOpen(value => !value)}
     className={css.group}
     rowClassName={css.groupTitle}
     leadingClassName={css.groupLeading}
@@ -32,9 +25,6 @@ export function DshToolGroup({ messages, turnActive, autoOpen, agent, children }
   >
     <div className={css.groupBody}><div className={css.rows}>{children}</div></div>
   </DisclosureRow>
-  // Enquanto uma ferramenta roda, o grupo vira o card "Executando tarefa" (checklist, terminal e Boo).
-  if (current) return <WorkCard messages={messages} agent={agent} turnActive={turnActive} />
-  return row
 }
 
 export function ReasoningDisclosure({ message, autoOpen }: { message: Message; autoOpen?: boolean }) {
@@ -55,11 +45,15 @@ export function ReasoningDisclosure({ message, autoOpen }: { message: Message; a
   </DisclosureRow>
 }
 
-export function RunningTurnStatus({ turn }: { turn: Turn }) {
+/** Enquanto o turno roda: uma linha só, com o Boo e o passo ao vivo. Some quando a resposta começa a chegar. */
+export function RunningTurnStatus({ turn, agent }: { turn: Turn; agent?: Agent }) {
   const [now, setNow] = useState(() => Date.now())
   const messages = useMemo(() => messagesInTurn(turn), [turn])
-  const toolRunning = messages.some(message => message.role === 'activity' && (message.tool?.status === 'running' || message.status === 'running'))
-  const title = turn.status === 'waiting' ? 'Aguardando sua aprovação' : toolRunning ? 'Em andamento' : 'Pensando'
+  const activities = messages.filter(message => message.role === 'activity' && message.tool?.name !== 'reasoning')
+  const current = [...activities].reverse().find(message => message.tool?.status === 'running' || message.status === 'running')
+  const title = turn.status === 'waiting' ? 'Aguardando sua aprovação'
+    : current ? (() => { const call = activityToolCall(current, true); return liveStep(call, stepActivity(call, current)) })()
+      : activities.length ? 'Pensando no próximo passo…' : 'Entendendo o assunto…'
 
   useEffect(() => {
     if (turn.status !== 'running') return
@@ -69,10 +63,8 @@ export function RunningTurnStatus({ turn }: { turn: Turn }) {
 
   const elapsed = turn.startedAt === undefined ? '' : formatRunDuration(Math.max(0, now - turn.startedAt))
   return <div className={css.running} data-part="running" role="status" aria-live="polite">
-    <span className={css.runningDivider} />
-    <div className={css.runningContent}>
-      <TextShimmer active={turn.status === 'running'}>{title}</TextShimmer>
-      {elapsed && <span className={css.endInfo}>{elapsed}</span>}
-    </div>
+    {agent && <Avatar agent={agent} size="xxs" state={turn.status === 'waiting' ? 'waiting' : 'working'} />}
+    <TextShimmer active={turn.status === 'running'} className={css.runningLabel}>{title}</TextShimmer>
+    {elapsed && <span className={css.endInfo} title="Tempo desde o pedido">{elapsed}</span>}
   </div>
 }

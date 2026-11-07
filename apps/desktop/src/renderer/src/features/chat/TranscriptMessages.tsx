@@ -10,7 +10,7 @@ import { PolitronToolApproval } from './PolitronToolApproval'
 import { DshToolGroup, ReasoningDisclosure, RunningTurnStatus } from './TranscriptBlocks'
 import { DELEGATION_TOOL, NOTE_TOOL } from './assistant-ui-adapter'
 import { activityToolCall } from './tool-call'
-import { messagesInTurn, turnHeaderText, type Turn } from './turns'
+import { messagesInTurn, type Turn } from './turns'
 import css from './Transcript.module.css'
 
 const INLINE_REVIEW_LABEL = 'Arquivos modificados nesta resposta'
@@ -22,8 +22,8 @@ export interface TranscriptContextValue {
   turnsById: Map<string, Turn>
   /** Respostas que mostram avatar e nome do Boo. */
   booReplies: Set<string>
-  /** Resposta cujo rodapé fica sempre visível. */
-  alwaysActionsId: string | undefined
+  /** Última resposta de cada turno encerrado → "Concluído em 1min 3s · 2 ferramentas" (só na barra de ações do hover). */
+  turnInfo: Map<string, string>
   lastMessageByRun: Map<string, string>
   approvalsByRun: Map<string, Approval[]>
   appliedByMessage: Map<string, FileChange[]>
@@ -77,7 +77,10 @@ export function AssistantTurn() {
   // Aprovação mostra sob a última mensagem do run; se ela não virou parte (resposta vazia), cai no fim do turno.
   const rendered = new Set(content.flatMap(part => part.type === 'tool-call' && part.toolName === DELEGATION_TOOL ? [] : [partMessageId(part)]))
   const orphanRuns = [...new Set(messagesInTurn(turn).filter(message => message.runId && ctx.lastMessageByRun.get(message.runId) === message.id && !rendered.has(message.id)).map(message => message.runId!))]
-  const header = turnHeaderText(turn)
+  // Texto já chegando é o próprio sinal de vida: a linha de status some enquanto a resposta escreve.
+  const last = turn.items.at(-1)
+  const writing = last?.kind === 'reply' && !!last.message.text.trim()
+  const speaker = ctx.agentOf([...messagesInTurn(turn)].reverse().find(message => message.agentId)?.agentId ?? null)
   return <MessagePrimitive.Root className={css.turn} data-turn-start={turn.user ? undefined : ''}>
     <MessagePrimitive.GroupedParts groupBy={GROUP_BY} indicator="never">
       {({ part }) => {
@@ -87,6 +90,8 @@ export function AssistantTurn() {
           if (part.type === 'group-delegation') return <div data-part="extra" data-message-id={messages[0]!.id}>
             <DelegationCard delegations={messages} agentOf={ctx.agentOf} conversationsById={ctx.conversationsById} onOpenRelatedConversation={ctx.onOpenRelatedConversation} onNotice={ctx.onNotice} />
           </div>
+          // Enquanto o turno roda, a linha de status ao vivo diz o passo; a lista de ferramentas aparece ao terminar.
+          if (active) return <>{messages.map(message => <div key={`approval:${message.id}`} data-part="extra">{approvals(message)}</div>)}</>
           return <div data-part="process">
             <DshToolGroup messages={messages} turnActive={active} agent={ctx.agentOf(messages[0]!.agentId)} autoOpen={!!ctx.focusedMessageId && messages.some(message => message.id === ctx.focusedMessageId)}>
               {messages.map(message => <div key={message.id} data-message-id={message.id} className={focus(message.id)}>
@@ -100,9 +105,10 @@ export function AssistantTurn() {
         const message = ctx.messagesById.get(partMessageId(part as { type: string; toolCallId?: string; parentId?: string }) ?? '')
         if (!message) return null
         if (part.type === 'text') return <div data-part="reply" data-message-id={message.id} className={focus(message.id)}>
-          <MessageItem message={message} agent={ctx.agentOf(message.agentId)} relatedConversation={undefined} onOpenRelatedConversation={ctx.onOpenRelatedConversation} onNotice={ctx.onNotice} presentation="dsh" showAgent={ctx.booReplies.has(message.id)} alwaysShowActions={ctx.alwaysActionsId === message.id} />
+          <MessageItem message={message} agent={ctx.agentOf(message.agentId)} relatedConversation={undefined} onOpenRelatedConversation={ctx.onOpenRelatedConversation} onNotice={ctx.onNotice} presentation="dsh" showAgent={ctx.booReplies.has(message.id)} details={ctx.turnInfo.get(message.id)} />
           {extras(message)}
         </div>
+        if (part.type === 'reasoning' && active) return <>{extras(message)}</>
         if (part.type === 'reasoning') return <div data-part="process" data-message-id={message.id} className={focus(message.id)}>
           <ReasoningDisclosure message={message} autoOpen={ctx.focusedMessageId === message.id} />{extras(message)}
         </div>
@@ -119,9 +125,7 @@ export function AssistantTurn() {
       }}
     </MessagePrimitive.GroupedParts>
     {orphanRuns.map(runId => <div key={`approvals:${runId}`} data-part="extra">{(ctx.approvalsByRun.get(runId) || []).map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={ctx.onNotice} />)}</div>)}
-    {(turn.status === 'running' || turn.status === 'waiting')
-      ? <RunningTurnStatus turn={turn} />
-      : header && <div data-part="header"><div className={css.header} aria-live="polite"><span className={css.headerLabel}>{header}</span></div></div>}
+    {(turn.status === 'waiting' || (turn.status === 'running' && !writing)) && <RunningTurnStatus turn={turn} agent={speaker} />}
   </MessagePrimitive.Root>
 }
 

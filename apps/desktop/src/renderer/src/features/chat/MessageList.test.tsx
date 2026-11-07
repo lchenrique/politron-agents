@@ -1,4 +1,4 @@
-﻿import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent, Approval, Conversation, FileChange, Message } from '../../../../shared/v9'
@@ -208,12 +208,42 @@ describe('estado vazio da conversa', () => {
 })
 
 describe('identificação de agentes no chat', () => {
-  it('mostra avatar e nome discreto do Boo no primeiro bloco da resposta', () => {
-    const agent = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as import('../../../../shared/v9').Agent
-    render(<MessageList messages={[message]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(screen.getByText('Lyra')).toBeInTheDocument()
+  const lyra = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as Agent
+  const mira = { id: 'agent-2', name: 'Mira', alias: 'mira', color: '#3fb68b' } as Agent
+  const agents = (id: string | null) => [lyra, mira].find(agent => agent.id === id)
+
+  it('com um Boo só, a resposta é texto puro, sem avatar nem nome', () => {
+    const { container } = render(<MessageList messages={[message]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={agents} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    expect(screen.queryByText('Lyra')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-part="reply"] [data-slot="avatar"]')).toBeNull()
+  })
+
+  it('quando dois Boos respondem no mesmo turno, cada troca de autor ganha avatar e nome', () => {
+    const second: Message = { ...message, id: 'message-2', agentId: 'agent-2', author: 'Mira', text: 'Concordo.' }
+    render(<MessageList messages={[message, second]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={agents} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(screen.getByTitle('Lyra')).toHaveTextContent('Lyra')
+    expect(screen.getByTitle('Mira')).toHaveTextContent('Mira')
     expect(screen.getByRole('img', { name: 'Lyra — idle' })).toBeInTheDocument()
+  })
+})
+
+describe('troca curta', () => {
+  it('"oi" e "Oi! Como posso ajudar?" são exatamente dois blocos; hora e resumo só na barra do hover', () => {
+    const at = (seconds: number) => new Date(Date.UTC(2026, 10, 6, 12, 0, seconds)).toISOString()
+    const user: Message = { ...message, id: 'u1', agentId: null, author: 'Você', role: 'user', text: 'oi', runId: null, createdAt: at(0) }
+    const answer: Message = { ...message, id: 'r1', text: 'Oi! Como posso ajudar?', runId: 'run-1', createdAt: at(2), finishedAt: at(3) }
+    const { container } = render(<MessageList messages={[user, answer]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => ({ id: 'agent-1', name: 'Lyra', color: '#7565e8' } as Agent)} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
+    expect(v1Ids(container)).toEqual(['u1', 'r1'])
+    const turn = container.querySelector('[data-message-id="r1"]')!.parentElement!
+    expect([...turn.children].map(child => child.getAttribute('data-part'))).toEqual(['reply'])
+    expect(container.querySelector('[data-part="header"], [data-part="running"], [data-part="process"]')).toBeNull()
+    expect(screen.queryByText('Lyra')).not.toBeInTheDocument()
+    const reply = container.querySelector('[data-message-id="r1"]')!
+    expect(reply.querySelector('[data-actions-reveal="hover"]')).not.toBeNull()
+    const toolbar = within(reply as HTMLElement).getByRole('group', { name: 'Ações da mensagem' })
+    expect(toolbar).toHaveTextContent('Concluído em 3s')
+    expect(within(toolbar).getByRole('button', { name: 'Copiar mensagem' })).toBeInTheDocument()
+    expect(within(toolbar).getByRole('button', { name: 'Ouvir resposta do agente' })).toBeInTheDocument()
   })
 })
 
@@ -224,69 +254,33 @@ describe('linha de atividade do agente', () => {
   const browser = (n: number) => Array.from({ length: n }, (_, index) => act(`a${index}`, `Navegador real · js · alvo https://example.com/\nawait tab.goto(${index})`, 2 + index))
   const list = (messages: Message[], approvals: Approval[] = []) => <MessageList messages={messages} fileChanges={[]} approvals={approvals} conversations={[]} agentOf={() => undefined} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
 
-  it('mostra o Boo do agente digitando no card enquanto roda, e nunca para agente com foto', () => {
-    const lyra = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as import('../../../../shared/v9').Agent
+  it('enquanto roda, uma linha só com o Boo e o passo ao vivo; as ferramentas aparecem quando o turno termina', () => {
+    const lyra = { id: 'agent-1', name: 'Lyra', alias: 'lyra', color: '#7565e8' } as Agent
     const calls = browser(2)
-    calls[1] = { ...calls[1]!, status: 'running' }
-    const view = (agent: typeof lyra) => <MessageList messages={[reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => agent} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
-    const { container, rerender } = render(view(lyra))
-    const working = within(container.querySelector('[data-part="work-card"]') as HTMLElement).getByRole('img', { name: 'Lyra está trabalhando' })
-    expect(working.style.getPropertyValue('--boo-body')).toBe('#7565e8')
-    rerender(view({ ...lyra, avatar: 'data:image/png;base64,AA==' }))
-    expect(container.querySelector('[data-part="work-card"]')).toBeInTheDocument()
-    expect(screen.queryByRole('img', { name: 'Lyra está trabalhando' })).not.toBeInTheDocument()
-    rerender(view(lyra))
-  })
-
-  it('ao terminar a ferramenta, o card vira a linha do turno e nada some', () => {
-    const calls = browser(2)
-    const { container, rerender } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls.slice(0, 1), { ...calls[1]!, status: 'running' }]))
-    expect(container.querySelector('[data-part="work-card"]')).toBeInTheDocument()
+    const view = (messages: Message[]) => <MessageList messages={messages} fileChanges={[]} approvals={[]} conversations={[]} agentOf={() => lyra} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />
+    const { container, rerender } = render(view([reply('pre', 'Vou abrir o site.', 'running', 0), calls[0]!, { ...calls[1]!, status: 'running' }]))
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent(/^Navegando/)
+    expect(status.querySelector('[data-slot="avatar"]')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: /Naveg/ })).not.toBeInTheDocument()
     const turn = container.querySelector('[data-part="reply"]')!.parentElement!
-    rerender(list([reply('pre', 'Vou abrir o site.', 'completed', 0), ...calls, reply('final', 'Pronto.', 'completed', 5)]))
-    expect(container.querySelector('[data-part="work-card"]')).not.toBeInTheDocument()
-    // O mesmo turno continua montado, o texto anterior e a ferramenta seguem visíveis.
+    rerender(view([reply('pre', 'Vou abrir o site.', 'completed', 0), ...calls, reply('final', 'Pronto.', 'completed', 5)]))
+    // O mesmo turno continua montado; o status some e a linha discreta das ferramentas aparece.
     expect(container.querySelector('[data-part="reply"]')!.parentElement).toBe(turn)
+    expect(container.querySelector('[data-part="running"]')).toBeNull()
     expect(v1Ids(container)).toEqual(['pre', 'final'])
     expect(screen.getByRole('button', { name: 'Navegou na web' })).toBeInTheDocument()
     expect(container).toHaveTextContent('Vou abrir o site.')
     expect(container).toHaveTextContent('Pronto.')
   })
 
-  it('durante uma ferramenta ativa, abre o card "Executando tarefa" com os passos em ordem e mantém o status do turno genérico', () => {
-    const calls = browser(6)
-    calls[5] = { ...calls[5]!, status: 'running' }
-    // Chegam fora de ordem: o card ordena pelo início de cada ferramenta.
-    const { container } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...[...calls].reverse()]))
-    const card = container.querySelector('[data-part="work-card"]') as HTMLElement
-    expect(card).toHaveTextContent('Executando tarefa')
-    expect(within(card).getAllByText(/^Navegando/).length).toBeGreaterThan(0)
-    const steps = within(card).getAllByRole('listitem')
-    expect(steps.map(step => step.getAttribute('data-message-id'))).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5'])
-    expect(steps.at(-1)).toHaveAttribute('data-state', 'running')
-    expect(screen.getByRole('status')).toHaveTextContent('Em andamento')
-    expect(container).not.toHaveTextContent('está trabalhando')
-    // Detalhes de um passo abrem sob demanda; recolher esconde a lista.
-    const first = within(steps[0]!).getByRole('button')
-    fireEvent.click(first)
-    expect(first).toHaveAttribute('aria-expanded', 'true')
-    fireEvent.click(within(card).getByRole('button', { name: 'Recolher passos' }))
-    expect(within(card).queryByRole('list')).not.toBeInTheDocument()
+  it('antes de qualquer ferramenta, diz que está entendendo o assunto; a resposta chegando substitui a linha', () => {
+    const user: Message = { ...message, id: 'u1', agentId: null, author: 'Você', role: 'user', text: 'oi', runId: null, createdAt: at(0) }
+    const { container, rerender } = render(list([user, reply('r', '', 'running', 1)]))
+    expect(screen.getByRole('status')).toHaveTextContent('Entendendo o assunto…')
+    rerender(list([user, reply('r', 'Oi!', 'running', 1)]))
+    expect(container.querySelector('[data-part="running"]')).toBeNull()
   })
-
-  it('mostra só os seis passos mais recentes e o bloco de comandos com o resultado', () => {
-    const calls = [...browser(7), { ...act('cmd', 'Terminal · npm test', 20), tool: { name: 'workspace_run_command', args: '{"command":"npm test"}', status: 'completed' as const, output: 'Tests 12 passed', startedAt: at(20), finishedAt: at(21) } }, { ...act('run', 'Terminal · npm run build', 22), status: 'running' as const, tool: { name: 'workspace_run_command', args: '{"command":"npm run build"}', status: 'running' as const, startedAt: at(22) } }]
-    const { container } = render(list([reply('pre', 'Vou testar.', 'running', 0), ...calls]))
-    const card = container.querySelector('[data-part="work-card"]') as HTMLElement
-    expect(within(card).getByRole('button', { name: '+3 passos anteriores' })).toBeInTheDocument()
-    const terminal = within(card).getByLabelText('Comandos executados')
-    expect(terminal).toHaveTextContent('> npm test')
-    expect(terminal).toHaveTextContent('✓ Tests 12 passed')
-    expect(terminal).toHaveTextContent('executando…')
-    fireEvent.click(within(card).getByRole('button', { name: '+3 passos anteriores' }))
-    expect(within(card).getAllByRole('listitem')).toHaveLength(9)
-  })
-
   it('entre chamadas já concluídas, o turno ativo mostra "Pensando" em vez de repetir a última ação', () => {
     render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...browser(6)]))
     expect(screen.getByRole('status')).toHaveTextContent('Pensando')
@@ -295,9 +289,10 @@ describe('linha de atividade do agente', () => {
 
   it('ao terminar, mantém o resumo no rodapé, as ferramentas na ordem e a resposta final abaixo', () => {
     const { container } = render(list([reply('pre', 'Vou abrir o site.', 'completed', 0), ...browser(6), act('t1', 'Terminal · npm test', 30), act('t2', 'Terminal · ls', 35), reply('final', 'Pronto.', 'completed', 38)]))
-    // Nada é recolhido por trás de um cabeçalho: o resumo é só um rodapé informativo.
-    expect(screen.queryByRole('button', { name: /Concluído em/ })).not.toBeInTheDocument()
-    expect(container.querySelector('[data-part="header"]')).toHaveTextContent('Concluído em 38s · 8 ferramentas')
+    // Sem linha de rodapé: o resumo do turno fica só na barra de ações (hover) da última resposta.
+    expect(container.querySelector('[data-part="header"]')).toBeNull()
+    expect(within(container.querySelector<HTMLElement>('[data-message-id="final"]')!).getByRole('group', { name: 'Ações da mensagem' })).toHaveTextContent('Concluído em 38s · 8 ferramentas')
+    expect(within(container.querySelector<HTMLElement>('[data-message-id="pre"]')!).getByRole('group', { name: 'Ações da mensagem' })).not.toHaveTextContent('Concluído')
     expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: /Navegou na web e executou comandos/ }))
     expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(8)
@@ -309,20 +304,22 @@ describe('linha de atividade do agente', () => {
     expect(lastTool.compareDocumentPosition(finalReply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('o estado aberto escolhido pelo usuário persiste quando o turno termina', () => {
+  it('o detalhe aberto pelo usuário continua aberto quando um novo turno começa', () => {
     const calls = browser(2)
-    const { container, rerender } = render(list([reply('pre', 'Vou abrir o site.', 'running', 0), ...calls]))
+    const done = [reply('pre', 'Vou abrir o site.', 'completed', 0), ...calls, reply('final', 'Pronto.', 'completed', 9)]
+    const { container, rerender } = render(list(done))
     fireEvent.click(screen.getByRole('button', { name: 'Navegou na web' }))
     expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(2)
-    rerender(list([reply('pre', 'Vou abrir o site.', 'completed', 0), ...calls, reply('final', 'Pronto.', 'completed', 9)]))
+    const next: Message = { ...message, id: 'u2', agentId: null, author: 'Você', role: 'user', text: 'E agora?', runId: null, createdAt: at(20) }
+    rerender(list([...done, next, { ...reply('r2', '', 'running', 21), runId: 'run-10' }]))
     expect(container.querySelectorAll('[data-chat-call-id]')).toHaveLength(2)
   })
 
   it('mantém raciocínio, delegação e nota na ordem original do histórico', () => {
     const reasoning = act('r1', 'Raciocínio', 1)
-    const origin: Message = { ...message, id: 'origin', role: 'activity', text: 'Pedido para Mimir: revisar\nExecutando.', status: 'running', runId: null, delegationId: 'del', relatedConversationId: 'child', delegationTask: 'revisar', createdAt: at(3) }
+    const origin: Message = { ...message, id: 'origin', role: 'activity', text: 'Pedido para Mimir: revisar\nExecutando.', status: 'completed', runId: null, delegationId: 'del', relatedConversationId: 'child', delegationTask: 'revisar', createdAt: at(3) }
     const note: Message = { ...message, id: 'note', role: 'activity', text: 'Missão retomada', status: 'completed', runId: null, createdAt: at(4) }
-    const { container } = render(list([reply('a', 'Primeiro.', 'completed', 0), { ...reasoning, tool: { name: 'reasoning', output: 'pensando alto', status: 'completed', startedAt: at(1) } }, act('t', 'Terminal · ls', 2), origin, note, reply('z', 'Último.', 'running', 5)]))
+    const { container } = render(list([reply('a', 'Primeiro.', 'completed', 0), { ...reasoning, tool: { name: 'reasoning', output: 'pensando alto', status: 'completed', startedAt: at(1) } }, act('t', 'Terminal · ls', 2), origin, note, reply('z', 'Último.', 'completed', 5)]))
     expect(v1Ids(container)).toEqual(['a', 'r1', 'origin', 'note', 'z'])
     expect(screen.getByRole('button', { name: 'Executou comandos' })).toBeInTheDocument()
   })

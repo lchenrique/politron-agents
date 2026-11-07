@@ -20,7 +20,7 @@
   overflow-x: clip;
   overflow-y: auto;
   overflow-anchor: none;
-  padding: 12px 0 16px;
+  padding: 12px 0 32px;
   container-type: inline-size;
   color: var(--dsw-alias-label-primary);
 }
@@ -115,6 +115,7 @@
 .turn > [data-part="tail"] { margin-top: 6px; }
 .turn > [data-part="running"] { margin-top: 10px; }
 .turn > [data-part="extra"] { margin-top: 6px; }
+.turn > [data-part="extra"]:empty { display: none; }
 
 /* Mensagem do usuário: balão à direita, relógio e ações abaixo. */
 .userRow {
@@ -222,15 +223,32 @@
   }
 }
 
-/* Respostas anteriores: as ações flutuam à direita, logo abaixo do texto, sem reservar uma linha. */
+/* Respostas: a barra de ações flutua logo abaixo do texto, à esquerda, sem reservar uma linha. */
 @media (hover: hover) {
   [data-actions-reveal="hover"]:has(> .actions) { position: relative; }
   [data-actions-reveal="hover"] > .actions {
     position: absolute;
-    z-index: 1;
-    top: 100%;
-    right: 0;
+    z-index: 2;
+    top: calc(100% - 2px);
+    left: -6px;
   }
+}
+
+/* Barra flutuante da resposta: hora, resumo do turno, copiar e ouvir. */
+.toolbar {
+  padding: 0 2px 0 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-button-floating-fill);
+  box-shadow: var(--dsw-elevation-panel);
+}
+.toolbarInfo {
+  padding-right: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 24px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .tail {
@@ -279,7 +297,7 @@
 /* Grupo de passos (ChatGroupSeat): ícone da atividade que vira chevron no hover. */
 .group { min-width: 0; }
 
-/* Cartão de ferramentas recolhido: uma pílula de 24px com borda fina. */
+/* Ferramentas e raciocínio de um turno encerrado: uma linha de texto discreta, sem caixa. */
 .groupTitle {
   display: inline-flex;
   flex: 0 1 auto;
@@ -287,11 +305,11 @@
   max-width: 100%;
   align-items: center;
   gap: 6px;
-  height: 24px;
-  padding: 0 10px 0 7px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  background: var(--dsw-alias-interactive-bg-hover);
+  height: 22px;
+  padding: 0 4px 0 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--dsw-alias-label-tertiary);
   font: inherit;
   font-size: 12.5px;
@@ -420,35 +438,24 @@
 
 .noteLink[data-tone="danger"] { color: var(--dsw-alias-state-error-primary); }
 
-/* Status ao vivo do turno (RunningStatus), com a divisória fina acima. */
+/* Status ao vivo do turno: avatar do Boo e o passo atual numa linha só. */
 .running {
-  position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
-  line-height: 22px;
-}
-
-.runningDivider {
-  position: absolute;
-  top: -4px;
-  left: 0;
-  right: 0;
-  height: 0.5px;
-  background: color-mix(in srgb, var(--dsw-alias-border-l1) 75%, var(--dsw-alias-border-l2));
-}
-
-.runningContent {
-  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
-  max-width: 100%;
-  margin-top: 4px;
   height: 28px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13.5px;
+  line-height: 22px;
   font-variant-numeric: tabular-nums;
+}
+
+.runningLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty {
