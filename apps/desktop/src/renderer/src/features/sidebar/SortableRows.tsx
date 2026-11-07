@@ -60,6 +60,12 @@ export function useSortableStyle(id: string, data: SortableData, disabled?: { dr
   return { ...sortable, style }
 }
 
+/** Seção arrastável pelo cabeçalho: as linhas de dentro continuam livres para clicar e rolar. */
+export function SortableSection({ id, data, onMove, header, children }: { id: string; data: SortableData; onMove: (delta: number) => void; header: ReactNode; children: ReactNode }) {
+  const { setNodeRef, listeners, style } = useSortableStyle(id, data)
+  return <div ref={setNodeRef} style={style}><div {...listeners} onKeyDown={event => moveKey(event, onMove)}>{header}</div>{children}</div>
+}
+
 /** Linha arrastável: o conteúdo continua sendo os botões de sempre; o atalho Alt+↑/↓ sobe dos botões focados. */
 export function SortableRow({ id, data, onMove, children }: { id: string; data: SortableData; onMove: (delta: number) => void; children: ReactNode }) {
   const { setNodeRef, listeners, style } = useSortableStyle(id, data)

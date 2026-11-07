@@ -1,3 +1,15 @@
+/** Hora da lista de conversas, como num mensageiro: hoje "16:53", ontem "ontem", na semana "seg", antes "28/10". */
+export function listTime(at: string, now: number): string {
+  const date = new Date(at)
+  if (!at || Number.isNaN(date.getTime())) return ''
+  const day = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime()
+  const days = Math.round((day(new Date(now)) - day(date)) / 86_400_000)
+  if (days <= 0) return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  if (days === 1) return 'ontem'
+  if (days < 7) return date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+}
+
 /** Tempo relativo compacto das linhas de sessão, com os limites do DeepSeek Harness (MIT, ui-primitives/relative-time.ts). */
 export function relativeTime(at: string, now: number): string {
   const MIN = 60_000

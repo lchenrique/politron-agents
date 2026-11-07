@@ -1,7 +1,7 @@
 /*
- * Aparência baseada no DeepSeek Harness (MIT): barra lateral, faixa da janela e canto do canvas.
- * Valores medidos no DSH em execução (claro e escuro) e em ui-sidebar/ui-workspace/ui-layout.
- * Fora de @layer de propósito: vence as utilidades do Tailwind dos componentes shadcn reaproveitados.
+ * Barra lateral no modelo de mensageiro (busca, faixa de Boos, lista de conversas por projeto).
+ * Tokens e moldura vêm do DeepSeek Harness (MIT). Fora de @layer de propósito: vence as utilidades
+ * do Tailwind dos componentes shadcn reaproveitados.
  */
 :root {
   --dsh-fill: rgb(249 250 251);
@@ -11,6 +11,7 @@
   --dsh-label-tertiary: rgb(129 133 140);
   --dsh-label-caption: rgb(173 178 184);
   --dsh-hover: rgb(38 49 72 / 0.06);
+  --dsh-hover-solid: rgb(239 240 243);
   --dsh-border-l3: rgb(0 0 0 / 0.12);
   --dsh-elevated: rgb(255 255 255);
   --dsh-floating-hover: rgb(241 243 245);
@@ -29,6 +30,7 @@
   --dsh-label-tertiary: rgb(173 178 184);
   --dsh-label-caption: rgb(129 133 140);
   --dsh-hover: rgb(255 255 255 / 0.08);
+  --dsh-hover-solid: rgb(46 46 48);
   --dsh-border-l3: rgb(255 255 255 / 0.16);
   --dsh-elevated: rgb(67 69 74);
   --dsh-floating-hover: rgb(53 54 56);
@@ -44,7 +46,7 @@
   background: var(--dsh-bg-base);
 }
 
-/* Botões da faixa da janela: 28×28, raio 8, tinta secundária. */
+/* Botões da faixa da janela: 28×28, tinta secundária. */
 .dsh-chrome-button {
   width: 28px;
   height: 28px;
@@ -66,58 +68,84 @@
   font-feature-settings: normal;
   animation: dsh-wide-in 200ms var(--dsh-ease);
 }
-/* Traço fino em pixels de tela, como os glifos do DSH (1px; 1,15px na Nova sessão). */
-.boobot-sidebar svg.lucide { stroke-width: 1; }
+.boobot-sidebar svg.lucide { stroke-width: 1.4; }
 .boobot-sidebar svg.lucide * { vector-effect: non-scaling-stroke; }
 .boobot-sidebar :focus-visible { outline: 2px solid var(--dsh-blue); outline-offset: -2px; box-shadow: none; }
 @keyframes dsh-wide-in { from { opacity: 0; } }
 
-/* Nova sessão: barra de 38px com contorno de 0,5px. */
-.dsh-new-row { display: flex; gap: 8px; margin: 8px 2px 10px 0; }
-.dsh-new-session {
+/* Topo: busca arredondada, nova sessão e novo projeto. */
+.dsh-sidebar-head { display: flex; align-items: center; gap: 2px; margin: 8px 0 6px; }
+.dsh-search {
   display: flex;
   flex: 1;
   min-width: 0;
-  height: 32px;
+  height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 11px;
+  border-radius: 10px;
+  background: var(--dsh-hover);
+  color: var(--dsh-label-tertiary);
+}
+.dsh-search:focus-within { box-shadow: 0 0 0 2px var(--dsh-blue); }
+.dsh-search > svg.lucide { width: 15px; height: 15px; flex: none; }
+.dsh-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--dsh-label-primary);
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+}
+.dsh-search input::placeholder { color: var(--dsh-label-tertiary); }
+.dsh-search input::-webkit-search-cancel-button { display: none; }
+.boobot-sidebar .dsh-search input:focus-visible { outline: none; }
+.dsh-icon-button {
+  display: inline-flex;
+  flex: none;
+  width: 24px;
+  height: 24px;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 0.5px solid var(--dsh-border-l3);
-  border-radius: 8px;
-  background: var(--dsh-elevated);
-  color: var(--dsh-label-primary);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsh-label-secondary);
   box-shadow: none;
   transition: none;
 }
-.dsh-new-session.dsh-square { flex: none; width: 32px; padding: 0; }
-.dsh-new-session:hover { background: var(--dsh-floating-hover); color: var(--dsh-label-primary); }
-.dsh-new-session svg { width: 14px; height: 14px; color: currentColor; }
-.boobot-sidebar .dsh-new-session svg.lucide { stroke-width: 1.15; }
+.dsh-icon-button:hover { background: var(--dsh-hover); color: var(--dsh-label-primary); }
+.dsh-icon-button svg.lucide { width: 14px; height: 14px; }
+.dsh-head-button { width: 32px; height: 32px; }
+.dsh-head-button svg.lucide { width: 17px; height: 17px; }
 
-/* Controle segmentado Projetos | Boos, no topo da barra. */
-.dsh-segmented { display: flex; gap: 2px; margin: 6px 2px 0 0; padding: 2px; border-radius: 8px; background: var(--dsh-hover); }
-.dsh-segmented button { flex: 1; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--dsh-label-tertiary); font-size: 12px; font-weight: 400; box-shadow: none; }
-.dsh-segmented button:hover { color: var(--dsh-label-primary); background: transparent; }
-.dsh-segmented button[aria-pressed="true"] { background: var(--dsh-bg-base); color: var(--dsh-label-primary); font-weight: 500; box-shadow: 0 0 0 0.5px var(--dsh-hover), 0 1px 2px rgb(0 0 0 / 0.12); }
-.dsh-context { color: var(--dsh-label-caption); }
+/* Faixa de Boos: avatares numa linha só, rolagem horizontal discreta; o ponto de estado fica no canto. */
+.dsh-boos { display: flex; flex: none; align-items: center; gap: 2px; margin: 0 -4px 6px; padding: 2px 4px 4px; overflow-x: auto; scrollbar-width: none; }
+.dsh-boos::-webkit-scrollbar { display: none; }
+.dsh-boos > div { display: inline-flex; flex: none; }
+.dsh-boo { position: relative; display: inline-flex; flex: none; width: 34px; height: 34px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: transparent; box-shadow: none; transition: none; }
+.dsh-boo:hover, .dsh-boo[aria-expanded="true"] { background: var(--dsh-hover); }
+.dsh-boo:focus-visible { outline-offset: 0; }
+.dsh-boo-add { color: var(--dsh-label-tertiary); border: 1px dashed var(--dsh-border-l3); width: 30px; height: 30px; margin-left: 2px; }
+.dsh-boo-add:hover { color: var(--dsh-label-primary); }
+.dsh-boo-add svg.lucide { width: 14px; height: 14px; }
+.dsh-boo-crown { position: absolute; top: 0; right: 1px; width: 13px; height: 13px; padding: 1.5px; border-radius: 999px; background: var(--dsh-fill); color: var(--warning); }
+.boobot-sidebar .dsh-boo-crown.lucide { stroke-width: 1.5; }
+.dsh-boo-state { position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px; border: 2px solid var(--dsh-fill); border-radius: 999px; background: var(--success); }
+.dsh-boo-state[data-state="waiting"] { background: var(--dsh-amber); }
+.boobot-sidebar .agent-presence[data-state="idle"] i { visibility: hidden; }
 
-.dsh-glyph { display: inline-flex; flex: none; width: 16px; height: 16px; align-items: center; justify-content: center; }
-/* Avatar de 20px centrado no espaço de 16px do ícone: o texto alinha com as outras linhas. */
-.dsh-glyph > [data-slot="avatar"] { margin: 0 -2px; }
-
-/* Lista rolável: barra de 5px só com o ponteiro dentro, degradê de 24px no pé. */
+/* Lista rolável: barra de 5px só com o ponteiro dentro, degradê no pé. */
 .dsh-list {
   flex: 1;
   min-height: 0;
   margin: 0 -8px 0 0;
   padding: 0 3px 16px 0;
   overflow-y: auto;
-  scrollbar-width: auto;
-  scrollbar-color: auto;
   scrollbar-gutter: stable;
 }
 .dsh-list::-webkit-scrollbar { width: 5px; }
@@ -134,63 +162,20 @@
   pointer-events: none;
 }
 
-/* Cabeçalho de seção ("Projetos", "Favoritos"). */
-.dsh-section-header {
-  display: flex;
-  height: 28px;
-  align-items: center;
-  gap: 2px;
-  margin: 2px -4px 2px 0;
-  padding: 0 1px 0 10px;
-  color: var(--dsh-label-tertiary);
-}
-.dsh-section-label { flex: 1; min-width: 0; margin: 0; padding: 0; overflow: hidden; white-space: nowrap; font-size: 14px; font-weight: 400; line-height: 20px; letter-spacing: 0; text-transform: none; color: var(--dsh-label-tertiary); }
-.dsh-icon-button {
-  display: inline-flex;
-  flex: none;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--dsh-label-secondary);
-  box-shadow: none;
-  transition: none;
-}
-.dsh-icon-button:hover { background: var(--dsh-hover); color: var(--dsh-label-secondary); }
-.dsh-icon-button svg.lucide { width: 14px; height: 14px; }
-
-/* Linhas de projeto, pasta e sessão: 3px de recuo pintado, raio 12, sem transição de hover. */
-.dsh-row {
+/* Seção de projeto: nome em negrito discreto; pasta, + e menu aparecem no hover. */
+.dsh-section + .dsh-section { margin-top: 6px; }
+.dsh-section-row {
   display: flex;
   height: 30px;
   align-items: center;
-  gap: 6px;
-  padding: 0 6px 0 7px;
-  border-inline: 3px solid transparent;
+  gap: 2px;
+  padding: 0 6px 0 8px;
   border-radius: 8px;
-  background-clip: padding-box;
   color: var(--dsh-label-primary);
-  font-size: 13px;
-  line-height: 18px;
-  cursor: pointer;
-  user-select: none;
-  animation: dsh-row-in 100ms ease-out;
 }
-.dsh-row.dsh-session { height: 28px; color: var(--dsh-label-secondary); }
-.dsh-row:hover,
-.dsh-row:has([data-state="open"]) { background-color: var(--dsh-hover); color: var(--dsh-label-primary); }
-/* Ativo = o que está aberto no centro: fundo no tom do foco, texto pleno e médio. */
-.dsh-row[data-active="true"] { background-color: color-mix(in srgb, var(--dsh-blue) 13%, transparent); color: var(--dsh-label-primary); }
-.dsh-row[data-active="true"] .dsh-title { font-weight: 500; }
-.dsh-row[data-active="true"] .dsh-slot { color: var(--dsh-blue); }
-@keyframes dsh-row-in { from { opacity: 0; } }
-.dsh-row + .dsh-row, .dsh-rows > * + * { margin-top: 1px; }
-/* O botão principal ocupa a linha; o fundo é da linha. */
-.dsh-row-main {
+.dsh-section-row:hover, .dsh-section-row:has([data-state="open"]) { background: var(--dsh-hover); }
+.dsh-section-row[data-active="true"] { background: color-mix(in srgb, var(--dsh-blue) 13%, transparent); }
+.dsh-section-main {
   display: flex;
   flex: 1;
   min-width: 0;
@@ -204,30 +189,114 @@
   background: transparent;
   color: inherit;
   font-size: 13px;
-  font-weight: 400;
-  line-height: 18px;
-  text-align: left;
   box-shadow: none;
   transition: none;
 }
-.dsh-row-main:hover { background: transparent; color: inherit; }
-.dsh-session .dsh-row-main { gap: 0; }
-.dsh-row-main:focus-visible { outline-offset: 0; border-radius: 8px; }
-.dsh-slot { display: inline-flex; flex: none; width: 16px; height: 18px; align-items: center; justify-content: center; color: var(--dsh-label-tertiary); }
-.dsh-slot svg.lucide { width: 15px; height: 15px; }
-.dsh-folder-active { color: var(--dsh-blue); }
-.dsh-session .dsh-slot svg.lucide { width: 14px; height: 14px; color: var(--dsh-label-caption); }
-.dsh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 18px; }
-.dsh-session .dsh-title { margin: 0 6px 0 4px; }
+.dsh-section-main:hover { background: transparent; color: inherit; }
+.dsh-section-main:focus-visible { border-radius: 8px; }
+.dsh-section-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; line-height: 18px; }
+.dsh-section-main[aria-expanded="false"] .dsh-section-name { color: var(--dsh-label-secondary); }
+.dsh-section-icon { width: 14px; height: 14px; flex: none; color: var(--dsh-label-tertiary); }
+.dsh-subsection { margin: 2px 0 0 10px; }
+
+/* Ações de linha e de seção: só no hover/foco. */
+.dsh-row-action {
+  display: none;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsh-label-tertiary);
+  box-shadow: none;
+  transition: none;
+}
+.dsh-row-action:hover { background: var(--dsh-hover); color: var(--dsh-label-primary); }
+.dsh-row-action svg.lucide { width: 15px; height: 15px; }
+.dsh-section-row:hover .dsh-row-action,
+.dsh-section-row:focus-within .dsh-row-action,
+.dsh-chat:hover .dsh-row-action,
+.dsh-chat:has(:focus-visible) .dsh-row-action,
+.dsh-row:hover .dsh-row-action,
+.dsh-row:focus-within .dsh-row-action,
+.dsh-row-action[data-state="open"] { display: inline-flex; }
+@media (hover: none) { .dsh-row-action { display: inline-flex; } }
+
+/* Conversa: avatar de 36px, título + Boo + hora na primeira linha, prévia na segunda. */
+.dsh-chats { display: flex; flex-direction: column; gap: 1px; }
+.dsh-chat { position: relative; display: flex; align-items: center; border-radius: 10px; color: var(--dsh-label-primary); animation: dsh-row-in 100ms ease-out; }
+.dsh-chat:hover, .dsh-chat:has([data-state="open"]) { background: var(--dsh-hover); }
+.dsh-chat[data-active="true"] { background: color-mix(in srgb, var(--dsh-blue) 13%, transparent); }
+@keyframes dsh-row-in { from { opacity: 0; } }
+.dsh-chat-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font-weight: 400;
+  text-align: left;
+  white-space: normal;
+  box-shadow: none;
+  transition: none;
+}
+.dsh-chat-main:hover { background: transparent; color: inherit; }
+.dsh-chat-avatar { position: relative; display: inline-flex; flex: none; width: 36px; height: 36px; }
+.dsh-chat-avatar-empty { width: 36px; height: 36px; border-radius: 999px; background: var(--dsh-hover); }
+.dsh-chat-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: inline-flex;
+  min-width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid var(--dsh-fill);
+  border-radius: 999px;
+  background: var(--dsh-fill);
+  color: var(--dsh-label-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1;
+  box-sizing: content-box;
+}
+.dsh-chat-badge[data-tone="attention"] { min-width: 8px; width: 8px; height: 8px; padding: 0; background: var(--dsh-amber); }
+.dsh-chat-badge[data-tone="unread"] { background: var(--dsh-blue); color: rgb(255 255 255); }
+.dsh-chat-badge[data-tone="running"] { padding: 0; min-width: 14px; width: 14px; height: 14px; }
+.dsh-chat-badge .dsh-spinner { width: 12px; height: 12px; color: var(--dsh-blue); }
+.dsh-chat-body { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
+.dsh-chat-top { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.dsh-chat-title { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 600; line-height: 19px; }
+/* O nome do Boo é curto: fica inteiro e o título é que encurta. */
+.dsh-chat-tag { flex: 0 0 auto; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; border-radius: 6px; background: var(--dsh-hover); color: var(--dsh-label-tertiary); font-size: 11px; line-height: 17px; }
+.dsh-chat-time { flex: none; margin-left: auto; padding-left: 4px; color: var(--dsh-label-caption); font-size: 11.5px; line-height: 19px; font-variant-numeric: tabular-nums; }
+.dsh-chat-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsh-label-tertiary); font-size: 12.5px; line-height: 18px; }
+.dsh-chat-preview[data-attention] { color: var(--dsh-amber); }
+.dsh-chat[data-active="true"] .dsh-chat-preview { color: var(--dsh-label-secondary); }
+/* Menu da conversa sobre a hora, no hover. */
+.dsh-chat > .dsh-row-action { position: absolute; top: 6px; right: 6px; background: var(--dsh-hover-solid); }
+/* Só no hover ou foco de teclado: depois de um clique a hora continua visível. */
+.dsh-chat:hover .dsh-chat-time, .dsh-chat:has(:focus-visible) .dsh-chat-time, .dsh-chat:has(.dsh-row-action[data-state="open"]) .dsh-chat-time { visibility: hidden; }
+
 .dsh-meta { flex: none; font-size: 11px; line-height: 16px; color: var(--dsh-label-caption); font-variant-numeric: tabular-nums; }
-.dsh-session .dsh-meta { margin-inline-end: -1px; }
-.dsh-sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .dsh-star { width: 12px; height: 12px; flex: none; }
 
 /* Ponto de estado: caixa de 10px, núcleo de 6px. */
 .dsh-dot { display: inline-flex; flex: none; width: 10px; height: 10px; align-items: center; justify-content: center; }
 .dsh-dot::before { content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--dsh-amber); }
-.dsh-dot[data-state="done"]::before { background: rgb(34 197 94); }
 
 /* Em execução: anel a 25% e arco que respira enquanto gira, ambos em 1,5s. */
 .dsh-spinner { flex: none; width: 14px; height: 14px; color: var(--dsh-label-tertiary); }
@@ -242,52 +311,29 @@
 .boobot-sidebar .ds-count { height: 16px; min-width: 16px; padding: 0 4px; font-size: 10px; font-weight: 500; }
 .boobot-sidebar .ds-count[data-tone="primary"] { background: var(--dsh-blue); color: rgb(255 255 255); }
 
-/* Ações da linha: escondidas em repouso, 24px, raio 4, terciária → primária. */
-.dsh-row-action {
-  display: inline-flex;
-  flex: none;
-  width: 22px;
-  height: 22px;
-  align-items: center;
-  justify-content: center;
-  margin: -4px -2px -4px 0;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--dsh-label-tertiary);
-  box-shadow: none;
-  transition: none;
-}
-/* Fora do hover a ação sai do fluxo, como no DSH: o tempo/contagem encosta na borda direita. */
-.dsh-row .dsh-row-action { display: none; }
-.dsh-row-action:hover { background: var(--dsh-hover); color: var(--dsh-label-primary); }
-.dsh-row-action svg.lucide { width: 14px; height: 14px; }
-.dsh-row:hover .dsh-row-action,
-.dsh-row:focus-within .dsh-row-action,
-.dsh-row .dsh-row-action[data-state="open"] { display: inline-flex; }
-.dsh-row:hover .dsh-resting,
-.dsh-row:focus-within .dsh-resting,
-.dsh-row:has(.dsh-row-action[data-state="open"]) .dsh-resting { display: none; }
-@media (hover: none) { .dsh-row .dsh-row-action { display: inline-flex; } }
-
-/* Pasta: ícone vira triângulo no hover e gira 90° em 150ms ao abrir. */
-.dsh-folder .dsh-slot .dsh-arrow { display: none; width: 8px; height: 8px; color: var(--dsh-label-caption); transition: transform 150ms var(--dsh-ease); }
+/* Pastas de projetos (ProjectGroupSection): ícone vira triângulo no hover. */
+.dsh-rows > * + * { margin-top: 1px; }
+.dsh-row { display: flex; height: 28px; align-items: center; gap: 6px; padding: 0 6px 0 8px; border-radius: 8px; color: var(--dsh-label-tertiary); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.dsh-row:hover { background: var(--dsh-hover); }
+.dsh-row-main { display: flex; flex: 1; min-width: 0; height: 100%; align-items: center; justify-content: flex-start; gap: 6px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; box-shadow: none; transition: none; }
+.dsh-row-main:hover { background: transparent; color: inherit; }
+.dsh-slot { display: inline-flex; flex: none; width: 16px; height: 18px; align-items: center; justify-content: center; }
+.dsh-slot svg.lucide { width: 14px; height: 14px; }
+.dsh-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-folder .dsh-slot .dsh-arrow { display: none; width: 8px; height: 8px; transition: transform 150ms var(--dsh-ease); }
 .dsh-folder .dsh-slot .dsh-arrow[data-open="true"] { transform: rotate(90deg); }
 .dsh-folder:hover .dsh-slot .dsh-arrow { display: inline-flex; }
 .dsh-folder:hover .dsh-folder-icon { display: none; }
-/* Sessões sob o Boo ou a sessão mãe: recuo com uma guia fina à esquerda. */
-.dsh-indent { margin-left: 15px; padding-left: 6px; border-left: 1px solid var(--dsh-hover); }
+.dsh-indent { margin-left: 6px; }
 
-/* "Ver mais", delegações e vazios: botão de 28px recuado até o título. */
+/* "Ver mais" e vazios. */
 .dsh-overflow {
   display: flex;
   width: 100%;
-  height: 24px;
+  height: 26px;
   align-items: center;
   justify-content: flex-start;
-  gap: 4px;
-  padding: 0 10px 0 32px;
+  padding: 0 10px 0 54px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -298,72 +344,16 @@
   transition: none;
 }
 .dsh-overflow:hover { background: transparent; color: var(--dsh-label-primary); }
-.dsh-overflow svg { width: 12px; height: 12px; transition: rotate 150ms var(--dsh-ease); }
-.dsh-empty { padding: 4px 10px 8px; color: var(--dsh-label-caption); font-size: 12px; line-height: 18px; }
+.dsh-empty { padding: 6px 10px 8px; color: var(--dsh-label-caption); font-size: 12px; line-height: 18px; }
 
-/* Projeto aberto: voltar + nome no estilo de linha. */
-/* Projeto aberto: "← Projetos" acima do nome, que fica como título da visão. */
-.dsh-project-head { display: flex; align-items: center; margin: 0 2px 2px; }
-.dsh-back { display: inline-flex; height: 24px; align-items: center; gap: 6px; padding: 0 10px 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--dsh-label-tertiary); font-size: 12px; font-weight: 500; box-shadow: none; transition: none; }
-.dsh-back:hover { background: var(--dsh-hover); color: var(--dsh-label-primary); }
-.dsh-back svg.lucide { width: 14px; height: 14px; }
-.dsh-project-title { height: 32px; margin-bottom: 2px; font-weight: 600; }
-.dsh-project-title .dsh-title { font-size: 14px; font-weight: 600; }
-
-@media (prefers-reduced-motion: reduce) {
-  .boobot-sidebar, .dsh-row, .dsh-spinner g, .dsh-spinner circle { animation: none; }
-  .dsh-folder .dsh-slot .dsh-arrow, .dsh-overflow svg { transition: none; }
-}
-
-/* Boos: ponto de status só quando há algo acontecendo; o botão de criar fecha a lista. */
-.boobot-sidebar .agent-presence[data-state="idle"] i { visibility: hidden; }
-.dsh-new-boo { display: inline-flex; align-items: center; gap: 6px; width: fit-content; margin: 6px 4px 2px; padding: 4px 10px 4px 8px; border-radius: 999px; background: var(--dsh-hover); color: var(--dsh-label-secondary, inherit); font-size: 13px; line-height: 20px; }
-.dsh-new-boo:hover { color: var(--dsh-label-primary); background: color-mix(in srgb, var(--primary) 14%, transparent); }
-.dsh-new-boo svg.lucide { width: 14px; height: 14px; }
-
-/* Seleção em lote de sessões: caixinha no lugar do indicador de estado. */
-.dsh-check { display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center; border: 1px solid var(--dsh-label-tertiary); border-radius: 4px; }
+/* Seleção em lote: caixinha no lugar do selo do avatar. */
+.dsh-check { display: inline-flex; width: 12px; height: 12px; align-items: center; justify-content: center; border: 1px solid var(--dsh-label-tertiary); border-radius: 4px; background: var(--dsh-bg-base); }
 .dsh-check[data-checked="true"] { border-color: var(--primary, currentColor); background: var(--primary, currentColor); color: var(--primary-foreground, #fff); }
-.dsh-check svg.lucide { width: 11px; height: 11px; }
-.dsh-bulk-bar { gap: 2px; }
-
-/* Barra v2: Nova sessão com atalho, seções empilhadas (Precisa de você, Projetos, Boos, Empresa). */
-.dsh-new-session .dsh-kbd { margin-left: auto; height: 18px; padding: 0 5px; border-radius: 6px; background: var(--dsh-hover); color: var(--dsh-label-tertiary); font-size: 10px; font-weight: 500; letter-spacing: 0.02em; }
-.dsh-new-session:has(.dsh-kbd) { justify-content: flex-start; padding-inline: 12px 8px; }
-.dsh-section + .dsh-section { margin-top: 10px; }
-.dsh-section > .dsh-section-header { height: 26px; margin-bottom: 1px; }
-/* Rótulo de seção discreto: 11px em caixa alta, para não competir com as linhas. */
-.dsh-section-label { font-size: 11px; font-weight: 600; line-height: 16px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dsh-label-caption); }
-.dsh-section-count { margin-right: 10px; }
-.dsh-section-heading { display: flex; flex: 1; min-width: 0; margin: 0; font: inherit; }
-.dsh-section-toggle { display: flex; flex: 1; min-width: 0; height: 22px; align-items: center; justify-content: flex-start; gap: 4px; margin-left: -6px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: inherit; box-shadow: none; transition: none; }
-.dsh-section-toggle:hover { background: transparent; color: inherit; }
-.dsh-section-toggle:hover .dsh-section-label { color: var(--dsh-label-secondary); }
-/* Chevron da seção só no hover/foco ou quando recolhida. */
-.dsh-section-toggle .dsh-chevron { opacity: 0; }
-.dsh-section-toggle:hover .dsh-chevron, .dsh-section-toggle:focus-visible .dsh-chevron, .dsh-section-toggle[aria-expanded="false"] .dsh-chevron { opacity: 1; }
-.dsh-section-toggle .dsh-section-label { flex: none; }
-
-/* Chevron das seções recolhíveis: aponta para baixo quando aberto. */
-.dsh-chevron { width: 14px; height: 14px; flex: none; color: var(--dsh-label-caption); transition: transform 150ms var(--dsh-ease); }
-.dsh-chevron[data-open="true"] { transform: rotate(90deg); }
-.dsh-section-toggle .dsh-chevron { width: 12px; height: 12px; }
-.dsh-pinned { margin-bottom: 4px; }
-
-/* Boos: faixa de avatares que quebra linha; o ponto de estado fica no canto do avatar. */
-.dsh-boos { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 4px 2px 8px; }
-.dsh-boo { position: relative; display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; background: transparent; box-shadow: none; transition: none; }
-.dsh-boo:hover, .dsh-boo[aria-expanded="true"] { background: var(--dsh-hover); }
-.dsh-boo:focus-visible { outline-offset: 0; }
-.dsh-boo-crown { position: absolute; top: 0; right: 1px; width: 13px; height: 13px; padding: 1.5px; border-radius: 999px; background: var(--dsh-fill); color: var(--warning); }
-.boobot-sidebar .dsh-boo-crown.lucide { stroke-width: 1.5; }
-.dsh-boo-state { position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px; border: 2px solid var(--dsh-fill); border-radius: 999px; background: var(--success); }
-.dsh-boo-state[data-state="waiting"] { background: var(--dsh-amber); }
-.dsh-boo-more { color: var(--dsh-label-tertiary); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.dsh-boo-more:hover { color: var(--dsh-label-primary); }
-.dsh-hire { padding-left: 12px; }
-.dsh-hire:hover { color: var(--primary); }
+.dsh-check svg.lucide { width: 10px; height: 10px; }
+.dsh-bulk-bar { display: flex; align-items: center; gap: 2px; padding: 2px 4px 2px 10px; }
+.dsh-bulk-label { flex: 1; min-width: 0; margin: 0; color: var(--dsh-label-tertiary); font-size: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-chevron { transition: none; }
+  .boobot-sidebar, .dsh-chat, .dsh-spinner g, .dsh-spinner circle { animation: none; }
+  .dsh-folder .dsh-slot .dsh-arrow { transition: none; }
 }

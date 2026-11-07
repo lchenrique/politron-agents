@@ -69,8 +69,6 @@ export default function AppShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('politron.sidebar.collapsed') === 'true' } catch { return false }
   })
-  const [sidebarSection, setSidebarSection] = useState<'projects' | 'agents'>(() => { try { return localStorage.getItem('politron.sidebar.section') === 'agents' ? 'agents' : 'projects' } catch { return 'projects' } })
-  useEffect(() => { try { localStorage.setItem('politron.sidebar.section', sidebarSection) } catch { /* preferência opcional */ } }, [sidebarSection])
   // Sem preferência salva, abre com 280px (largura padrão do DSH) convertidos para a porcentagem que o layout aceita.
   const [sidebarSize, setSidebarSize] = useState(() => { const fallback = Math.min(34, Math.max(10, 28_000 / (window.innerWidth || 1280))); try { const value = Number(localStorage.getItem('politron.sidebar.size')); return Number.isFinite(value) && value >= 10 && value <= 34 ? value : fallback } catch { return fallback } })
   const dockRef = useRef<DockWorkspaceHandle>(null)
@@ -309,13 +307,14 @@ export default function AppShell() {
   const openAgent = async (agent: Agent, newConversation = false) => {
     const previous = snapshot.conversations.filter(item => !item.archived && !item.parentConversationId && item.kind === 'direct' && item.agentIds.length === 1 && item.agentIds[0] === agent.id && snapshot.workspaces.some(workspace => workspace.id === item.workspaceId && workspace.kind === 'free')).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
     if (previous && !newConversation) { selectConversation(previous.id); return }
-    try { const conversation = await window.appAPI.saveConversation({ kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); selectConversation(conversation.id) }
+    // Sem nome fixo: o título vem do primeiro pedido, e a lista não repete o nome do Boo em cada conversa.
+    try { const conversation = await window.appAPI.saveConversation({ kind: 'direct', agentIds: [agent.id] }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
   const openWorkspaceAgent = async (workspaceId: string, agent: Agent) => {
     const previous = snapshot.conversations.find(item => !item.archived && item.workspaceId === workspaceId && item.agentIds.length === 1 && item.agentIds[0] === agent.id)
     if (previous) { selectConversation(previous.id); return }
-    try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: [agent.id], name: agent.name }); await refresh(); selectConversation(conversation.id) }
+    try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: [agent.id] }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
   const submitMessage = async (value: string, modelName: string, options: SendOptions) => {
@@ -382,7 +381,7 @@ export default function AppShell() {
 
   return <ModelSlotProvider><div data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-chrome font-sans text-foreground">
     <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()}
-      search={<WorkspaceSearch snapshot={snapshot} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} onSectionChange={setSidebarSection} />} />
+      search={<WorkspaceSearch snapshot={snapshot} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} />} />
     <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* A faixa fica fora do painel redimensionável: continua visível com a barra lateral recolhida. */}
       <NavRail view={view} chiefName={chiefName} attentionCount={attentionCount} openTasks={openBoardTasks} enabledRoutines={enabledRoutines} onOpenHome={openHome} />
@@ -403,10 +402,7 @@ export default function AppShell() {
         activeWorkspaceId={activeWorkspaceId}
         onStartConversation={startConversation}
         onOpenAgent={(agent, newConversation) => void openAgent(agent, newConversation)}
-        onOpenWorkspaceAgent={(workspaceId, agent) => void openWorkspaceAgent(workspaceId, agent)}
         onOpenEditor={setEditor}
-        section={sidebarSection}
-        onSectionChange={setSidebarSection}
         onDeleteWorkspace={deleteWorkspace}
         onDeleteConversation={deleteConversation}
         onDeleteConversations={deleteConversations}
@@ -455,6 +451,7 @@ export default function AppShell() {
             <div hidden={Boolean(composerTakeoverApproval)}>
             <Composer
               mentionAgents={selectedAgents}
+              recipientName={(agentOf(selected.leaderAgentId || null) || selectedAgents[0] || snapshot.assistant)?.name}
               working={conversationRuns.length > 0}
               queued={queuedMessages}
               canAttachImages={canAttachImages}

@@ -443,9 +443,15 @@ export class WorkspaceStore {
     const parents = new Map((this.db.prepare('SELECT source_conversation_id AS source, target_conversation_id AS target FROM v9_delegations ORDER BY rowid').all() as { source: string; target: string }[]).map(row => [row.target, row.source]))
     // Última mensagem por conversa: MAX(rowid) percorre só o índice v9_message_context.
     const updated = new Map((this.db.prepare("SELECT conversation_id AS id, json_extract(data,'$.createdAt') AS at FROM v9_messages WHERE rowid IN (SELECT MAX(rowid) FROM v9_messages GROUP BY conversation_id)").all() as { id: string; at: string | null }[]).map(row => [row.id, row.at]))
+    // Prévia da barra lateral: última fala com texto e primeiro pedido do usuário; cada busca desce pelo índice da conversa e para no primeiro achado.
+    const spoken = "json_extract(m.data,'$.role') IN ('user','assistant') AND trim(json_extract(m.data,'$.text'))!=''"
+    const texts = new Map((this.db.prepare(`SELECT c.id AS id,
+      (SELECT substr(json_extract(m.data,'$.text'),1,160) FROM v9_messages m WHERE m.conversation_id=c.id AND ${spoken} ORDER BY m.rowid DESC LIMIT 1) AS preview,
+      (SELECT substr(json_extract(m.data,'$.text'),1,80) FROM v9_messages m WHERE m.conversation_id=c.id AND json_extract(m.data,'$.role')='user' AND ${spoken} ORDER BY m.rowid LIMIT 1) AS first
+      FROM v9_conversations c`).all() as { id: string; preview: string | null; first: string | null }[]).map(row => [row.id, row]))
     const conversations = this.conversations().map(item => {
-      const parent = parents.get(item.id), updatedAt = updated.get(item.id)
-      return { ...item, ...(parent && parent !== item.id ? { parentConversationId: parent } : {}), ...(updatedAt ? { updatedAt } : {}) }
+      const parent = parents.get(item.id), updatedAt = updated.get(item.id), text = texts.get(item.id)
+      return { ...item, ...(parent && parent !== item.id ? { parentConversationId: parent } : {}), ...(updatedAt ? { updatedAt } : {}), ...(text?.preview ? { preview: text.preview } : {}), ...(text?.first ? { firstPrompt: text.first } : {}) }
     })
     return { assistant: this.agent(ASSISTANT_ID), agents: this.agents(), workspaces: this.workspaces(), conversations, messages: [], runs: this.recent<Run>('v9_runs', 100), fileChanges: this.recent<FileChange>('v9_file_changes', 500), approvals: this.approvals(), terminalEnabled: this.terminalEnabled(), missions: this.missions(100), routines: this.routines() }
   }

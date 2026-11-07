@@ -44,11 +44,10 @@ it('mantém a faixa Windows de 40 px e controles de janela acessíveis', () => {
 it('mantém a busca e Ctrl+K disponíveis depois de recolher a lateral', () => {
   vi.stubGlobal('vibeAPI', { platform: 'win32' })
   const onSelectWorkspace = vi.fn()
-  const onSectionChange = vi.fn()
   const workspace: Workspace = { id: 'workspace-1', name: 'Projeto de teste', kind: 'free', path: 'C:/workspace', branch: null, baseBranch: null, parentWorkspaceId: null, instructions: '', defaultAgentIds: [], changes: 0, archived: false, createdAt: '2026-10-24T00:00:00.000Z' }
   function WindowHeader() {
     const [collapsed, setCollapsed] = useState(false)
-    const props = { onOpenTool: vi.fn(), sidebarCollapsed: collapsed, onToggleSidebar: () => setCollapsed(value => !value), search: <WorkspaceSearch snapshot={{ ...emptySnapshot, workspaces: [workspace] }} onSelectWorkspace={onSelectWorkspace} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} onSectionChange={onSectionChange} /> }
+    const props = { onOpenTool: vi.fn(), sidebarCollapsed: collapsed, onToggleSidebar: () => setCollapsed(value => !value), search: <WorkspaceSearch snapshot={{ ...emptySnapshot, workspaces: [workspace] }} onSelectWorkspace={onSelectWorkspace} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} /> }
     return <TitleBar {...props} />
   }
   render(<WindowHeader />)
@@ -60,7 +59,6 @@ it('mantém a busca e Ctrl+K disponíveis depois de recolher a lateral', () => {
   fireEvent.change(input, { target: { value: 'Projeto de teste' } })
   fireEvent.keyDown(input, { key: 'Enter' })
   expect(onSelectWorkspace).toHaveBeenCalledWith('workspace-1')
-  expect(onSectionChange).toHaveBeenCalledWith('projects')
 })
 
 it.each(['win32', 'darwin'])('mostra só o nome do app, sem repetir o contexto da página, em %s', platform => {

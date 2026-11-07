@@ -27,6 +27,11 @@ function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
 }
 
 describe('Composer compacto e elástico', () => {
+  it('diz para quem vai a mensagem', () => {
+    const { textarea } = setup({ recipientName: 'Atlas' })
+    expect(textarea).toHaveAttribute('placeholder', 'Mensagem para Atlas')
+  })
+
   it('com a barra superior do chat presente, o seletor de modelo sai do composer e mantém a lógica de modelo', () => {
     const onModelChange = vi.fn()
     render(<ModelSlotProvider><ModelSlot /><Composer conversationId="slot-test" models={[{ name: 'Modelo real', efforts: ['medium'], defaultEffort: 'medium' }]} defaultModelName="Modelo real" onModelChange={onModelChange} onSubmit={vi.fn()} onStop={vi.fn()} /></ModelSlotProvider>)

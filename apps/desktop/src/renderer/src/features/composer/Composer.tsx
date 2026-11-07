@@ -30,7 +30,9 @@ const initialModelOptions = (models: ComposerModel[], name?: string): ModelRunti
   }
 }
 
-export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow }: {
+export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName }: {
+  /** Boo que recebe a mensagem: o campo diz "Mensagem para <Boo>". */
+  recipientName?: string
   reviewChanges?: FileChange[]
   reviewKey?: string
   working?: boolean
@@ -283,7 +285,7 @@ ${message.text}` : message.text)
         accept={`${canAttachImages ? 'image/png,image/jpeg,image/webp,' : ''}text/*,.md,.txt,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml`}
         onStop={onStop}
         submitLabel={working ? 'Adicionar à fila' : 'Enviar mensagem'}
-        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : 'Escreva uma mensagem…'}
+        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : recipientName ? `Mensagem para ${recipientName}` : 'Escreva uma mensagem…'}
         onSubmit={(message, selection) => { void submit(message, selection.files) }}
         trailingControls={working && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" title="Parar geração" onClick={onStop}><Square className="size-4 fill-current" /></Button>}
         extraControls={<>

@@ -58,6 +58,10 @@ export interface Conversation {
   parentConversationId?: string
   /** Só no snapshot: criação da última mensagem (derivado de v9_messages); ausente sem mensagens. */
   updatedAt?: string
+  /** Só no snapshot: início da última mensagem com texto (usuário ou Boo), para a prévia da barra lateral. */
+  preview?: string
+  /** Só no snapshot: início do primeiro pedido do usuário; título de reserva quando a conversa tem o nome do Boo. */
+  firstPrompt?: string
 }
 export interface Message {
   id: string; conversationId: string; agentId: string | null; author: string

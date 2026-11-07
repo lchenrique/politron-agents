@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { relativeTime } from './relativeTime'
+import { listTime, relativeTime } from './relativeTime'
+
+describe('hora da lista de conversas', () => {
+  const now = new Date(2026, 10, 6, 18, 30).getTime()
+  it('hoje mostra a hora; ontem, a palavra; na semana, o dia; antes, a data', () => {
+    expect(listTime(new Date(2026, 10, 6, 9, 5).toISOString(), now)).toBe('09:05')
+    expect(listTime(new Date(2026, 10, 5, 23, 0).toISOString(), now)).toBe('ontem')
+    expect(listTime(new Date(2026, 10, 3, 12, 0).toISOString(), now)).toMatch(/^ter/)
+    expect(listTime(new Date(2026, 9, 28, 12, 0).toISOString(), now)).toBe('28/10')
+    expect(listTime('', now)).toBe('')
+  })
+})
 
 describe('tempo relativo das sessões', () => {
   const now = Date.parse('2026-10-28T12:00:00.000Z')

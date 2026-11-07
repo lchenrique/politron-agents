@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -21,384 +20,219 @@ const session = (id: string, name: string, workspaceId = workspace.id, extra: Pa
 const pending = (conversationId: string, extra: Partial<Approval> = {}): Approval => ({ id: 'approval-' + conversationId, runId: 'run-1', conversationId, agentId: agent.id, kind: 'write', details: { path: 'docs/notes.txt', after: 'texto' }, status: 'pending', createdAt: '', resolvedAt: null, ...extra })
 const running = (conversationId: string, agentId = agent.id): Run => ({ id: 'run-' + conversationId, conversationId, agentId, status: 'running' } as unknown as Run)
 
-/** Entra no projeto clicando na sua linha da lista. */
-function enter(name: string) {
-  fireEvent.click(screen.getByRole('button', { name: new RegExp('^' + name) }))
-}
-
-/** A visão (Projetos | Boos) vive no AppShell; aqui um estado local faz o papel dele. */
-function Harness(props: React.ComponentProps<typeof Sidebar>) {
-  const [section, setSection] = useState(props.section ?? 'projects')
-  return <Sidebar {...props} section={section} onSectionChange={setSection} />
-}
-
-/** Troca a barra para a visão Boos pelo controle segmentado. */
-const showBoos = () => fireEvent.click(screen.getByRole('button', { name: 'Boos' }))
-
 function renderSidebar(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
-  return render(<Harness snapshot={snapshot} selected={undefined} unreadCounts={{}} agentStates={{}} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} onDeleteWorkspace={vi.fn()} onDeleteConversation={vi.fn()} onDeleteAgent={vi.fn()} onSetChief={vi.fn()} onNotice={vi.fn()} {...overrides} />)
+  return render(<Sidebar snapshot={snapshot} selected={undefined} unreadCounts={{}} agentStates={{}} onSelectConversation={vi.fn()} onStartConversation={vi.fn()} onOpenAgent={vi.fn()} onOpenEditor={vi.fn()} onDeleteWorkspace={vi.fn()} onDeleteConversation={vi.fn()} onDeleteAgent={vi.fn()} onSetChief={vi.fn()} onNotice={vi.fn()} {...overrides} />)
 }
+/** Cabeçalho (botão que recolhe) da seção de um projeto. */
+const header = (name: string) => screen.getByRole('button', { name: new RegExp('^' + name) })
+const sectionOf = (name: string) => screen.getByRole('region', { name })
 
-describe('hierarquia visual do sidebar', () => {
-  it('não tem rodapé: o host mora na barra da janela e a navegação na faixa de ícones', async () => {
+describe('estrutura da barra: busca, Boos e uma lista de conversas', () => {
+  it('não tem rodapé nem controles da janela; tem busca, nova sessão e novo projeto, sem o seletor Projetos | Boos', () => {
     installHostsAPI()
-    renderSidebar()
-    expect(screen.queryByRole('button', { name: 'Selecionar host' })).not.toBeInTheDocument()
-    expect(document.querySelector('footer')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Configurações' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Abrir pasta' })).not.toBeInTheDocument()
-  })
-
-  it('visão Projetos: controle Projetos | Boos no topo, sem Central, Empresa nem seção Boos', () => {
-    renderSidebar()
-    const control = screen.getByRole('group', { name: 'Visão da barra lateral' })
-    expect(within(control).getByRole('button', { name: 'Projetos' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(control).getByRole('button', { name: 'Boos' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Boos' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Central do/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Empresa' })).not.toBeInTheDocument()
-    expect(control.compareDocumentPosition(screen.getByRole('button', { name: 'Nova sessão' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('abre ações do projeto e o submenu de pastas em superfícies DSH', () => {
-    renderSidebar()
-    fireEvent.contextMenu(screen.getByRole('button', { name: /^Instruções de Paz/ }))
-    const menu = screen.getByRole('menu')
-    expect(menu).toHaveAttribute('data-dsh-menu-surface', 'true')
-    const move = screen.getByRole('menuitem', { name: 'Mover para pasta' })
-    fireEvent.focus(move)
-    const menus = screen.getAllByRole('menu')
-    expect(menus).toHaveLength(2)
-    expect(menus[1]).toHaveAttribute('data-dsh-menu-surface', 'true')
-    expect(screen.getByRole('menuitem', { name: 'Sem pasta' })).toBeInTheDocument()
-  })
-})
-
-describe('acabamento da barra lateral', () => {
-  afterEach(() => { delete (window as { appAPI?: unknown }).appAPI })
-
-  it('o + da visão Boos abre o editor de agente', () => {
-    const onOpenEditor = vi.fn()
-    renderSidebar({ onOpenEditor })
-    showBoos()
-    fireEvent.click(screen.getByRole('button', { name: 'Novo Boo' }))
-    expect(onOpenEditor).toHaveBeenCalledWith({ kind: 'agent' })
-  })
-
-  it('diferencia Boos na faixa só pela cor: sem foto nem acessórios', () => {
-    const custom = { ...agent, avatar: 'data:image/png;base64,AAAA', pitsHeadAccessory: 'boo-king-crown' } as Agent
-    const { container } = renderSidebar({ snapshot: { ...snapshot, agents: [custom] } })
-    showBoos()
-    const strip = screen.getByRole('heading', { name: 'Boos' }).closest('section')!
-    expect(strip.querySelector('img')).toBeNull()
-    expect(container.innerHTML).toContain('#7565e8')
-  })
-
-  it('"Abrir pasta" fica no menu do projeto', () => {
-    const openFolder = vi.fn(async () => undefined)
-    window.appAPI = { openFolder } as unknown as typeof window.appAPI
-    const local: Workspace = { ...workspace, id: 'ws-local', name: 'Site', kind: 'local' }
-    renderSidebar({ snapshot: { ...snapshot, workspaces: [local], conversations: [session('c-site', 'Home', local.id)] } })
-    fireEvent.contextMenu(screen.getByRole('button', { name: /^Site/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir pasta' }))
-    expect(openFolder).toHaveBeenCalledExactlyOnceWith('c-site')
-  })
-
-  it('visão Boos: informa o estado do Boo no nome do botão', () => {
-    renderSidebar({ agentStates: { 'agent-1': 'working' } })
-    showBoos()
-    expect(screen.getByRole('button', { name: /^Lyra · trabalhando/ })).toBeInTheDocument()
-  })
-})
-
-describe('contatos de agentes na barra lateral', () => {
-  it('uma ação de criar no topo; o + de Projetos cria projeto ou pasta', () => {
     const onStartConversation = vi.fn()
     const onOpenEditor = vi.fn()
     renderSidebar({ onStartConversation, onOpenEditor })
-    expect(screen.queryByRole('button', { name: 'Criar novo' })).not.toBeInTheDocument()
+    expect(document.querySelector('footer')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Selecionar host' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Recolher barra lateral' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Visão da barra lateral' })).not.toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: 'Buscar conversas' })).toBeInTheDocument()
     const start = screen.getByRole('button', { name: 'Nova sessão' })
     expect(start).toHaveAttribute('aria-keyshortcuts', 'Control+N')
     fireEvent.click(start)
-    expect(onStartConversation).toHaveBeenCalledOnce()
+    expect(onStartConversation).toHaveBeenCalledExactlyOnceWith()
     fireEvent.keyDown(screen.getByRole('button', { name: 'Novo projeto ou pasta' }), { key: 'Enter' })
     expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
     expect(screen.getByRole('menuitem', { name: 'Nova pasta de projetos' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('menuitem', { name: 'Novo projeto' }))
     expect(onOpenEditor).toHaveBeenCalledExactlyOnceWith({ kind: 'workspace' })
-    expect(screen.queryByRole('img', { name: 'Pits, mascote do Politron' })).not.toBeInTheDocument()
   })
 
-  it('não duplica no sidebar desktop os controles da barra da janela', () => {
-    renderSidebar()
-    expect(screen.queryByRole('button', { name: 'Ir para a central' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Recolher barra lateral' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Busca rápida' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Nova sessão' })).toBeVisible()
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-  })
-
-  it('inicia uma conversa no projeto pela linha e pela visão do projeto', () => {
-    const onStartConversation = vi.fn()
-    renderSidebar({ onStartConversation })
-    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão em Instruções de Paz' }))
-    expect(onStartConversation).toHaveBeenLastCalledWith(workspace.id)
-    enter(workspace.name)
-    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão no projeto' }))
-    expect(onStartConversation).toHaveBeenCalledTimes(2)
-    expect(onStartConversation).toHaveBeenLastCalledWith(workspace.id)
-  })
-
-  it('visão Boos: o Chief fica fixo no topo, com coroa, e a ordem dos outros segue a salva', () => {
-    const chief: Agent = { ...agent, role: 'chief' }
-    const mira: Agent = { ...agent, id: 'agent-2', name: 'Alba', alias: 'alba' }
-    const zeca: Agent = { ...agent, id: 'agent-3', name: 'Zeca', alias: 'zeca' }
-    renderSidebar({ snapshot: { ...snapshot, agents: [zeca, mira, chief] } })
-    showBoos()
-    const rows = [...document.querySelectorAll('[data-boo-id]')].map(item => item.getAttribute('data-boo-id'))
-    expect(rows).toEqual(['agent-1', 'agent-2', 'agent-3'])
-    const first = screen.getByRole('button', { name: /^Lyra, Chief/ })
-    expect(first.querySelector('svg.lucide-crown')).not.toBeNull()
-    expect(screen.getAllByRole('button', { name: /^Lyra/ }).filter(item => item.hasAttribute('aria-expanded') && item.getAttribute('aria-label')?.startsWith('Lyra'))).toHaveLength(1)
-    fireEvent.contextMenu(first)
-    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
-    expect(screen.getByRole('menuitem', { name: /Remover papel de Chief/ })).toBeInTheDocument()
-  })
-
-  it('visão Boos: cada Boo abre as sessões dele, de todos os projetos, com o nome do projeto', () => {
-    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Loja', kind: 'local' }
-    const mira: Agent = { ...agent, id: 'agent-2', name: 'Alba', alias: 'alba' }
-    const conversations = [
-      session('c-a', 'Home nova', workspace.id, { updatedAt: '2026-10-03T00:00:00.000Z' }),
-      session('c-b', 'Checkout', other.id, { updatedAt: '2026-10-05T00:00:00.000Z' }),
-      session('c-c', 'Só da Alba', other.id, { agentIds: [mira.id] }),
-      session('c-d', 'Arquivada', workspace.id, { archived: true }),
-    ]
+  it('cada linha é uma conversa: título, Boo, hora e a prévia da última fala', () => {
     const onSelectConversation = vi.fn()
-    const onOpenAgent = vi.fn()
-    renderSidebar({ snapshot: { ...snapshot, agents: [agent, mira], workspaces: [workspace, other], conversations }, onSelectConversation, onOpenAgent })
-    showBoos()
-    expect(screen.queryByText('Home nova')).not.toBeInTheDocument()
-    const lyra = screen.getByRole('button', { name: /^Lyra · livre/ })
-    expect(lyra).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(lyra)
-    expect(lyra).toHaveAttribute('aria-expanded', 'true')
-    expect(JSON.parse(localStorage.getItem('politron.sidebar.expanded-boos') || '[]')).toEqual(['agent-1'])
-    const row = (name: string) => screen.getByText(name).closest('button')!
-    expect(row('Checkout')).toHaveTextContent('Loja')
-    expect(row('Home nova')).toHaveTextContent('Instruções de Paz')
-    expect(screen.queryByText('Só da Alba')).not.toBeInTheDocument()
-    expect(screen.queryByText('Arquivada')).not.toBeInTheDocument()
-    // Mais recente primeiro.
-    expect(screen.getByText('Checkout').compareDocumentPosition(screen.getByText('Home nova')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    fireEvent.click(row('Checkout'))
-    expect(onSelectConversation).toHaveBeenCalledExactlyOnceWith('c-b')
-    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão com Lyra' }))
-    expect(onOpenAgent).toHaveBeenCalledExactlyOnceWith(agent, true)
+    const conversations = [
+      session('c-1', 'Revisar login', workspace.id, { preview: 'Pronto, o login\nfoi revisado.', updatedAt: '2026-10-20T10:00:00.000Z' }),
+      // Aberta pela faixa de Boos com o nome do Boo: o título vem do primeiro pedido, sem repetir "Lyra".
+      session('c-2', 'Lyra', workspace.id, { firstPrompt: 'Como está o deploy?', preview: 'Tudo no ar.' }),
+      session('c-3', 'Nova conversa'),
+    ]
+    renderSidebar({ snapshot: { ...snapshot, conversations }, onSelectConversation })
+    const row = screen.getByRole('button', { name: 'Revisar login · Lyra' })
+    expect(row).toHaveTextContent('Pronto, o login foi revisado.')
+    expect(row.querySelector('.dsh-chat-time')?.textContent).not.toBe('')
+    expect(row.querySelector('[data-slot="avatar"]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Como está o deploy? · Lyra' })).toHaveTextContent('Tudo no ar.')
+    expect([...document.querySelectorAll('.dsh-chat-title')].map(item => item.textContent)).not.toContain('Lyra')
+    expect(screen.getByRole('button', { name: 'Nova conversa · Lyra' })).toHaveTextContent('Nenhuma mensagem ainda')
+    fireEvent.click(row)
+    expect(onSelectConversation).toHaveBeenCalledExactlyOnceWith('c-1')
   })
 
-  it('visão Boos: lembra os Boos abertos e permite excluir sessões em lote', () => {
-    localStorage.setItem('politron.sidebar.expanded-boos', JSON.stringify(['agent-1']))
-    const onDeleteConversations = vi.fn()
-    renderSidebar({ snapshot: { ...snapshot, conversations: [session('c-a', 'Primeira'), session('c-b', 'Segunda')] }, onDeleteConversations })
-    showBoos()
+  it('ordena da conversa mais recente para a mais antiga e limita cada projeto, sem esconder a aberta', () => {
+    const conversations = Array.from({ length: 11 }, (_, index) => session('s' + index, 'Sessão ' + index, workspace.id, { updatedAt: `2026-10-${String(index + 1).padStart(2, '0')}T00:00:00.000Z` }))
+    renderSidebar({ snapshot: { ...snapshot, conversations }, selected: conversations[0] })
+    const titles = () => [...sectionOf(workspace.name).querySelectorAll('.dsh-chat-title')].map(item => item.textContent)
+    expect(titles()).toEqual(['Sessão 10', 'Sessão 9', 'Sessão 8', 'Sessão 7', 'Sessão 6', 'Sessão 5', 'Sessão 4', 'Sessão 3', 'Sessão 0'])
+    expect(screen.getByRole('button', { name: 'Sessão 0 · Lyra' })).toHaveAttribute('aria-current', 'page')
+    fireEvent.click(screen.getByRole('button', { name: 'Ver mais 2 conversas' }))
+    expect(titles()).toHaveLength(11)
+  })
+
+  it('seções por projeto recolhem pelo cabeçalho, lembram a escolha e avisam quando recolhidas', () => {
+    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Loja', kind: 'local' }
+    const conversations = [session('c-1', 'Checkout', other.id), session('c-2', 'Home', other.id)]
+    const first = renderSidebar({ snapshot: { ...snapshot, workspaces: [workspace, other], conversations, approvals: [pending('c-1')] }, unreadCounts: { 'c-2': 2 } })
+    const loja = header('Loja')
+    expect(loja).toHaveAttribute('aria-expanded', 'true')
+    expect(within(loja).getByLabelText('2 não lidas')).toHaveTextContent('2')
+    fireEvent.click(loja)
+    expect(loja).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Checkout')).not.toBeInTheDocument()
+    expect(within(loja).getByLabelText('Projeto precisa de atenção')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('politron.sidebar.closed-sections') || '[]')).toEqual(['project:workspace-2'])
+    first.unmount()
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [workspace, other], conversations } })
+    expect(header('Loja')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('abrir o projeto e nova sessão ficam no cabeçalho; abrir não cria sessão', () => {
+    const onSelectWorkspace = vi.fn()
+    const onStartConversation = vi.fn()
+    renderSidebar({ onSelectWorkspace, onStartConversation })
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir projeto Instruções de Paz' }))
+    expect(onSelectWorkspace).toHaveBeenCalledExactlyOnceWith(workspace.id)
+    fireEvent.contextMenu(header(workspace.name))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir projeto' }))
+    expect(onSelectWorkspace).toHaveBeenCalledTimes(2)
+    expect(onStartConversation).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão em Instruções de Paz' }))
+    expect(onStartConversation).toHaveBeenCalledExactlyOnceWith(workspace.id)
+  })
+
+  it('a conversa aberta por fora da barra abre a seção recolhida do projeto dela', () => {
+    localStorage.setItem('politron.sidebar.closed-sections', JSON.stringify(['project:workspace-1']))
+    const conversation = session('c-1', 'Primeira')
+    const props = { snapshot: { ...snapshot, conversations: [conversation] }, unreadCounts: {}, agentStates: {}, onSelectConversation: vi.fn(), onStartConversation: vi.fn(), onOpenAgent: vi.fn(), onOpenEditor: vi.fn(), onDeleteWorkspace: vi.fn(), onDeleteConversation: vi.fn(), onDeleteAgent: vi.fn(), onSetChief: vi.fn(), onNotice: vi.fn() }
+    const view = render(<Sidebar {...props} selected={undefined} />)
+    expect(screen.queryByText('Primeira')).not.toBeInTheDocument()
+    view.rerender(<Sidebar {...props} selected={conversation} />)
     expect(screen.getByText('Primeira')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Selecionar sessões' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Todas' }))
-    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Seleção de sessões' })).getByRole('button', { name: 'Excluir' }))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Excluir' }))
-    expect(onDeleteConversations).toHaveBeenCalledExactlyOnceWith(expect.arrayContaining(['c-a', 'c-b']))
+  })
+})
+
+describe('estado de cada conversa no avatar e na prévia', () => {
+  it('aprovação, pergunta e missão viram a prévia em âmbar; execução gira no avatar', () => {
+    const conversations = [session('c-aprovar', 'Notas'), session('c-pergunta', 'Dúvida'), session('c-missao', 'Migração'), session('c-rodando', 'Agendamentos', workspace.id, { preview: 'Vou começar.' })]
+    const mission = { id: 'm-1', title: 'Migrar banco', conversationId: 'c-missao', status: 'waiting', question: 'Posso apagar a tabela antiga?' } as Mission
+    renderSidebar({ snapshot: { ...snapshot, conversations, missions: [mission], runs: [running('c-rodando')], approvals: [pending('c-aprovar'), pending('c-pergunta', { id: 'q', kind: 'question', details: { question: 'Qual banco usar?' } })] } })
+    expect(screen.getByRole('button', { name: 'Notas · Lyra · aguardando você' })).toHaveTextContent('Aprovar: Lyra quer alterar notes.txt')
+    expect(screen.getByRole('button', { name: 'Dúvida · Lyra · aguardando você' })).toHaveTextContent('Lyra pergunta: Qual banco usar?')
+    expect(screen.getByRole('button', { name: 'Migração · Lyra · aguardando você' })).toHaveTextContent('Responder: Posso apagar a tabela antiga?')
+    const busy = screen.getByRole('button', { name: 'Agendamentos · Lyra · em execução' })
+    expect(busy).toHaveTextContent('Vou começar.')
+    expect(busy.querySelector('[data-tone="running"]')).not.toBeNull()
+    expect(document.querySelectorAll('[data-tone="attention"]')).toHaveLength(3)
   })
 
-  it('promove agente a Chief pelo menu de contexto', () => {
-    const onSetChief = vi.fn()
-    renderSidebar({ onSetChief })
-    showBoos()
-    fireEvent.contextMenu(screen.getByRole('button', { name: /^Lyra/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Promover a Chief' }))
-    expect(onSetChief).toHaveBeenCalledExactlyOnceWith(agent, true)
+  it('delegações não viram linhas: não lidas e aprovações sobem para a conversa que delegou, e a busca acha a filha', () => {
+    const conversations = [session('chief', 'Plano do Atlas'), session('c1', 'Pedido: Examen · Contexto: monorepo BubbleDesk', workspace.id, { parentConversationId: 'chief' }), session('c2', 'Mimir · revisar login', workspace.id, { parentConversationId: 'chief' })]
+    renderSidebar({ snapshot: { ...snapshot, conversations, approvals: [pending('c1', { kind: 'command', details: {} })] }, unreadCounts: { c2: 3 } })
+    expect(screen.queryByText('Mimir · revisar login')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /delegaç/ })).not.toBeInTheDocument()
+    const parent = screen.getByRole('button', { name: 'Plano do Atlas · Lyra · aguardando você' })
+    expect(parent).toHaveTextContent('Aprovar: Lyra quer rodar um comando')
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar conversas' }), { target: { value: 'revisar login' } })
+    expect(screen.getByRole('button', { name: 'Mimir · revisar login · Lyra · 3 não lidas' })).toBeInTheDocument()
   })
+})
 
-  it('remove o papel Chief pelo menu de contexto', () => {
+describe('busca', () => {
+  it('filtra por título, prévia e Boo; Esc limpa e volta às seções', () => {
+    const mira: Agent = { ...agent, id: 'agent-2', name: 'Mira', alias: 'mira' }
+    const conversations = [session('c-1', 'Checkout', workspace.id, { preview: 'cupom aplicado' }), session('c-2', 'Home', workspace.id, { agentIds: [mira.id] }), session('c-3', 'Notas')]
+    renderSidebar({ snapshot: { ...snapshot, agents: [agent, mira], conversations } })
+    const input = screen.getByRole('searchbox', { name: 'Buscar conversas' })
+    fireEvent.change(input, { target: { value: 'cupom' } })
+    const results = () => [...screen.getByRole('region', { name: 'Resultados da busca' }).querySelectorAll('.dsh-chat-title')].map(item => item.textContent)
+    expect(results()).toEqual(['Checkout'])
+    expect(screen.getByRole('button', { name: 'Checkout · Lyra' })).toHaveTextContent('Instruções de Paz · cupom aplicado')
+    fireEvent.change(input, { target: { value: 'mira' } })
+    expect(results()).toEqual(['Home'])
+    fireEvent.change(input, { target: { value: 'nada disso' } })
+    expect(screen.getByText('Nenhuma conversa encontrada.')).toBeInTheDocument()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(input).toHaveValue('')
+    expect(sectionOf(workspace.name)).toBeInTheDocument()
+  })
+})
+
+describe('faixa de Boos', () => {
+  it('Chief primeiro com coroa; clicar abre a conversa; o menu promove e remove o Chief; + cria um Boo', () => {
     const chief: Agent = { ...agent, role: 'chief' }
+    const alba: Agent = { ...agent, id: 'agent-2', name: 'Alba', alias: 'alba' }
+    const onOpenAgent = vi.fn()
     const onSetChief = vi.fn()
-    renderSidebar({ snapshot: { ...snapshot, agents: [chief] }, onSetChief })
-    showBoos()
-    fireEvent.contextMenu(screen.getByRole('button', { name: /^Lyra, Chief/ }))
+    const onOpenEditor = vi.fn()
+    renderSidebar({ snapshot: { ...snapshot, agents: [alba, chief] }, onOpenAgent, onSetChief, onOpenEditor, agentStates: { 'agent-2': 'working' } })
+    const strip = screen.getByRole('region', { name: 'Boos' })
+    const boos = within(strip).getAllByRole('button').map(item => item.getAttribute('aria-label'))
+    expect(boos).toEqual(['Lyra, Chief · livre', 'Alba · trabalhando', 'Novo Boo'])
+    const lyra = within(strip).getByRole('button', { name: /^Lyra, Chief/ })
+    expect(lyra.querySelector('svg.lucide-crown')).not.toBeNull()
+    fireEvent.click(lyra)
+    expect(onOpenAgent).toHaveBeenCalledExactlyOnceWith(chief)
+    fireEvent.contextMenu(lyra)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Remover papel de Chief' }))
     expect(onSetChief).toHaveBeenCalledExactlyOnceWith(chief, false)
+    fireEvent.click(within(strip).getByRole('button', { name: 'Novo Boo' }))
+    expect(onOpenEditor).toHaveBeenCalledExactlyOnceWith({ kind: 'agent' })
   })
 
-  it('marca a conversa e o workspace quando há aprovação pendente', () => {
-    const conversation = session('conversation-1', 'Revisão')
-    renderSidebar({ snapshot: { ...snapshot, conversations: [conversation], approvals: [pending(conversation.id)] } })
-    expect(screen.getByLabelText('Workspace precisa de atenção')).toBeInTheDocument()
-    enter(workspace.name)
-    expect(screen.getByLabelText('Aguardando aprovação')).toBeInTheDocument()
-  })
-})
-
-describe('Precisa de você', () => {
-  const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Outro projeto', kind: 'local' }
-
-  it('some quando não há nada esperando nem rodando', () => {
-    renderSidebar({ snapshot: { ...snapshot, conversations: [session('c-1', 'Calma')] } })
-    expect(screen.queryByRole('heading', { name: 'Precisa de você' })).not.toBeInTheDocument()
-  })
-
-  it('junta aprovações, perguntas, missões e sessões rodando de todos os projetos; clicar abre a conversa no projeto dela', () => {
-    const onSelectConversation = vi.fn()
-    const conversations = [session('c-aprovar', 'Notas'), session('c-pergunta', 'Dúvida', other.id), session('c-missao', 'Missão longa', other.id), session('c-rodando', 'Módulo de agendamentos', other.id), session('c-quieta', 'Sem nada')]
-    const mission = { id: 'm-1', title: 'Migrar banco', conversationId: 'c-missao', status: 'waiting', question: 'Posso apagar a tabela antiga?' } as Mission
-    renderSidebar({
-      onSelectConversation,
-      snapshot: {
-        ...snapshot, workspaces: [workspace, other], conversations,
-        approvals: [pending('c-aprovar'), pending('c-pergunta', { id: 'q', kind: 'question', details: { question: 'Qual banco usar?' } })],
-        missions: [mission],
-        runs: [running('c-rodando'), running('c-aprovar')],
-      },
-    })
-    const region = () => screen.getByRole('heading', { name: 'Precisa de você' }).closest('section')!
-    expect(within(region()).getAllByRole('button').filter(item => !item.matches('.dsh-section-toggle')).map(item => item.textContent)).toEqual(['Aprovar: Lyra quer alterar notes.txt', 'Lyra pergunta: Qual banco usar?', 'Responder: Posso apagar a tabela antiga?', 'Módulo de agendamentos · Lyra'])
-    expect(within(region()).getAllByLabelText('Aguardando você')).toHaveLength(3)
-    expect(within(region()).getByLabelText('Em execução')).toBeInTheDocument()
-    // O projeto com pendência avisa na lista.
-    expect(within(screen.getByRole('button', { name: /^Outro projeto/ })).getByLabelText('Workspace precisa de atenção')).toBeInTheDocument()
-    fireEvent.click(within(region()).getByRole('button', { name: /Módulo de agendamentos/ }))
-    expect(onSelectConversation).toHaveBeenCalledExactlyOnceWith('c-rodando')
-    // Entrou no projeto da conversa: a seção passa a mostrar só o que é dele.
-    expect(screen.getByRole('button', { name: 'Voltar aos projetos' })).toBeInTheDocument()
-    expect(within(region()).getAllByRole('button').filter(item => !item.matches('.dsh-section-toggle')).map(item => item.textContent)).toEqual(['Lyra pergunta: Qual banco usar?', 'Responder: Posso apagar a tabela antiga?', 'Módulo de agendamentos · Lyra'])
-  })
-
-  it('na visão do projeto, some quando o projeto não tem nada pendente', () => {
-    renderSidebar({ snapshot: { ...snapshot, workspaces: [workspace, other], conversations: [session('c-1', 'Calma'), session('c-2', 'Rodando', other.id)], runs: [running('c-2')] } })
-    expect(screen.getByRole('heading', { name: 'Precisa de você' })).toBeInTheDocument()
-    enter(workspace.name)
-    expect(screen.queryByRole('heading', { name: 'Precisa de você' })).not.toBeInTheDocument()
-  })
-})
-
-describe('projeto aberto e exclusão', () => {
-  it('a lista global só tem linhas de projeto; clicar mostra só aquele projeto, e voltar devolve a lista', () => {
-    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Alfa', kind: 'local' }
-    const conversations = Array.from({ length: 12 }, (_, index) => session('s' + index, 'Sessão ' + index, workspace.id, { createdAt: `2026-10-${String(index + 1).padStart(2, '0')}T00:00:00.000Z` }))
-    renderSidebar({ snapshot: { ...snapshot, workspaces: [workspace, other], conversations }, unreadCounts: { s3: 2 } })
-    expect(screen.queryByText('Sessão 11')).not.toBeInTheDocument()
-    const row = screen.getByRole('button', { name: /^Instruções de Paz/ })
-    expect(row).not.toHaveAttribute('aria-expanded')
-    expect(within(row).getByLabelText('Sessões não lidas')).toBeInTheDocument()
-    expect(within(row).getByLabelText('2 não lidas')).toHaveTextContent('2')
-    enter(workspace.name)
-    expect(screen.getByText('Sessão 11')).toBeInTheDocument()
-    expect(screen.queryByText('Sessão 0')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Alfa/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Projetos' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Ver mais 2 sessões' }))
-    expect(screen.getByText('Sessão 0')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar aos projetos' }))
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
-    expect(screen.queryByText('Sessão 11')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Alfa/ })).toBeInTheDocument()
-  })
-
-  it('na visão do projeto, a equipe fica no projeto e a seção global de Boos não aparece', () => {
-    renderSidebar()
-    enter(workspace.name)
-    expect(screen.queryByRole('button', { name: 'Empresa' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Nova sessão' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Novo Boo' })).not.toBeInTheDocument()
-    // Projeto sem equipe não mostra a seção vazia.
-    expect(screen.queryByRole('region', { name: /Equipe do projeto/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Contratar equipe' })).not.toBeInTheDocument()
-  })
-
-
-  it('fixa favoritos no topo da árvore sem repeti-los na pasta', () => {
-    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Alfa', kind: 'local' }
-    renderSidebar({ snapshot: { ...snapshot, workspaces: [workspace, other] } })
-    fireEvent.contextMenu(screen.getByRole('button', { name: /^Instruções de Paz/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Favoritar projeto' }))
-    const pinned = screen.getByRole('group', { name: 'Favoritos' })
-    expect(within(pinned).getByRole('button', { name: /^Instruções de Paz/ })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /^Instruções de Paz/ })).toHaveLength(1)
-    expect(within(pinned).queryByRole('button', { name: /^Alfa/ })).not.toBeInTheDocument()
-  })
-
-  it('mostra a equipe do projeto e abre a conversa do Boo no projeto, e esconde a seção quando não há', () => {
-    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Sem time' }
-    const withTeam: Workspace = { ...workspace, defaultAgentIds: [agent.id] }
-    const onOpenWorkspaceAgent = vi.fn()
+  it('promove a Chief pelo menu e diferencia os Boos só pela cor', () => {
+    const custom = { ...agent, avatar: 'data:image/png;base64,AAAA', pitsHeadAccessory: 'boo-king-crown' } as Agent
+    const onSetChief = vi.fn()
     const onOpenAgent = vi.fn()
-    const data = { ...snapshot, workspaces: [withTeam, other] }
-    const first = renderSidebar({ snapshot: data, onOpenWorkspaceAgent, onOpenAgent })
-    enter(workspace.name)
-    const team = screen.getByRole('heading', { name: 'Equipe do projeto' }).closest('section')!
-    fireEvent.click(within(team).getByRole('button', { name: /^Lyra/ }))
-    expect(onOpenWorkspaceAgent).toHaveBeenCalledExactlyOnceWith(workspace.id, agent)
-    expect(onOpenAgent).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar aos projetos' }))
-    enter('Sem time')
-    expect(screen.queryByRole('heading', { name: 'Equipe do projeto' })).not.toBeInTheDocument()
-    first.unmount()
-    localStorage.clear()
-    // Sem conversa por projeto disponível, abre a conversa do Boo.
-    renderSidebar({ snapshot: data, onOpenAgent })
-    enter(workspace.name)
-    fireEvent.click(within(screen.getByRole('heading', { name: 'Equipe do projeto' }).closest('section')!).getByRole('button', { name: /^Lyra/ }))
-    expect(onOpenAgent).toHaveBeenCalledExactlyOnceWith(agent)
+    const { container } = renderSidebar({ snapshot: { ...snapshot, agents: [custom], conversations: [session('c-1', 'Notas')] }, onSetChief, onOpenAgent })
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.innerHTML).toContain('#7565e8')
+    fireEvent.contextMenu(within(screen.getByRole('region', { name: 'Boos' })).getByRole('button', { name: /^Lyra/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Promover a Chief' }))
+    expect(onSetChief).toHaveBeenCalledExactlyOnceWith(custom, true)
+    fireEvent.contextMenu(within(screen.getByRole('region', { name: 'Boos' })).getByRole('button', { name: /^Lyra/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Nova conversa' }))
+    expect(onOpenAgent).toHaveBeenCalledExactlyOnceWith(custom, true)
+  })
+})
+
+describe('menus, favoritos e exclusão', () => {
+  afterEach(() => { delete (window as { appAPI?: unknown }).appAPI })
+
+  it('abre ações do projeto e o submenu de pastas em superfícies DSH; "Abrir pasta" fica no menu', () => {
+    const openFolder = vi.fn(async () => undefined)
+    window.appAPI = { openFolder } as unknown as typeof window.appAPI
+    const local: Workspace = { ...workspace, id: 'ws-local', name: 'Site', kind: 'local' }
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [local], conversations: [session('c-site', 'Home', local.id)] } })
+    fireEvent.contextMenu(header('Site'))
+    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
+    fireEvent.focus(screen.getByRole('menuitem', { name: 'Mover para pasta' }))
+    expect(screen.getAllByRole('menu')).toHaveLength(2)
+    expect(screen.getByRole('menuitem', { name: 'Sem pasta' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir pasta' }))
+    expect(openFolder).toHaveBeenCalledExactlyOnceWith('c-site')
   })
 
-  it('entra no projeto da conversa aberta por fora da barra', () => {
-    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Outro projeto' }
-    const first = session('c-1', 'Primeira')
-    const second = session('c-2', 'Segunda', other.id)
-    const props = { snapshot: { ...snapshot, workspaces: [workspace, other], conversations: [first, second] }, unreadCounts: {}, agentStates: {}, onSelectConversation: vi.fn(), onStartConversation: vi.fn(), onOpenAgent: vi.fn(), onOpenEditor: vi.fn(), onDeleteWorkspace: vi.fn(), onDeleteConversation: vi.fn(), onDeleteAgent: vi.fn(), onSetChief: vi.fn(), onNotice: vi.fn() }
-    const view = render(<Sidebar {...props} selected={first} />)
-    // A conversa restaurada na abertura não tira a barra da lista.
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
-    view.rerender(<Sidebar {...props} selected={second} />)
-    expect(screen.getByText('Segunda')).toBeInTheDocument()
-    expect(screen.queryByText('Primeira')).not.toBeInTheDocument()
-    view.rerender(<Sidebar {...props} selected={first} />)
-    expect(screen.getByText('Primeira')).toBeInTheDocument()
-    expect(screen.queryByText('Segunda')).not.toBeInTheDocument()
-  })
-
-  it('aberto na Central sem conversa, a primeira conversa aberta já leva ao projeto dela', () => {
-    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Outro projeto' }
-    const second = session('c-2', 'Segunda', other.id)
-    const props = { snapshot: { ...snapshot, workspaces: [workspace, other], conversations: [second] }, unreadCounts: {}, agentStates: {}, onSelectConversation: vi.fn(), onStartConversation: vi.fn(), onOpenAgent: vi.fn(), onOpenEditor: vi.fn(), onOpenSettings: vi.fn(), onDeleteWorkspace: vi.fn(), onDeleteConversation: vi.fn(), onDeleteAgent: vi.fn(), onSetChief: vi.fn(), onNotice: vi.fn() }
-    const view = render(<Sidebar {...props} selected={undefined} />)
-    view.rerender(<Sidebar {...props} selected={second} />)
-    expect(screen.getByText('Segunda')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Voltar aos projetos' })).toBeInTheDocument()
-  })
-
-  it('sessão nova cujo projeto chega num snapshot seguinte também leva a barra até ele', () => {
-    const livre: Workspace = { ...workspace, id: 'livre', name: 'Livre', kind: 'free' }
-    const first = session('c-1', 'Primeira')
-    const fresh = session('c-novo', 'Sessão nova', livre.id)
-    const props = { unreadCounts: {}, agentStates: {}, onSelectConversation: vi.fn(), onStartConversation: vi.fn(), onOpenAgent: vi.fn(), onOpenEditor: vi.fn(), onOpenSettings: vi.fn(), onDeleteWorkspace: vi.fn(), onDeleteConversation: vi.fn(), onDeleteAgent: vi.fn(), onSetChief: vi.fn(), onNotice: vi.fn() }
-    const before = { ...snapshot, workspaces: [workspace], conversations: [first] }
-    const view = render(<Sidebar {...props} snapshot={before} selected={first} />)
-    // A conversa nova é selecionada antes de o snapshot trazer o projeto Livre recém-criado.
-    view.rerender(<Sidebar {...props} snapshot={before} selected={fresh} />)
-    view.rerender(<Sidebar {...props} snapshot={{ ...before, workspaces: [workspace, livre], conversations: [first, fresh] }} selected={fresh} />)
-    expect(screen.getByText('Sessão nova')).toBeInTheDocument()
-    expect(screen.queryByText('Primeira')).not.toBeInTheDocument()
-  })
-
-  it('lembra o projeto aberto e volta à lista quando ele some', () => {
-    localStorage.setItem('politron.sidebar.project', workspace.id)
-    const first = renderSidebar()
-    expect(screen.getByRole('button', { name: 'Voltar aos projetos' })).toBeInTheDocument()
-    first.unmount()
-    renderSidebar({ snapshot: { ...snapshot, workspaces: [{ ...workspace, archived: true }] } })
-    expect(screen.queryByRole('button', { name: 'Voltar aos projetos' })).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Projetos' })).toBeInTheDocument()
+  it('projeto favorito sobe ao topo sem se repetir; conversa favorita entra em Favoritos', () => {
+    const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Alfa', kind: 'local' }
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [workspace, other], conversations: [session('c-1', 'Notas', other.id)] } })
+    const names = () => [...document.querySelectorAll('.dsh-section-name')].map(item => item.textContent)
+    expect(names()).toEqual(['Alfa', 'Instruções de Paz'])
+    fireEvent.contextMenu(header('Instruções de Paz'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Favoritar projeto' }))
+    expect(names()).toEqual(['Instruções de Paz', 'Alfa'])
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Notas · Lyra' }).parentElement!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Favoritar sessão' }))
+    expect(within(screen.getByRole('region', { name: 'Favoritos' })).getByText('Notas')).toBeInTheDocument()
   })
 
   it('usa modal para cancelar ou confirmar exclusão sem chamar window.confirm', async () => {
@@ -406,7 +240,6 @@ describe('projeto aberto e exclusão', () => {
     const onDeleteConversation = vi.fn()
     const confirm = vi.spyOn(window, 'confirm')
     renderSidebar({ snapshot: { ...snapshot, conversations: [conversation] }, onDeleteConversation })
-    enter(workspace.name)
     const actions = screen.getByRole('button', { name: 'Ações da conversa Apagar teste' })
     fireEvent.contextMenu(actions.parentElement!)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir conversa' }))
@@ -414,7 +247,6 @@ describe('projeto aberto e exclusão', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent('Excluir a conversa “Apagar teste”?')
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
     expect(onDeleteConversation).not.toHaveBeenCalled()
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     fireEvent.contextMenu(actions.parentElement!)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir conversa' }))
     fireEvent.click(screen.getByRole('button', { name: 'Excluir' }))
@@ -424,9 +256,9 @@ describe('projeto aberto e exclusão', () => {
     confirm.mockRestore()
   })
 
-  /** Seleção em lote pelo menu do projeto: entra nele já selecionando. */
+  /** Seleção em lote pelo menu do projeto. */
   function startSelecting() {
-    fireEvent.contextMenu(screen.getByRole('button', { name: /^Instruções de Paz/ }))
+    fireEvent.contextMenu(header(workspace.name))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Selecionar sessões…' }))
   }
 
@@ -466,77 +298,32 @@ describe('projeto aberto e exclusão', () => {
   })
 })
 
-describe('navegação orientada a workspaces', () => {
-  it('abrir o workspace não cria sessão: apenas as ações de nova sessão criam', () => {
-    const onSelectWorkspace = vi.fn()
-    const onStartConversation = vi.fn()
-    renderSidebar({ onSelectWorkspace, onStartConversation })
-    // Entrar no projeto também abre a visão dele: barra e área principal falam do mesmo projeto.
-    fireEvent.click(screen.getByTitle('Workspace livre'))
-    expect(onSelectWorkspace).toHaveBeenCalledExactlyOnceWith(workspace.id)
-    fireEvent.contextMenu(screen.getByTitle('Workspace livre'))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Abrir projeto' }))
-    expect(onSelectWorkspace).toHaveBeenCalledTimes(2)
-    expect(onStartConversation).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Nova sessão no projeto' }))
-    expect(onStartConversation).toHaveBeenCalledExactlyOnceWith(workspace.id)
-  })
-
+describe('sessões antigas', () => {
   it('exibe sessões legadas dentro do Livre, sem lista avulsa', () => {
     const legacy: Workspace = { ...workspace, id: 'legacy', name: '' }
     const free: Workspace = { ...workspace, id: 'free', name: 'Livre' }
-    const conversation = session('legacy-session', 'Sessão preservada', legacy.id)
-    renderSidebar({ snapshot: { ...snapshot, workspaces: [legacy, free], conversations: [conversation] } })
-    expect(screen.queryByText('Sessão preservada')).not.toBeInTheDocument()
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [legacy, free], conversations: [session('legacy-session', 'Sessão preservada', legacy.id)] } })
     expect(screen.queryByText('Sessões antigas')).not.toBeInTheDocument()
-    enter('Livre')
-    expect(screen.getByText('Sessão preservada')).toBeInTheDocument()
+    expect(within(sectionOf('Livre')).getByText('Sessão preservada')).toBeInTheDocument()
   })
 
   it('mostra "Sessões antigas" só quando existem e não há Livre', () => {
     const legacy: Workspace = { ...workspace, id: 'legacy', name: '' }
     renderSidebar({ snapshot: { ...snapshot, workspaces: [legacy], conversations: [session('legacy-session', 'Sessão preservada', legacy.id)] } })
-    expect(screen.getByText('Sessões antigas')).toBeInTheDocument()
-    expect(screen.getByText('Sessão preservada')).toBeInTheDocument()
-  })
-})
-
-describe('delegações aninhadas na sessão que delegou', () => {
-  const nestedSnapshot: Snapshot = { ...snapshot, conversations: [session('chief', 'Plano do Atlas'), session('c1', 'Pedido: Examen · Contexto: monorepo BubbleDesk', workspace.id, { parentConversationId: 'chief' }), session('c2', 'Mimir · revisar login', workspace.id, { parentConversationId: 'chief' })] }
-
-  it('esconde as filhas no topo, conta só sessões de topo e mostra as filhas ao expandir', () => {
-    const first = renderSidebar({ snapshot: nestedSnapshot })
-    expect(screen.getByRole('button', { name: /^Instruções de Paz/ })).toHaveTextContent(/1$/)
-    first.unmount()
-    renderSidebar({ snapshot: nestedSnapshot, unreadCounts: { c2: 3 } })
-    enter('Instruções de Paz')
-    expect(screen.queryByText('Mimir · revisar login')).not.toBeInTheDocument()
-    // Não lidas da filha sobem para a mãe enquanto recolhidas.
-    expect(screen.getByLabelText('3 não lidas')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '2 delegações' }))
-    expect(screen.getByText('Mimir · revisar login')).toBeInTheDocument()
-    expect(screen.getByText('Examen · monorepo BubbleDesk')).toBeInTheDocument()
-    expect(screen.getAllByLabelText('3 não lidas')).toHaveLength(1)
-  })
-
-  it('aprovação pendente numa filha acende o aviso da mãe', () => {
-    renderSidebar({ snapshot: { ...nestedSnapshot, approvals: [pending('c1', { kind: 'command', details: {} })] } })
-    enter('Instruções de Paz')
-    expect(screen.getAllByLabelText('Aguardando aprovação')).toHaveLength(1)
+    expect(within(sectionOf('Sessões antigas')).getByText('Sessão preservada')).toBeInTheDocument()
   })
 })
 
 describe('reordenação do sidebar', () => {
   const alfa: Workspace = { ...workspace, id: 'ws-alfa', name: 'Alfa', kind: 'local' }
   const beta: Workspace = { ...workspace, id: 'ws-beta', name: 'Beta', kind: 'local' }
-  const ordered = (snapshotValue: Snapshot) => ({ ...snapshotValue, agents: [agent, { ...agent, id: 'agent-2', name: 'Mira', alias: 'mira' }] })
   function installAppAPI(saved: Awaited<ReturnType<NonNullable<typeof window.appAPI>['sidebarLayout']>>) {
     const api = { sidebarLayout: vi.fn(async () => saved), saveSidebarLayout: vi.fn(async (input: object) => ({ projectOrder: [], groups: [], sessionOrder: {}, agentOrder: [], ...input })) }
     window.appAPI = api as unknown as typeof window.appAPI
     return api
   }
   afterEach(() => { delete (window as { appAPI?: unknown }).appAPI })
-  const rowNames = (pattern: RegExp) => screen.getAllByRole('button').map(item => (item.closest('.dsh-session') ? item.querySelector('.dsh-title')?.textContent : item.textContent) ?? '').filter(text => pattern.test(text))
+  const sectionNames = () => [...document.querySelectorAll('.dsh-section-name')].map(item => item.textContent)
 
   it('usa menu DSH nas ações da pasta e abre o modal de renomear', async () => {
     installAppAPI({ projectOrder: [], groups: [{ name: 'Clientes', workspaceIds: [alfa.id] }], sessionOrder: {}, agentOrder: [] })
@@ -544,8 +331,7 @@ describe('reordenação do sidebar', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Ações da pasta Clientes' }))
     expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
     fireEvent.click(screen.getByRole('menuitem', { name: 'Renomear pasta' }))
-    const dialog = screen.getByRole('dialog', { name: 'Renomear pasta' })
-    expect(dialog).toHaveAttribute('data-dsh-modal', 'true')
+    expect(screen.getByRole('dialog', { name: 'Renomear pasta' })).toHaveAttribute('data-dsh-modal', 'true')
   })
 
   it('migra uma vez as pastas antigas do localStorage para o banco', async () => {
@@ -557,34 +343,26 @@ describe('reordenação do sidebar', () => {
     expect(screen.getByRole('button', { name: 'Recolher Clientes' })).toBeInTheDocument()
   })
 
-  it('aplica a ordem salva, põe projetos novos no topo e move com Alt+seta anunciando a posição', async () => {
+  it('aplica a ordem salva, põe projetos novos no topo e move com Alt+seta no cabeçalho anunciando a posição', async () => {
     const novo: Workspace = { ...workspace, id: 'ws-novo', name: 'Novo', kind: 'local' }
     const api = installAppAPI({ projectOrder: [beta.id, alfa.id], groups: [], sessionOrder: {}, agentOrder: [] })
     renderSidebar({ snapshot: { ...snapshot, workspaces: [alfa, beta, novo] } })
-    await waitFor(() => expect(rowNames(/^(Alfa|Beta|Novo)$/)).toEqual(['Novo', 'Beta', 'Alfa']))
-    fireEvent.keyDown(screen.getByRole('button', { name: /^Alfa/ }), { key: 'ArrowUp', altKey: true })
-    expect(rowNames(/^(Alfa|Beta|Novo)$/)).toEqual(['Novo', 'Alfa', 'Beta'])
+    await waitFor(() => expect(sectionNames()).toEqual(['Novo', 'Beta', 'Alfa']))
+    fireEvent.keyDown(header('Alfa'), { key: 'ArrowUp', altKey: true })
+    expect(sectionNames()).toEqual(['Novo', 'Alfa', 'Beta'])
     expect(api.saveSidebarLayout).toHaveBeenLastCalledWith({ groups: [], projectOrder: [novo.id, alfa.id, beta.id] })
     expect(screen.getByRole('status', { name: 'Ordem do sidebar' })).toHaveTextContent('Projeto Alfa movido para a posição 2')
     // Sem Alt, a seta não reordena.
-    fireEvent.keyDown(screen.getByRole('button', { name: /^Alfa/ }), { key: 'ArrowUp' })
+    fireEvent.keyDown(header('Alfa'), { key: 'ArrowUp' })
     expect(api.saveSidebarLayout).toHaveBeenCalledTimes(1)
   })
 
-  it('reordena Boos na lista e sessões do projeto, salvando no banco', async () => {
+  it('reordena Boos na faixa com Alt+seta, salvando no banco', async () => {
     const api = installAppAPI({ projectOrder: [], groups: [], sessionOrder: {}, agentOrder: [] })
-    renderSidebar({ snapshot: ordered({ ...snapshot, workspaces: [alfa], conversations: [session('c1', 'Primeira', alfa.id, { createdAt: '2026-10-01T00:00:00.000Z' }), session('c2', 'Segunda', alfa.id, { createdAt: '2026-10-02T00:00:00.000Z' })] }) })
+    renderSidebar({ snapshot: { ...snapshot, agents: [agent, { ...agent, id: 'agent-2', name: 'Mira', alias: 'mira' }], workspaces: [alfa] } })
     await waitFor(() => expect(api.sidebarLayout).toHaveBeenCalled())
-    showBoos()
-    fireEvent.keyDown(screen.getByRole('button', { name: /^Lyra/ }), { key: 'ArrowDown', altKey: true })
+    fireEvent.keyDown(within(screen.getByRole('region', { name: 'Boos' })).getByRole('button', { name: /^Lyra/ }), { key: 'ArrowDown', altKey: true })
     expect(api.saveSidebarLayout).toHaveBeenLastCalledWith({ agentOrder: ['agent-2', 'agent-1'] })
     expect(screen.getByRole('status', { name: 'Ordem do sidebar' })).toHaveTextContent('Boo Lyra movido para a posição 2')
-    fireEvent.click(screen.getByRole('button', { name: 'Projetos' }))
-    enter('Alfa')
-    expect(rowNames(/^(Primeira|Segunda)$/)).toEqual(['Segunda', 'Primeira'])
-    fireEvent.keyDown(screen.getByRole('button', { name: /^Segunda/ }), { key: 'ArrowDown', altKey: true })
-    expect(rowNames(/^(Primeira|Segunda)$/)).toEqual(['Primeira', 'Segunda'])
-    expect(api.saveSidebarLayout).toHaveBeenLastCalledWith({ sessionOrder: { [alfa.id]: ['c1', 'c2'] } })
-    expect(screen.getByRole('status', { name: 'Ordem do sidebar' })).toHaveTextContent('Sessão Segunda movida para a posição 2')
   })
 })
