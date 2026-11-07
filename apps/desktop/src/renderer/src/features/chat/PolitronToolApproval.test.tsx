@@ -102,7 +102,7 @@ describe('aprovações reais do Politron', () => {
       details: { path: 'notes.md', before: 'antigo', after: 'novo' },
     }} onNotice={vi.fn()} />)
 
-    const first = screen.getByRole('button', { name: 'Confirmar e aprovar' })
+    const first = screen.getByRole('button', { name: 'Aprovar' })
     fireEvent.click(first)
     expect(respondApproval).not.toHaveBeenCalled()
     expect(screen.getByText('Confirmação adicional obrigatória')).toBeInTheDocument()

@@ -4,6 +4,8 @@ import { VoiceService } from './voice'
 import type { HostRouting } from '../hosts/rpc'
 import { writeFile } from 'node:fs/promises'
 import type { MemoryInput } from '../../shared/memory'
+import { readProjectImage } from './project-files'
+import { openProjectPath } from './open-in-app'
 
 export function registerV9Ipc(service: AppService, routing?: HostRouting, voice: VoiceService = new VoiceService()) {
   // Carrega o reconhecedor de portugues em paralelo com a inicializacao do app.
@@ -103,6 +105,9 @@ export function registerV9Ipc(service: AppService, routing?: HostRouting, voice:
   invoke('workspaceDiff', (id) => service.workspaceDiff(id))
   invoke('listProjectFiles', (id, directory) => service.listProjectFiles(id, directory))
   invoke('readProjectFile', (id, filePath) => service.readProjectFile(id, filePath))
+  invoke('readProjectImage', (id, filePath) => readProjectImage(service.workspacePath(id), filePath))
+  // Fora da RPC, como o terminal externo: nunca abre programas no host remoto.
+  invoke('openProjectPath', (id, filePath, target) => openProjectPath(service.workspacePath(id), filePath, target))
   invoke('writeProjectFile', (id, filePath, content, expectedHash) => service.writeProjectFile(id, filePath, content, expectedHash))
   invoke('respondApproval', (id, approved, alwaysAllow) => service.respondApproval(id, approved, false, alwaysAllow === true))
   invoke('reviewPlan', (id, decision, feedback) => service.reviewPlan(id, decision, feedback))

@@ -15,7 +15,7 @@ describe('evidências de uma resposta delegada', () => {
     render(<MessageList messages={[message]} fileChanges={evidence.fileChanges} reviewRunId="child-run" approvals={evidence.approvals} conversations={[]} agentOf={() => undefined} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
 
     expect(screen.getByRole('region', { name: 'Aprovação de ferramenta' })).toHaveTextContent('Aguardando sua decisão')
-    expect(screen.getByRole('button', { name: 'Confirmar e aprovar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aprovar' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Arquivos modificados nesta resposta' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Arquivos alterados neste turno' })).not.toBeInTheDocument()
   })
@@ -30,7 +30,7 @@ describe('evidências de uma resposta delegada', () => {
     const decision = within(wrapper).getByRole('region', { name: 'Aprovação de ferramenta' })
     expect(review).not.toContainElement(decision)
     expect(decision).not.toContainElement(review)
-    expect(within(review).queryByRole('button', { name: 'Confirmar e aprovar' })).not.toBeInTheDocument()
+    expect(within(review).queryByRole('button', { name: 'Aprovar' })).not.toBeInTheDocument()
     fireEvent.click(within(review).getByRole('button', { name: 'Revisar arquivos modificados' }))
     expect(review).toHaveTextContent('plan.md')
   })

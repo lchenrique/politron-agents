@@ -115,7 +115,7 @@ export function ChiefHome({ snapshot, agentStates, onOpenConversation, onOpenAge
           </article>)}
           {approvals.map(approval => <div key={approval.id} className="space-y-1.5">
             <p className="flex items-center gap-2 text-[13px] text-muted-foreground"><span className="font-medium text-foreground">{agentName(approval.agentId)}</span> em <Button type="button" variant="ghost" size={null} className="h-8 min-w-0 shrink gap-1 truncate px-1 text-[13px] font-normal text-inherit hover:bg-transparent hover:text-foreground" onClick={() => onOpenConversation(approval.conversationId)}>{conversationName(approval.conversationId)}<ArrowUpRight className="size-3.5 shrink-0" /></Button></p>
-            <PolitronToolApproval approval={approval} onNotice={onNotice} />
+            <PolitronToolApproval approval={approval} agent={agentOf(approval.agentId)} onNotice={onNotice} />
           </div>)}
         </div> : <p className="text-[13px] text-muted-foreground">Nada pendente.</p>}
       </section>

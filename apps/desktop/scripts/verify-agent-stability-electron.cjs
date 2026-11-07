@@ -93,7 +93,7 @@ async function main() {
     assert.equal(await composerForDelegation.inputValue(), livePrompt)
     assert.equal(await page.getByRole('button', { name: 'Enviar mensagem' }).isEnabled(), true)
     await page.evaluate(({ conversationId, text }) => { void window.appAPI.send(conversationId, text) }, { conversationId: delegation.conversation.id, text: livePrompt })
-    const approval = page.getByRole('region', { name: 'Aprovação de ferramenta' }).filter({ hasText: 'Delegação do Chief' })
+    const approval = page.getByRole('region', { name: 'Aprovação de ferramenta' }).filter({ hasText: 'quer delegar uma tarefa' })
     await page.waitForFunction(async id => {
       const snapshot = await window.appAPI.snapshot()
       return snapshot.approvals.some(item => item.conversationId === id && item.kind === 'delegation' && item.status === 'pending')

@@ -248,6 +248,9 @@ export interface AppAPI {
   workspaceDiff(workspaceId: string): Promise<string>
   listProjectFiles(workspaceId: string, directory?: string): Promise<ProjectFileEntry[]>
   readProjectFile(workspaceId: string, filePath: string): Promise<ProjectFileContent>
+  readProjectImage(workspaceId: string, filePath: string): Promise<{ path: string; dataUrl: string }>
+  /** Abre a pasta/arquivo do projeto no Explorador ou no VS Code, somente por clique do usuário e somente neste computador. */
+  openProjectPath(workspaceId: string, filePath: string, target: 'explorer' | 'vscode'): Promise<void>
   writeProjectFile(workspaceId: string, filePath: string, content: string, expectedHash: string): Promise<{ path: string; hash: string }>
   respondApproval(approvalId: string, approved: boolean, alwaysAllow?: boolean): Promise<void>
   reviewPlan(approvalId: string, decision: PlanReviewDecision, feedback?: string): Promise<void>

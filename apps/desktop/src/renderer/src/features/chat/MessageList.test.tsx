@@ -14,7 +14,7 @@ describe('diffs e aprovações no chat', () => {
     expect(screen.queryByRole('region', { name: 'Arquivos modificados nesta resposta' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Arquivos alterados neste turno' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Aprovação de ferramenta' })).toHaveTextContent('Aguardando sua decisão')
-    expect(screen.getByRole('button', { name: 'Confirmar e aprovar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aprovar' })).toBeInTheDocument()
     expect(screen.getByRole('checkbox')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Negar' })).toBeInTheDocument()
   })

@@ -47,7 +47,7 @@ const partMessageId = (part: { type: string; toolCallId?: string; parentId?: str
 function useExtras() {
   const ctx = useTranscript()
   const applied = (message: Message) => ctx.appliedByMessage.get(message.id) && <CompletedFileReview changes={ctx.appliedByMessage.get(message.id)!} label={INLINE_REVIEW_LABEL} />
-  const approvals = (message: Message) => message.runId && ctx.lastMessageByRun.get(message.runId) === message.id && (ctx.approvalsByRun.get(message.runId) || []).map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={ctx.onNotice} />)
+  const approvals = (message: Message) => message.runId && ctx.lastMessageByRun.get(message.runId) === message.id && (ctx.approvalsByRun.get(message.runId) || []).map(approval => <PolitronToolApproval key={approval.id} approval={approval} agent={ctx.agentOf(approval.agentId)} onNotice={ctx.onNotice} />)
   return { ctx, applied, approvals }
 }
 
@@ -124,7 +124,7 @@ export function AssistantTurn() {
         return null
       }}
     </MessagePrimitive.GroupedParts>
-    {orphanRuns.map(runId => <div key={`approvals:${runId}`} data-part="extra">{(ctx.approvalsByRun.get(runId) || []).map(approval => <PolitronToolApproval key={approval.id} approval={approval} onNotice={ctx.onNotice} />)}</div>)}
+    {orphanRuns.map(runId => <div key={`approvals:${runId}`} data-part="extra">{(ctx.approvalsByRun.get(runId) || []).map(approval => <PolitronToolApproval key={approval.id} approval={approval} agent={ctx.agentOf(approval.agentId)} onNotice={ctx.onNotice} />)}</div>)}
     {(turn.status === 'waiting' || (turn.status === 'running' && !writing)) && <RunningTurnStatus turn={turn} agent={speaker} />}
   </MessagePrimitive.Root>
 }

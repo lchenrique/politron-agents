@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { FileTree, type FileTreeItem } from '@/components/ai/file-tree'
 import type { ProjectFileEntry } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
+import { OpenExternallyButtons } from './OpenExternally'
 
 // Monaco is large. Start downloading its chunk as the user heads toward a file,
 // not after the filesystem request has finished.
@@ -115,6 +116,7 @@ export function ProjectExplorer({ workspaceId, onOpenFile }: {
   onOpenFile: (workspaceId: string, path: string) => void
 }) {
   const [refreshKey, setRefreshKey] = useState(0)
+  const [notice, setNotice] = useState('')
   if (!workspaceId) return <div className="flex h-full flex-col items-center justify-center p-6 text-center">
     <Folder className="mb-3 size-9 text-muted-foreground/50" />
     <h3 className="text-sm font-medium">Selecione um projeto</h3>
@@ -122,9 +124,11 @@ export function ProjectExplorer({ workspaceId, onOpenFile }: {
   </div>
   return <section aria-label="Explorador de arquivos" className="flex h-full min-h-0 flex-col overflow-hidden">
     <header className="flex h-9 shrink-0 items-center justify-between border-b border-border/50 px-3">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Arquivos do projeto</span>
+      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Arquivos do projeto</span>
+      <OpenExternallyButtons workspaceId={workspaceId} path="" onError={setNotice} />
       <Button size="icon" variant="ghost" className="size-7 rounded-full" aria-label="Atualizar árvore de arquivos" title="Atualizar arquivos" onClick={() => setRefreshKey(key => key + 1)}><RefreshCw className="size-3.5" /></Button>
     </header>
+    {notice && <p role="alert" className="border-b border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">{notice}</p>}
     <div className="min-h-0 flex-1 overflow-auto py-1">
       <ProjectTree key={workspaceId + ':' + refreshKey} workspaceId={workspaceId} refreshKey={refreshKey} onOpenFile={onOpenFile} />
     </div>

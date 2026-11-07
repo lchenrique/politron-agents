@@ -1,11 +1,12 @@
-import type { Approval } from '../../../../shared/v9'
+import type { Agent, Approval } from '../../../../shared/v9'
 import { AgentInteractionCard } from '../chat/AgentInteractionCard'
 import { PolitronToolApproval } from '../chat/PolitronToolApproval'
 import { PlanReviewTakeover } from './PlanReviewTakeover'
 import styles from './ComposerTakeover.module.css'
 
-export function ComposerTakeover({ approval, onNotice }: {
+export function ComposerTakeover({ approval, agent, onNotice }: {
   approval: Approval
+  agent?: Agent
   onNotice: (message: string) => void
 }) {
   if (approval.status !== 'pending') return null
@@ -16,7 +17,7 @@ export function ComposerTakeover({ approval, onNotice }: {
         : approval.kind === 'question' ? <section aria-label="Resposta necessária" className={styles.questionPanel}>
         <p className={styles.questionStatus}>Aguardando sua resposta</p>
         <AgentInteractionCard approval={approval} onNotice={onNotice} takeover />
-      </section> : <PolitronToolApproval key={approval.id} approval={approval} onNotice={onNotice} takeover />}
+      </section> : <PolitronToolApproval key={approval.id} approval={approval} agent={agent} onNotice={onNotice} takeover />}
     </div>
   </div>
 }

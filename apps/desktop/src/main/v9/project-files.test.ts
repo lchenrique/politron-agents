@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { listProjectDirectory, readProjectText, writeProjectText } from './project-files'
+import { listProjectDirectory, readProjectImage, readProjectText, resolveProjectPath, writeProjectText } from './project-files'
 
 const directories: string[] = []
 afterEach(() => directories.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })))
@@ -58,5 +58,27 @@ describe('explorador seguro de arquivos do workspace', () => {
     writeFileSync(join(root, 'big.txt'), 'x'.repeat(1024 * 1024 + 1))
     await expect(readProjectText(root, 'image.dat')).rejects.toThrow(/binários/)
     await expect(readProjectText(root, 'big.txt')).rejects.toThrow(/1 MB/)
+  })
+
+  it('valida caminhos para abrir fora do app somente dentro do projeto', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'politron-open-'))
+    directories.push(root)
+    mkdirSync(join(root, 'src'))
+    writeFileSync(join(root, 'src', 'a.ts'), 'x')
+    expect(await resolveProjectPath(root, '')).toMatchObject({ directory: true })
+    expect(await resolveProjectPath(root, 'src/a.ts')).toMatchObject({ directory: false })
+    await expect(resolveProjectPath(root, '../fora')).rejects.toThrow(/fora do projeto/)
+    await expect(resolveProjectPath(root, tmpdir())).rejects.toThrow(/inválido/)
+    await expect(resolveProjectPath(root, 'src/../../x')).rejects.toThrow(/fora do projeto/)
+  })
+
+  it('lê imagens como data URL pela extensão e recusa outros formatos', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'politron-image-'))
+    directories.push(root)
+    writeFileSync(join(root, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0]))
+    writeFileSync(join(root, 'run.exe'), 'MZ')
+    expect((await readProjectImage(root, 'logo.png')).dataUrl).toBe('data:image/png;base64,iVBORwA=')
+    await expect(readProjectImage(root, 'run.exe')).rejects.toThrow(/sem prévia/)
+    await expect(readProjectImage(root, '../logo.png')).rejects.toThrow(/fora do projeto/)
   })
 })

@@ -229,25 +229,26 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
         hover === 'left' ? 'inset-y-0 left-0 w-1/3' : hover === 'right' ? 'inset-y-0 right-0 w-1/3' :
           hover === 'top' ? 'inset-x-0 top-0 h-1/3' : hover === 'bottom' ? 'inset-x-0 bottom-0 h-1/3' : 'inset-0'
       )} />}
-      {!soloChat && <header data-testid="dock-group-header" className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-muted/45 px-1.5">
-        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+      {!soloChat && <header data-testid="dock-group-header" className="flex h-9 shrink-0 items-stretch gap-1 border-b border-[var(--dsh-border-l3)] bg-[var(--dsh-bg-base)] pr-1.5">
+        <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
           {group.tabs.map(tab => {
             const Icon = icons[tab.kind]
             const label = tabLabel(tab)
             const active = group.active === tab.id
             // A aba do chat é a identidade da conversa: avatar, título e, quando ativa, busca e ações.
             const chat = tab.kind === 'chat' ? chatTab : undefined
-            return <div key={tab.id} data-testid={tab.kind === 'chat' ? 'chat-tab' : undefined} className={'group flex h-7 shrink-0 items-center gap-0.5 rounded-md pr-0.5 ' + (chat?.trailing && active ? 'max-w-80 ' : 'max-w-48 ') + (chat?.leading ? 'pl-0.5 ' : '') + (active ? 'bg-background text-foreground shadow-xs ring-1 ring-border' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
+            // Aba plana como a sidebar: ativa com sublinhado azul, inativa só com tinta secundária e hover sutil.
+            return <div key={tab.id} data-testid={tab.kind === 'chat' ? 'chat-tab' : undefined} data-active={active || undefined} className={'group relative flex shrink-0 items-center gap-0.5 border-r border-[var(--dsh-border-l3)]/60 pr-1 ' + (chat?.trailing && active ? 'max-w-80 ' : 'max-w-48 ') + (chat?.leading ? 'pl-1 ' : '') + (active ? 'text-[var(--dsh-label-primary)] after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-[var(--dsh-blue)]' : 'text-[var(--dsh-label-secondary)] hover:bg-[var(--dsh-hover)]')}>
               {chat?.leading}
-              <Button type="button" variant="ghost" size={null} draggable aria-label={'Aba ' + label} title={tab.path || chat?.title || label}
+              <Button type="button" variant="ghost" size={null} draggable aria-current={active ? 'true' : undefined} aria-label={'Aba ' + label} title={tab.path || chat?.title || label}
                 onDragStart={event => { event.dataTransfer.setData('application/x-politron-tab', tab.id); event.dataTransfer.effectAllowed = 'move' }}
                 onDragEnd={() => setDrop(null)}
                 onClick={() => setLayout(current => changeActive(current, group.id, tab.id))}
-                className={'flex h-7 min-w-0 items-center justify-start gap-1.5 rounded-none text-[11px] text-inherit hover:bg-transparent hover:text-inherit ' + (chat?.leading ? 'pl-1 font-semibold' : 'pl-2 font-medium')}>
+                className={'flex h-full min-w-0 items-center justify-start gap-1.5 rounded-none text-[12.5px] text-inherit hover:bg-transparent hover:text-inherit focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--dsh-blue)] focus-visible:ring-0 ' + (chat?.leading ? 'pl-1 font-semibold' : 'pl-2.5 ' + (active ? 'font-medium' : 'font-normal'))}>
                 {!chat?.leading && <Icon className="size-3.5 shrink-0" />}<span className="truncate">{label}</span>{drafts[tab.id] && drafts[tab.id].content !== drafts[tab.id].baseline && <span aria-label="Arquivo modificado" className="size-2 shrink-0 rounded-full bg-warning" />}
               </Button>
               {active && chat?.trailing}
-              <Button variant="ghost" size="icon" className={'size-5 rounded-full shrink-0 hover:opacity-100 focus-visible:opacity-100 ' + (active ? 'opacity-65' : 'opacity-0 group-hover:opacity-65')} aria-label={'Fechar ' + label} title="Fechar aba" onClick={() => closeTab(tab.id)}><X className="size-3" /></Button>
+              <Button variant="ghost" size="icon" className={'size-5 shrink-0 rounded-[5px] text-[var(--dsh-label-tertiary)] hover:bg-[var(--dsh-hover)] hover:text-[var(--dsh-label-primary)] focus-visible:opacity-100 ' + (active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')} aria-label={'Fechar ' + label} title="Fechar aba" onClick={() => closeTab(tab.id)}><X className="size-3" /></Button>
             </div>
           })}
         </div>

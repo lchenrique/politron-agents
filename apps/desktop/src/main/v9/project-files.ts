@@ -42,6 +42,26 @@ export async function listProjectDirectory(root: string, directory = ''): Promis
     .sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name, 'pt-BR', { numeric: true }))
 }
 
+/** Caminho absoluto validado (pasta ou arquivo) para abrir fora do Boobot; '' é a raiz do projeto. */
+export async function resolveProjectPath(root: string, requestedPath: string): Promise<{ path: string; directory: boolean }> {
+  const target = await withinProject(root, requestedPath)
+  return { path: target, directory: (await fs.stat(target)).isDirectory() }
+}
+
+const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+/** Imagem do projeto como data URL para a prévia do painel (tipo decidido pela extensão, até 10 MB). */
+export async function readProjectImage(root: string, filePath: string): Promise<{ path: string; dataUrl: string }> {
+  const mime = IMAGE_TYPES[filePath.split('.').pop()?.toLowerCase() || '']
+  if (!mime) throw new Error('Formato de imagem sem prévia.')
+  const target = await withinProject(root, filePath)
+  const stat = await fs.stat(target)
+  if (!stat.isFile()) throw new Error('Selecione um arquivo válido.')
+  if (stat.size > MAX_IMAGE_BYTES) throw new Error('Imagem maior que 10 MB. Abra-a em um programa externo.')
+  return { path: filePath, dataUrl: `data:${mime};base64,${(await fs.readFile(target)).toString('base64')}` }
+}
+
 export async function readProjectText(root: string, filePath: string): Promise<{ path: string; name: string; content: string; hash: string }> {
   if (!filePath || filePath === '.') throw new Error('Selecione um arquivo.')
   const target = await withinProject(root, filePath)
