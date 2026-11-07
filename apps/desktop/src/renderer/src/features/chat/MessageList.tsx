@@ -94,7 +94,6 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
       turnsById: new Map(turns.map(turn => [assistantIdOf(turn), turn])),
       booReplies: new Set(turns.flatMap(turn => turn.items.flatMap(item => item.kind === 'reply' && item.boo ? [item.message.id] : []))),
       alwaysActionsId: latest?.id,
-      lastTurnId: last?.id,
     }
   }, [turns, messagesById, lastMessageByRun, approvalsByRun, appliedByMessage, conversationsById, agentOf, focusedMessageId, canCancelQueued, onOpenRelatedConversation, onNotice])
 
@@ -143,6 +142,7 @@ export function MessageList({ messages: sourceMessages, fileChanges, reviewRunId
           <div className={css.messages}><ThreadPrimitive.Messages>{renderMessage}</ThreadPrimitive.Messages></div>
           {!turns.length && <div className={css.empty} data-testid="chat-empty-state">
             <h2 className={css.emptyTitle}>Como posso ajudar?</h2>
+            <p className={css.emptyHint}>Escreva abaixo para começar. Enter envia, Shift+Enter quebra a linha.</p>
             <div className={css.emptyWorkspace} data-testid="chat-empty-workspace">
               <FolderOpen aria-hidden="true" size={15} strokeWidth={1.7} />
               <span>{workspaceName || 'Sem projeto'}</span>

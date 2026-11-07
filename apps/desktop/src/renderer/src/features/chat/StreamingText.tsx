@@ -39,7 +39,7 @@ export const StreamingText = memo(function StreamingText({ text }: { text: strin
 
   useEffect(() => () => { if (flushTimer.current) clearTimeout(flushTimer.current) }, [])
 
-  return <div className="boobot-markdown prose prose-sm min-w-0 max-w-none break-words whitespace-pre-wrap text-[14px] leading-6" data-streaming-text>
+  return <div className="boobot-markdown prose prose-sm min-w-0 max-w-none break-words whitespace-pre-wrap text-[14px] leading-[22px]" data-streaming-text>
     {parts.map(part => <span key={part.id} className={part.animated ? 'chat-stream-text-chunk' : undefined}>{part.text}</span>)}
   </div>
 })

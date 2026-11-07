@@ -24,7 +24,6 @@ export interface TranscriptContextValue {
   booReplies: Set<string>
   /** Resposta cujo rodapé fica sempre visível. */
   alwaysActionsId: string | undefined
-  lastTurnId: string | undefined
   lastMessageByRun: Map<string, string>
   approvalsByRun: Map<string, Approval[]>
   appliedByMessage: Map<string, FileChange[]>
@@ -57,9 +56,8 @@ export function UserTurn() {
   const id = useAuiState(state => state.message.id)
   const message = ctx.messagesById.get(id)
   if (!message) return null
-  const isLast = ctx.lastTurnId === `turn:${message.id}`
   return <MessagePrimitive.Root data-part="user" data-turn-start="" className={`${css.userTurn}${ctx.focusedMessageId === id ? ` ${css.focused}` : ''}`}>
-    <MessageItem message={message} agent={ctx.agentOf(message.agentId)} relatedConversation={undefined} onOpenRelatedConversation={ctx.onOpenRelatedConversation} onNotice={ctx.onNotice} canSpeak={false} canCancelQueued={ctx.canCancelQueued} presentation="dsh" alwaysShowActions={isLast} />
+    <MessageItem message={message} agent={ctx.agentOf(message.agentId)} relatedConversation={undefined} onOpenRelatedConversation={ctx.onOpenRelatedConversation} onNotice={ctx.onNotice} canSpeak={false} canCancelQueued={ctx.canCancelQueued} presentation="dsh" />
     {applied(message)}{approvals(message)}
   </MessagePrimitive.Root>
 }

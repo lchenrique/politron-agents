@@ -80,11 +80,11 @@ function CodeBlock({
       )}
       {...props}
     >
-      <figcaption className="flex h-10 items-center gap-2 px-3 metadata-label">
+      <figcaption className="flex h-8 items-center gap-2 px-3 metadata-label">
         {(/\.tsx?$/i.test(filename ?? '') || ['ts', 'tsx', 'typescript'].includes(language)) && (
           <TypeScriptIcon aria-hidden="true" className="size-4 shrink-0 text-[#3178c6]" />
         )}
-        <span className="min-w-0 truncate text-[13px]">{filename ?? language}</span>
+        <span className="min-w-0 truncate text-[12px]">{filename ?? language}</span>
         <Button
           aria-label={copied ? 'Código copiado' : 'Copiar código'}
           className="ml-auto"
@@ -101,7 +101,7 @@ function CodeBlock({
       </figcaption>
       <Highlight code={code.trim()} language={syntaxLanguage} theme={codeTheme}>
         {({ getLineProps, getTokenProps, style, tokens }) => (
-          <pre className="overflow-x-auto pb-4 font-mono text-[13px] leading-6" style={style}>
+          <pre className="overflow-x-auto pb-3 font-mono text-[12.5px] leading-5" style={style}>
             <code>
               {tokens.map((line, lineIndex) => {
                 const lineNumber = lineIndex + 1

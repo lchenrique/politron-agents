@@ -30,7 +30,8 @@ function MessageLink({ href, children }: { href?: string; children?: ReactNode }
     }}>{children}</a>
 }
 
-const MARKDOWN_CLASS = 'boobot-markdown prose prose-sm min-w-0 max-w-none break-words text-[14px] leading-6 prose-p:my-2 prose-code:rounded-smprose-code:bg-muted prose-code:px-1 prose-code:py-0.5'
+// Ritmo de leitura: 14/22, parágrafos e listas a 6px, títulos no máximo 17px.
+const MARKDOWN_CLASS = 'boobot-markdown prose prose-sm min-w-0 max-w-none break-words text-[14px] leading-[22px] prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:mb-1.5 prose-headings:mt-4 prose-headings:font-semibold prose-h1:text-[17px] prose-h2:text-[15.5px] prose-h3:text-[14px] prose-blockquote:my-2 prose-hr:my-4 prose-code:rounded-sm prose-code:bg-muted prose-code:px-1 prose-code:py-0.5'
 
 /** Caminhos locais só passam quando o Desktop roteia links; sem roteamento vale o filtro padrão. */
 const linkUrlTransform = (handlers: MessageLinkHandlers | null) => (url: string, key: string) => {
@@ -43,11 +44,11 @@ const MARKDOWN_COMPONENTS: Components = {
   code({ className, children }) {
     const language = /language-([^\s]+)/.exec(className || '')?.[1]
     const raw = String(children)
-    if (language || raw.endsWith('\n')) return <CodeBlock className="not-prose my-4" code={raw.replace(/\n$/, '')} language={language} />
+    if (language || raw.endsWith('\n')) return <CodeBlock className="not-prose my-2.5" code={raw.replace(/\n$/, '')} language={language} />
     return <code className={className}>{children}</code>
   },
   table({ children }) {
-    return <div className="my-4 max-w-full overflow-x-auto" role="region" aria-label="Tabela da resposta" tabIndex={0}>
+    return <div className="my-2.5 max-w-full overflow-x-auto" role="region" aria-label="Tabela da resposta" tabIndex={0}>
       <table>{children}</table>
     </div>
   },
