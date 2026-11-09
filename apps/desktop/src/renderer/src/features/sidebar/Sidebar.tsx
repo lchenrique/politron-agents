@@ -365,6 +365,27 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   // Ordem alfabética até o usuário arrastar.
   const visibleAgents = useMemo(() => applyOrder([...regularAgents].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), layout.agentOrder, agent => agent.id), [regularAgents, layout.agentOrder])
   const orderedAgentIds = useMemo(() => applyOrder(snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired'), layout.agentOrder, agent => agent.id).map(agent => agent.id), [snapshot.agents, layout.agentOrder])
+  /** Última conversa de cada agente: alimenta a prévia e a hora da linha. */
+  const latestByAgent = useMemo(() => {
+    const map = new Map<string, Conversation>()
+    for (const conversation of snapshot.conversations) {
+      if (conversation.archived) continue
+      const id = conversation.leaderAgentId || conversation.agentIds[0]
+      if (!id) continue
+      const previous = map.get(id)
+      if (!previous || recency(conversation, previous) < 0) map.set(id, conversation)
+    }
+    return map
+  }, [snapshot.conversations])
+  /** O que espera o usuário agora, atravessando todos os agentes e projetos. */
+  const pendingAttention = useMemo(() => {
+    const rows: { conversation: Conversation; label: string }[] = []
+    for (const [conversationId, label] of attentionLabels) {
+      const conversation = conversationsById.get(conversationId)
+      if (conversation && !conversation.archived) rows.push({ conversation, label })
+    }
+    return rows.sort((a, b) => recency(a.conversation, b.conversation)).slice(0, 4)
+  }, [attentionLabels, conversationsById])
   const listDragEnd = (ids: string[], move: (id: string, index: number) => void) => ({ active, over }: DragEndEvent) => {
     if (over && active.id !== over.id) move(String(active.id), ids.indexOf(String(over.id)))
   }
@@ -428,18 +449,35 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
       { id: 'delete-agent', label: 'Excluir agente', icon: <Trash2 />, danger: true },
     ]
   }
-  /** Boo da faixa: clicar abre a conversa com ele; o menu (botão direito ou tecla de menu) guarda as outras ações. */
-  const booButton = (agent: Agent) => {
+  /** Linha de agente: avatar com papel e estado, nome, prévia da última conversa e hora.
+   *  O líder ganha um cartão maior; os demais ficam em linhas densas, na ordem escolhida. */
+  const agentRow = (agent: Agent, leader = false) => {
     const state = agentStates[agent.id] || 'idle'
     const chief = agent.role === 'chief'
+    const conversation = latestByAgent.get(agent.id)
+    const attention = conversation ? attentionLabels.get(conversation.id) : undefined
+    const unread = conversation ? unreadCounts[conversation.id] || 0 : 0
+    const preview = attention || (conversation ? oneLine(conversation.preview) : '') || agent.description || (chief ? 'Coordena a equipe e recebe os pedidos' : 'Sem conversa ainda')
+    const time = conversation ? listTime(conversation.updatedAt || conversation.createdAt, now) : ''
     const name = `${agent.name}${chief ? ', Chief' : ''}${agent.temporary ? ', temporário' : ''}${isFavorite('agent', agent.id) ? ', favorito' : ''} · ${stateLabel(state)}`
     return <Menu open={openAgentMenuId === agent.id} onClose={() => setOpenAgentMenuId(null)} align="start" portal autoFocus
-      anchor={<Button variant="ghost" size={null} className="dsh-boo" data-state={state} aria-label={name} title={chief ? `${agent.name} · Chief` : agent.description ? `${agent.name} · ${agent.description}` : agent.name}
+      anchor={<Button variant="ghost" size={null} className="dsh-agent" data-leader={leader} data-state={state} data-active={conversation?.id === selected?.id} aria-label={name} title={chief ? `${agent.name} · Chief` : agent.description ? `${agent.name} · ${agent.description}` : agent.name}
         onClick={() => void onOpenAgent(agent)}
         onContextMenu={event => { event.preventDefault(); setOpenAgentMenuId(agent.id) }}>
-        <Avatar agent={colorOnly(agent)} size="xs" state={state} />
-        {chief && <Crown aria-hidden="true" className="dsh-boo-crown" />}
-        {state !== 'idle' && <span aria-hidden="true" className="dsh-boo-state" data-state={state} />}
+        <span className="dsh-agent-avatar">
+          <Avatar agent={colorOnly(agent)} size={leader ? 'list' : 'xs'} state={state} />
+          {chief && <Crown aria-hidden="true" className="dsh-boo-crown" />}
+          {state !== 'idle' && <span aria-hidden="true" className="dsh-boo-state" data-state={state} />}
+        </span>
+        <span className="dsh-agent-copy">
+          <span className="dsh-agent-top">
+            <span className="dsh-agent-name">{agent.name}</span>
+            {chief && <span className="dsh-agent-role">Líder</span>}
+            {state !== 'idle' && <span className="dsh-agent-state" data-state={state}>{stateLabel(state)}</span>}
+            <span className="dsh-agent-time" data-unread={unread > 0 ? 'true' : undefined}>{unread > 0 ? (unread > 9 ? '9+' : unread) : time}</span>
+          </span>
+          <span className="dsh-agent-preview" title={preview}>{preview}</span>
+        </span>
       </Button>}
       items={agentMenuEntries(agent)} onSelect={id => {
         setOpenAgentMenuId(null)
@@ -449,6 +487,17 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         else if (id === 'chief-role') void onSetChief(agent, agent.role !== 'chief')
         else if (id === 'delete-agent') removeAgent(agent)
       }} />
+  }
+  /** Item da seção "Precisa de você": abre direto a conversa que espera uma resposta. */
+  const attentionRow = ({ conversation, label }: { conversation: Conversation; label: string }) => {
+    const agent = leadAgent(conversation)
+    return <Button key={'attention:' + conversation.id} variant="ghost" size={null} className="dsh-attention-row" aria-label={`Atender: ${label}`} onClick={() => onSelectConversation(conversation.id)}>
+      {agent && <Avatar agent={colorOnly(agent)} size="xs" state="waiting" />}
+      <span className="dsh-attention-copy">
+        <span className="dsh-attention-title" title={label}>{label}</span>
+        <span className="dsh-attention-context">{titleOf(conversation, agent)}</span>
+      </span>
+    </Button>
   }
   const booIds = visibleAgents.map(agent => agent.id)
   const moveBoo = (id: string, index: number) => {
@@ -475,6 +524,17 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
         {!matches.length && <p className="dsh-empty">Nenhuma conversa encontrada.</p>}
       </section>
     : <>
+        {!!pendingAttention.length && <section aria-label="Precisa de você" className="dsh-section dsh-attention">
+          <div className="dsh-section-head">
+            <span className="dsh-group-label">Precisa de você</span>
+            <span className="ds-count" data-tone="attention">{pendingAttention.length}</span>
+          </div>
+          <div className="dsh-attention-list">{pendingAttention.map(attentionRow)}</div>
+        </section>}
+        <div className="dsh-section-head dsh-projects-head">
+          <span className="dsh-group-label">Projetos</span>
+          <span className="dsh-meta">{rootWorkspaces.length}</span>
+        </div>
         {!!favoriteSessions.length && <section aria-label="Favoritos" className="dsh-section">
           <div className="dsh-section-row">
             <Button variant="ghost" size={null} className="dsh-section-main" aria-expanded={isOpen('favorites')} onClick={() => toggleSection('favorites')}><span className="dsh-section-name">Favoritos</span></Button>
@@ -514,12 +574,16 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
           else if (id === 'new-group') openGroupDialog('create')
         }} />
     </header>
-    <section aria-label="Boos" className="dsh-boos">
-      {chiefAgent && booButton(chiefAgent)}
-      <SortableArea onDragEnd={listDragEnd(booIds, moveBoo)}><SortableGroup ids={booIds} grid>
-        {visibleAgents.map(agent => <SortableRow key={agent.id} id={agent.id} data={{ type: 'agent' }} onMove={delta => moveBoo(agent.id, booIds.indexOf(agent.id) + delta)}>{booButton(agent)}</SortableRow>)}
+    <section aria-label="Agentes" className="dsh-agents">
+      <div className="dsh-section-head">
+        <span className="dsh-group-label">Agentes</span>
+        <span className="dsh-meta">{snapshot.agents.filter(agent => agent.temporaryStatus !== 'retired').length}</span>
+      </div>
+      {chiefAgent && agentRow(chiefAgent, true)}
+      <SortableArea onDragEnd={listDragEnd(booIds, moveBoo)}><SortableGroup ids={booIds}>
+        {visibleAgents.map(agent => <SortableRow key={agent.id} id={agent.id} data={{ type: 'agent' }} onMove={delta => moveBoo(agent.id, booIds.indexOf(agent.id) + delta)}>{agentRow(agent)}</SortableRow>)}
       </SortableGroup></SortableArea>
-      <Button variant="ghost" size={null} className="dsh-boo dsh-boo-add" aria-label="Novo Boo" title="Novo Boo" onClick={() => onOpenEditor({ kind: 'agent' })}><Plus /></Button>
+      <Button variant="ghost" size={null} className="dsh-agent dsh-agent-add" aria-label="Novo agente" title="Novo agente" onClick={() => onOpenEditor({ kind: 'agent' })}><Plus /><span>Novo agente</span></Button>
     </section>
     <div className="dsh-list">{list}</div>
     <div aria-live="polite" role="status" aria-label="Ordem do sidebar" className="sr-only">{announcement}</div>

@@ -28,7 +28,7 @@ const header = (name: string) => screen.getByRole('button', { name: new RegExp('
 const sectionOf = (name: string) => screen.getByRole('region', { name })
 
 describe('estrutura da barra: busca, Boos e uma lista de conversas', () => {
-  it('não tem rodapé nem controles da janela; tem busca, nova sessão e novo projeto, sem o seletor Projetos | Boos', () => {
+  it('não tem rodapé nem controles da janela; tem busca, nova sessão e novo projeto, sem o seletor Projetos | Agentes', () => {
     installHostsAPI()
     const onStartConversation = vi.fn()
     const onOpenEditor = vi.fn()
@@ -53,7 +53,7 @@ describe('estrutura da barra: busca, Boos e uma lista de conversas', () => {
     const onSelectConversation = vi.fn()
     const conversations = [
       session('c-1', 'Revisar login', workspace.id, { preview: 'Pronto, o login\nfoi revisado.', updatedAt: '2026-10-20T10:00:00.000Z' }),
-      // Aberta pela faixa de Boos com o nome do Boo: o título vem do primeiro pedido, sem repetir "Lyra".
+      // Aberta pela seção de agentes com o nome do Boo: o título vem do primeiro pedido, sem repetir "Lyra".
       session('c-2', 'Lyra', workspace.id, { firstPrompt: 'Como está o deploy?', preview: 'Tudo no ar.' }),
       session('c-3', 'Nova conversa'),
     ]
@@ -117,7 +117,7 @@ describe('estrutura da barra: busca, Boos e uma lista de conversas', () => {
     expect(within(loja).getByLabelText('2 não lidas')).toHaveTextContent('2')
     fireEvent.click(loja)
     expect(loja).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('Checkout')).not.toBeInTheDocument()
+    expect(within(sectionOf('Loja')).queryByText('Checkout')).not.toBeInTheDocument()
     expect(within(loja).getByLabelText('Projeto precisa de atenção')).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem('politron.sidebar.closed-sections') || '[]')).toEqual(['project:workspace-2'])
     first.unmount()
@@ -161,7 +161,7 @@ describe('estado de cada conversa no avatar e na prévia', () => {
     const busy = screen.getByRole('button', { name: 'Agendamentos · Lyra · em execução' })
     expect(busy).toHaveTextContent('Vou começar.')
     expect(busy.querySelector('[data-tone="running"]')).not.toBeNull()
-    expect(document.querySelectorAll('[data-tone="attention"]')).toHaveLength(3)
+    expect(document.querySelectorAll('.dsh-chat-badge[data-tone="attention"]')).toHaveLength(3)
   })
 
   it('delegações não viram linhas: não lidas e aprovações sobem para a conversa que delegou, e a busca acha a filha', () => {
@@ -196,7 +196,7 @@ describe('busca', () => {
   })
 })
 
-describe('faixa de Boos', () => {
+describe('seção de agentes', () => {
   it('Chief primeiro com coroa; clicar abre a conversa; o menu promove e remove o Chief; + cria um Boo', () => {
     const chief: Agent = { ...agent, role: 'chief' }
     const alba: Agent = { ...agent, id: 'agent-2', name: 'Alba', alias: 'alba' }
@@ -204,9 +204,9 @@ describe('faixa de Boos', () => {
     const onSetChief = vi.fn()
     const onOpenEditor = vi.fn()
     renderSidebar({ snapshot: { ...snapshot, agents: [alba, chief] }, onOpenAgent, onSetChief, onOpenEditor, agentStates: { 'agent-2': 'working' } })
-    const strip = screen.getByRole('region', { name: 'Boos' })
+    const strip = screen.getByRole('region', { name: 'Agentes' })
     const boos = within(strip).getAllByRole('button').map(item => item.getAttribute('aria-label'))
-    expect(boos).toEqual(['Lyra, Chief · livre', 'Alba · trabalhando', 'Novo Boo'])
+    expect(boos).toEqual(['Lyra, Chief · livre', 'Alba · trabalhando', 'Novo agente'])
     const lyra = within(strip).getByRole('button', { name: /^Lyra, Chief/ })
     expect(lyra.querySelector('svg.lucide-crown')).not.toBeNull()
     fireEvent.click(lyra)
@@ -214,7 +214,7 @@ describe('faixa de Boos', () => {
     fireEvent.contextMenu(lyra)
     fireEvent.click(screen.getByRole('menuitem', { name: 'Remover papel de Chief' }))
     expect(onSetChief).toHaveBeenCalledExactlyOnceWith(chief, false)
-    fireEvent.click(within(strip).getByRole('button', { name: 'Novo Boo' }))
+    fireEvent.click(within(strip).getByRole('button', { name: 'Novo agente' }))
     expect(onOpenEditor).toHaveBeenCalledExactlyOnceWith({ kind: 'agent' })
   })
 
@@ -225,10 +225,10 @@ describe('faixa de Boos', () => {
     const { container } = renderSidebar({ snapshot: { ...snapshot, agents: [custom], conversations: [session('c-1', 'Notas')] }, onSetChief, onOpenAgent })
     expect(container.querySelector('img')).toBeNull()
     expect(container.innerHTML).toContain('#7565e8')
-    fireEvent.contextMenu(within(screen.getByRole('region', { name: 'Boos' })).getByRole('button', { name: /^Lyra/ }))
+    fireEvent.contextMenu(within(screen.getByRole('region', { name: 'Agentes' })).getByRole('button', { name: /^Lyra/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Promover a Chief' }))
     expect(onSetChief).toHaveBeenCalledExactlyOnceWith(custom, true)
-    fireEvent.contextMenu(within(screen.getByRole('region', { name: 'Boos' })).getByRole('button', { name: /^Lyra/ }))
+    fireEvent.contextMenu(within(screen.getByRole('region', { name: 'Agentes' })).getByRole('button', { name: /^Lyra/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Nova conversa' }))
     expect(onOpenAgent).toHaveBeenCalledExactlyOnceWith(custom, true)
   })
@@ -386,11 +386,11 @@ describe('reordenação do sidebar', () => {
     expect(api.saveSidebarLayout).toHaveBeenCalledTimes(1)
   })
 
-  it('reordena Boos na faixa com Alt+seta, salvando no banco', async () => {
+  it('reordena agentes na seção com Alt+seta, salvando no banco', async () => {
     const api = installAppAPI({ projectOrder: [], groups: [], sessionOrder: {}, agentOrder: [] })
     renderSidebar({ snapshot: { ...snapshot, agents: [agent, { ...agent, id: 'agent-2', name: 'Mira', alias: 'mira' }], workspaces: [alfa] } })
     await waitFor(() => expect(api.sidebarLayout).toHaveBeenCalled())
-    fireEvent.keyDown(within(screen.getByRole('region', { name: 'Boos' })).getByRole('button', { name: /^Lyra/ }), { key: 'ArrowDown', altKey: true })
+    fireEvent.keyDown(within(screen.getByRole('region', { name: 'Agentes' })).getByRole('button', { name: /^Lyra/ }), { key: 'ArrowDown', altKey: true })
     expect(api.saveSidebarLayout).toHaveBeenLastCalledWith({ agentOrder: ['agent-2', 'agent-1'] })
     expect(screen.getByRole('status', { name: 'Ordem do sidebar' })).toHaveTextContent('Boo Lyra movido para a posição 2')
   })
