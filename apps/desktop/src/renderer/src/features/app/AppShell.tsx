@@ -55,7 +55,8 @@ export default function AppShell() {
   const setSelectedEffort = useCallback((effort: Agent['effort']) => { setSelectedEffortState(effort); try { localStorage.setItem('politron.composer.effort', effort || 'medium') } catch { /* preferência opcional */ } }, [])
   const [selectedId, setSelectedId] = useState('')
   // A Central do Chief é a tela inicial; conversas e projetos continuam a um clique.
-  const [view, setView] = useState<HomeView | null>('home')
+  // Abre na conversa do líder: o trabalho com os agentes é a superfície principal; a Central fica na faixa.
+  const [view, setView] = useState<HomeView | null>(null)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
   const activeWorkspaceIdRef = useRef<string | null>(null)
   const selectedIdRef = useRef(selectedId)
@@ -141,7 +142,7 @@ export default function AppShell() {
     blocked: () => setNotice('Link não aberto: somente HTTP/HTTPS ou arquivos dentro da pasta do projeto são permitidos.'),
   }), [linkWorkspaceId, linkWorkspaceRoot])
   // O IPC recria os objetos: conservar os dados iguais evita invalidar os memos do chat e dos Boos.
-  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
+  const refresh = useCallback(async () => { try { const data = await window.appAPI.snapshot(); setSnapshot(current => replaceEqualDeep(current, data)); const chiefId = data.agents.find(agent => agent.role === 'chief')?.id; const leaderConversation = data.conversations.find(item => !item.archived && item.leaderAgentId === chiefId); setSelectedId(current => activeWorkspaceIdRef.current ? '' : data.conversations.some(item => item.id === current && !item.archived) ? current : leaderConversation?.id || data.conversations.find(item => !item.archived)?.id || ''); setActiveWorkspaceId(current => current && data.workspaces.some(item => item.id === current && !item.archived) ? current : null) } catch (error) { setNotice(errorText(error)) } finally { setLoading(false) } }, [])
   useEffect(() => {
     void refresh()
     const applyProviders = (catalog: ProviderSnapshot) => {

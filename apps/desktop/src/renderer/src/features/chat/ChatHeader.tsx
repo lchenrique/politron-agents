@@ -142,8 +142,11 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
 
 /** Cabeçalho da conversa quando o chat é a única aba: o mesmo PageHeader das demais páginas, com o seletor de modelo nas ações. */
 export function ChatHeader(props: ConversationChromeProps) {
-  const { title, subtitle } = conversationIdentity(props.selected, props.agents, props.assistant)
-  const context = [props.selectedWorkspace?.name, subtitle].filter(Boolean).join(' · ')
+  const { title, subtitle, identities, isGroup } = conversationIdentity(props.selected, props.agents, props.assistant)
+  // Em grupo, o líder aparece antes da contagem: a hierarquia fica visível no topo do chat.
+  const leader = identities.find(agent => agent.id === props.selected.leaderAgentId) || identities[0]
+  const roster = isGroup ? [`Líder ${leader.name}`, subtitle].filter(Boolean).join(' · ') : subtitle
+  const context = [props.selectedWorkspace?.name, roster].filter(Boolean).join(' · ')
   return <PageHeader testId="compact-chat-header" title={title} subtitle={context || undefined} leading={<ConversationAvatar {...props} />}
     actions={<><ModelSlot /><ConversationTools {...props} /></>} />
 }

@@ -41,7 +41,7 @@ describe('cabeçalho da conversa', () => {
     const group: Conversation = { ...conversation, kind: 'group', name: 'Equipe de marketing', agentIds: ['a1', 'a2'] }
     render(<ChatHeader selected={group} agents={[agent, teammate]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={onEditConversation} />)
     expect(screen.getByRole('heading', { name: 'Equipe de marketing' })).toBeInTheDocument()
-    expect(screen.getByText('2 participantes')).toBeInTheDocument()
+    expect(screen.getByText('Líder Lyra · 2 participantes')).toBeInTheDocument()
     const participants = screen.getByRole('button', { name: 'Ver participantes do grupo' })
     expect(participants).toHaveAttribute('title', 'Lyra, Atlas')
     fireEvent.click(participants)
@@ -54,7 +54,7 @@ describe('cabeçalho da conversa', () => {
     const onEditConversation = vi.fn()
     render(<ChatHeader selected={group} agents={[agent, second]} selectedWorkspace={undefined} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={onEditConversation} />)
     expect(screen.getByRole('heading', { name: 'Equipe de pesquisa' })).toBeInTheDocument()
-    expect(screen.getByText('2 participantes')).toBeInTheDocument()
+    expect(screen.getByText('Líder Lyra · 2 participantes')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Ver participantes do grupo' }))
     expect(onEditConversation).toHaveBeenCalledOnce()
     expect(screen.getByRole('button', { name: 'Ações da conversa' })).toBeInTheDocument()
