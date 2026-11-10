@@ -1,0 +1,447 @@
+/*
+ * ============================================================================
+ * BOOBOT — CARBON & GRAPHITE
+ * Port fiel do design system de `boobot_agent_workspace_desktop.html`.
+ *
+ * Este arquivo é a camada de paleta do app. Ele redefine os tokens semânticos
+ * que TODO componente já consome (--background, --border, --primary, --radius…)
+ * e expõe, com os mesmos nomes do HTML, os tokens de superfície do chrome
+ * (--bg-app, --bg-rail, --bg-sidebar, --bg-pane, --accent-primary…).
+ *
+ * Importado depois de `index.css` para vencer a cascata. Assim o visual antigo
+ * é substituído por inteiro sem tocar nos componentes existentes.
+ *
+ * Modos: html[data-theme="boobot"] = Paper (claro) · .dark = Carbon ·
+ *        .dark[data-theme="warm"] = Warm Graphite.
+ * ============================================================================
+ */
+
+/* ---------------------------------------------------------------------------
+ * 1. TOKENS DO CHROME (nomes idênticos aos do HTML)
+ * ------------------------------------------------------------------------- */
+
+html,
+html[data-theme="boobot"] {
+  color-scheme: light;
+
+  /* Superfícies do HTML — tema Paper */
+  --bg-app: #eaeae6;
+  --bg-rail: #e4e4df;
+  --bg-sidebar: #efefeb;
+  --bg-pane: #f8f8f6;
+  --bg-elevated: #ffffff;
+  --bg-card: #f2f2ee;
+  --bg-hover: #e6e6e1;
+  --bg-active: #dcdcd6;
+  --border-subtle: #e2e2dc;
+  --border-default: #d4d4cd;
+  --border-strong: #b8b8b0;
+  --text-primary: #171717;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --accent-primary: #059669;
+  --accent-soft: rgba(5, 150, 105, 0.1);
+
+  /* Tokens semânticos do app mapeados para o Paper */
+  --chrome: var(--bg-rail);
+  --background: var(--bg-pane);
+  --foreground: var(--text-primary);
+  --card: var(--bg-elevated);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+
+  --primary: var(--accent-primary);
+  --primary-foreground: #ffffff;
+  --primary-soft: #e7f4ee;
+  --primary-soft-foreground: #046c4e;
+
+  --secondary: var(--bg-sidebar);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-card);
+  --muted-foreground: var(--text-secondary);
+  --faint-foreground: var(--text-muted);
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+
+  --destructive: #e11d48;
+  --destructive-foreground: #ffffff;
+  --success: #059669;
+  --success-soft: #e7f4ee;
+  --warning: #b45309;
+  --warning-soft: #fdf3e3;
+  --info: #0284c7;
+
+  --border: var(--border-default);
+  --border-strong: var(--border-strong);
+  --input: var(--border-default);
+  --ring: var(--accent-primary);
+
+  --segmented-track: var(--border-subtle);
+  --segmented-thumb: #ffffff;
+  --canvas-border: var(--border-subtle);
+
+  --chart-1: #059669;
+  --chart-2: #0ea5e9;
+  --chart-3: #14b8a6;
+  --chart-4: #f59e0b;
+  --chart-5: #8b5cf6;
+
+  --sidebar: var(--bg-sidebar);
+  --sidebar-foreground: var(--text-secondary);
+  --sidebar-primary: var(--accent-primary);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--bg-hover);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--accent-primary);
+
+  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /*
+   * Escala de raio enxuta: o Carbon & Graphite é industrial, de canto curto.
+   * Controles quase retos, cartões com 4px e só diálogos respiram um pouco mais.
+   * Círculos e pílulas não usam esta escala (rounded-full), então seguem redondos.
+   */
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --radius-2xl: 8px;
+  --radius-3xl: 10px;
+  --radius: 4px;
+  --radius-canvas: 6px;
+
+  --shadow-2xs: 0 1px 1px rgb(23 23 23 / 0.04);
+  --shadow-xs: 0 1px 2px rgb(23 23 23 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(23 23 23 / 0.06), 0 1px 3px rgb(23 23 23 / 0.05);
+  --shadow: 0 1px 2px rgb(23 23 23 / 0.06), 0 2px 6px -1px rgb(23 23 23 / 0.06);
+  --shadow-md: 0 2px 4px -2px rgb(23 23 23 / 0.07), 0 6px 16px -4px rgb(23 23 23 / 0.1);
+  --shadow-lg: 0 4px 8px -4px rgb(23 23 23 / 0.07), 0 14px 32px -8px rgb(23 23 23 / 0.14);
+  --shadow-xl: 0 8px 16px -8px rgb(23 23 23 / 0.08), 0 24px 56px -12px rgb(23 23 23 / 0.2);
+  --shadow-2xl: 0 32px 72px -16px rgb(23 23 23 / 0.28);
+  --shadow-canvas: 0 1px 2px rgb(23 23 23 / 0.04), 0 0 0 0.5px rgb(23 23 23 / 0.03);
+  --shadow-composer: 0 1px 2px rgb(23 23 23 / 0.05), 0 8px 24px -12px rgb(23 23 23 / 0.14);
+
+  --card-outline: rgb(23 23 23 / 0.08);
+  --card-shadow: 0 0 0 0.5px var(--card-outline), 0 3px 6px -2px rgb(23 23 23 / 0.03), 0 1px 1px 0 rgb(23 23 23 / 0.04);
+  --linear-surface-shadow: 0 3px 6px -2px rgb(23 23 23 / 0.03), 0 1px 1px 0 rgb(23 23 23 / 0.04);
+
+  --syntax-comment: #71717a;
+  --syntax-keyword: #7c3aed;
+  --syntax-string: #047857;
+  --syntax-function: #1d4ed8;
+  --syntax-number: #b45309;
+  --syntax-property: #be123c;
+  --syntax-punctuation: #52525b;
+
+  --audio-surface: var(--bg-card);
+  --audio-track: var(--border-subtle);
+  --audio-progress: var(--text-secondary);
+  --audio-shadow: rgb(23 23 23 / 0.12);
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. CARBON (escuro padrão)
+ * ------------------------------------------------------------------------- */
+
+html.dark,
+html.dark[data-theme="boobot"] {
+  color-scheme: dark;
+
+  --bg-app: #090909;
+  --bg-rail: #0b0b0b;
+  --bg-sidebar: #0e0e0e;
+  --bg-pane: #121212;
+  --bg-elevated: #171717;
+  --bg-card: #1c1c1c;
+  --bg-hover: #222222;
+  --bg-active: #282828;
+  --border-subtle: #1e1e1e;
+  --border-default: #282828;
+  --border-strong: #383838;
+  --text-primary: #f3f3f3;
+  --text-secondary: #a1a1aa;
+  --text-muted: #6e6e77;
+  --accent-primary: #10b981;
+  --accent-soft: rgba(16, 185, 129, 0.12);
+
+  --chrome: var(--bg-rail);
+  --background: var(--bg-pane);
+  --foreground: var(--text-primary);
+  --card: var(--bg-card);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+
+  --primary: var(--accent-primary);
+  --primary-foreground: #090909;
+  --primary-soft: rgba(16, 185, 129, 0.12);
+  --primary-soft-foreground: #34d399;
+
+  --secondary: var(--bg-card);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-elevated);
+  --muted-foreground: var(--text-secondary);
+  --faint-foreground: var(--text-muted);
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--text-primary);
+
+  --destructive: #f43f5e;
+  --destructive-foreground: #0b0b0b;
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.12);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --info: #0ea5e9;
+
+  --border: var(--border-default);
+  --border-strong: var(--border-strong);
+  --input: var(--border-default);
+  --ring: var(--accent-primary);
+
+  --segmented-track: var(--bg-elevated);
+  --segmented-thumb: var(--bg-hover);
+  --canvas-border: var(--border-subtle);
+
+  --chart-1: #10b981;
+  --chart-2: #0ea5e9;
+  --chart-3: #14b8a6;
+  --chart-4: #f59e0b;
+  --chart-5: #8b5cf6;
+
+  --sidebar: var(--bg-sidebar);
+  --sidebar-foreground: var(--text-secondary);
+  --sidebar-primary: var(--accent-primary);
+  --sidebar-primary-foreground: #090909;
+  --sidebar-accent: var(--bg-hover);
+  --sidebar-accent-foreground: var(--text-primary);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--accent-primary);
+
+  --shadow-2xs: 0 1px 1px rgb(0 0 0 / 0.4);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.45);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.45), 0 1px 3px rgb(0 0 0 / 0.35);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.45), 0 2px 6px -1px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 2px 4px -2px rgb(0 0 0 / 0.5), 0 6px 16px -4px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 4px 8px -4px rgb(0 0 0 / 0.5), 0 14px 32px -8px rgb(0 0 0 / 0.65);
+  --shadow-xl: 0 8px 16px -8px rgb(0 0 0 / 0.55), 0 24px 56px -12px rgb(0 0 0 / 0.7);
+  --shadow-2xl: 0 32px 72px -16px rgb(0 0 0 / 0.8);
+  --shadow-canvas: 0 0 0 0.5px rgb(255 255 255 / 0.02), 0 1px 3px rgb(0 0 0 / 0.45);
+  --shadow-composer: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 10px 28px -12px rgb(0 0 0 / 0.65);
+
+  --card-outline: rgb(255 255 255 / 0.06);
+  --card-shadow: 0 0 0 0.5px var(--card-outline), 0 3px 6px -2px rgb(0 0 0 / 0.35), 0 1px 1px 0 rgb(0 0 0 / 0.35);
+  --linear-surface-shadow: 0 3px 6px -2px rgb(0 0 0 / 0.35), 0 1px 1px 0 rgb(0 0 0 / 0.35);
+
+  --syntax-comment: #6e6e77;
+  --syntax-keyword: #c4b5fd;
+  --syntax-string: #6ee7b7;
+  --syntax-function: #7dd3fc;
+  --syntax-number: #fbbf24;
+  --syntax-property: #fda4af;
+  --syntax-punctuation: #a1a1aa;
+
+  --audio-surface: var(--bg-elevated);
+  --audio-track: var(--bg-hover);
+  --audio-progress: var(--text-secondary);
+  --audio-shadow: rgb(0 0 0 / 0.35);
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. WARM GRAPHITE (escuro quente)
+ * ------------------------------------------------------------------------- */
+
+html.dark[data-theme="warm"] {
+  color-scheme: dark;
+
+  --bg-app: #0c0b0a;
+  --bg-rail: #0f0e0c;
+  --bg-sidebar: #121110;
+  --bg-pane: #161513;
+  --bg-elevated: #1c1b18;
+  --bg-card: #22201d;
+  --bg-hover: #292723;
+  --bg-active: #312e29;
+  --border-subtle: #24221f;
+  --border-default: #2f2c27;
+  --border-strong: #423e37;
+  --text-primary: #f5f3ef;
+  --text-secondary: #a8a29e;
+  --text-muted: #78716c;
+  --accent-primary: #10b981;
+  --accent-soft: rgba(16, 185, 129, 0.12);
+
+  --primary-soft: rgba(16, 185, 129, 0.12);
+  --primary-soft-foreground: #34d399;
+  --primary-foreground: #0c0b0a;
+  --sidebar-primary-foreground: #0c0b0a;
+  --destructive-foreground: #0c0b0a;
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. BASE DO DOCUMENTO (mesma fundação do HTML)
+ * ------------------------------------------------------------------------- */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  margin: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Seleção de texto discreta, como no HTML. */
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+/* Scrollbars finas do HTML (5px, sem trilha). */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.38);
+}
+
+/* ---------------------------------------------------------------------------
+ * 5. PEÇAS DE LAYOUT DO HTML (splitters, dock preview, drag do sidebar)
+ * ------------------------------------------------------------------------- */
+
+.splitter-v {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--border-subtle);
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+  z-index: 20;
+}
+.splitter-v::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
+.splitter-v:hover,
+.splitter-v.active {
+  background: var(--accent-primary);
+}
+
+.splitter-h {
+  height: 4px;
+  cursor: row-resize;
+  background: var(--border-subtle);
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+  z-index: 20;
+}
+.splitter-h::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.splitter-h:hover,
+.splitter-h.active {
+  background: var(--accent-primary);
+}
+
+.dock-drop-preview {
+  pointer-events: none;
+  position: absolute;
+  background: var(--accent-soft);
+  border: 1.5px solid var(--accent-primary);
+  border-radius: 8px;
+  z-index: 40;
+  transition: all 0.08s ease-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sb-dragging {
+  opacity: 0.4;
+}
+.sb-drop-above {
+  box-shadow: inset 0 2px 0 0 var(--accent-primary);
+}
+.sb-drop-below {
+  box-shadow: inset 0 -2px 0 0 var(--accent-primary);
+}
+.sb-drop-inside {
+  background: var(--accent-soft) !important;
+  outline: 1px dashed var(--accent-primary);
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+}
+.animate-pulse-dot {
+  animation: pulseDot 1.8s infinite ease-in-out;
+}
+
+/* Trava o arraste nativo em áreas de chrome, como o `select-none` do HTML. */
+.boobot-chrome {
+  user-select: none;
+}
+.boobot-chrome input,
+.boobot-chrome textarea {
+  user-select: text;
+}
+
+/* Janela sem moldura: a barra do topo move a janela e os controles ficam fora do arraste. */
+.window-drag {
+  -webkit-app-region: drag;
+}
+.window-no-drag,
+.window-no-drag * {
+  -webkit-app-region: no-drag;
+}
+
+/* ---------------------------------------------------------------------------
+ * 6. TETO DE ARREDONDAMENTO
+ * Vários componentes antigos fixam o raio no código (`rounded-[16px]` etc.),
+ * fora da escala de tokens. Aqui esses valores são rebaixados para a escala
+ * curta do design, sem tocar em cada arquivo. Pílulas (rounded-full) e
+ * superfícies grandes intencionais ficam de fora.
+ * ------------------------------------------------------------------------- */
+
+.rounded-\[9px\] { border-radius: 3px; }
+.rounded-\[10px\] { border-radius: 3px; }
+.rounded-\[11px\] { border-radius: 4px; }
+.rounded-\[12px\] { border-radius: 4px; }
+.rounded-\[13px\] { border-radius: 4px; }
+.rounded-\[14px\] { border-radius: 5px; }
+.rounded-\[15px\] { border-radius: 5px; }
+.rounded-\[16px\] { border-radius: 6px; }
+.rounded-\[17px\] { border-radius: 6px; }
+.rounded-\[18px\] { border-radius: 6px; }
+.rounded-\[19px\] { border-radius: 7px; }
+.rounded-\[20px\] { border-radius: 7px; }

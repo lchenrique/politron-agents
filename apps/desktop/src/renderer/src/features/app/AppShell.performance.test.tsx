@@ -1,14 +1,16 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
-import type { Snapshot, WorkspaceEvent } from '../../../../shared/v9'
+import type { Agent, Snapshot, WorkspaceEvent } from '../../../../shared/v9'
 import { emptySnapshot } from './appShellShared'
 
-const observed = vi.hoisted(() => ({ snapshots: [] as Snapshot[], sidebarSizes: [] as (number | undefined)[] }))
-vi.mock('../sidebar/Sidebar', () => ({ Sidebar: ({ snapshot }: { snapshot: Snapshot }) => { observed.snapshots.push(snapshot); return null } }))
-vi.mock('@/components/ide/TitleBar', () => ({ default: () => null }))
-vi.mock('../panels/DockWorkspace', () => ({ DockWorkspace: ({ children }: { children: ReactNode }) => children }))
-vi.mock('@/components/ui/resizable', () => ({ ResizablePanelGroup: ({ children, defaultLayout }: { children: ReactNode; defaultLayout?: { sidebar?: number } }) => { observed.sidebarSizes.push(defaultLayout?.sidebar); return children }, ResizablePanel: ({ children }: { children: ReactNode }) => children, ResizableHandle: () => null }))
+const observed = vi.hoisted(() => ({ renders: [] as Array<{ agents: Agent[]; assistant: Agent }> }))
+vi.mock('@/shell/workspace-sidebar', () => ({ WorkspaceSidebar: () => null }))
+vi.mock('@/shell/top-bar', () => ({ TopBar: ({ onOpenSettings }: { onOpenSettings: () => void }) => <button type="button" onClick={onOpenSettings}>Configurações</button> }))
+vi.mock('@/shell/activity-rail', () => ({ ActivityRail: () => null }))
+vi.mock('@/shell/command-palette', () => ({ CommandPalette: () => null }))
+vi.mock('@/shell/settings/settings-overlay', () => ({ SettingsOverlay: ({ open, initialSection }: { open: boolean; initialSection?: string }) => open ? <div data-testid="settings-page">{initialSection}</div> : null }))
+vi.mock('../panels/DockWorkspace', () => ({ DockWorkspace: ({ children, agents, assistant }: { children: ReactNode; agents: Agent[]; assistant: Agent }) => { observed.renders.push({ agents, assistant }); return children } }))
 vi.mock('./AgentDetails', () => ({ AgentDetails: () => null }))
 vi.mock('./SettingsPage', () => ({ SettingsPage: ({ initialSection }: { initialSection?: string }) => <div data-testid="settings-page">{initialSection}</div> }))
 vi.mock('./UpdateReadyCallout', () => ({ UpdateReadyCallout: () => null }))
@@ -24,37 +26,38 @@ vi.mock('../chat/useConversationHistory', () => {
 
 import AppShell from './AppShell'
 
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); observed.snapshots.length = 0; observed.sidebarSizes.length = 0 })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); observed.renders.length = 0 })
 
-it('usa 280px como largura inicial sem preferência salva', async () => {
-  localStorage.clear()
-  let event!: (event: WorkspaceEvent) => void
-  vi.stubGlobal('appAPI', { snapshot: async () => emptySnapshot, onEvent: (listener: typeof event) => { event = listener; return () => undefined }, setVisibleConversation: async () => undefined })
+function stubApp(snapshotAPI: () => Promise<Snapshot> = async () => emptySnapshot) {
+  vi.stubGlobal('appAPI', { snapshot: snapshotAPI, onEvent: () => () => undefined, setVisibleConversation: async () => undefined, workspaceDiff: async () => '' })
   vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
-  await act(async () => { render(<AppShell />) })
-  expect(observed.sidebarSizes.at(-1)).toBeCloseTo(28_000 / window.innerWidth)
+}
+
+it('abre o sidebar com os 248px do design quando não há preferência salva', async () => {
+  localStorage.clear()
+  stubApp()
+  let container!: HTMLElement
+  await act(async () => { container = render(<AppShell />).container })
+  expect(container.querySelector('[data-sidebar-width]')).toHaveStyle({ width: '248px' })
 })
 
-it('abre a área de trabalho num canvas elevado sobre o chrome da janela', async () => {
+it('abre a área de trabalho encostada no chrome, sem canvas elevado', async () => {
   localStorage.clear()
-  vi.stubGlobal('appAPI', { snapshot: async () => emptySnapshot, onEvent: () => () => undefined, setVisibleConversation: async () => undefined })
-  vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
+  stubApp()
   let container!: HTMLElement
   await act(async () => { container = render(<AppShell />).container })
   const shell = container.firstElementChild as HTMLElement
-  expect(shell).toHaveClass('bg-chrome')
-  const canvas = container.querySelector('.boobot-canvas')
-  expect(canvas).toHaveClass('ds-canvas')
-  expect(canvas).toContainElement(container.querySelector('main'))
+  expect(shell).toHaveClass('boobot-chrome')
+  expect(container.querySelector('.ds-canvas')).not.toBeInTheDocument()
+  expect(container.querySelector('main')).toBeInTheDocument()
 })
 
-it('preserva largura de sidebar previamente salva', async () => {
-  localStorage.setItem('politron.sidebar.size', '24')
-  let event!: (event: WorkspaceEvent) => void
-  vi.stubGlobal('appAPI', { snapshot: async () => emptySnapshot, onEvent: (listener: typeof event) => { event = listener; return () => undefined }, setVisibleConversation: async () => undefined })
-  vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
-  await act(async () => { render(<AppShell />) })
-  expect(observed.sidebarSizes.at(-1)).toBe(24)
+it('preserva a largura de sidebar previamente salva', async () => {
+  localStorage.setItem('politron.sidebar.width', '312')
+  stubApp()
+  let container!: HTMLElement
+  await act(async () => { container = render(<AppShell />).container })
+  expect(container.querySelector('[data-sidebar-width]')).toHaveStyle({ width: '312px' })
 })
 
 it('não renderiza novamente a árvore ao receber dez snapshots IPC idênticos', async () => {
@@ -65,11 +68,11 @@ it('não renderiza novamente a árvore ao receber dez snapshots IPC idênticos',
   }
   let event!: (event: WorkspaceEvent) => void
   const snapshotAPI = vi.fn(async () => JSON.parse(JSON.stringify(snapshot)) as Snapshot)
-  vi.stubGlobal('appAPI', { snapshot: snapshotAPI, onEvent: (listener: typeof event) => { event = listener; return () => undefined }, setVisibleConversation: async () => undefined })
+  vi.stubGlobal('appAPI', { snapshot: snapshotAPI, onEvent: (listener: typeof event) => { event = listener; return () => undefined }, setVisibleConversation: async () => undefined, workspaceDiff: async () => '' })
   vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
   await act(async () => { render(<AppShell />) })
-  const initial = observed.snapshots.at(-1)!
-  observed.snapshots.length = 0
+  const initial = observed.renders.at(-1)!
+  observed.renders.length = 0
 
   for (let index = 0; index < 10; index++) {
     await act(async () => {
@@ -78,37 +81,30 @@ it('não renderiza novamente a árvore ao receber dez snapshots IPC idênticos',
     })
   }
   expect(snapshotAPI).toHaveBeenCalledTimes(11)
-  expect(observed.snapshots).toHaveLength(0)
+  expect(observed.renders).toHaveLength(0)
 
   // Uma alteração real continua chegando; agentes que não mudaram conservam a identidade.
   snapshot = { ...snapshot, terminalEnabled: false }
   await act(async () => { event({ type: 'changed' }); await vi.advanceTimersByTimeAsync(100) })
-  expect(observed.snapshots).toHaveLength(1)
-  expect(observed.snapshots[0].terminalEnabled).toBe(false)
-  expect(observed.snapshots[0].agents).toBe(initial.agents)
-  expect(observed.snapshots[0].assistant).toBe(initial.assistant)
+  expect(observed.renders).toHaveLength(1)
+  expect(observed.renders[0].agents).toBe(initial.agents)
+  expect(observed.renders[0].assistant).toBe(initial.assistant)
 })
 
-it('abre Configurações como página na área principal, pelo ícone da faixa e pelo evento do app', async () => {
+it('abre Configurações como overlay, pelo topo e pelo evento do app', async () => {
   localStorage.clear()
-  vi.stubGlobal('appAPI', { snapshot: async () => emptySnapshot, onEvent: () => () => undefined, setVisibleConversation: async () => undefined })
-  vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
-  let container!: HTMLElement
-  await act(async () => { container = render(<AppShell />).container })
+  stubApp()
+  await act(async () => { render(<AppShell />) })
   expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Configurações' }))
-  expect(container.querySelector('main')).toContainElement(await screen.findByTestId('settings-page'))
-  expect(screen.getByRole('button', { name: 'Configurações' })).toHaveAttribute('aria-current', 'page')
-  fireEvent.click(screen.getByRole('button', { name: /^Rotinas/ }))
-  expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument()
+  expect(await screen.findByTestId('settings-page')).toHaveTextContent('geral')
   await act(async () => { window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'voz' })) })
   expect(await screen.findByTestId('settings-page')).toHaveTextContent('voz')
 })
 
 it('aplica a largura de conteúdo salva em --content-width', async () => {
   localStorage.setItem('politron.layout.content-width', 'wide')
-  vi.stubGlobal('appAPI', { snapshot: async () => emptySnapshot, onEvent: () => () => undefined, setVisibleConversation: async () => undefined })
-  vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
+  stubApp()
   await act(async () => { render(<AppShell />) })
   expect(document.documentElement.style.getPropertyValue('--content-width')).toBe('1080px')
 })

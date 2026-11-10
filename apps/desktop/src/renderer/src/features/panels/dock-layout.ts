@@ -1,4 +1,4 @@
-export type DockTool = 'chat' | 'files' | 'terminal' | 'web' | 'mascot' | 'diff' | 'agents'
+export type DockTool = 'chat' | 'files' | 'terminal' | 'web' | 'mascot' | 'diff' | 'agents' | 'squad' | 'memory' | 'launcher'
 export type DockZone = 'main' | 'side'
 export type DockEdge = 'left' | 'right' | 'top' | 'bottom'
 export type DockTab = { id: string; kind: DockTool | 'file'; label: string; workspaceId?: string; path?: string }
@@ -6,9 +6,23 @@ export type DockGroup = { type: 'group'; id: string; tabs: DockTab[]; active: st
 export type DockSplit = { type: 'split'; id: string; axis: 'horizontal' | 'vertical'; ratio: number; first: DockNode; second: DockNode }
 export type DockNode = DockGroup | DockSplit
 export interface DockLayoutState { root: DockNode; activeGroup: string }
+/** Presets de colunas do menu "Layout & Painéis" do top bar. */
+export type LayoutPreset = 'two-cols' | 'three-cols' | 'ide-split' | 'quad-grid' | 'focus-chat'
 
-const tools: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff', 'agents']
-const names: Record<DockTool, string> = { chat: 'Chat', files: 'Arquivos', terminal: 'Terminal', web: 'Navegador', mascot: 'Mascote', diff: 'Alterações', agents: 'Agentes' }
+const tools: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff', 'agents', 'squad', 'memory', 'launcher']
+/** Títulos iguais ao registro de abas do HTML de referência. */
+const names: Record<DockTool, string> = {
+  chat: 'Chief · Orquestração',
+  files: 'Arquivos & Diff',
+  terminal: 'Terminal Local',
+  web: 'Preview Web',
+  mascot: 'Mascote',
+  diff: 'Alterações',
+  agents: 'Delegações',
+  squad: 'Equipe de Boos',
+  memory: 'Memória & MCP',
+  launcher: 'Nova Aba',
+}
 /** Layouts salvos antes do navegador único guardam a aba 'browser' do agente; ela vira a aba do navegador da plataforma. */
 const legacyTool: Record<string, DockTool> = { browser: 'web' }
 let counter = 0
@@ -197,3 +211,38 @@ export function developmentDockLayout(previous?: DockLayoutState): DockLayoutSta
     },
   }
 }
+
+/**
+ * Presets de colunas do menu "Layout & Painéis", na mesma ordem do HTML:
+ * duas colunas, três colunas, split 2D, grade 2x2 e foco no Chief.
+ * Presets preservam abas de arquivo já abertas, para não perder trabalho.
+ */
+export function presetLayout(preset: LayoutPreset, previous?: DockLayoutState): DockLayoutState {
+  const openTabs = previous ? groups(previous.root).flatMap(group => group.tabs) : []
+  const fileTabs = openTabs.filter(tab => tab.kind === 'file')
+  const editorTabs = fileTabs.length ? fileTabs : [toolTab('files')]
+  const chat = newGroup([toolTab('chat')])
+  const files = newGroup(editorTabs)
+  const terminal = newGroup([toolTab('terminal')])
+  const browser = newGroup([toolTab('web')])
+  const split = (axis: 'horizontal' | 'vertical', ratio: number, first: DockNode, second: DockNode): DockSplit =>
+    ({ type: 'split', id: uid(), axis, ratio, first, second })
+
+  switch (preset) {
+    case 'focus-chat':
+      return { root: chat, activeGroup: chat.id }
+    case 'three-cols':
+      return { activeGroup: chat.id, root: split('horizontal', 34, chat, split('horizontal', 50, files, terminal)) }
+    case 'ide-split':
+      return { activeGroup: chat.id, root: split('vertical', 62, split('horizontal', 52, chat, files), terminal) }
+    case 'quad-grid':
+      return {
+        activeGroup: chat.id,
+        root: split('vertical', 50, split('horizontal', 50, chat, files), split('horizontal', 50, terminal, browser)),
+      }
+    case 'two-cols':
+    default:
+      return { activeGroup: chat.id, root: split('horizontal', 52, chat, files) }
+  }
+}
+

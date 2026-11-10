@@ -6,9 +6,12 @@
   container-type: inline-size;
 }
 
+/* Mesma coluna do stream do design: 740px centrados. */
 .column {
-  width: min(100% - 64px, var(--content-width));
+  width: 100%;
+  max-width: 740px;
   margin-inline: auto;
+  padding-inline: 16px;
 }
 
 .relayStatus {
@@ -16,7 +19,7 @@
   align-items: center;
   gap: 6px;
   margin: 0 0 6px 4px;
-  color: var(--muted-foreground);
+  color: var(--text-muted);
   font-size: 12px;
   line-height: 16px;
 }
@@ -29,23 +32,25 @@
   background: var(--warning);
 }
 
-/* Mesmo contêiner discreto do cartão de aprovação. */
+/* Cartão de decisão do design: superfície elevada, borda fina e título em caixa alta. */
 .questionPanel {
   overflow: auto;
   max-height: min(60vh, 520px);
-  padding: 10px 12px 12px;
-  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  padding: 14px;
+  border: 1px solid var(--border-default);
   border-radius: 12px;
-  background: var(--card);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
 }
 
 .questionStatus {
-  margin: 0 0 8px;
-  color: var(--dsw-alias-label-tertiary, var(--muted-foreground));
-  font-size: 11px;
+  margin: 0 0 10px;
+  color: var(--warning);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   font-weight: 500;
   line-height: 16px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -58,17 +63,23 @@
   box-shadow: none !important;
 }
 
+/* Ação principal em esmeralda com tinta escura, como o "Aprovar & Executar" do HTML. */
 .questionCard :global([data-slot="card-footer"] button:last-child) {
-  min-height: 36px;
-  height: 36px !important;
-  border-radius: 12px;
-  background: var(--dsw-alias-button-info-fill, var(--primary)) !important;
+  min-height: 32px;
+  height: 32px !important;
+  border-radius: 8px;
+  background: var(--accent-primary) !important;
   background-image: none !important;
-  color: #fff !important;
+  color: var(--bg-app) !important;
+  font-weight: 600;
+}
+
+.questionCard :global([data-slot="card-footer"] button:last-child):hover {
+  background: #059669 !important;
 }
 
 @media (max-width: 600px) {
   .dock { padding-inline: 10px; }
-  .column { width: 100%; }
+  .column { width: 100%; padding-inline: 0; }
   .questionPanel { padding: 12px; }
 }

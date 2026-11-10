@@ -1,9 +1,16 @@
 /**
- * Registry de temas. Hoje existe um único sistema visual (Boobot) com dois modos.
- * Para adicionar um tema: inclua o id em ThemeId e em THEMES e defina os tokens de paleta
- * em index.css sob `[data-theme="id"]` e `.dark[data-theme="id"]`. Componentes não mudam.
+ * Registry de temas. O sistema visual é o Carbon & Graphite, portado do design
+ * de referência (boobot_agent_workspace_desktop.html): superfícies neutras de
+ * carbono com acento esmeralda.
+ *
+ * - `boobot` — o tema base, em dois modos: Paper (claro) e Carbon (escuro).
+ * - `warm`   — Warm Graphite, a variante quente escura do mesmo sistema.
+ *
+ * Para adicionar um tema: inclua o id em ThemeId e em THEMES e defina os tokens
+ * de paleta em index.css/styles/carbon.css sob `[data-theme="id"]`.
+ * Componentes não mudam.
  */
-export type ThemeId = 'boobot'
+export type ThemeId = 'boobot' | 'warm'
 export type ColorMode = 'light' | 'dark'
 
 export interface ThemeDefinition {
@@ -16,13 +23,24 @@ export interface ThemeDefinition {
 export const DEFAULT_THEME: ThemeId = 'boobot'
 
 export const THEMES: readonly ThemeDefinition[] = [
-  { id: 'boobot', label: 'Boobot', description: 'Grafite com acento íris', modes: ['light', 'dark'] },
+  { id: 'boobot', label: 'Boobot', description: 'Carbon & Graphite — carbono com acento esmeralda', modes: ['light', 'dark'] },
+  { id: 'warm', label: 'Warm', description: 'Carbon & Graphite na variante quente', modes: ['dark'] },
 ]
 
 /** Os únicos modos oferecidos na interface. */
 export const COLOR_MODES: ReadonlyArray<{ id: ColorMode; label: string }> = [
   { id: 'light', label: 'Light' },
   { id: 'dark', label: 'Dark' },
+]
+
+/**
+ * Presets do seletor de tema do top bar, iguais aos do HTML.
+ * Cada preset fixa tema e modo de uma vez.
+ */
+export const THEME_PRESETS: ReadonlyArray<{ id: 'carbon' | 'warm' | 'paper'; label: string; theme: ThemeId; mode: ColorMode }> = [
+  { id: 'carbon', label: 'Carbon', theme: 'boobot', mode: 'dark' },
+  { id: 'warm', label: 'Warm', theme: 'warm', mode: 'dark' },
+  { id: 'paper', label: 'Paper', theme: 'boobot', mode: 'light' },
 ]
 
 /**

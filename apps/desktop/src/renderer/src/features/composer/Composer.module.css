@@ -6,12 +6,12 @@
   padding: 8px 0 20px;
 }
 
-/* Mesma coluna das páginas e do transcript (.ds-content em index.css): a largura vem de --content-width. */
+/* Mesma coluna do stream do design: 740px centrados, como no HTML de referência. */
 .column {
   width: 100%;
-  max-width: calc(var(--content-width) + 64px);
+  max-width: 740px;
   margin-inline: auto;
-  padding-inline: 32px;
+  padding-inline: 16px;
 }
 
 .promptCard {
@@ -19,26 +19,30 @@
   flex-direction: column;
   gap: 4px !important;
   padding: 6px !important;
-  border: 0 !important;
+  border: 1px solid var(--border-default) !important;
   border-radius: 24px !important;
-  background: var(--dsw-specific-input-major, var(--card)) !important;
-  box-shadow: var(--dsw-elevation-soft, var(--shadow-composer)) !important;
-  transition: box-shadow 150ms ease;
+  background: var(--bg-elevated) !important;
+  box-shadow: var(--shadow-lg) !important;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .promptCard:focus-within {
-  box-shadow: var(--dsw-elevation-soft, var(--shadow-composer)), 0 0 0 1px var(--dsw-alias-border-l2, var(--border)) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-default) !important;
 }
 
+/* Botão enviar do HTML: círculo claro com seta escura. */
 .promptCard :global(button[type="submit"]) {
-  background: var(--dsw-alias-button-info-fill, var(--primary)) !important;
+  background: var(--text-primary) !important;
   background-image: none !important;
-  color: #fff !important;
+  color: var(--bg-app) !important;
 }
+
+.promptCard :global(button[type="submit"]):hover { background: #ffffff !important; }
 
 /* Linha única: + 32px à esquerda, ícones de 32px e enviar/parar 36px à direita. */
-.promptCard :global(button[type="submit"]), .promptCard :global(button[aria-label="Parar geração"]) { width: 36px !important; height: 36px !important; min-width: 36px !important; }
-.promptCard :global(button[aria-label="Anexar arquivos"]) { width: 32px !important; height: 32px !important; border-radius: 999px !important; color: var(--dsw-alias-label-secondary, var(--muted-foreground)); }
+.promptCard :global(button[type="submit"]), .promptCard :global(button[aria-label="Parar geração"]) { width: 28px !important; height: 28px !important; min-width: 28px !important; }
+.promptCard :global(button[aria-label="Anexar arquivos"]) { width: 28px !important; height: 28px !important; border-radius: 999px !important; color: var(--dsw-alias-label-secondary, var(--muted-foreground)); }
 
 .root:has(.queue) .promptCard {
   border-top-left-radius: 0 !important;
@@ -46,10 +50,10 @@
 }
 
 .promptCard :global(textarea[aria-label="Message"]) {
-  min-height: 36px !important;
-  max-height: 336px;
-  padding: 7px 6px !important;
-  font-size: 14px !important;
+  min-height: 24px !important;
+  max-height: 68px;
+  padding: 1px 4px !important;
+  font-size: 13px !important;
   line-height: 22px !important;
   caret-color: var(--dsw-alias-state-business-primary, var(--primary));
 }

@@ -24,14 +24,13 @@ describe('cabeçalho da conversa', () => {
     expect(screen.queryByRole('button', { name: 'Remover Lyra' })).not.toBeInTheDocument()
   })
 
-  it('usa o PageHeader de 56 px, com avatar, título legível e contexto do projeto', () => {
+  it('usa a barra de 52 px do design, com avatar, título legível e contexto do projeto', () => {
     render(<ChatHeader selected={conversation} agents={[agent]} selectedWorkspace={{ name: 'Politron' } as Workspace} onParticipantsChange={vi.fn()} onOpenComputerUse={vi.fn()} onEditConversation={vi.fn()} />)
     const header = screen.getByTestId('compact-chat-header')
     expect(header).toHaveStyle({ height: 'var(--header-height)' })
     expect(header.tagName).toBe('HEADER')
     expect(screen.getByRole('heading', { name: 'Lyra' })).toBeInTheDocument()
     expect(screen.getByText('Politron · Planejamento')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Largura do conteúdo/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ver detalhes de Lyra' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' })).toBeInTheDocument()
   })

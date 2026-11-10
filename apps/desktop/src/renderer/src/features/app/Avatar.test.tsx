@@ -19,7 +19,7 @@ describe('dimensões do avatar de agente', () => {
     const { container } = render(<Avatar agent={agent} size={size} />)
     const root = container.firstElementChild as HTMLElement
     expect(root).toHaveStyle({ width: pixels + 'px', height: pixels + 'px' })
-    expect(screen.getByRole('img', { name: 'Pits — idle' })).toHaveAttribute('viewBox', '20 0 200 200')
+    expect(screen.getByLabelText('Pits — idle')).toHaveAttribute('viewBox', '0 0 16 16')
   })
 
   it('mantém o tamanho também ao usar imagem personalizada', () => {

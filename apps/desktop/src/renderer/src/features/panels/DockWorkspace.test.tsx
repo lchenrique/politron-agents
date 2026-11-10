@@ -13,6 +13,7 @@ const mockAPI = {
 beforeEach(() => {
   localStorage.removeItem('politron.dock.layout.v1')
   localStorage.removeItem('politron.dock.layout.v2')
+  localStorage.removeItem('politron.dock.layout.v3')
   mockAPI.listProjectFiles.mockReset().mockResolvedValue([
     { name: 'src', path: 'src', directory: true },
     { name: 'README.md', path: 'README.md', directory: false },
@@ -33,42 +34,42 @@ function setup(chrome: Pick<ComponentProps<typeof DockWorkspace>, 'chatTab' | 'c
   return { ref, ...result }
 }
 
+const CHAT_TAB = 'Aba Chief · Orquestração'
+
 describe('abas e painéis móveis do Politron', () => {
-  it('abre menus DSH para adicionar e organizar painéis', () => {
+  it('abre o lançador de abas no "+" e o menu de manipulação no "⋯"', () => {
     const { ref } = setup()
     act(() => ref.current!.openTool('diff', 'main'))
+    // O "+" do design abre o lançador dentro do painel, com as abas disponíveis.
     fireEvent.click(screen.getByRole('button', { name: 'Nova aba' }))
-    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
-    expect(screen.getByRole('menuitem', { name: 'Arquivos' })).toBeInTheDocument()
-    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: /Equipe de Boos/ }))
+    expect(screen.getByRole('button', { name: 'Aba Equipe de Boos' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Organizar área principal' }))
-    expect(screen.getByRole('menu')).toHaveAttribute('data-dsh-menu-surface', 'true')
+    // O "⋯" abre o menu de coluna e divisão do painel.
+    fireEvent.click(screen.getByRole('button', { name: 'Manipular coluna ou dividir painel' }))
     expect(screen.getByRole('menuitem', { name: 'Dividir à esquerda com aba atual' })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menuitem', { name: 'Dividir à esquerda com aba atual' })).not.toBeInTheDocument()
   })
 
-  it('mostra a faixa de abas só quando há mais de uma aba no layout', async () => {
+  it('mantém a faixa de abas sempre visível e volta ao chat ao fechar a ferramenta', async () => {
     const { ref } = setup()
     expect(screen.getByText('Chat existente')).toBeInTheDocument()
-    expect(screen.queryByTestId('dock-group-header')).not.toBeInTheDocument()
+    expect(screen.getByTestId('dock-group-header')).toContainElement(screen.getByRole('button', { name: CHAT_TAB }))
 
     act(() => ref.current!.openTool('files', 'main'))
-    expect(screen.getByTestId('dock-group-header')).toContainElement(screen.getByRole('button', { name: 'Aba Chat' }))
     await screen.findByRole('tree', { name: 'Arquivos do projeto' })
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar Arquivos' }))
-    expect(screen.queryByTestId('dock-group-header')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar Arquivos & Diff' }))
     expect(screen.getByText('Chat existente')).toBeVisible()
+    expect(screen.getByTestId('dock-group-header')).toBeInTheDocument()
   })
 
   it('mantém agentes como painel opcional e mostra estado vazio quando não há delegações', () => {
     const { ref } = setup()
-    act(() => ref.current!.openTool('diff', 'main'))
-    fireEvent.click(screen.getByRole('button', { name: 'Nova aba' }))
-    expect(screen.getByRole('menuitem', { name: 'Agentes' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Agentes' }))
+    act(() => ref.current!.openTool('agents', 'main'))
     expect(screen.getByRole('region', { name: 'Agentes delegados' })).toHaveTextContent('Nenhuma delegação nesta conversa')
-    expect(screen.getByRole('button', { name: 'Aba Agentes' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Aba Chat' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aba Delegações' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: CHAT_TAB })).toBeInTheDocument()
     expect(ref.current).toBeTruthy()
   })
 
@@ -76,33 +77,23 @@ describe('abas e painéis móveis do Politron', () => {
     const { ref } = setup({ chatTab: { label: 'Central' } })
     act(() => ref.current!.openTool('diff', 'main'))
     expect(screen.getByRole('button', { name: 'Aba Central' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Aba Chat' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: CHAT_TAB })).not.toBeInTheDocument()
   })
 
-  it('nunca empilha faixa de abas e faixa da conversa: a aba do chat assume a identidade', () => {
+  it('mostra a faixa da conversa dentro da aba do chat, sem duplicar identidade na faixa', () => {
     const { ref } = setup({
       chatHeader: <header data-testid="conversation-row">Lyra · Planejamento</header>,
-      chatTab: { label: 'Lyra', title: 'Lyra · Planejamento', leading: <button type="button">Ver detalhes de Lyra</button>, trailing: <button type="button">Buscar no histórico desta conversa</button> },
+      chatTab: { label: 'Lyra', title: 'Lyra · Planejamento' },
     })
     expect(screen.getByTestId('conversation-row')).toBeInTheDocument()
-    expect(screen.queryByTestId('dock-group-header')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aba Lyra' })).toBeInTheDocument()
+    expect(screen.getByTestId('chat-tab')).toContainElement(screen.getByRole('button', { name: 'Fechar Lyra' }))
 
     act(() => ref.current!.openTool('files', 'side'))
-    expect(screen.queryByTestId('conversation-row')).not.toBeInTheDocument()
-    const chatTab = screen.getByTestId('chat-tab')
-    expect(chatTab).toContainElement(screen.getByRole('button', { name: 'Aba Lyra' }))
-    expect(chatTab).toContainElement(screen.getByRole('button', { name: 'Ver detalhes de Lyra' }))
-    expect(chatTab).toContainElement(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' }))
-    expect(chatTab).toContainElement(screen.getByRole('button', { name: 'Fechar Lyra' }))
-    expect(screen.queryByRole('button', { name: 'Aba Chat' })).not.toBeInTheDocument()
-
-    // Com outra aba ativa no mesmo grupo, a aba do chat fica compacta (sem busca e ações).
-    act(() => ref.current!.openTool('diff', 'main'))
-    expect(screen.queryByTestId('conversation-row')).not.toBeInTheDocument()
-    expect(screen.getByTestId('chat-tab')).toContainElement(screen.getByRole('button', { name: 'Ver detalhes de Lyra' }))
-    expect(screen.queryByRole('button', { name: 'Buscar no histórico desta conversa' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('conversation-row')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Aba Lyra' }))
-    expect(screen.getByRole('button', { name: 'Buscar no histórico desta conversa' })).toBeInTheDocument()
+    expect(screen.getByTestId('conversation-row')).toBeVisible()
+    expect(screen.queryByRole('button', { name: CHAT_TAB })).not.toBeInTheDocument()
   })
 
   it('abre explorador na lateral e arquivo na área principal', async () => {
@@ -110,7 +101,7 @@ describe('abas e painéis móveis do Politron', () => {
     expect(screen.getByText('Chat existente')).toBeInTheDocument()
     act(() => ref.current!.openTool('files', 'side'))
     expect(screen.getByRole('region', { name: 'Painel auxiliar' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Aba Arquivos' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aba Arquivos & Diff' })).toBeInTheDocument()
     fireEvent.click(await screen.findByText('README.md'))
     expect(screen.getByRole('button', { name: 'Aba README.md' })).toBeInTheDocument()
     expect(screen.getAllByRole('separator', { name: 'Redimensionar painéis' })).toHaveLength(1)
@@ -162,12 +153,15 @@ describe('abas e painéis móveis do Politron', () => {
 
   it('move o chat para o painel auxiliar sem duplicar abas e mantém posição', () => {
     const { ref } = setup()
+    act(() => ref.current!.openTool('files', 'side'))
     act(() => ref.current!.openTool('chat', 'side'))
-    expect(screen.getAllByRole('button', { name: 'Aba Chat' })).toHaveLength(1)
-    expect(screen.getByRole('region', { name: 'Painel auxiliar' })).toContainElement(screen.getByText('Chat existente'))
-    const saved = JSON.parse(localStorage.getItem('politron.dock.layout.v2') || '{}')
+    // A aba do chat existe uma única vez e o conteúdo acompanha a aba ativa.
+    expect(screen.getAllByRole('button', { name: CHAT_TAB })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: CHAT_TAB }))
+    expect(screen.getByText('Chat existente')).toBeInTheDocument()
+    const saved = JSON.parse(localStorage.getItem('politron.dock.layout.v3') || '{}')
     expect(saved.root).toBeDefined()
-    expect(screen.getAllByRole('button', { name: 'Aba Chat' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: CHAT_TAB })).toHaveLength(1)
   })
 
   it('permite arrastar o chat para a outra área', () => {
@@ -179,10 +173,10 @@ describe('abas e painéis móveis do Politron', () => {
       setData: (key: string, value: string) => data.set(key, value),
       getData: (key: string) => data.get(key) || '',
     }
-    fireEvent.dragStart(screen.getByRole('button', { name: 'Aba Chat' }), { dataTransfer })
+    fireEvent.dragStart(screen.getByRole('button', { name: CHAT_TAB }), { dataTransfer })
     fireEvent.drop(screen.getByRole('region', { name: 'Painel auxiliar' }), { dataTransfer })
     expect(screen.getByText('Chat existente')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Aba Chat' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: CHAT_TAB })).toHaveLength(1)
   })
 
   it('permite fechar uma ferramenta e abrir mascote em nova aba', () => {
@@ -193,23 +187,23 @@ describe('abas e painéis móveis do Politron', () => {
     expect(screen.queryByRole('region', { name: 'Painel auxiliar' })).not.toBeInTheDocument()
   })
 
-  it('aplica layout IDE de quatro regiões e abre arquivos no editor central', async () => {
+  it('aplica o split 2D de três regiões e abre arquivos no editor central', async () => {
     const { ref } = setup()
     act(() => ref.current!.useDevelopmentLayout())
-    expect(screen.getAllByRole('separator', { name: 'Redimensionar painéis' })).toHaveLength(3)
-    expect(screen.getByRole('button', { name: 'Aba Chat' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Aba Arquivos' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Aba Terminal' })).toBeInTheDocument()
+    expect(screen.getAllByRole('separator', { name: 'Redimensionar painéis' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: CHAT_TAB })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aba Arquivos & Diff' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aba Terminal Local' })).toBeInTheDocument()
     fireEvent.click(await screen.findByText('README.md'))
     expect(screen.getByRole('button', { name: 'Aba README.md' })).toBeInTheDocument()
-    expect(screen.getAllByRole('separator', { name: 'Redimensionar painéis' })).toHaveLength(3)
+    expect(screen.getAllByRole('separator', { name: 'Redimensionar painéis' })).toHaveLength(2)
     const ratio = screen.getAllByRole('separator', { name: 'Redimensionar painéis' }).at(-1)!
     ratio.focus()
     expect(ratio).toHaveFocus()
-    // O jsdom não calcula layout real do ResizeObserver; teclado/drag exige browser.
+    // O jsdom não calcula layout real; o preset grava a proporção inicial.
     await waitFor(() => {
-      const saved = JSON.parse(localStorage.getItem('politron.dock.layout.v2') || '{}')
-      expect(saved.root.ratio).toBe(72)
+      const saved = JSON.parse(localStorage.getItem('politron.dock.layout.v3') || '{}')
+      expect(saved.root.ratio).toBe(62)
     })
   })
 
@@ -235,7 +229,7 @@ describe('abas e painéis móveis do Politron', () => {
     }))
     try {
       setup()
-      expect(screen.getByRole('button', { name: 'Aba Navegador' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Aba Preview Web' })).toBeInTheDocument()
       expect(await screen.findByRole('textbox', { name: 'Endereço' })).toBeInTheDocument()
       expect(screen.queryByText('Navegador dos agentes')).not.toBeInTheDocument()
     } finally {

@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/layout/PageShell'
 import { ModelSlot } from '../composer/ComposerModelSlot'
 import { Menu, MenuSurface, useAnchoredPosition, useDismissOnOutsidePointer } from '@/components/dsh'
 import type { Agent, Conversation, MessageSearchHit, Workspace } from '../../../../shared/v9'
+import { MiniBoo, normalizeVariant, safeHex } from '@/shell/primitives'
 import { Avatar } from '../app/Avatar'
 import type { BooActivity } from '../app/boo-activity'
 import { assistantPlaceholder } from '../app/appShellShared'
@@ -46,7 +47,7 @@ export function conversationIdentity(selected: Conversation, agents: Agent[], as
 
 // O avatar xs tem 30px; na aba ele é reduzido visualmente sem um tamanho novo no componente compartilhado.
 function MiniAvatar({ agent, activity }: { agent: Agent; activity?: BooActivity }) {
-  return <span className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full"><span className="inline-flex scale-[0.667]"><Avatar agent={agent} size="xs" state={activity?.state} expression={activity?.expression} /></span></span>
+  return <Avatar agent={agent} size="xxs" state={activity?.state} expression={activity?.expression} />
 }
 
 /** Avatar do Boo ou da equipe: abre os detalhes do Boo ou a edição da equipe. */
@@ -56,13 +57,13 @@ export function ConversationAvatar({ selected, agents, assistant, agentActivitie
     className={compact ? 'relative flex h-5 w-8 shrink-0 items-center justify-start gap-0 rounded-full p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-primary' : 'relative flex h-10 w-12 shrink-0 items-center justify-start gap-0 rounded-md p-0 outline-none hover:bg-transparent focus-visible:ring-2 focus-visible:ring-primary'}>
     {identities.slice(0, compact ? 2 : 3).map((agent, index) =>
       <span key={agent.id} className={'absolute overflow-hidden rounded-full ring-2 ring-background ' + (compact ? 'top-0' : 'top-1')} style={{ left: index * (compact ? 10 : 9), zIndex: 3 - index }}>
-        {compact ? <MiniAvatar agent={agent} activity={agentActivities?.[agent.id]} /> : <Avatar agent={agent} size="xs" state={agentActivities?.[agent.id]?.state} expression={agentActivities?.[agent.id]?.expression} />}
+        {compact ? <MiniAvatar agent={agent} activity={agentActivities?.[agent.id]} /> : <Avatar agent={agent} size="xs" />}
       </span>)}
     {!compact && identities.length > 3 && <span className="absolute -bottom-0.5 right-0 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-0.5 text-[9px] font-medium ring-1 ring-background">+{identities.length - 3}</span>}
   </Button>
   return <Button type="button" variant="ghost" size={null} aria-label={`Ver detalhes de ${identities[0].name}`} title={identities[0].name} onClick={() => onOpenAgent?.(identities[0])}
     className={compact ? 'flex size-6 shrink-0 items-center justify-center rounded-full p-0 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary' : 'flex size-10 shrink-0 items-center justify-center rounded-md p-0 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-primary'}>
-    {compact ? <MiniAvatar agent={identities[0]} activity={agentActivities?.[identities[0].id]} /> : <Avatar agent={identities[0]} size="xs" state={agentActivities?.[identities[0].id]?.state} expression={agentActivities?.[identities[0].id]?.expression} />}
+    {compact ? <MiniAvatar agent={identities[0]} activity={agentActivities?.[identities[0].id]} /> : <Avatar agent={identities[0]} size="list" />}
   </Button>
 }
 
@@ -140,13 +141,24 @@ export function ConversationTools({ selected, onOpenComputerUse, onOpenProjectFi
   </div>
 }
 
-/** Cabeçalho da conversa quando o chat é a única aba: o mesmo PageHeader das demais páginas, com o seletor de modelo nas ações. */
+/** Cabeçalho da conversa: barra fina do design, com identidade à esquerda e ações à direita. */
 export function ChatHeader(props: ConversationChromeProps) {
   const { title, subtitle, identities, isGroup } = conversationIdentity(props.selected, props.agents, props.assistant)
   // Em grupo, o líder aparece antes da contagem: a hierarquia fica visível no topo do chat.
   const leader = identities.find(agent => agent.id === props.selected.leaderAgentId) || identities[0]
   const roster = isGroup ? [`Líder ${leader.name}`, subtitle].filter(Boolean).join(' · ') : subtitle
   const context = [props.selectedWorkspace?.name, roster].filter(Boolean).join(' · ')
-  return <PageHeader testId="compact-chat-header" title={title} subtitle={context || undefined} leading={<ConversationAvatar {...props} />}
-    actions={<><ModelSlot /><ConversationTools {...props} /></>} />
+  return <header data-testid="compact-chat-header" className="flex h-[52px] shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-pane)] px-4">
+    <div className="flex min-w-0 items-center gap-2.5">
+      <ConversationAvatar {...props} />
+      <div className="min-w-0">
+        <h1 className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{title}</h1>
+        {context ? <p className="truncate text-[11.5px] text-[var(--text-muted)]">{context}</p> : null}
+      </div>
+    </div>
+    <div className="flex shrink-0 items-center gap-1">
+      <ModelSlot />
+      <ConversationTools {...props} />
+    </div>
+  </header>
 }

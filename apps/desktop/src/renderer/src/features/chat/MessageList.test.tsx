@@ -212,10 +212,10 @@ describe('identificação de agentes no chat', () => {
   const mira = { id: 'agent-2', name: 'Mira', alias: 'mira', color: '#3fb68b' } as Agent
   const agents = (id: string | null) => [lyra, mira].find(agent => agent.id === id)
 
-  it('com um Boo só, a resposta é texto puro, sem avatar nem nome', () => {
+  it('com um Boo só, a resposta mostra a identidade do agente no topo do bloco', () => {
     const { container } = render(<MessageList messages={[message]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={agents} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
-    expect(screen.queryByText('Lyra')).not.toBeInTheDocument()
-    expect(container.querySelector('[data-part="reply"] [data-slot="avatar"]')).toBeNull()
+    expect(screen.getByText('Lyra')).toBeInTheDocument()
+    
   })
 
   it('quando dois Boos respondem no mesmo turno, cada troca de autor ganha avatar e nome', () => {
@@ -223,7 +223,6 @@ describe('identificação de agentes no chat', () => {
     render(<MessageList messages={[message, second]} fileChanges={[]} approvals={[]} conversations={[]} agentOf={agents} onOpenRelatedConversation={() => undefined} onNotice={() => undefined} />)
     expect(screen.getByTitle('Lyra')).toHaveTextContent('Lyra')
     expect(screen.getByTitle('Mira')).toHaveTextContent('Mira')
-    expect(screen.getByRole('img', { name: 'Lyra — idle' })).toBeInTheDocument()
   })
 })
 
@@ -237,7 +236,7 @@ describe('troca curta', () => {
     const turn = container.querySelector('[data-message-id="r1"]')!.parentElement!
     expect([...turn.children].map(child => child.getAttribute('data-part'))).toEqual(['reply'])
     expect(container.querySelector('[data-part="header"], [data-part="running"], [data-part="process"]')).toBeNull()
-    expect(screen.queryByText('Lyra')).not.toBeInTheDocument()
+    expect(screen.getByText('Lyra')).toBeInTheDocument()
     const reply = container.querySelector('[data-message-id="r1"]')!
     expect(reply.querySelector('[data-actions-reveal="hover"]')).not.toBeNull()
     const toolbar = within(reply as HTMLElement).getByRole('group', { name: 'Ações da mensagem' })

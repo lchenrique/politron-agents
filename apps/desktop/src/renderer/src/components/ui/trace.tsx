@@ -9,10 +9,11 @@ function Trace({ className, ...props }: React.ComponentProps<'div'>) {
   return <div data-slot="trace" className={cn('flex min-w-0 flex-col gap-1', className)} {...props} />
 }
 
+/** Linha de trajetória como pílula discreta do design: borda fina, ícone de estado e texto curto. */
 function TraceLine({ className, status, children, ...props }: React.ComponentProps<'div'> & { status?: TraceStatus }) {
   const Icon = status === 'running' ? LoaderCircle : status === 'error' ? CircleAlert : status === 'pending' ? CircleDashed : status === 'complete' ? Check : null
-  return <div data-slot="trace-line" data-status={status} className={cn('flex min-w-0 items-center gap-2 rounded-md py-1 text-xs text-muted-foreground', status === 'error' && 'text-destructive', className)} {...props}>
-    {Icon && <Icon aria-hidden="true" className={cn('size-3.5 shrink-0', status === 'running' && 'animate-spin')} />}
+  return <div data-slot="trace-line" data-status={status} className={cn('flex w-fit max-w-full min-w-0 items-center gap-2 rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11.5px] text-[var(--text-secondary)] transition hover:bg-[var(--bg-hover)]', status === 'error' && 'border-rose-500/30 text-rose-400', className)} {...props}>
+    {Icon && <Icon aria-hidden="true" className={cn('size-3 shrink-0', (status === 'running' || status === 'complete') && 'text-[var(--accent-primary)]', status === 'running' && 'animate-spin')} />}
     {children}
   </div>
 }

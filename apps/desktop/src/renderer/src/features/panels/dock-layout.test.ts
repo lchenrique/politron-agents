@@ -69,7 +69,7 @@ describe('árvore de docking com múltiplos painéis', () => {
     const group = groups(initial.root)[0]
     const withAgents = placeTab(initial, toolTab('agents'), group.id)
     const restored = deserializeDockLayout(JSON.parse(JSON.stringify(withAgents)))
-    expect(groupWithTab(restored.root, 'agents')?.tabs.find(tab => tab.id === 'agents')).toMatchObject({ kind: 'agents', label: 'Agentes' })
+    expect(groupWithTab(restored.root, 'agents')?.tabs.find(tab => tab.id === 'agents')).toMatchObject({ kind: 'agents', label: 'Delegações' })
     expect(groupWithTab(restored.root, 'chat')).toBeDefined()
   })
 
@@ -101,7 +101,7 @@ describe('árvore de docking com múltiplos painéis', () => {
     const state = deserializeDockLayout(saved)
     const group = groups(state.root)[0]
     expect(group.tabs.map(tab => tab.id)).toEqual(['web', 'chat'])
-    expect(group.tabs[0]).toMatchObject({ kind: 'web', label: 'Navegador' })
+    expect(group.tabs[0]).toMatchObject({ kind: 'web', label: 'Preview Web' })
     expect(group.active).toBe('web')
   })
 

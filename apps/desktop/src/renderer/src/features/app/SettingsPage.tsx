@@ -42,12 +42,15 @@ const SOURCE_LABEL: Record<SkillInfo['source'], string> = { codex: 'Codex', clau
 
 function Field({ icon: Icon, title, description, children }: { icon?: typeof Palette; title: string; description: string; children: React.ReactNode }) {
   const titleId = useId()
-  return <section aria-labelledby={titleId} className="ds-card p-4">
-    <div className="flex items-start gap-3">
-      {Icon && <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary-soft-foreground"><Icon className="size-4" /></span>}
-      <div className="min-w-0"><h3 id={titleId} className="ds-section-title">{title}</h3><p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">{description}</p></div>
+  return <section aria-labelledby={titleId} className="rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)] p-5">
+    <div className="flex items-start gap-3.5">
+      {Icon && <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-[var(--border-default)] bg-[var(--bg-card)] text-[var(--accent-primary)]"><Icon className="size-4" /></span>}
+      <div className="min-w-0">
+        <h3 id={titleId} className="text-[14px] font-semibold text-[var(--text-primary)]">{title}</h3>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">{description}</p>
+      </div>
     </div>
-    <div className="mt-4 space-y-4 border-t border-border pt-4">{children}</div>
+    <div className="mt-4 space-y-4 border-t border-[var(--border-subtle)] pt-4">{children}</div>
   </section>
 }
 
@@ -142,8 +145,30 @@ function SpeechKeySettings() {
   return <Field icon={KeyRound} title="OpenRouter para leitura de mensagens" description="Chave usada pela síntese de voz das mensagens quando esse motor está selecionado. É independente da chave de decisão dos grupos."><FieldGroup><FormField><FieldLabel htmlFor="speech-router-key">Chave OpenRouter de voz</FieldLabel><Input id="speech-router-key" type="password" autoComplete="off" value={key} onChange={event => setKey(event.target.value)} placeholder={configured ? 'Chave configurada; cole outra para substituir' : 'Cole a chave OpenRouter'} /></FormField><div className="flex flex-wrap gap-2"><Button disabled={busy || !key.trim()} onClick={() => void save()}>{configured ? 'Substituir chave de voz' : 'Salvar chave de voz'}</Button>{configured && <Button variant="outline" disabled={busy} onClick={() => void save(true)}>Remover chave de voz</Button>}</div>{feedback && <p role="status" className="text-xs text-muted-foreground">{feedback}</p>}</FieldGroup></Field>
 }
 
-/** Página de Configurações: navegação de seções à esquerda e o conteúdo na coluna do PageShell. */
-export function SettingsPage({ open = true, initialSection = 'geral' }: { open?: boolean; initialSection?: SettingsSection }) {
+/**
+ * Moldura das configurações: `PageShell` na rota dedicada ou as duas colunas do
+ * overlay do design (nav de 238px + conteúdo central de 680px).
+ */
+function SettingsFrame({ embedded, nav, children }: { embedded: boolean; nav: React.ReactNode; children: React.ReactNode }) {
+  if (embedded) {
+    return <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--bg-pane)]">
+      {nav}
+      <div className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
+        <div className="max-w-[680px] space-y-5 pb-10">{children}</div>
+      </div>
+    </div>
+  }
+  return <PageShell title="Configurações" subtitle="Preferências deste computador" aside={nav}>
+    <div role="region" aria-labelledby="settings-section-title" className="space-y-4">{children}</div>
+  </PageShell>
+}
+
+/**
+ * Página de Configurações: navegação de seções à esquerda e o conteúdo na coluna do PageShell.
+ * `embedded` renderiza o mesmo conteúdo no formato do overlay do design (duas colunas, sem PageShell),
+ * com as seções filtradas por `filter`.
+ */
+export function SettingsPage({ open = true, initialSection = 'geral', embedded = false, filter = '', onSectionChange }: { open?: boolean; initialSection?: SettingsSection; embedded?: boolean; filter?: string; onSectionChange?: (section: SettingsSection) => void }) {
   const [section, setSection] = useState<Section>('geral')
   const rivePreview = useRivePreview()
   useEffect(() => { if (open) setSection(initialSection) }, [open, initialSection])
@@ -231,18 +256,33 @@ export function SettingsPage({ open = true, initialSection = 'geral' }: { open?:
   }
 
   const current = SECTIONS.find(item => item.id === section) || SECTIONS[0]
+  const query = filter.trim().toLowerCase()
+  const visibleSections = query ? SECTIONS.filter(item => item.label.toLowerCase().includes(query) || item.description.toLowerCase().includes(query)) : SECTIONS
+  const selectSection = (id: Section) => { setSection(id); onSectionChange?.(id) }
 
-  const nav = <nav aria-label="Seções de configurações" className="flex w-[var(--aside-w)] shrink-0 flex-col gap-px overflow-y-auto border-r border-border bg-chrome p-3 max-[720px]:px-1.5">
-    {SECTIONS.map(item => <Button key={item.id} type="button" variant={null} size={null} onClick={() => setSection(item.id)} aria-current={section === item.id ? 'page' : undefined} title={item.label}
-      className="ds-nav-item flex h-9 shrink-0 items-center justify-start gap-2.5 whitespace-nowrap rounded-md px-2.5 text-left text-[13px] font-medium focus-visible:ring-0 max-[720px]:justify-center max-[720px]:px-0">
-      <item.icon className="size-4 shrink-0" /><span className="max-[720px]:sr-only">{item.label}</span>
-    </Button>)}
+  const nav = <nav aria-label="Seções de configurações" className={
+    embedded
+      ? 'w-[238px] shrink-0 space-y-1 overflow-y-auto border-r border-[var(--border-subtle)] bg-[var(--bg-rail)] p-3'
+      : 'flex w-[var(--aside-w)] shrink-0 flex-col gap-px overflow-y-auto border-r border-border bg-chrome p-3 max-[720px]:px-1.5'
+  }>
+    {visibleSections.map(item => {
+      const active = section === item.id
+      return <button key={item.id} type="button" onClick={() => selectSection(item.id)} aria-current={active ? 'page' : undefined} title={item.label}
+        className={embedded
+          ? 'flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-[13px] transition ' + (active
+            ? 'border-[var(--border-default)] bg-[var(--bg-hover)] font-semibold text-[var(--text-primary)] shadow-xs'
+            : 'border-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]')
+          : 'ds-nav-item flex h-9 shrink-0 items-center justify-start gap-2.5 rounded-md px-2.5 text-left text-[13px] font-medium whitespace-nowrap focus-visible:ring-0 max-[720px]:justify-center max-[720px]:px-0'}>
+        <item.icon className={'size-4 shrink-0 ' + (embedded ? (active ? 'text-[var(--accent-primary)]' : 'text-[var(--text-muted)]') : '')} />
+        <span className={embedded ? 'truncate' : 'max-[720px]:sr-only'}>{item.label}</span>
+      </button>
+    })}
+    {embedded && !visibleSections.length ? <p className="px-3 py-2 text-[11.5px] text-[var(--text-muted)]">Nenhuma seção encontrada.</p> : null}
   </nav>
 
   if (!open) return null
-  return <PageShell title="Configurações" subtitle="Preferências deste computador" aside={nav}>
-    <div role="region" aria-labelledby="settings-section-title" className="space-y-4">
-      <div><h2 id="settings-section-title" className="ds-section-title">{current.label}</h2><p className="mt-0.5 text-[13px] leading-5 text-muted-foreground">{current.description}</p></div>
+  return <SettingsFrame embedded={embedded} nav={nav}>
+      <div className="space-y-1"><h2 id="settings-section-title" className="text-[15px] font-semibold text-[var(--text-primary)]">{current.label}</h2><p className="text-[12.5px] leading-relaxed text-[var(--text-secondary)]">{current.description}</p></div>
         {section === 'geral' && <>
           <Field icon={Palette} title="Aparência" description="O Boobot usa um único sistema visual com dois modos. A escolha fica salva neste dispositivo."><ThemeSelector /></Field>
           <Field title="Animação dos Boos" description="O SVG original preserva brilho, sombra, acessórios e reações. O renderer Rive ainda está em desenvolvimento e não possui paridade visual.">
@@ -304,6 +344,5 @@ export function SettingsPage({ open = true, initialSection = 'geral' }: { open?:
           <Field icon={AudioLines} title="Ligações do mascote" description="Configure aqui as chaves, transcrição e vozes. O mascote dentro do app e o flutuante usam estas mesmas preferências."><RealtimeSettingsPanel /></Field>
           <SpeechKeySettings />
         </>}
-    </div>
-  </PageShell>
+  </SettingsFrame>
 }

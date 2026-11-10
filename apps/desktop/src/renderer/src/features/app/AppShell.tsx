@@ -1,12 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderPlus, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import TitleBar from '@/components/ide/TitleBar'
 import { ASSISTANT_ID, type Agent, type Conversation, type MessageAttachment, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
-import { Sidebar } from '../sidebar/Sidebar'
-import { NavRail, type HomeView } from '../sidebar/NavRail'
-import { WorkspaceSearch } from '../sidebar/WorkspaceSearch'
+import type { HomeView } from '../sidebar/NavRail'
 import { WorkspaceOverview } from './WorkspaceOverview'
 import { PoliAvatar } from './PoliAvatar'
 import { AgentDetails } from './AgentDetails'
@@ -28,12 +25,20 @@ import type { EditorData, EditorKind } from '../editors/Editor'
 import type { SettingsSection } from './SettingsPage'
 import { INHERIT_MODEL_NAME, emptySnapshot, errorText } from './appShellShared'
 import { selectDescendantApprovals, selectVisibleRunEvidence } from './delegation-evidence'
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { replaceEqualDeep } from '@tanstack/react-query'
 import { ChiefHome } from '../work/ChiefHome'
 import { RoutinesPage } from '../work/RoutinesPage'
 import { MissionStrip } from '../work/MissionStrip'
 import { BoardPage } from '../board/BoardPage'
+import { TopBar } from '@/shell/top-bar'
+import { ActivityRail, type SidebarMode } from '@/shell/activity-rail'
+import { WorkspaceSidebar } from '@/shell/workspace-sidebar'
+import { activeProject, booRows, queueRows, useChromeAppearance, workspaceRows } from '@/shell/appearance'
+import { CommandPalette } from '@/shell/command-palette'
+import { SettingsOverlay } from '@/shell/settings/settings-overlay'
+import { BooModal, WorkspaceModal } from '@/shell/entity-modals'
+import { colorForId } from '@/shell/primitives'
+
 
 const Editor = lazy(() => import('../editors/Editor').then(module => ({ default: module.Editor })))
 const SettingsPage = lazy(() => import('./SettingsPage').then(module => ({ default: module.SettingsPage })))
@@ -352,7 +357,7 @@ export default function AppShell() {
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
   const openHome = useCallback((next: HomeView) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next) }, [])
-  useEffect(() => { const open = (event: Event) => { const section = (event as CustomEvent).detail; setSettingsSection(section === 'voz' || section === 'conexoes' || section === 'atualizacoes' ? section : 'geral'); openHome('settings') }; window.addEventListener('boobot:open-settings', open); return () => window.removeEventListener('boobot:open-settings', open) }, [openHome])
+  useEffect(() => { const open = (event: Event) => { const section = (event as CustomEvent).detail; setSettingsSection(section === 'voz' || section === 'conexoes' || section === 'atualizacoes' ? section : 'geral'); setSettingsOpen(true) }; window.addEventListener('boobot:open-settings', open); return () => window.removeEventListener('boobot:open-settings', open) }, [])
   const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
   const openBoardTasks = snapshot.board?.tasks.filter(item => !['done', 'cancelled'].includes(item.status)).length || 0
   const enabledRoutines = snapshot.routines?.filter(item => item.enabled).length || 0
@@ -382,45 +387,176 @@ export default function AppShell() {
   } : null
   const conversationTitle = selected ? conversationIdentity(selected, snapshot.agents, snapshot.assistant) : null
 
-  return <ModelSlotProvider><div data-sidebar-collapsed={sidebarCollapsed} className="flex h-dvh w-full flex-col overflow-hidden bg-chrome font-sans text-foreground">
-    <TitleBar sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(current => !current)} onOpenHome={() => openHome('home')} onOpenTool={openTool} onDevelopmentLayout={() => dockRef.current?.useDevelopmentLayout()}
-      search={<WorkspaceSearch snapshot={snapshot} onSelectWorkspace={selectWorkspace} onSelectConversation={selectConversation} onStartConversation={startConversation} onOpenAgent={openAgent} onOpenEditor={setEditor} />} />
+  /* ---------------------------------------------------------------------------
+   * Chrome do design Carbon & Graphite: modo do sidebar, largura, aparência das
+   * pastas e a command palette. Tudo persistido como preferência local.
+   * ------------------------------------------------------------------------- */
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
+    try {
+      const saved = localStorage.getItem('politron.sidebar.mode')
+      return saved === 'all' || saved === 'workspaces' || saved === 'boos' || saved === 'queue' || saved === 'memory' ? saved : 'all'
+    } catch { return 'all' }
+  })
+  useEffect(() => { try { localStorage.setItem('politron.sidebar.mode', sidebarMode) } catch { /* preferência opcional */ } }, [sidebarMode])
+  const [sidebarWidth, setSidebarWidth] = useState(() => { try { const value = Number(localStorage.getItem('politron.sidebar.width')); return Number.isFinite(value) && value >= 200 && value <= 420 ? value : 248 } catch { return 248 } })
+  useEffect(() => { try { localStorage.setItem('politron.sidebar.width', String(sidebarWidth)) } catch { /* preferência opcional */ } }, [sidebarWidth])
+  const [resizingSidebar, setResizingSidebar] = useState(false)
+  const startSidebarResize = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = sidebarWidth
+    setResizingSidebar(true)
+    const move = (native: MouseEvent) => setSidebarWidth(Math.min(420, Math.max(200, startWidth + native.clientX - startX)))
+    const up = () => { setResizingSidebar(false); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+  const [commandOpen, setCommandOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const openSettings = useCallback((section: SettingsSection = 'geral') => { setSettingsSection(section); setSettingsOpen(true) }, [])
+  const appearance = useChromeAppearance()
+  const [memoryCount, setMemoryCount] = useState(0)
+  useEffect(() => {
+    if (!window.memoryAPI) return
+    window.memoryAPI.list({ limit: 500 }).then(list => setMemoryCount(list.length)).catch(() => undefined)
+  }, [snapshot.conversations.length])
+  const boos = useMemo(() => booRows(snapshot, agentStates), [snapshot, agentStates])
+  const sidebarWorkspaces = useMemo(() => workspaceRows({
+    workspaces: snapshot.workspaces,
+    conversations: snapshot.conversations,
+    approvals: snapshot.approvals,
+    selectedId: selected?.id,
+    expanded: appearance.expanded,
+    colors: appearance.colors,
+  }), [snapshot.workspaces, snapshot.conversations, snapshot.approvals, selected?.id, appearance.expanded, appearance.colors])
+  const sidebarQueue = useMemo(() => queueRows(snapshot), [snapshot])
+  const project = activeProject({ workspaces: snapshot.workspaces, conversations: snapshot.conversations, selected, activeWorkspaceId })
+  const projectOptions = useMemo(() => snapshot.workspaces.filter(workspace => !workspace.archived).map(workspace => ({ id: workspace.id, name: workspace.name, branch: workspace.branch || 'main' })), [snapshot.workspaces])
+  const changeBooColor = async (id: string, hex: string) => {
+    // O Chief/Assistente vive fora de `agents`: procurar só na lista de equipe deixava a cor sem efeito.
+    const agent = [snapshot.assistant, ...snapshot.agents].find(item => item.id === id)
+    if (!agent) { setNotice('Não foi possível mudar a cor: agente não encontrado.'); return }
+    // Pinta na hora para o menu responder ao clique; o refresh confirma o que ficou salvo.
+    setSnapshot(current => ({
+      ...current,
+      assistant: current.assistant.id === id ? { ...current.assistant, color: hex } : current.assistant,
+      agents: current.agents.map(item => item.id === id ? { ...item, color: hex } : item),
+    }))
+    try {
+      await window.appAPI.saveAgent({ ...agent, color: hex })
+      await refresh()
+      setNotice(`Cor de ${agent.name} atualizada.`)
+    } catch (error) {
+      await refresh()
+      setNotice(errorText(error))
+    }
+  }
+  const moveSession = async (conversationId: string, workspaceId: string) => {
+    try { await window.appAPI.saveConversation({ id: conversationId, workspaceId }); await refresh(); setNotice('Conversa movida de pasta.') } catch (error) { setNotice(errorText(error)) }
+  }
+  const paletteActions = useMemo(() => {
+    const tools: Array<{ kind: DockTool; label: string }> = [
+      { kind: 'chat', label: 'Chief · Orquestração' },
+      { kind: 'files', label: 'Arquivos & Diff Viewer' },
+      { kind: 'terminal', label: 'Terminal Integrado' },
+      { kind: 'web', label: 'Navegador / Preview Web' },
+      { kind: 'squad', label: 'Equipe de Boos' },
+      { kind: 'memory', label: 'Memória & MCP' },
+    ]
+    const presets: Array<{ preset: 'two-cols' | 'three-cols' | 'ide-split' | 'quad-grid' | 'focus-chat'; label: string }> = [
+      { preset: 'two-cols', label: 'Layout: 2 colunas (Chat + Código)' },
+      { preset: 'three-cols', label: 'Layout: 3 colunas (Chat + Diff + Terminal)' },
+      { preset: 'ide-split', label: 'Layout: split 2D' },
+      { preset: 'quad-grid', label: 'Layout: grade 2x2' },
+      { preset: 'focus-chat', label: 'Layout: foco no Chief' },
+    ]
+    return [
+      { id: 'new-conversation', group: 'Ação', label: 'Nova conversa', hint: 'Ctrl N', run: () => void startConversation() },
+      { id: 'new-boo', group: 'Ação', label: 'Novo agente (Boo)', run: () => setEditor({ kind: 'agent' }) },
+      { id: 'new-project', group: 'Ação', label: 'Novo projeto', run: () => setEditor({ kind: 'workspace' }) },
+      { id: 'settings', group: 'Ação', label: 'Abrir configurações', hint: 'Ctrl ,', run: () => setSettingsOpen(true) },
+      { id: 'home', group: 'Ir para', label: 'Central do Chief', run: () => openHome('home') },
+      { id: 'board', group: 'Ir para', label: 'Board de tarefas', run: () => openHome('board') },
+      { id: 'routines', group: 'Ir para', label: 'Rotinas', run: () => openHome('routines') },
+      ...tools.map(tool => ({ id: `tab-${tool.kind}`, group: 'Aba', label: tool.label, run: () => openTool(tool.kind) })),
+      ...presets.map(item => ({ id: `layout-${item.preset}`, group: 'Layout', label: item.label, run: () => dockRef.current?.applyPreset(item.preset) })),
+      ...boos.map(row => ({ id: `boo-${row.id}`, group: 'Boo', label: row.name, hint: row.shortRole, run: () => { const agent = snapshot.agents.find(item => item.id === row.id); if (agent) void openAgent(agent) } })),
+      ...snapshot.conversations.filter(conversation => !conversation.archived).slice(0, 15).map(conversation => ({ id: `conv-${conversation.id}`, group: 'Conversa', label: conversation.name, run: () => selectConversation(conversation.id) })),
+    ]
+  }, [startConversation, openHome, openTool, boos, snapshot.agents, snapshot.conversations, selectConversation, openAgent])
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'k' && !event.shiftKey) { event.preventDefault(); setCommandOpen(current => !current) }
+      if (event.key === ',') { event.preventDefault(); setSettingsOpen(true) }
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [openHome])
+
+
+  return <ModelSlotProvider><div data-sidebar-collapsed={sidebarCollapsed} className="boobot-chrome flex h-dvh w-full flex-col overflow-hidden bg-[var(--bg-app)] font-sans text-foreground">
+    <TopBar
+      project={project}
+      projects={projectOptions}
+      onSelectProject={id => { if (!id) void startConversation(); else selectWorkspace(id) }}
+      status={attentionCount > 0 ? { text: `Chief aguardando sua decisão (${attentionCount})`, tone: 'warning' } : { text: 'Local Daemon Ativo', tone: 'success' }}
+      onOpenCommand={() => setCommandOpen(true)}
+      onOpenSettings={() => setSettingsOpen(true)}
+      onOpenTool={openTool}
+      onApplyPreset={preset => dockRef.current?.applyPreset(preset)}
+      onResetLayout={() => dockRef.current?.resetLayout()}
+    />
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      {/* A faixa fica fora do painel redimensionável: continua visível com a barra lateral recolhida. */}
-      <NavRail view={view} chiefName={chiefName} attentionCount={attentionCount} openTasks={openBoardTasks} enabledRoutines={enabledRoutines} onOpenHome={openHome} />
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-      <ResizablePanelGroup key={sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-open'} id="politron-main-layout" orientation="horizontal" resizePreviewMode="separator"
-        defaultLayout={sidebarCollapsed ? { main: 100 } : { sidebar: sidebarSize, main: 100 - sidebarSize }}
-        onLayoutChanged={(layout, meta) => { if (!meta.isUserInteraction || typeof layout.sidebar !== 'number') return; const next = Math.min(34, Math.max(10, layout.sidebar)); setSidebarSize(next); try { localStorage.setItem('politron.sidebar.size', String(next)) } catch { /* preferência opcional */ } }}
-        className="min-h-0 min-w-0">
-      {!sidebarCollapsed && <>
-      <ResizablePanel id="sidebar" defaultSize={`${sidebarSize}%`} minSize="240px" maxSize="400px" className="min-w-0">
-      <Sidebar
-        snapshot={snapshot}
-        selected={selected}
-        unreadCounts={unreadCounts}
-        agentStates={agentStates}
-        onSelectConversation={selectConversation}
-        onSelectWorkspace={selectWorkspace}
-        activeWorkspaceId={activeWorkspaceId}
-        onStartConversation={startConversation}
-        onOpenAgent={(agent, newConversation) => void openAgent(agent, newConversation)}
-        onOpenEditor={setEditor}
-        onDeleteWorkspace={deleteWorkspace}
-        onDeleteConversation={deleteConversation}
-        onDeleteConversations={deleteConversations}
-        onDeleteAgent={deleteAgent}
-        onSetChief={setAgentChief}
-        onNotice={setNotice}
+      <ActivityRail
+        mode={sidebarMode}
+        onModeChange={setSidebarMode}
+        onToggleSidebar={() => setSidebarCollapsed(current => !current)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        queueBadge={sidebarQueue.some(item => item.state === 'gate')}
       />
-      </ResizablePanel>
-      {/* Alça invisível de 8px centrada na borda, como no DSH: o canvas encosta na barra lateral. */}
-      <ResizableHandle aria-label="Redimensionar barra lateral" className="z-10 w-0 bg-transparent after:w-2 hover:bg-transparent" />
-      </>}
-      <ResizablePanel id="main" defaultSize={sidebarCollapsed ? '100%' : `${100 - sidebarSize}%`} minSize={sidebarCollapsed ? '100%' : '50%'} className="min-w-0">
-      <div className="boobot-canvas ds-canvas flex h-full min-h-0 min-w-0">
-      <DockWorkspace onSendMessage={(conversationId, agentId, text) => window.appAPI.respondToAgent(conversationId, text, agentId)} ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} delegationMessages={selected ? messages : []} conversations={snapshot.conversations} runs={snapshot.runs} onOpenRelatedConversation={selectConversation} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff}
-        chatHeader={conversationChrome && <ChatHeader {...conversationChrome} />}
+      {!sidebarCollapsed ? <>
+        <div style={{ width: sidebarWidth }} data-sidebar-width={sidebarWidth} className="flex h-full min-h-0 shrink-0 overflow-hidden">
+          <WorkspaceSidebar
+            mode={sidebarMode}
+            boos={boos}
+            workspaces={sidebarWorkspaces}
+            queue={sidebarQueue}
+            memory={{ entries: memoryCount, mcp: [] }}
+            activeAgentId={selectedAgents[0]?.id}
+            worktrees={snapshot.workspaces.filter(workspace => workspace.kind === 'worktree' && !workspace.archived).length}
+            onSelectAgent={row => { const agent = snapshot.agents.find(item => item.id === row.id); if (agent) void openAgent(agent) }}
+            onSelectSession={(_, sessionId) => selectConversation(sessionId)}
+            onToggleWorkspace={appearance.toggleExpanded}
+            onNewBoo={() => setEditor({ kind: 'agent' })}
+            onEditBoo={id => { const agent = snapshot.agents.find(item => item.id === id); if (agent) setEditor({ kind: 'agent', initial: agent }) }}
+            onDeleteBoo={id => void deleteAgent(id)}
+            onBooColor={(id, hex) => void changeBooColor(id, hex)}
+            onNewWorkspace={() => setEditor({ kind: 'workspace' })}
+            onEditWorkspace={id => { const workspace = snapshot.workspaces.find(item => item.id === id); if (workspace) setEditor({ kind: 'workspace', initial: workspace }) }}
+            onDeleteWorkspace={id => void deleteWorkspace(id)}
+            onWorkspaceColor={appearance.setColor}
+            onNewSession={id => void startConversation(id)}
+            onRenameSession={(_, sessionId) => { const conversation = snapshot.conversations.find(item => item.id === sessionId); if (conversation) setEditor({ kind: 'conversation', initial: conversation }) }}
+            onDeleteSession={(_, sessionId) => void deleteConversation(sessionId)}
+            onMoveSession={(sessionId, workspaceId) => void moveSession(sessionId, workspaceId)}
+            onOpenTool={openTool}
+          />
+        </div>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Redimensionar barra lateral"
+          onMouseDown={startSidebarResize}
+          className={resizingSidebar ? 'splitter-v active' : 'splitter-v'}
+        />
+      </> : null}
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <DockWorkspace onSendMessage={(conversationId, agentId, text) => window.appAPI.respondToAgent(conversationId, text, agentId)} ref={dockRef} workspaceId={activeWorkspaceId || selected?.workspaceId || null} conversationId={selected?.id} delegationMessages={selected ? messages : []} conversations={snapshot.conversations} runs={snapshot.runs} onOpenRelatedConversation={selectConversation} voiceAgentId={mascotAgentId || selected?.leaderAgentId || selectedAgents[0]?.id} assistant={snapshot.assistant} agents={snapshot.agents} selectedAgents={selectedAgents} agentStates={agentStates} onChanged={setNotice} workspaceDiff={workspaceDiff} fileChanges={snapshot.fileChanges}
+        onEditAgent={agentId => { const agent = snapshot.agents.find(item => item.id === agentId); if (agent) setEditor({ kind: 'agent', initial: agent }) }}
+        onStartAgentConversation={agentId => { const agent = snapshot.agents.find(item => item.id === agentId); if (agent) void openAgent(agent, true) }}
+        onOpenSettings={section => { setSettingsSection((section === 'voz' || section === 'conexoes' || section === 'atualizacoes' ? section : 'geral') as SettingsSection); setSettingsOpen(true) }}
         chatTab={conversationChrome && conversationTitle ? { label: conversationTitle.title, title: [conversationTitle.title, conversationTitle.subtitle].filter(Boolean).join(' · '), leading: <ConversationAvatar compact {...conversationChrome} />, trailing: <ConversationTools compact {...conversationChrome} /> } : mainTabLabel ? { label: mainTabLabel } : undefined}>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {view === 'home' ? <ChiefHome snapshot={snapshot} agentStates={agentStates} onOpenConversation={selectConversation} onOpenAgent={agent => void openAgent(agent)} onOpenRoutines={() => openHome('routines')} onNotice={setNotice} />
@@ -478,16 +614,17 @@ export default function AppShell() {
       </main>
       </DockWorkspace>
       </div>
-      </ResizablePanel>
-      </ResizablePanelGroup>
-      </div>
     </div>
+    <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} actions={paletteActions} />
+    <SettingsOverlay open={settingsOpen} initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />
     <AgentDetails agent={detailsAgentId ? agentOf(detailsAgentId) : undefined} runs={snapshot.runs} onClose={() => setDetailsAgentId(null)} onEdit={agent => { setDetailsAgentId(null); setEditor({ kind: 'agent', initial: agent }) }} onOpenMascot={agent => { setDetailsAgentId(null); setMascotAgentId(agent.id); openTool('mascot') }} />
-    <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); openHome('settings') }} /></Suspense>
+    <Suspense fallback={null}><UpdateReadyCallout onOpen={() => { setSettingsSection('atualizacoes'); setSettingsOpen(true) }} /></Suspense>
     {/* No celular o composer ocupa toda a largura: o aviso sobe para não cobrir o botão de enviar. */}
     {notice && <div role="status" className="fixed inset-x-3 bottom-32 z-[60] mx-auto max-w-md rounded-lg sm:inset-x-auto sm:bottom-5 sm:right-5 sm:mx-0 border border-border bg-popover px-4 py-3 text-[13px] leading-5 text-popover-foreground shadow-lg">{notice}</div>}
+    {editor?.kind === 'agent' ? <BooModal agent={editor.initial as Agent | undefined} models={models} onClose={() => setEditor(null)} onSave={saveAgent} onDelete={id => void deleteAgent(id)} /> : null}
+    {editor?.kind === 'workspace' ? <WorkspaceModal workspace={editor.initial as Workspace | undefined} color={appearance.colors[(editor.initial as Workspace | undefined)?.id || ''] || colorForId((editor.initial as Workspace | undefined)?.id || 'novo')} onClose={() => setEditor(null)} onSave={saveWorkspace} onDelete={id => void deleteWorkspace(id)} onPickFolder={() => window.appAPI.pickFolder()} /> : null}
     <Suspense fallback={null}>
-      {editor && <Editor kind={editor.kind} initial={editor.initial} workspaceId={editor.workspaceId} defaultAgentIds={editor.workspaceId ? snapshot.workspaces.find(workspace => workspace.id === editor.workspaceId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={editor.kind === 'agent' ? saveAgent : editor.kind === 'workspace' ? saveWorkspace : saveConversation} onPickFolder={() => window.appAPI.pickFolder()} />}
+      {editor?.kind === 'conversation' ? <Editor kind="conversation" initial={editor.initial} workspaceId={editor.workspaceId} defaultAgentIds={editor.workspaceId ? snapshot.workspaces.find(workspace => workspace.id === editor.workspaceId)?.defaultAgentIds : undefined} workspaces={snapshot.workspaces} agents={snapshot.agents} models={models} onClose={() => setEditor(null)} onSave={saveConversation} onPickFolder={() => window.appAPI.pickFolder()} /> : null}
     </Suspense>
   </div></ModelSlotProvider>
 }

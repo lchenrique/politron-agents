@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import type { Agent, Conversation, Message, MessageAttachment } from '../../../../shared/v9'
 import { errorText } from '../app/appShellShared'
 import { Avatar } from '../app/Avatar'
+import { MiniBoo, normalizeVariant, safeHex } from '@/shell/primitives'
 import { RunProgress } from './RunProgress'
 import { speakVoice, stopVoice } from '../voice/voice-player'
 import { Message as ChatMessage, MessageContent, MessageFooter, MessageHeader } from '@/components/ui/message'
@@ -138,17 +139,22 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
   if (presentation === 'dsh') {
     // "Aguardando sua aprovação" já aparece na linha de status do turno; aqui só falha e interrupção.
     const statusLabel = message.status === 'failed' ? 'Falhou' : message.status === 'interrupted' ? 'Interrompido' : null
-    // Resposta = texto puro; hora, resumo do turno, copiar e ouvir flutuam numa barra que só aparece no hover/foco.
+    const dshName = agent?.name || message.author
+    const dshAccent = agent?.color || 'var(--accent-primary)'
+    // Bloco do agente como no mock: tile com a inicial, nome, papel · hora e corpo recuado.
     return <div className="min-w-0" data-actions-reveal="hover">
-      {showAgent && <div className={transcriptCss.boo}>
+      {(showAgent || message.role === 'assistant') && <div className="mb-1 flex items-center gap-2">
         <Avatar agent={agent} size="xxs" state={message.status === 'running' ? 'working' : message.status === 'waiting' ? 'waiting' : 'idle'} />
-        <span title={agent?.name || message.author}>{agent?.name || message.author}</span>
+        <span className="text-[12.5px] font-semibold text-[var(--text-primary)]" title={dshName}>{dshName}</span>
+        <span className="truncate font-mono text-[11px] text-[var(--text-muted)]">{agent?.alias ? `${agent.alias} · ` : ''}{time?.short}</span>
+        {message.status === 'waiting' && <span className="text-[11.5px] font-medium text-amber-400">aguarda sua aprovação</span>}
+        {message.status === 'queued' && <span className="text-[11.5px] text-[var(--text-muted)]">na fila</span>}
       </div>}
       {statusLabel && <div className={transcriptCss.note}>{statusLabel}</div>}
-      <div className={transcriptCss.reply}>
+      <div className={'pl-7 text-[13px] leading-relaxed text-[var(--text-primary)] ' + transcriptCss.reply}>
         {message.status === 'running' || message.status === 'waiting' ? <StreamingText text={message.text || ' '} /> : <AssistantUIMessageText />}
       </div>
-      {(canCopy || time || (canSpeak && message.status === 'completed' && message.text.trim())) && <div role="group" aria-label="Ações da mensagem" className={`${transcriptCss.actions} ${transcriptCss.toolbar}`}>
+      {(canCopy || time || (canSpeak && message.status === 'completed' && message.text.trim())) && <div role="group" aria-label="Ações da mensagem" className={`${transcriptCss.actions} ${transcriptCss.toolbar} pl-7`}>
         {time && <time dateTime={message.createdAt} title={time.full} className={transcriptCss.timeStart}>{time.short}</time>}
         {details && <span className={transcriptCss.toolbarInfo}>{details}</span>}
         {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} className={transcriptCss.action} />}
@@ -156,21 +162,28 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
       </div>}
     </div>
   }
+  // Bloco do agente como no design: tile de 20px com a inicial, nome, papel · hora em mono e
+  // o conteúdo recuado à esquerda. O corpo é o mesmo (markdown, streaming, anexos, ações).
+  const agentName = agent?.name || message.author
+  const initials = agentName.trim().slice(0, 1).toUpperCase()
+  const accent = agent?.color || 'var(--accent-primary)'
   return <ChatMessage align={human ? 'end' : 'start'} className="mb-6">
-    <MessageContent className={human ? 'w-fit max-w-[85%] gap-1' : 'max-w-[90%] gap-1'}>
+    <MessageContent className={human ? 'w-fit max-w-[82%] gap-1' : 'w-full max-w-none gap-1.5'}>
       {!human && <MessageHeader className="mb-1 flex items-center gap-2 px-0 text-foreground">
-        <span className="font-bold" title={agent?.name || message.author} style={agent?.color ? { color: agent.color } : undefined}>@{agent?.alias || message.author}</span>
-        {time && <time dateTime={message.createdAt} title={time.full} className="font-normal tabular-nums text-muted-foreground">{time.short}</time>}
-        {message.status === 'waiting' && <span className="font-normal text-warning">aguarda sua aprovação</span>}
-        {message.status === 'queued' && <span className="font-normal text-muted-foreground">na fila</span>}
-        {message.status === 'failed' && <span className="font-normal text-destructive">falhou</span>}
-        {message.status === 'interrupted' && <span className="font-normal text-muted-foreground">cancelada</span>}
+        <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center rounded-md text-[11px] font-bold" style={{ color: accent, background: `color-mix(in srgb, ${accent} 16%, transparent)`, border: `1px solid color-mix(in srgb, ${accent} 42%, transparent)` }}>{initials}</span>
+        <span className="text-[12.5px] font-semibold text-[var(--text-primary)]">{agentName}</span>
+        <span className="truncate font-mono text-[11px] text-[var(--text-muted)]">{agent?.alias ? `${agent.alias} · ` : ''}{time?.short}</span>
+        {message.status === 'waiting' && <span className="text-[11.5px] font-medium text-amber-400">aguarda sua aprovação</span>}
+        {message.status === 'queued' && <span className="text-[11.5px] text-[var(--text-muted)]">na fila</span>}
+        {message.status === 'failed' && <span className="text-[11.5px] text-rose-400">falhou</span>}
+        {message.status === 'interrupted' && <span className="text-[11.5px] text-[var(--text-muted)]">cancelada</span>}
         <span role="group" aria-label="Ações da mensagem" className="ml-auto flex items-center gap-0.5 empty:hidden">
           {canCopy && <CopyMessageButton text={message.text} onNotice={onNotice} />}
-          {canSpeak && message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 rounded-full text-muted-foreground" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz configurada no host." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
+          {canSpeak && message.role === 'assistant' && message.status === 'completed' && message.text.trim() && <Button size="icon" variant="ghost" className="size-6 rounded-full text-[var(--text-muted)]" aria-label={audioState === 'idle' ? 'Ouvir resposta do agente' : 'Parar áudio do agente'} title="Ouvir com a voz configurada no host." onClick={() => void speak()}>{audioState === 'loading' ? <LoaderCircle className="size-3.5 animate-spin" /> : audioState === 'speaking' ? <Square className="size-3" /> : <Volume2 className="size-3.5" />}</Button>}
         </span>
       </MessageHeader>}
-      {!human && message.role === 'assistant' && !(quietProgress && message.status === 'running') && <RunProgress status={message.status} agentName={agent?.name || message.author} />}
+      <div className={human ? '' : 'pl-7 text-[13px] leading-relaxed text-[var(--text-primary)]'}>
+      {!human && message.role === 'assistant' && !(quietProgress && message.status === 'running') && <RunProgress status={message.status} agentName={agentName} />}
       {human ? <><PastaMessageBubble from="user" status={message.status === 'failed' ? 'failed' : message.status === 'queued' || message.status === 'running' ? 'sending' : 'sent'} className="whitespace-pre-wrap">{message.text}</PastaMessageBubble>{message.status === 'failed' && <span className="text-xs text-destructive">Falha no envio da instrução.</span>}
         {message.attachments?.length ? <div className="mt-2 flex max-w-full flex-wrap gap-2">{message.attachments.map(attachment => <AttachmentPreview key={attachment.id} conversationId={message.conversationId} attachment={attachment} onNotice={onNotice} />)}</div> : null}
         {/* Ações do usuário aparecem ao passar o mouse ou focar; em telas sem hover ficam sempre visíveis. */}
@@ -183,8 +196,10 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
         : message.status === 'running' || message.status === 'waiting'
           ? <StreamingText text={message.text || ' '} />
           : <MessageMarkdown>{message.text}</MessageMarkdown>}
+      </div>
     </MessageContent>
   </ChatMessage>
+
 }, (previous, next) => previous.message.id === next.message.id
   && previous.message.role === next.message.role
   && previous.message.status === next.message.status

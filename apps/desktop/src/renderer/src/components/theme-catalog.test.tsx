@@ -14,9 +14,10 @@ afterEach(() => {
 })
 
 describe('sistema visual Boobot', () => {
-  it('registra um único tema com os modos Light e Dark', () => {
-    expect(THEMES.map(theme => theme.id)).toEqual(['boobot'])
+  it('registra o tema base com os modos Light e Dark e a variante Warm', () => {
+    expect(THEMES.map(theme => theme.id)).toEqual(['boobot', 'warm'])
     expect(THEMES[0].modes).toEqual(['light', 'dark'])
+    expect(THEMES[1].modes).toEqual(['dark'])
     expect(COLOR_MODES.map(mode => mode.label)).toEqual(['Light', 'Dark'])
   })
 
