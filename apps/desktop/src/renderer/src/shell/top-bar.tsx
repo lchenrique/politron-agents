@@ -73,6 +73,8 @@ export function TopBar({ project, projects, onSelectProject, status, onOpenComma
           </Dropdown>
         </div>
 
+        {/* Status quieto do projeto, como no mock: fica ao lado do seletor de projeto. */}
+        {status && <StatusPill tone={status.tone}>{status.text}</StatusPill>}
       </div>
 
       <div className="window-no-drag flex items-center gap-2">
@@ -81,8 +83,6 @@ export function TopBar({ project, projects, onSelectProject, status, onOpenComma
           <span>Buscar ou comando...</span>
           <Kbd className="border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]">Ctrl K</Kbd>
         </button>
-
-
 
         <div className="relative">
           <button
@@ -95,7 +95,8 @@ export function TopBar({ project, projects, onSelectProject, status, onOpenComma
             title="Opções de Layout, Colunas e Aparência"
           >
             <Columns3 className="size-3.5 text-[var(--accent-primary)]" />
-            <span className="hidden sm:inline">Layout &amp; Painéis</span>
+            {/* Só ícone: o nome ocupava largura sem acrescentar nada ao topo. O menu aberto
+                e o title dão o rótulo para quem precisa. */}
             <ChevronDown className="size-3 text-[var(--text-muted)]" />
           </button>
           <Dropdown open={menu === 'layout'} onClose={() => setMenu(null)} anchor={layoutTrigger} align="right" width={272}>

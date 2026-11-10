@@ -58,3 +58,49 @@ it('dispensar e cartão expirado ficam somente leitura', async () => {
   expect(screen.getByRole('status')).toHaveTextContent('Expirado')
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
 })
+
+const gateCard: InteractiveCard = {
+  id: 'gate-1', kind: 'choice', variant: 'decision-gate',
+  title: 'Decisão Supervisionada Solicitada pelo Chief',
+  badge: 'migrations/0042_slot_unique_idx.sql',
+  text: 'Escolha a estratégia que deve ser aplicada:',
+  confirmLabel: 'Aprovar & Executar',
+  options: [
+    { id: 'a', label: 'Opção A · Redis NX', description: 'Índice parcial CONCURRENTLY.', recommended: true },
+    { id: 'b', label: 'Opção B · Advisory Lock', description: 'Zero mudança de schema.' },
+  ],
+}
+
+it('cartão de decisão já vem na opção recomendada e mostra a ação primária', () => {
+  render(<InteractiveCardView card={gateCard} onAnswer={vi.fn()} />)
+  expect(screen.getByText('migrations/0042_slot_unique_idx.sql')).toBeTruthy()
+  expect(screen.getByText('Recomendado')).toBeTruthy()
+  const opcoes = screen.getAllByRole('radio')
+  expect(opcoes).toHaveLength(2)
+  expect(opcoes[0].getAttribute('aria-checked')).toBe('true')
+  expect(opcoes[1].getAttribute('aria-checked')).toBe('false')
+  expect(screen.getByRole('button', { name: /Aprovar & Executar Opção A/ })).toBeTruthy()
+})
+
+it('cartão de decisão envia a opção escolhida, e não a recomendada, quando o usuário troca', async () => {
+  const onAnswer = vi.fn(async () => undefined)
+  render(<InteractiveCardView card={gateCard} onAnswer={onAnswer} />)
+  fireEvent.click(screen.getAllByRole('radio')[1])
+  fireEvent.click(screen.getByRole('button', { name: /Aprovar & Executar Opção B/ }))
+  await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ status: 'answered', values: { choice: 'b' } }))
+})
+
+it('cartão de decisão resolvido fica somente leitura e mostra a opção aprovada', () => {
+  render(<InteractiveCardView card={gateCard} resolved={{ status: 'answered', values: { choice: 'a' } }} onAnswer={vi.fn()} />)
+  expect(screen.getByLabelText('Decisão registrada')).toBeTruthy()
+  expect(screen.getByText(/Opção A · Redis NX/)).toBeTruthy()
+  expect(screen.queryByRole('radio')).toBeNull()
+})
+
+it('cartão de decisão expõe a ação secundária só quando existe handler', () => {
+  const { unmount } = render(<InteractiveCardView card={gateCard} onAnswer={vi.fn()} />)
+  expect(screen.queryByRole('button', { name: /Inspecionar no Diff/ })).toBeNull()
+  unmount()
+  render(<InteractiveCardView card={gateCard} onAnswer={vi.fn()} onInspect={vi.fn()} />)
+  expect(screen.getByRole('button', { name: /Inspecionar no Diff/ })).toBeTruthy()
+})

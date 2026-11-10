@@ -11,6 +11,9 @@
   line-height: 1.65;
   color: var(--text-primary);
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  /* `break-word` e não `anywhere`: os dois quebram texto longo igual, mas só
+   * `anywhere` reduz o tamanho intrínseco mínimo a um carácter, o que deixa o
+   * balão colapsar quando a largura disponível é apertada. */
+  overflow-wrap: break-word;
   word-break: normal;
 }

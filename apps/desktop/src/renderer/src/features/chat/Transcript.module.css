@@ -140,6 +140,9 @@
   border-radius: 14px 14px 4px 14px;
   font-size: 14px;
   line-height: 21px;
+  /* O limite de largura é do .userStack. Repetir a porcentagem aqui encolhia o
+   * balão duas vezes e fazia "oi" quebrar em duas linhas. */
+  max-width: 100%;
 }
 
 /* Hora e ações flutuam à esquerda do balão: não ocupam uma linha embaixo dele. */

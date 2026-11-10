@@ -5,6 +5,7 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "set ELECTRON_RUN_AS_NODE=&& electron-vite dev",
+    "dev:sem-gpu-sandbox": "set ELECTRON_RUN_AS_NODE=&& electron-vite dev -- --disable-gpu-sandbox --disable-gpu-process-crash-limit",
     "build": "set ELECTRON_RUN_AS_NODE=&& electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",

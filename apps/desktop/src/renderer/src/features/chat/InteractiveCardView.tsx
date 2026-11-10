@@ -2,16 +2,19 @@ import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { isCardExpired, redactAnswer, validateAnswer, type CardAnswer, type InteractiveCard } from '../../../../shared/interactive-card'
+import { DecisionGateCard } from './DecisionGateCard'
 
 /**
  * Cartão interativo do Boo no transcript. Depois da resposta (ou da expiração) o cartão fica só leitura
  * e mostra o resumo sem os campos secretos. A resposta vai por `onAnswer`; nada é executado aqui.
  */
-export function InteractiveCardView({ card, resolved, onAnswer }: {
+export function InteractiveCardView({ card, resolved, onAnswer, onInspect }: {
   card: InteractiveCard
   /** Resposta já registrada (cartão persistido); torna o cartão somente leitura. */
   resolved?: CardAnswer
   onAnswer: (answer: CardAnswer) => Promise<void> | void
+  /** Ação secundária do cartão de decisão (abrir o diff citado na etiqueta). */
+  onInspect?: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -35,6 +38,11 @@ export function InteractiveCardView({ card, resolved, onAnswer }: {
     <p className="font-medium">{card.title}</p>
     {card.text && <p className="mt-1 text-sm text-muted-foreground">{card.text}</p>}
   </>
+
+  // Cartão de decisão do mock: layout próprio, com opções lado a lado e ação primária.
+  if (card.kind === 'choice' && card.variant === 'decision-gate') {
+    return <DecisionGateCard card={card} resolved={final} onAnswer={onAnswer} onInspect={onInspect} />
+  }
 
   if (final) return <section aria-label="Cartão do Boo" className="max-w-xl rounded-lg border border-border/60 bg-card p-3 text-sm">
     {heading}

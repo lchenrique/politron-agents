@@ -4,6 +4,7 @@
  * Cada componente aparece duas vezes: painel claro (`.dsh-light`) e escuro (`.dsh-dark`).
  */
 import { useRef, useState, type ReactNode } from 'react'
+import { InteractiveCardView } from '../chat/InteractiveCardView'
 import {
   AnimatedRows, Button, CodeFileIcon, FoldToggle, Checkbox, CodeBlock, CommandText, DetailDocument, DiffBlock, DisclosureRow, FileTypeIcon,
   HoverCard, HoverCardGroup, IconBrowseOutlineRegular, IconSearchOutlineRegular, IconSettingsOutlineRegular,
@@ -278,6 +279,47 @@ function Pane({ mode }: { mode: 'light' | 'dark' }) {
       <Section title="Linhas de ferramenta (ToolRow / ToolCallTree)">
         <Column>
           {TOOL_CALLS.map(call => <ToolCallTree key={call.id} call={call} onOpenFile={() => undefined} />)}
+        </Column>
+      </Section>
+
+      {/* Cartão de decisão do mock: estado pendente e estado já aprovado. */}
+      <Section title="Cartão de decisão (DecisionGateCard)">
+        <Column>
+          <InteractiveCardView
+            card={{
+              id: 'gate-pendente',
+              kind: 'choice',
+              variant: 'decision-gate',
+              title: 'Decisão Supervisionada Solicitada pelo Chief',
+              badge: 'migrations/0042_slot_unique_idx.sql',
+              text: 'Para blindar o banco contra concorrência mesmo se o Redis reiniciar, escolha a estratégia que deve ser aplicada:',
+              confirmLabel: 'Aprovar & Executar',
+              options: [
+                { id: 'a', label: 'Opção A · Redis NX + Unique Index', description: 'Cria índice parcial CONCURRENTLY sem bloquear leituras.', recommended: true },
+                { id: 'b', label: 'Opção B · Apenas Advisory Lock PG', description: 'Zero mudança de schema, trava apenas em nível de transação.' },
+              ],
+            }}
+            onAnswer={() => undefined}
+            onInspect={() => undefined}
+          />
+          <InteractiveCardView
+            card={{
+              id: 'gate-aprovado',
+              kind: 'choice',
+              variant: 'decision-gate',
+              title: 'Decisão Supervisionada Solicitada pelo Chief',
+              badge: 'migrations/0042_slot_unique_idx.sql',
+              text: 'Para blindar o banco contra concorrência mesmo se o Redis reiniciar, escolha a estratégia que deve ser aplicada:',
+              confirmLabel: 'Aprovar & Executar',
+              options: [
+                { id: 'a', label: 'Opção A · Redis NX + Unique Index', description: 'Cria índice parcial CONCURRENTLY sem bloquear leituras.', recommended: true },
+                { id: 'b', label: 'Opção B · Apenas Advisory Lock PG', description: 'Zero mudança de schema, trava apenas em nível de transação.' },
+              ],
+            }}
+            resolved={{ status: 'answered', values: { choice: 'a' } }}
+            onAnswer={() => undefined}
+            onInspect={() => undefined}
+          />
         </Column>
       </Section>
     </div>

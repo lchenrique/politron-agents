@@ -2,7 +2,7 @@
  * Contrato dos cartões interativos que um Boo mostra no chat (desktop) ou num canal de texto (Telegram).
  * Todo cartão tem uma versão em texto (`cardFallbackText`) para canais sem botões.
  */
-export type CardOption = { id: string; label: string; description?: string }
+export type CardOption = { id: string; label: string; description?: string; /** Marca a opção sugerida (badge "Recomendado" no cartão de decisão). */ recommended?: boolean }
 
 export type CardField = {
   id: string; label: string; placeholder?: string; required?: boolean
@@ -15,7 +15,16 @@ type CardBase = { id: string; title: string; text?: string; /** ISO 8601; depois
 export type InteractiveCard = CardBase & (
   | { kind: 'confirm'; confirmLabel?: string; cancelLabel?: string }
   | { kind: 'quick-replies'; options: CardOption[] }
-  | { kind: 'choice'; options: CardOption[]; multiple?: boolean; min?: number; max?: number }
+  | { kind: 'choice'; options: CardOption[]; multiple?: boolean; min?: number; max?: number
+      /**
+       * `decision-gate` usa o layout do cartão de decisão do mock: cabeçalho com pulso âmbar,
+       * etiqueta mono, opções lado a lado e ação primária. Sem este campo, o cartão é a lista simples.
+       */
+      variant?: 'decision-gate'
+      /** Etiqueta mono do cabeçalho; caminho de arquivo ou id da migração em jogo. */
+      badge?: string
+      /** Rótulo da ação primária do cartão de decisão. Padrão: "Aprovar". */
+      confirmLabel?: string }
   | { kind: 'form'; fields: CardField[]; submitLabel?: string }
 )
 
@@ -44,6 +53,11 @@ export function validateCard(card: InteractiveCard): string | null {
   if (card.kind === 'choice' && card.multiple) {
     const { min = 0, max = card.options.length } = card
     if (min < 0 || max < min || max > card.options.length) return 'Limites de seleção inválidos.'
+  }
+  if (card.kind === 'choice' && card.variant === 'decision-gate') {
+    // O cartão de decisão do mock é uma escolha única com ação primária.
+    if (card.multiple) return 'O cartão de decisão aceita uma única opção.'
+    if ((card.badge?.length ?? 0) > CARD_LIMITS.label * 2) return 'Etiqueta do cartão longa demais.'
   }
   if (card.kind === 'form') {
     if (!card.fields.length || card.fields.length > CARD_LIMITS.fields) return `Use de 1 a ${CARD_LIMITS.fields} campos.`
@@ -79,7 +93,7 @@ export function cardFallbackText(card: InteractiveCard): string {
   const lines = [card.title, ...(card.text ? [card.text] : [])]
   if (card.kind === 'confirm') lines.push(`Responda "sim" para ${card.confirmLabel || 'confirmar'} ou "não" para ${card.cancelLabel || 'cancelar'}.`)
   if (card.kind === 'quick-replies' || card.kind === 'choice') {
-    card.options.forEach((option, index) => lines.push(`${index + 1}. ${option.label}${option.description ? `: ${option.description}` : ''}`))
+    card.options.forEach((option, index) => lines.push(`${index + 1}. ${option.label}${option.recommended ? ' (recomendado)' : ''}${option.description ? `: ${option.description}` : ''}`))
     lines.push(card.kind === 'choice' && card.multiple ? 'Responda com os números separados por vírgula.' : 'Responda com o número da opção.')
   }
   if (card.kind === 'form') {
