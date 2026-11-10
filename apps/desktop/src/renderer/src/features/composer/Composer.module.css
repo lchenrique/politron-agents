@@ -42,7 +42,13 @@
 
 /* Linha única: + 32px à esquerda, ícones de 32px e enviar/parar 36px à direita. */
 .promptCard :global(button[type="submit"]), .promptCard :global(button[aria-label="Parar geração"]) { width: 28px !important; height: 28px !important; min-width: 28px !important; }
-.promptCard :global(button[aria-label="Anexar arquivos"]) { width: 28px !important; height: 28px !important; border-radius: 999px !important; color: var(--dsw-alias-label-secondary, var(--muted-foreground)); }
+.promptCard :global(button[aria-label="Anexar arquivo, comando ou permissão"]) { width: 28px !important; height: 28px !important; border-radius: 999px !important; color: var(--dsw-alias-label-secondary, var(--muted-foreground)); }
+
+/* Planejamento ligado: o "+" fica marcado, substituindo o botão da prancheta que saiu da linha. */
+.promptCard :global(button[data-plan-mode="true"]) {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary, var(--primary)) 14%, transparent) !important;
+  color: var(--dsw-alias-state-business-primary, var(--primary)) !important;
+}
 
 .root:has(.queue) .promptCard {
   border-top-left-radius: 0 !important;
@@ -131,3 +137,17 @@
   .column { padding-inline: 16px; }
   .queue { width: calc(100% - 32px); }
 }
+
+/* Seletor de modelo no formato do mock: texto leve e curto, sem empurrar o campo. */
+.promptCard :global(button[aria-label="Selecionar modelo"]) {
+  height: 28px !important;
+  max-width: 168px;
+  padding: 0 6px !important;
+  font-size: 11px !important;
+  color: var(--text-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.promptCard :global(button[aria-label="Selecionar modelo"]) span { min-width: 0; }

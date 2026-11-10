@@ -15,6 +15,13 @@ export const aliasFor = (name: string) => name.normalize('NFD').replace(/[̀-ͯ]
 /** Sentinela do composer: nenhuma mudança de modelo/esforço para este envio, cada participante usa o que está configurado no seu perfil. */
 export const INHERIT_MODEL_NAME = 'Usar o modelo do agente'
 
+/** Nome de exibição do modelo configurado no Boo (o catálogo usa a chave `provedor:modelo`). */
+export const agentModelLabel = (agent: Pick<Agent, 'runtime' | 'model'> | null | undefined, models: readonly { id?: string; name: string }[]) => {
+  if (!agent?.model) return undefined
+  const key = `${agent.runtime}:${agent.model}`
+  return models.find(model => (model.id || model.name) === key)?.name || agent.model
+}
+
 /** Mesma escala de esforço do editor de agente, em rótulos para o seletor do composer. */
 export const EFFORT_LEVELS: NonNullable<Agent['effort']>[] = ['low', 'medium', 'high', 'xhigh', 'max']
 export const EFFORT_LABELS: Record<NonNullable<Agent['effort']>, string> = { low: 'Baixo', medium: 'Equilibrado', high: 'Alto', xhigh: 'Muito alto', max: 'Máximo' }

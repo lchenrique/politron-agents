@@ -4,7 +4,6 @@ import { FolderOpen, Globe, MoreHorizontal, Search, Settings2, UserRound } from 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/layout/PageShell'
-import { ModelSlot } from '../composer/ComposerModelSlot'
 import { Menu, MenuSurface, useAnchoredPosition, useDismissOnOutsidePointer } from '@/components/dsh'
 import type { Agent, Conversation, MessageSearchHit, Workspace } from '../../../../shared/v9'
 import { MiniBoo, normalizeVariant, safeHex } from '@/shell/primitives'
@@ -157,7 +156,8 @@ export function ChatHeader(props: ConversationChromeProps) {
       </div>
     </div>
     <div className="flex shrink-0 items-center gap-1">
-      <ModelSlot />
+      {/* O seletor de modelo mora no composer, como no mock. Sem este encaixe,
+          o Composer renderiza o controle dentro da própria barra de mensagem. */}
       <ConversationTools {...props} />
     </div>
   </header>

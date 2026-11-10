@@ -28,9 +28,13 @@ interface PromptInputProps extends Omit<React.ComponentProps<'form'>, 'onSubmit'
   onValueChange?: (value: string) => void
   onStop?: () => void
   onExtraAction?: () => void
+  /** Substitui o "+": recebe a ação que abre o seletor de arquivos nativo (para o gatilho abrir um menu). */
+  attachTrigger?: (openFiles: () => void) => ReactNode
   extraControls?: ReactNode
   /** Controles logo à esquerda do botão de enviar. */
   trailingControls?: ReactNode
+  /** Conteúdo compacto à esquerda do campo, ao lado do botão de anexar (a pílula do destinatário). */
+  leadingChip?: ReactNode
   suggestions?: ReactNode
   textareaRef?: React.Ref<HTMLTextAreaElement>
   onCaretChange?: (value: string, caret: number) => void
@@ -60,8 +64,10 @@ function PromptInput({
   onValueChange,
   onStop,
   onExtraAction,
+  attachTrigger,
   extraControls,
   trailingControls,
+  leadingChip,
   suggestions,
   textareaRef: forwardedTextareaRef,
   onCaretChange,
@@ -132,7 +138,12 @@ function PromptInput({
     }
   }
 
-  const attachButton = showAttachments && <Button type="button" variant="ghost" size="icon" aria-label="Anexar arquivos" title="Anexar arquivos" onClick={() => { if (onExtraAction) onExtraAction(); else fileInputRef.current?.click() }}><span aria-hidden="true">＋</span></Button>
+  const openFilePicker = () => fileInputRef.current?.click()
+  // Sem slot, o "+" abre o seletor direto (ou avisa o dono pelo onExtraAction); com slot,
+  // quem renderiza o gatilho decide — no composer ele abre o menu de anexar/planejar.
+  const attachButton = showAttachments && (attachTrigger
+    ? attachTrigger(openFilePicker)
+    : <Button type="button" variant="ghost" size="icon" aria-label="Anexar arquivos" title="Anexar arquivos" onClick={() => { if (onExtraAction) onExtraAction(); else openFilePicker() }}><span aria-hidden="true">＋</span></Button>)
   const submitButton = (
         <Button
           aria-label={pending ? 'Parar geração' : submitLabel}
@@ -269,6 +280,7 @@ function PromptInput({
       )}
       {inline ? <div className="flex items-end gap-1">
         <div className="flex shrink-0 items-center pb-0.5">{attachButton}</div>
+        {leadingChip && <div className="flex shrink-0 items-center pb-0.5">{leadingChip}</div>}
         {textareaElement}
         <div className="flex shrink-0 items-center gap-1 pb-0.5">{extraControls}{trailingControls}{submitButton}</div>
       </div> : textareaElement}

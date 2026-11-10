@@ -43,14 +43,22 @@ async function main() {
     assert.ok(nav.x >= scroller.x && nav.x + nav.width <= chat.x, `navegador dentro do chat e à esquerda (nav ${nav.x}, chat ${chat.x}, área ${scroller.x})`)
     await page.screenshot({ path: path.join(shots, 'chat.png') })
 
-    // Composer: uma linha só e modelo como ícone.
+    // Composer: uma linha só, "+" com menu e o modelo escrito, como no mock.
     await open('/composer-gallery', 'textarea[aria-label="Message"]')
+    await page.getByRole('button', { name: 'Livre', exact: true }).click()
     const text = await box(page.locator('textarea[aria-label="Message"]'))
     const send = await box(page.locator('form[data-slot="prompt-input"] button[type="submit"]'))
-    const attach = await box(page.getByRole('button', { name: 'Anexar arquivos' }))
-    assert.ok(Math.abs((text.y + text.height / 2) - (send.y + send.height / 2)) < 12 && Math.abs((attach.y + attach.height / 2) - (send.y + send.height / 2)) < 12, 'anexar, texto e enviar na mesma linha')
-    assert.ok(attach.x < text.x && text.x < send.x, 'anexar à esquerda, enviar à direita')
-    assert.ok((await box(page.getByRole('button', { name: 'Selecionar modelo' }))).width <= 40, 'seletor de modelo compacto')
+    const attach = page.getByRole('button', { name: 'Anexar arquivo, comando ou permissão' })
+    const attachBox = await box(attach)
+    assert.ok(Math.abs((text.y + text.height / 2) - (send.y + send.height / 2)) < 12 && Math.abs((attachBox.y + attachBox.height / 2) - (send.y + send.height / 2)) < 12, 'anexar, texto e enviar na mesma linha')
+    assert.ok(attachBox.x < text.x && text.x < send.x, 'anexar à esquerda, enviar à direita')
+    // A prancheta saiu da linha: o planejamento agora mora no menu do "+".
+    assert.equal(await page.getByRole('button', { name: 'Modo planejamento' }).count(), 0, 'sem botão de planejamento na linha')
+    await attach.click()
+    assert.deepEqual((await page.getByRole('menuitem').allInnerTexts()).map(label => label.trim()), ['Anexar arquivos', 'Modo planejamento'], 'menu do "+"')
+    await page.locator('[data-dsh-menu-surface]').last().screenshot({ path: path.join(shots, 'composer-menu.png') })
+    await page.keyboard.press('Escape')
+    assert.match(await page.getByRole('button', { name: 'Selecionar modelo' }).innerText(), /Modelo de demonstração/, 'modelo escrito no composer')
     await page.locator('form[data-slot="prompt-input"]').screenshot({ path: path.join(shots, 'composer.png') })
 
     // Sidebar: item ativo, Novo Boo e rodapé em linha.

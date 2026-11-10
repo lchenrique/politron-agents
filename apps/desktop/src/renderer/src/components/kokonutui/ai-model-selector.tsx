@@ -28,6 +28,8 @@ export interface AIModelSelectorProps {
   onChange: (value: ModelSelection) => void
   disabled?: boolean
   className?: string
+  /** Nome exibido quando o valor é herança (`Usar o modelo do agente`): o modelo real do Boo. */
+  inheritLabel?: string
   /** Só o ícone no gatilho; nome, esforço e opções ficam no título e no painel. */
   compact?: boolean
   /** Lado em que o painel abre: no composer sobe (`top`); na barra superior desce (`bottom`). */
@@ -104,7 +106,7 @@ const toTrackModel = (model: ModelChoice): ModelOption => ({
   supportsFastMode: model.supportsFastMode,
 })
 
-export default function AIModelSelector({ models, providers, value, onChange, disabled = false, className, compact = false, side = 'top' }: AIModelSelectorProps) {
+export default function AIModelSelector({ models, providers, value, onChange, disabled = false, className, inheritLabel, compact = false, side = 'top' }: AIModelSelectorProps) {
   const [open, setOpen] = useState(false)
   const [providerId, setProviderId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -127,6 +129,8 @@ export default function AIModelSelector({ models, providers, value, onChange, di
   }, [models, providers])
 
   const selected = models.find(model => model.enabled !== false && (modelKey(model) === value.model || model.name === value.model))
+  // Herança: o gatilho mostra o modelo do Boo, não o rótulo da herança.
+  const inheritName = inheritLabel || INHERIT_MODEL_NAME
   const trackModel = selected ? toTrackModel(selected) : undefined
   const currentEffort = trackModel?.efforts.find(level => level.id === value.effort) ||
     trackModel?.efforts.find(level => level.id === selected?.defaultEffort) ||
@@ -193,7 +197,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
     <div ref={rootRef} className={cn('relative min-w-0 max-w-full', className)}>
       <button ref={triggerRef} type="button" disabled={disabled}
         aria-label="Selecionar modelo" aria-expanded={open} aria-controls={panelId} aria-haspopup="dialog"
-        title={selected ? [selected.name, selected.provider, currentEffort?.label, currentServiceTier?.name, currentVariant?.name, value.fastMode ? 'Modo rápido' : ''].filter(Boolean).join(' · ') : INHERIT_MODEL_NAME}
+        title={selected ? [selected.name, selected.provider, currentEffort?.label, currentServiceTier?.name, currentVariant?.name, value.fastMode ? 'Modo rápido' : ''].filter(Boolean).join(' · ') : inheritName}
         onKeyDown={event => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
         onClick={() => { if (open) close(); else { setOpen(true); requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true })) } }}
         className={cn('flex h-8 max-w-[min(16rem,100%)] items-center gap-1.5 rounded-full border border-transparent px-2 text-xs text-foreground',
@@ -201,7 +205,7 @@ export default function AIModelSelector({ models, providers, value, onChange, di
           compact && 'w-8 justify-center px-0 text-muted-foreground hover:text-foreground',
           open && 'bg-accent')}>
         {compact ? <Cpu aria-hidden className="size-4" /> : <>
-        <span className="min-w-0 truncate font-medium">{selected?.name || INHERIT_MODEL_NAME}</span>
+        <span className="min-w-0 truncate font-medium">{selected?.name || inheritName}</span>
         {trackModel && currentEffort && <span className="hidden shrink-0 items-center gap-1.5 text-muted-foreground sm:flex">
           <EffortGlyph count={trackModel.efforts.length} level={effortIndexValue} />
           {currentEffort.label}

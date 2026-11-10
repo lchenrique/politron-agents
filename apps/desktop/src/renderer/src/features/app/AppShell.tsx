@@ -23,7 +23,7 @@ import { modelOptions } from '../composer/model-options'
 import { DockWorkspace, type DockWorkspaceHandle, type DockTool, type DockZone } from '../panels/DockWorkspace'
 import type { EditorData, EditorKind } from '../editors/Editor'
 import type { SettingsSection } from './SettingsPage'
-import { INHERIT_MODEL_NAME, emptySnapshot, errorText } from './appShellShared'
+import { INHERIT_MODEL_NAME, agentModelLabel, emptySnapshot, errorText } from './appShellShared'
 import { selectDescendantApprovals, selectVisibleRunEvidence } from './delegation-evidence'
 import { replaceEqualDeep } from '@tanstack/react-query'
 import { ChiefHome } from '../work/ChiefHome'
@@ -355,6 +355,11 @@ export default function AppShell() {
   }
   const chatRuntime = useV1ThreadRuntime(submitMessage)
   const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
+  // Herança no composer: o rótulo é o modelo real do Boo que responde (o nome do catálogo),
+  // sem trocar o envio — a herança continua sendo o que o host resolve por participante.
+  const composerInheritModelName = useMemo(() => selected
+    ? agentModelLabel(agentOf(selected.leaderAgentId || null) || selectedAgents[0] || snapshot.assistant, promptOptions.models)
+    : undefined, [selected, agentOf, selectedAgents, snapshot.assistant, promptOptions.models])
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
   const openHome = useCallback((next: HomeView) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next) }, [])
   useEffect(() => { const open = (event: Event) => { const section = (event as CustomEvent).detail; setSettingsSection(section === 'voz' || section === 'conexoes' || section === 'atualizacoes' ? section : 'geral'); setSettingsOpen(true) }; window.addEventListener('boobot:open-settings', open); return () => window.removeEventListener('boobot:open-settings', open) }, [])
@@ -600,6 +605,7 @@ export default function AppShell() {
               models={promptOptions.models}
               modelProviders={promptOptions.providers}
               defaultModelName={selectedModelName}
+              inheritModelName={composerInheritModelName}
               defaultEffort={selectedEffort}
               onModelChange={setSelectedModelName}
               onSubmit={chatRuntime.send}

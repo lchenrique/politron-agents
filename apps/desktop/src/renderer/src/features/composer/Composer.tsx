@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ClipboardList, LoaderCircle, Mic, Square } from 'lucide-react'
+import { LoaderCircle, Mic, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { ModelChoice, ModelProviderChoice } from './model-options'
 import AIModelSelector, { type ModelSelection } from '@/components/kokonutui/ai-model-selector'
 import type { Agent, FileChange, Message, ModelEffort, ModelRuntimeOptions } from '../../../../shared/v9'
 import { QueuedMessages } from './QueuedMessages'
 import { CompletedFileReview } from '../diff/CompletedFileReview'
-import { INHERIT_MODEL_NAME, errorText } from '../app/appShellShared'
+import { INHERIT_MODEL_NAME, agentModelLabel, errorText } from '../app/appShellShared'
 import { VoiceRecorder } from '../voice/voice-recorder'
 import { PromptInput } from '@/components/ai/prompt-input'
+import { AgentChip } from './AgentChip'
+import { AttachMenu } from './AttachMenu'
 import { MentionSuggestions } from './MentionSuggestions'
 import { getMentionQuery, replaceMention, type MentionQuery } from './mentions'
 import { useModelSlotNode } from './modelSlotContext'
@@ -30,7 +32,7 @@ const initialModelOptions = (models: ComposerModel[], name?: string): ModelRunti
   }
 }
 
-export function Composer({ models, modelProviders, defaultModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName }: {
+export function Composer({ models, modelProviders, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName }: {
   /** Boo que recebe a mensagem: o campo diz "Mensagem para <Boo>". */
   recipientName?: string
   reviewChanges?: FileChange[]
@@ -46,6 +48,8 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
   models: ComposerModel[]
   modelProviders?: ModelProviderChoice[]
   defaultModelName?: string
+  /** Nome do modelo que o Boo destinatário usa: é o rótulo exibido enquanto a seleção é herança. */
+  inheritModelName?: string
   defaultEffort?: Agent['effort']
   onModelChange: (model: string) => void
   onSubmit: (value: string, modelName: string, options: { files: File[]; effort: Agent['effort']; modelOptions: ModelRuntimeOptions; planMode?: boolean; delivery: 'queue' | 'now'; requestId: string }) => Promise<void>
@@ -110,7 +114,19 @@ export function Composer({ models, modelProviders, defaultModelName, defaultEffo
     textareaRef.current.setSelectionRange(caret, caret)
   }, [value])
 
-  useEffect(() => { setMention(null); dismissedMention.current = null }, [conversationId, mentionAgents])
+  // Destinatário escolhido na pílula. A escolha vira menção no texto, então o roteamento
+  // que já existe (@alias) endereça só para esse Boo.
+  const [target, setTarget] = useState<Agent | null>(null)
+  const chooseTarget = (agent: Agent) => {
+    setTarget(agent)
+    if (!agent.alias) return
+    const mention = `@${agent.alias}`
+    setValue(current => (current.startsWith(mention) ? current : `${mention} ${current}`.trimEnd()))
+  }
+  useEffect(() => { setMention(null); dismissedMention.current = null; setTarget(null) }, [conversationId, mentionAgents])
+  // Herança mostra o modelo real de quem responde: o alvo escolhido na pílula manda;
+  // sem escolha, vale o Boo que o AppShell já resolveu para esta conversa.
+  const inheritLabel = (target ? agentModelLabel(target, models) : undefined) || inheritModelName
   const model = modelName === INHERIT_MODEL_NAME ? INHERIT_OPTION : models.find(item => item.enabled !== false && ((item.id || item.name) === modelName || item.name === modelName)) || INHERIT_OPTION
   const efforts = model === INHERIT_OPTION ? [] : model.efforts || []
   const selectedEffort = efforts.includes(effort) ? effort : model.defaultEffort && efforts.includes(model.defaultEffort) ? model.defaultEffort : efforts[0]
@@ -242,7 +258,10 @@ ${message.text}` : message.text)
     pendingCaret.current = Number.MAX_SAFE_INTEGER
   })
 
-  const modelPicker = <AIModelSelector key={conversationId} compact={!modelSlot} side={modelSlot ? 'bottom' : 'top'} models={models} providers={modelProviders}
+  // Sempre com o nome do modelo à vista: o seletor mora no composer, como no mock,
+  // e ali há espaço para o texto em vez do ícone compacto.
+  const modelPicker = <AIModelSelector key={conversationId} compact={false} side={modelSlot ? 'bottom' : 'top'} models={models} providers={modelProviders}
+    inheritLabel={inheritLabel}
     value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort, ...modelOptions }}
     onChange={changeModel} disabled={busy} />
 
@@ -252,6 +271,7 @@ ${message.text}` : message.text)
       <PromptInput
         className={styles.promptCard}
         inline
+        leadingChip={mentionAgents.length > 0 ? <AgentChip agents={mentionAgents} selected={target} onSelect={chooseTarget} /> : undefined}
         value={value}
         onValueChange={setValue}
         textareaRef={textareaRef}
@@ -297,17 +317,12 @@ ${message.text}` : message.text)
         accept={`${canAttachImages ? 'image/png,image/jpeg,image/webp,' : ''}text/*,.md,.txt,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml`}
         onStop={onStop}
         submitLabel={working ? 'Adicionar à fila' : 'Enviar mensagem'}
-        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : recipientName ? `Mensagem para ${recipientName}` : 'Escreva uma mensagem…'}
+        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : `Mensagem para ${target?.name || recipientName || 'o Boo'}...`}
         onSubmit={(message, selection) => { void submit(message, selection.files) }}
         trailingControls={working && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" title="Parar geração" onClick={onStop}><Square className="size-4 fill-current" /></Button>}
+        attachTrigger={openFiles => <AttachMenu openFiles={openFiles} planMode={planMode} disabled={busy}
+          onTogglePlanMode={() => setPlanMode(current => !current)} />}
         extraControls={<>
-          <Button type="button" size="sm" variant={planMode ? 'secondary' : 'ghost'}
-            aria-label="Modo planejamento" aria-pressed={planMode}
-            title={planMode ? 'Planejamento ativo: não altera arquivos' : 'Ativar planejamento sem alterações'}
-            disabled={busy} onClick={() => setPlanMode(current => !current)}
-            className="size-8 shrink-0 rounded-full p-0 text-muted-foreground hover:text-foreground aria-pressed:bg-primary-soft aria-pressed:text-primary-soft-foreground">
-            <ClipboardList className="size-4" />
-          </Button>
           {!modelSlot && modelPicker}
           <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground" aria-label={recording ? 'Parar gravação de voz' : 'Gravar áudio'} title={recording ? 'Parar e transcrever' : 'Ditado por voz local'} disabled={transcribing} onClick={() => void toggleRecord()}>
             {transcribing ? <LoaderCircle /> : recording ? <Square /> : <Mic />}

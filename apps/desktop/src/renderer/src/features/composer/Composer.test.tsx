@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Composer } from './Composer'
 import { ModelSlot, ModelSlotProvider } from './ComposerModelSlot'
 import type { Agent } from '../../../../shared/v9'
@@ -29,7 +29,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
 describe('Composer compacto e elástico', () => {
   it('diz para quem vai a mensagem', () => {
     const { textarea } = setup({ recipientName: 'Atlas' })
-    expect(textarea).toHaveAttribute('placeholder', 'Mensagem para Atlas')
+    expect(textarea).toHaveAttribute('placeholder', 'Mensagem para Atlas...')
   })
 
   it('com a barra superior do chat presente, o seletor de modelo sai do composer e mantém a lógica de modelo', () => {
@@ -40,17 +40,33 @@ describe('Composer compacto e elástico', () => {
     const row = (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).parentElement!
     expect(row).not.toContainElement(picker)
     expect(picker).toHaveTextContent('Modelo real')
-    for (const name of ['Anexar arquivos', 'Modo planejamento', 'Gravar áudio', 'Enviar mensagem']) expect(row).toContainElement(screen.getByRole('button', { name }))
+    for (const name of ['Anexar arquivo, comando ou permissão', 'Gravar áudio', 'Enviar mensagem']) expect(row).toContainElement(screen.getByRole('button', { name }))
+    // A prancheta saiu da linha: planejamento agora mora no menu do "+".
+    expect(screen.queryByRole('button', { name: 'Modo planejamento' })).not.toBeInTheDocument()
   })
 
-  it('fica numa linha: anexar, texto, plano, modelo, microfone e enviar', () => {
+  it('fica numa linha: anexar (com menu), texto, modelo, microfone e enviar', () => {
     const { textarea } = setup()
     const row = textarea.parentElement!
-    for (const name of ['Anexar arquivos', 'Modo planejamento', 'Selecionar modelo', 'Gravar áudio', 'Enviar mensagem']) expect(row).toContainElement(screen.getByRole('button', { name }))
+    for (const name of ['Anexar arquivo, comando ou permissão', 'Selecionar modelo', 'Gravar áudio', 'Enviar mensagem']) expect(row).toContainElement(screen.getByRole('button', { name }))
     const model = screen.getByRole('button', { name: 'Selecionar modelo' })
-    expect(model).not.toHaveTextContent('Modelo real')
+    expect(model).toHaveTextContent('Modelo real')
     expect(model).toHaveAttribute('title', expect.stringContaining('Modelo real'))
-    expect(screen.getByRole('button', { name: 'Modo planejamento' })).not.toHaveTextContent('Plano')
+  })
+
+  it('o "+" abre o menu do mock: anexar arquivos e modo planejamento', () => {
+    setup()
+    const trigger = screen.getByRole('button', { name: 'Anexar arquivo, comando ou permissão' })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Anexar arquivos', 'Modo planejamento'])
+    const picker = screen.getByLabelText('Upload files') as HTMLInputElement
+    const click = vi.spyOn(picker, 'click').mockImplementation(() => undefined)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Anexar arquivos' }))
+    expect(click).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
   })
 
   it('continua pronto para a primeira mensagem quando a conversa está vazia', async () => {
@@ -63,11 +79,14 @@ describe('Composer compacto e elástico', () => {
 
   it('aplica planejamento a um envio e permite executar no próximo pedido', async () => {
     const { textarea, onSubmit } = setup()
-    fireEvent.click(screen.getByRole('button', { name: 'Modo planejamento' }))
+    const trigger = screen.getByRole('button', { name: 'Anexar arquivo, comando ou permissão' })
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Modo planejamento' }))
+    expect(trigger).toHaveAttribute('data-plan-mode', 'true')
     fireEvent.change(textarea, { target: { value: 'Planeje a LP' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Planeje a LP', 'Modelo real', expect.objectContaining({ planMode: true })))
-    expect(screen.getByRole('button', { name: 'Modo planejamento' })).toHaveAttribute('aria-pressed', 'false')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Anexar arquivo, comando ou permissão' })).not.toHaveAttribute('data-plan-mode'))
     fireEvent.change(textarea, { target: { value: 'Pode fazer' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
     await waitFor(() => expect(onSubmit).toHaveBeenLastCalledWith('Pode fazer', 'Modelo real', expect.objectContaining({ planMode: false })))
@@ -86,12 +105,13 @@ describe('Composer compacto e elástico', () => {
 
   it('mantém o planejamento ao restaurar um envio que falhou', async () => {
     const { textarea } = setup({ onSubmit: vi.fn().mockRejectedValue(new Error('Sem conexão')) })
-    fireEvent.click(screen.getByRole('button', { name: 'Modo planejamento' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Anexar arquivo, comando ou permissão' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Modo planejamento' }))
     fireEvent.change(textarea, { target: { value: 'Planeje a página' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
     await screen.findByRole('alert')
     expect(textarea).toHaveValue('Planeje a página')
-    expect(screen.getByRole('button', { name: 'Modo planejamento' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Anexar arquivo, comando ou permissão' })).toHaveAttribute('data-plan-mode', 'true')
   })
 
   it('grava, transcreve localmente e insere a fala como rascunho editável sem enviar automaticamente', async () => {
@@ -245,6 +265,33 @@ describe('modelo do agente não é sobrescrito por padrão', () => {
     fireEvent.keyDown(textarea, { key: 'Enter' })
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce())
     expect(onSubmit).toHaveBeenCalledWith('oi', 'Usar o modelo do agente', expect.objectContaining({ effort: undefined }))
+  })
+
+  it('mostra o modelo real do Boo no lugar do rótulo de herança e continua herdando', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(<Composer conversationId="inherit-label" models={[{ id: 'claude:claude-sonnet-4-5', name: 'Claude 4.5 Sonnet', provider: 'Claude' }]}
+      defaultModelName="Usar o modelo do agente" inheritModelName="Claude 4.5 Sonnet" onModelChange={vi.fn()} onSubmit={onSubmit} onStop={vi.fn()} />)
+    const selector = screen.getByRole('button', { name: 'Selecionar modelo' })
+    expect(selector).toHaveTextContent('Claude 4.5 Sonnet')
+    expect(selector).not.toHaveTextContent('Usar o modelo do agente')
+    const textarea = screen.getByRole('textbox', { name: 'Message' })
+    fireEvent.change(textarea, { target: { value: 'oi' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('oi', 'Usar o modelo do agente', expect.any(Object)))
+  })
+
+  it('ao escolher o destinatário, o rótulo passa a ser o modelo do Boo escolhido', () => {
+    const names = ['Claude 4.5 Sonnet', 'GPT-5']
+    const atlas = { id: 'atlas', name: 'Atlas', alias: 'atlas', color: '#786bea', avatar: '', runtime: 'claude', model: 'claude-sonnet-4-5' } as Agent
+    render(<Composer conversationId="inherit-target" mentionAgents={[atlas]} models={[
+      { id: 'claude:claude-sonnet-4-5', name: names[0], provider: 'Claude' },
+      { id: 'codex:gpt-5', name: names[1], provider: 'Codex' },
+    ]} defaultModelName="Usar o modelo do agente" inheritModelName="GPT-5" onModelChange={vi.fn()} onSubmit={vi.fn()} onStop={vi.fn()} />)
+    const selector = screen.getByRole('button', { name: 'Selecionar modelo' })
+    expect(selector).toHaveTextContent('GPT-5')
+    fireEvent.click(screen.getByRole('button', { name: /@Atlas/ }))
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: /Atlas/ }))
+    expect(selector).toHaveTextContent('Claude 4.5 Sonnet')
   })
 })
 
