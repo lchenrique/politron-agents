@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { FolderGit2, Trash2, X } from 'lucide-react'
 import type { Agent, Model, Workspace } from '../../../shared/v9'
 import type { EditorData } from '@/features/editors/Editor'
@@ -17,7 +17,6 @@ const RUNTIMES: ReadonlyArray<{ id: Agent['runtime']; label: string }> = [
   { id: 'claude', label: 'Claude Code CLI' },
   { id: 'pi', label: 'Pi Coding Agent' },
   { id: 'opencode', label: 'OpenCode' },
-  { id: 'antigravity', label: 'Antigravity' },
 ]
 
 function ModalShell({ title, subtitle, leading, onClose, children, footer }: {
@@ -28,6 +27,19 @@ function ModalShell({ title, subtitle, leading, onClose, children, footer }: {
   children: React.ReactNode
   footer: React.ReactNode
 }) {
+  // Diálogo próprio, sem Radix: sem este listener o Esc não fechava o modal, só o X ou o fundo.
+  // Menus e selects flutuantes consomem o Esc primeiro; nesse caso o modal fica aberto.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('[data-radix-popper-content-wrapper],[role="menu"],[role="listbox"]')) return
+      if (document.querySelector('[data-radix-popper-content-wrapper]')) return
+      onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section role="dialog" aria-modal="true" aria-label={title} className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-2xl">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-3.5">

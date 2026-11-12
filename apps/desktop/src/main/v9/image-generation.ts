@@ -11,13 +11,13 @@ export type SecretStore = { has(): Promise<boolean>; load(): Promise<string | nu
 type CliResult = { code: number | null; stdout: string; stderr: string }
 export type CliRunner = (binary: string, args: string[], options: { cwd?: string; timeout: number }) => Promise<CliResult>
 
-const PROVIDERS: ImageGenerationProvider[] = ['off', 'codex', 'antigravity', 'api']
+const PROVIDERS: ImageGenerationProvider[] = ['off', 'codex', 'api']
 const API_PROVIDERS: ImageApiProvider[] = ['openai', 'gemini', 'openrouter']
 const MODEL_ID = /^[a-z0-9][a-z0-9._/:-]{1,119}$/i
 const SIZE = /^(auto|\d{3,4}x\d{3,4})$/
 const CLI_TIMEOUT = 5 * 60_000
 const API_TIMEOUT = 3 * 60_000
-export const NOT_CONFIGURED = 'A geração de imagens não está configurada. Peça ao usuário para escolher um provedor em Configurações → Geração de imagens (Codex, Antigravity ou uma chave de API).'
+export const NOT_CONFIGURED = 'A geração de imagens não está configurada. Peça ao usuário para escolher um provedor em Configurações → Geração de imagens (Codex ou uma chave de API).'
 
 export function sniffImage(bytes: Uint8Array): ImageMime | null {
   const at = (offset: number, signature: number[]) => signature.every((value, index) => bytes[offset + index] === value)
@@ -74,7 +74,7 @@ async function codexMcpServerNames(file: string): Promise<string[]> {
   try { return [...new Set([...(await fs.readFile(file, 'utf8')).matchAll(/^\[mcp_servers\.([A-Za-z0-9_-]+)\]\s*$/gm)].map(match => match[1]))] } catch { return [] }
 }
 
-/** stdin fechado na hora: `codex exec` e `agy -p` esperam EOF antes de começar. */
+/** stdin fechado na hora: `codex exec` espera EOF antes de começar. */
 const runCli: CliRunner = (binary, args, { cwd, timeout }) => new Promise((resolve, reject) => {
   const child = spawnCli(binary, args, { cwd, windowsHide: true, stdio: 'pipe' })
   let stdout = '', stderr = ''
@@ -89,6 +89,8 @@ const runCli: CliRunner = (binary, args, { cwd, timeout }) => new Promise((resol
 /** Imagem mais recente criada depois de `since` nas pastas indicadas (até dois níveis abaixo). */
 async function newestImage(directories: string[], since: number): Promise<GeneratedImage | null> {
   let best: { path: string; time: number } | null = null
+  // Margem de 2 s: o mtime do sistema de arquivos pode ser truncado (segundos) e ficar "antes" do início do pedido.
+  const floor = since - 2_000
   const visit = async (directory: string, depth: number) => {
     const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => [])
     for (const entry of entries) {
@@ -96,7 +98,7 @@ async function newestImage(directories: string[], since: number): Promise<Genera
       if (entry.isDirectory()) { if (depth < 2) await visit(path, depth + 1); continue }
       if (!/\.(png|jpe?g|webp)$/i.test(entry.name)) continue
       const time = (await fs.stat(path).catch(() => null))?.mtimeMs ?? 0
-      if (time >= since && (!best || time > best.time)) best = { path, time }
+      if (time >= floor && (!best || time > best.time)) best = { path, time }
     }
   }
   for (const directory of directories) await visit(directory, 0)
@@ -136,8 +138,8 @@ export class ImageGenerationService {
   }
 
   async status(): Promise<ImageGenerationStatus> {
-    const [settings, codex, antigravity, ...keys] = await Promise.all([this.settings(), this.engineAvailability('codex'), this.engineAvailability('antigravity'), ...API_PROVIDERS.map(id => this.keys[id].has())])
-    return { ...settings, keys: Object.fromEntries(API_PROVIDERS.map((id, index) => [id, keys[index]])) as Record<ImageApiProvider, boolean>, engines: { codex, antigravity } }
+    const [settings, codex, ...keys] = await Promise.all([this.settings(), this.engineAvailability(), ...API_PROVIDERS.map(id => this.keys[id].has())])
+    return { ...settings, keys: Object.fromEntries(API_PROVIDERS.map((id, index) => [id, keys[index]])) as Record<ImageApiProvider, boolean>, engines: { codex } }
   }
 
   async save(input: ImageGenerationSettings, apiKey?: string): Promise<ImageGenerationStatus> {
@@ -160,16 +162,13 @@ export class ImageGenerationService {
     return this.status()
   }
 
-  async engineAvailability(engine: 'codex' | 'antigravity'): Promise<{ available: boolean; reason?: string }> {
-    const name = engine === 'codex' ? 'Codex' : 'Antigravity'
+  async engineAvailability(): Promise<{ available: boolean; reason?: string }> {
+    const name = 'Codex'
     try {
-      const result = engine === 'codex'
-        ? await this.run(this.codexBinary(), ['login', 'status'], { timeout: 15_000 })
-        // O agy não tem "login status"; o catálogo de modelos só responde com a conta logada.
-        : await this.run(this.agyBinary(), ['models'], { timeout: 20_000 })
+      const result = await this.run(this.codexBinary(), ['login', 'status'], { timeout: 15_000 })
       const output = result.stdout + result.stderr
-      if (result.code === 0 && (engine === 'antigravity' || /logged in/i.test(output) && !/not logged in/i.test(output))) return { available: true }
-      return { available: false, reason: `O ${name} está instalado, mas não parece logado. Faça login no CLI (${engine === 'codex' ? 'codex login' : 'agy'}) e teste de novo.` }
+      if (result.code === 0 && /logged in/i.test(output) && !/not logged in/i.test(output)) return { available: true }
+      return { available: false, reason: `O ${name} está instalado, mas não parece logado. Faça login no CLI (codex login) e teste de novo.` }
     } catch { return { available: false, reason: `O ${name} não foi encontrado neste computador.` } }
   }
 
@@ -180,11 +179,10 @@ export class ImageGenerationService {
     const settings = await this.settings()
     if (settings.provider === 'off') throw new Error(NOT_CONFIGURED)
     if (settings.provider === 'api') return this.generateWithApi(settings, text, chosenSize)
-    return settings.provider === 'codex' ? this.generateWithCodex(text, chosenSize) : this.generateWithAntigravity(text, chosenSize)
+    return this.generateWithCodex(text, chosenSize)
   }
 
   private codexBinary() { return process.env.POLITRON_CODEX_BINARY || 'codex' }
-  private agyBinary() { return process.platform === 'win32' ? 'agy.exe' : 'agy' }
 
   /**
    * O Codex grava a saída da ferramenta image_gen em $CODEX_HOME/generated_images/<thread>/.
@@ -205,20 +203,6 @@ export class ImageGenerationService {
       const image = await newestImage(thread ? [join(root, thread)] : [root], since)
       if (image) return image
       throw new Error(`O Codex não gerou a imagem.${result.code ? ` Código ${result.code}.` : ''} Confira se o login é de uma conta ChatGPT com geração de imagens e tente de novo.${lastError(result)}`)
-    } finally { await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined) }
-  }
-
-  /** O agy delega ao subagente image-generator e salva o arquivo na pasta brain da conversa. */
-  private async generateWithAntigravity(prompt: string, size: string): Promise<GeneratedImage> {
-    const cwd = await fs.mkdtemp(join(tmpdir(), 'boobot-imagem-'))
-    const since = Date.now()
-    try {
-      const result = await this.run(this.agyBinary(), ['-p', enginePrompt(prompt, size), '--output-format', 'stream-json', '--sandbox', '--dangerously-skip-permissions', '--disable-slash-commands'], { cwd, timeout: CLI_TIMEOUT })
-      const conversations = [...result.stdout.matchAll(/"conversation_id"\s*:\s*"([^"]+)"/g)].map(match => match[1])
-      const brain = join(this.home, '.gemini', 'antigravity-cli', 'brain')
-      const image = await newestImage([...new Set(conversations)].map(id => join(brain, id)).concat(cwd), since)
-      if (image) return image
-      throw new Error(`O Antigravity não gerou a imagem.${result.code ? ` Código ${result.code}.` : ''} Confira o login do agy e tente de novo.${lastError(result)}`)
     } finally { await fs.rm(cwd, { recursive: true, force: true }).catch(() => undefined) }
   }
 

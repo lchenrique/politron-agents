@@ -24,9 +24,9 @@ export interface ModelProviderChoice {
   emptyMessage?: string
 }
 
-const PROVIDER_ORDER: ProviderId[] = ['codex', 'claude', 'antigravity', 'opencode', 'pi']
+const PROVIDER_ORDER: ProviderId[] = ['codex', 'claude', 'opencode', 'pi']
 const PROVIDER_NAMES: Record<ProviderId, string> = {
-  codex: 'Codex', claude: 'Claude', antigravity: 'Antigravity', opencode: 'OpenCode', pi: 'Pi',
+  codex: 'Codex', claude: 'Claude', opencode: 'OpenCode', pi: 'Pi',
 }
 
 /** Mantém o catálogo completo para consulta e distingue os modelos que podem responder. */

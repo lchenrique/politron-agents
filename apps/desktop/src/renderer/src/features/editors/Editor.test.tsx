@@ -263,3 +263,26 @@ describe('editor de agentes com Poli Studio', () => {
     })))
   })
 })
+
+describe('fechamento do editor com Esc', () => {
+  it('fecha pelo teclado, sem exigir o X nem o fundo', () => {
+    const onClose = vi.fn()
+    render(<Editor kind="workspace" agents={[]} models={[]} workspaces={[]} onClose={onClose} onSave={vi.fn()} onPickFolder={vi.fn().mockResolvedValue(null)} />)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('não fecha o editor quando o Esc é de um menu flutuante aberto', () => {
+    const onClose = vi.fn()
+    render(<Editor kind="workspace" agents={[]} models={[]} workspaces={[]} onClose={onClose} onSave={vi.fn()} onPickFolder={vi.fn().mockResolvedValue(null)} />)
+    const popper = document.createElement('div')
+    popper.setAttribute('data-radix-popper-content-wrapper', '')
+    document.body.appendChild(popper)
+    try {
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(onClose).not.toHaveBeenCalled()
+    } finally {
+      popper.remove()
+    }
+  })
+})

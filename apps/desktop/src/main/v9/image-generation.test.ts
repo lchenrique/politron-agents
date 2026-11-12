@@ -26,7 +26,7 @@ describe('configuração da geração de imagens', () => {
     const service = new ImageGenerationService(dir, { run: loggedIn })
     await expect(service.save({ provider: 'api', apiProvider: 'openai', model: '' })).rejects.toThrow(/Cole a chave/)
     const status = await service.save({ provider: 'api', apiProvider: 'openai', model: '' }, 'sk-test-0123456789abcdefghij')
-    expect(status).toMatchObject({ provider: 'api', apiProvider: 'openai', model: 'gpt-image-2.5-flare', keys: { openai: true, gemini: false, openrouter: false }, engines: { codex: { available: true }, antigravity: { available: true } } })
+    expect(status).toMatchObject({ provider: 'api', apiProvider: 'openai', model: 'gpt-image-2.5-flare', keys: { openai: true, gemini: false, openrouter: false }, engines: { codex: { available: true } } })
     expect(JSON.stringify(status)).not.toContain('sk-test')
     const { readFileSync } = await import('node:fs')
     expect(readFileSync(join(dir, 'image-generation.json'), 'utf8')).not.toContain('sk-test')
@@ -35,9 +35,9 @@ describe('configuração da geração de imagens', () => {
 
   it('mostra motor não logado ou ausente com o motivo', async () => {
     const notLogged = new ImageGenerationService(directory(), { run: async () => ({ code: 1, stdout: 'Not logged in', stderr: '' }) })
-    expect((await notLogged.engineAvailability('codex')).reason).toMatch(/não parece logado/)
+    expect((await notLogged.engineAvailability()).reason).toMatch(/não parece logado/)
     const missing = new ImageGenerationService(directory(), { run: async () => { throw new Error('ENOENT') } })
-    expect(await missing.engineAvailability('antigravity')).toEqual({ available: false, reason: 'O Antigravity não foi encontrado neste computador.' })
+    expect(await missing.engineAvailability()).toEqual({ available: false, reason: 'O Codex não foi encontrado neste computador.' })
   })
 })
 
@@ -93,27 +93,13 @@ describe('motores logados', () => {
     } finally { if (previous !== undefined) process.env.CODEX_HOME = previous }
   })
 
-  it('Antigravity: lê a imagem da pasta brain da conversa e falha com mensagem quando nada é gerado', async () => {
-    const home = directory()
-    const run = vi.fn<CliRunner>(async (_binary, args) => {
-      if (args[0] !== '-p') return { code: 0, stdout: 'm\tModelo', stderr: '' }
-      if (args[1].includes('falhar')) return { code: 0, stdout: '{"event":"init","conversation_id":"c-2"}', stderr: '' }
-      const folder = join(home, '.gemini', 'antigravity-cli', 'brain', 'c-1')
-      mkdirSync(folder, { recursive: true }); writeFileSync(join(folder, 'out_1.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]))
-      return { code: 0, stdout: '{"event":"init","conversation_id":"c-1"}', stderr: '' }
-    })
-    const service = new ImageGenerationService(directory(), { run, home })
-    await service.save({ provider: 'antigravity', apiProvider: 'openai', model: '' })
-    expect((await service.generate('banner')).mimeType).toBe('image/jpeg')
-    await expect(service.generate('falhar')).rejects.toThrow(/Antigravity não gerou a imagem/)
-  })
 })
 
-// Geração real: BOOBOT_RUN_IMAGE_LIVE=codex|antigravity npx vitest run src/main/v9/image-generation.test.ts
-it.skipIf(!['codex', 'antigravity'].includes(process.env.BOOBOT_RUN_IMAGE_LIVE || ''))('gera uma imagem real com o motor logado', async () => {
-  const provider = process.env.BOOBOT_RUN_IMAGE_LIVE as 'codex' | 'antigravity'
+// Geração real: BOOBOT_RUN_IMAGE_LIVE=codex npx vitest run src/main/v9/image-generation.test.ts
+it.skipIf(process.env.BOOBOT_RUN_IMAGE_LIVE !== 'codex')('gera uma imagem real com o motor logado', async () => {
+  const provider = 'codex' as const
   const service = new ImageGenerationService(directory())
-  expect((await service.engineAvailability(provider)).available).toBe(true)
+  expect((await service.engineAvailability()).available).toBe(true)
   await service.save({ provider, apiProvider: 'openai', model: '' })
   const image = await service.generate('Ícone flat de um pequeno robô sorridente, fundo liso.', '1024x1024')
   expect(['image/png', 'image/jpeg', 'image/webp']).toContain(image.mimeType)

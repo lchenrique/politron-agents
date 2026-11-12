@@ -2,14 +2,14 @@
   position: relative;
   z-index: 7;
   flex: none;
-  /* Respiro inferior como o dock do DSH (pílulas + margem): o cartão não cola na borda da janela. */
-  padding: 8px 0 20px;
+  /* Respiro do mock: pt-1 (4 px) e pb-3 (12 px) em volta da pílula. */
+  padding: 4px 0 12px;
 }
 
-/* Mesma coluna do stream do design: 740px centrados, como no HTML de referência. */
+/* Mesma coluna do stream do design: 740px de conteúdo, com 16px de respiro nas laterais. */
 .column {
   width: 100%;
-  max-width: 740px;
+  max-width: 772px;
   margin-inline: auto;
   padding-inline: 16px;
 }
@@ -18,31 +18,81 @@
   display: flex !important;
   flex-direction: column;
   gap: 4px !important;
-  padding: 6px !important;
-  border: 1px solid var(--border-default) !important;
-  border-radius: 24px !important;
-  background: var(--bg-elevated) !important;
+  /* Layout empilhado: campo em cima, controles embaixo, com os tokens do tema Carbon. */
+  padding: 10px 10px 8px !important;
+  border: 1px solid var(--composer-border, var(--border-default)) !important;
+  border-radius: 20px !important;
+  background: var(--composer-surface, var(--bg-elevated)) !important;
   box-shadow: var(--shadow-lg) !important;
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .promptCard:focus-within {
-  border-color: var(--border-strong) !important;
-  box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-default) !important;
+  border-color: var(--composer-border-focus, var(--border-strong)) !important;
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--composer-border, var(--border-default)) !important;
 }
 
-/* Botão enviar do HTML: círculo claro com seta escura. */
+/* Botão enviar no acento do tema (esmeralda no Carbon), como o composer de referência. */
 .promptCard :global(button[type="submit"]) {
-  background: var(--text-primary) !important;
+  background: var(--accent-primary, var(--primary)) !important;
   background-image: none !important;
-  color: var(--bg-app) !important;
+  color: #ffffff !important;
 }
 
-.promptCard :global(button[type="submit"]):hover { background: #ffffff !important; }
+.promptCard :global(button[type="submit"]):hover { background: var(--accent-primary, var(--primary)) !important; filter: brightness(1.08); }
 
-/* Linha única: + 32px à esquerda, ícones de 32px e enviar/parar 36px à direita. */
+/* Vazio: o botão continua no acento do tema, só mais apagado (o composer de referência mostra a cor sempre). */
+.promptCard :global(button[type="submit"]:disabled) {
+  background: color-mix(in srgb, var(--accent-primary, var(--primary)) 55%, transparent) !important;
+  color: #ffffff !important;
+  cursor: not-allowed;
+}
+/* Seta de 14 px e traço 2.5, como o ícone do mock. */
+.promptCard :global(button[type="submit"]) :global(svg) { width: 14px !important; height: 14px !important; stroke-width: 2.5 !important; }
+
+/* Linha única do mock: tudo com 28 px de altura e alinhado pela base. */
 .promptCard :global(button[type="submit"]), .promptCard :global(button[aria-label="Parar geração"]) { width: 28px !important; height: 28px !important; min-width: 28px !important; }
-.promptCard :global(button[aria-label="Anexar arquivo, comando ou permissão"]) { width: 28px !important; height: 28px !important; border-radius: 999px !important; color: var(--dsw-alias-label-secondary, var(--muted-foreground)); }
+.promptCard :global(button[aria-label="Anexar arquivo, comando ou permissão"]) {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 999px !important;
+  color: var(--composer-plus, var(--text-secondary)) !important;
+}
+.promptCard :global(button[aria-label="Anexar arquivo, comando ou permissão"]):hover {
+  background: var(--composer-hover-surface, var(--bg-hover)) !important;
+  color: var(--text-primary) !important;
+}
+.promptCard :global(button[aria-label="Anexar arquivo, comando ou permissão"]) :global(svg) { width: 16px !important; height: 16px !important; }
+
+/* Ditado por voz: 28 px com ícone de 14 px, na cor do mock. */
+.promptCard :global(button[aria-label="Gravar áudio"]), .promptCard :global(button[aria-label="Parar gravação de voz"]) {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  color: var(--composer-mic, var(--text-muted)) !important;
+}
+.promptCard :global(button[aria-label="Gravar áudio"]):hover, .promptCard :global(button[aria-label="Parar gravação de voz"]):hover {
+  background: var(--composer-hover-surface, var(--bg-hover)) !important;
+  color: var(--text-primary) !important;
+}
+.promptCard :global(button[aria-label="Gravar áudio"]) :global(svg), .promptCard :global(button[aria-label="Parar gravação de voz"]) :global(svg) { width: 14px !important; height: 14px !important; }
+
+/* Pílula do destinatário: h-7, px-2.5, fundo #222222 e borda #303030 no Carbon. */
+.promptCard :global(button[title="Escolher agente destinatário"]) {
+  background: var(--composer-chip-surface, var(--bg-hover)) !important;
+  border-color: var(--composer-chip-border, var(--border-default)) !important;
+  color: var(--composer-chip-text, var(--text-primary)) !important;
+}
+.promptCard :global(button[title="Escolher agente destinatário"]):hover {
+  background: color-mix(in srgb, var(--composer-chip-surface, var(--bg-hover)) 70%, var(--composer-hover-surface, var(--bg-active))) !important;
+}
+
+/* Acesso total: âmbar, a mesma cor dos avisos de permissão do app. */
+.promptCard :global(button[data-approval-mode="bypass"]) {
+  color: var(--warning, #f59e0b) !important;
+  border-color: color-mix(in srgb, var(--warning, #f59e0b) 45%, transparent) !important;
+  background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent) !important;
+}
 
 /* Planejamento ligado: o "+" fica marcado, substituindo o botão da prancheta que saiu da linha. */
 .promptCard :global(button[data-plan-mode="true"]) {
@@ -56,10 +106,13 @@
 }
 
 .promptCard :global(textarea[aria-label="Message"]) {
-  min-height: 24px !important;
-  max-height: 68px;
-  padding: 1px 4px !important;
+  /* Campo em cima, uma linha confortável que cresce até seis linhas. */
+  min-height: 34px !important;
+  max-height: 132px;
+  padding: 1px 2px !important;
+  border-radius: 0 !important;
   font-size: 13px !important;
+  font-weight: 400 !important;
   line-height: 22px !important;
   caret-color: var(--dsw-alias-state-business-primary, var(--primary));
 }
@@ -141,13 +194,22 @@
 /* Seletor de modelo no formato do mock: texto leve e curto, sem empurrar o campo. */
 .promptCard :global(button[aria-label="Selecionar modelo"]) {
   height: 28px !important;
+  gap: 4px;
   max-width: 168px;
-  padding: 0 6px !important;
+  padding: 0 8px !important;
   font-size: 11px !important;
-  color: var(--text-muted) !important;
+  line-height: 16.5px !important;
+  color: var(--composer-model-text, var(--text-muted)) !important;
   background: transparent !important;
   border: 0 !important;
+  border-color: transparent !important;
   box-shadow: none !important;
 }
 
+.promptCard :global(button[aria-label="Selecionar modelo"]):hover {
+  background: var(--composer-hover-surface, var(--bg-hover)) !important;
+  color: var(--text-primary) !important;
+}
+
 .promptCard :global(button[aria-label="Selecionar modelo"]) span { min-width: 0; }
+.promptCard :global(button[aria-label="Selecionar modelo"]) :global(svg) { width: 12px !important; height: 12px !important; }

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { errorText } from './appShellShared'
 
-const IMAGE_PROVIDER_LABEL: Record<ImageGenerationSettings['provider'], string> = { off: 'Desativada', codex: 'Codex (conta ChatGPT)', antigravity: 'Antigravity (Gemini)', api: 'Chave de API' }
+const IMAGE_PROVIDER_LABEL: Record<ImageGenerationSettings['provider'], string> = { off: 'Desativada', codex: 'Codex (conta ChatGPT)', api: 'Chave de API' }
 const IMAGE_API_LABEL: Record<ImageApiProvider, string> = { openai: 'OpenAI (GPT Image)', gemini: 'Google Gemini (Nano Banana)', openrouter: 'OpenRouter' }
 
 /** Escolha do provedor da ferramenta generate_image; a chave salva nunca volta ao renderer. */
@@ -15,11 +15,11 @@ export function ImageGenerationPanel() {
   const [key, setKey] = useState(''), [busy, setBusy] = useState<'' | 'save' | 'test'>(''), [feedback, setFeedback] = useState(''), [preview, setPreview] = useState('')
   useEffect(() => {
     let active = true
-    // A leitura consulta o login do Codex e do agy; pode levar alguns segundos.
+    // A leitura consulta o login do Codex; pode levar alguns segundos.
     void window.appAPI.imageGenerationStatus().then(value => { if (!active) return; setStatus(value); setDraft({ provider: value.provider, apiProvider: value.apiProvider, model: value.model }) }).catch(error => { if (active) setFeedback(errorText(error)) })
     return () => { active = false }
   }, [])
-  const engine = draft.provider === 'codex' || draft.provider === 'antigravity' ? status?.engines[draft.provider] : null
+  const engine = draft.provider === 'codex' ? status?.engines.codex : null
   const hasKey = !!status?.keys[draft.apiProvider]
   const saved = !!status && status.provider === draft.provider && status.apiProvider === draft.apiProvider && status.model === draft.model && !key.trim()
   const save = async () => {
@@ -42,9 +42,9 @@ export function ImageGenerationPanel() {
   const warn = 'rounded-md text-xs leading-5 text-muted-foreground data-[tone=warning]:border data-[tone=warning]:border-warning/30 data-[tone=warning]:bg-warning-soft data-[tone=warning]:px-3 data-[tone=warning]:py-2 data-[tone=warning]:text-foreground'
   return <div className="space-y-4">
     <label className="block space-y-1.5 text-xs font-medium">Quem gera as imagens<Select value={draft.provider} onValueChange={value => setDraft(current => ({ ...current, provider: value as ImageGenerationSettings['provider'] }))}><SelectTrigger aria-label="Quem gera as imagens" className="h-10"><SelectValue /></SelectTrigger><SelectContent>{(Object.keys(IMAGE_PROVIDER_LABEL) as ImageGenerationSettings['provider'][]).map(id => <SelectItem key={id} value={id}>{IMAGE_PROVIDER_LABEL[id]}</SelectItem>)}</SelectContent></Select></label>
-    {(draft.provider === 'codex' || draft.provider === 'antigravity') && <p data-tone={engine && !engine.available ? 'warning' : undefined} className={warn}>
+    {draft.provider === 'codex' && <p data-tone={engine && !engine.available ? 'warning' : undefined} className={warn}>
       {!status ? 'Verificando o login do CLI…' : engine?.available
-        ? draft.provider === 'codex' ? 'Codex logado. Usa a geração de imagens da sua conta ChatGPT, sem chave extra. Cada imagem leva cerca de um minuto.' : 'Antigravity logado. Usa o gerador de imagens do Gemini na sua conta Google, sem chave extra. Cada imagem leva cerca de um minuto.'
+        ? 'Codex logado. Usa a geração de imagens da sua conta ChatGPT, sem chave extra. Cada imagem leva cerca de um minuto.'
         : engine?.reason}
     </p>}
     {draft.provider === 'api' && <>

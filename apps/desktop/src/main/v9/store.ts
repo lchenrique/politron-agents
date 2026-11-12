@@ -2,12 +2,14 @@ import { DatabaseSync } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
-import { ASSISTANT_ID, randomPitColor, type Agent, type Approval, type ApprovalGrant, type BoardEvidence, type BoardEvent, type BoardTask, type BoardTaskMission, type BoardTeam, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type SidebarLayout, type Snapshot, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, randomPitColor, type ModelPreferences, type Agent, type Approval, type ApprovalGrant, type BoardEvidence, type BoardEvent, type BoardTask, type BoardTaskMission, type BoardTeam, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type SidebarLayout, type Snapshot, type Workspace } from '../../shared/v9'
 import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 import { ensureMemorySchema, MemoryBank } from './memories'
 import { ensureWaitSchema, WaitBank } from './waits'
 
 export const SCHEMA_VERSION = 12
+const RUNTIMES: Agent['runtime'][] = ['codex', 'claude', 'pi', 'opencode']
+
 export const ASSISTANT: Agent = {
   id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: 'Assistente padrão do aplicativo, sem cadastro.',
   instructions: 'Você é o Assistente padrão do Boobot. Responda de forma direta e útil. Você não tem acesso a arquivos nem ao navegador, a menos que as ferramentas correspondentes sejam disponibilizadas nesta conversa.',
@@ -23,10 +25,12 @@ function normalizeWorkspace(value: Workspace): Workspace {
   const defaultAgentIds = Array.isArray(value.defaultAgentIds) ? value.defaultAgentIds.filter((id): id is string => typeof id === 'string') : []
   return { ...value, defaultAgentIds }
 }
-export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode' | 'runtimePermissionMode'>
+export type AssistantPreferences = Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode' | 'runtimePermissionMode'> & { color?: string }
 export type SessionBinding = { key: string; threadId: string; runtime: Agent['runtime'] | null; contextVersion: number; deliveredDigests: Record<string, string> }
 const DEFAULT_ASSISTANT_PREFERENCES: AssistantPreferences = { canWrite: true, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed' }
-function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'ghost-wave', approvalMode: value.approvalMode === 'automatic' || value.approvalMode === 'bypass' ? value.approvalMode : 'ask', runtimePermissionMode: value.runtimePermissionMode === 'bypass' ? 'bypass' : 'managed' } }
+function normalizeAgent(value: Agent): Agent { return { ...value, pitsShape: ['round', 'flat', 'long', 'drop', 'squircle', 'bean', 'ghost-wave', 'ghost-puff', 'ghost-peak', 'cute-squid', 'soft-square', 'little-cat'].includes(value.pitsShape || '') ? value.pitsShape : 'ghost-wave', approvalMode: value.approvalMode === 'automatic' || value.approvalMode === 'bypass' ? value.approvalMode : 'ask', runtimePermissionMode: value.runtimePermissionMode === 'bypass' ? 'bypass' : 'managed',
+  // Motor que saiu do produto volta como Codex em vez de deixar o Boo com um motor inválido.
+  runtime: (['codex', 'claude', 'pi', 'opencode'] as const).includes(value.runtime) ? value.runtime : 'codex' } }
 
 const EMPTY_SIDEBAR_LAYOUT: SidebarLayout = { projectOrder: [], groups: [], sessionOrder: {}, agentOrder: [] }
 const LAYOUT_ERROR = 'Ordem do sidebar inválida.'
@@ -318,7 +322,9 @@ export class WorkspaceStore {
       canWrite: read('canWrite')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.canWrite : read('canWrite')?.value === 'true',
       computerUse: read('computerUse')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.computerUse : read('computerUse')?.value === 'true',
       approvalMode: read('approvalMode')?.value === 'automatic' || read('approvalMode')?.value === 'bypass' ? read('approvalMode')!.value as Agent['approvalMode'] : 'ask',
-      runtimePermissionMode: read('runtimePermissionMode')?.value === 'bypass' ? 'bypass' : 'managed'
+      runtimePermissionMode: read('runtimePermissionMode')?.value === 'bypass' ? 'bypass' : 'managed',
+      // A cor do Assistente não tem cadastro em v9_agents: fica nas preferências dele, como as permissões.
+      color: /^#[\da-f]{6}$/i.test(read('color')?.value || '') ? read('color')!.value : ASSISTANT.color
     }
   }
   saveAssistantPreferences(input: Partial<AssistantPreferences>): Agent {
@@ -327,14 +333,46 @@ export class WorkspaceStore {
       canWrite: input.canWrite ?? previous.canWrite,
       computerUse: input.computerUse ?? previous.computerUse,
       approvalMode: input.approvalMode ?? previous.approvalMode,
-      runtimePermissionMode: input.runtimePermissionMode ?? previous.runtimePermissionMode
+      runtimePermissionMode: input.runtimePermissionMode ?? previous.runtimePermissionMode,
+      color: /^#[\da-f]{6}$/i.test(input.color || '') ? input.color! : previous.color || ASSISTANT.color
     }
     if (typeof value.canWrite !== 'boolean' || typeof value.computerUse !== 'boolean' || !['ask', 'automatic', 'bypass'].includes(value.approvalMode) || !['managed', 'bypass'].includes(value.runtimePermissionMode || 'managed')) throw new Error('Preferências do Assistente inválidas.')
     for (const [key, setting] of Object.entries(value)) this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(`assistant_${key}`, String(setting))
     return { ...ASSISTANT, ...value, runtimePermissionMode: value.runtimePermissionMode || 'managed' }
   }
-  terminalEnabled(): boolean {
-    const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get('terminal_enabled') as { value: string } | undefined
+  /** Modelos escondidos e modelos adicionados à mão, salvos no `v9_meta` como JSON. */
+  modelPreferences(): ModelPreferences {
+    const read = (key: string): unknown => {
+      const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get(key) as { value: string } | undefined
+      if (!row) return null
+      try { return JSON.parse(row.value) as unknown } catch { return null }
+    }
+    const disabled = Array.isArray(read('model_disabled')) ? (read('model_disabled') as unknown[]).filter((id): id is string => typeof id === 'string').slice(0, 2000) : []
+    const customRaw = Array.isArray(read('model_custom')) ? (read('model_custom') as unknown[]) : []
+    const custom = customRaw.flatMap(entry => {
+      if (!entry || typeof entry !== 'object') return []
+      const item = entry as { provider?: unknown; id?: unknown; name?: unknown }
+      if (!RUNTIMES.includes(item.provider as Agent['runtime']) || typeof item.id !== 'string' || !item.id.trim() || typeof item.name !== 'string') return []
+      return [{ provider: item.provider as Agent['runtime'], id: item.id.trim().slice(0, 150), name: item.name.trim().slice(0, 80) || item.id.trim().slice(0, 80) }]
+    }).slice(0, 500)
+    return { disabled, custom }
+  }
+  saveModelPreferences(input: Partial<ModelPreferences>): ModelPreferences {
+    const current = this.modelPreferences()
+    const disabled = input.disabled === undefined ? current.disabled : input.disabled
+    const custom = input.custom === undefined ? current.custom : input.custom
+    if (!Array.isArray(disabled) || disabled.length > 2000 || disabled.some(id => typeof id !== 'string' || !/^[\w.-]+:.{1,150}$/.test(id))) throw new Error('Lista de modelos ocultos inválida.')
+    if (!Array.isArray(custom) || custom.length > 500) throw new Error('Lista de modelos adicionados inválida.')
+    for (const entry of custom) {
+      if (!entry || !RUNTIMES.includes(entry.provider) || typeof entry.id !== 'string' || !/^[\w./@:+-]{1,150}$/.test(entry.id) || typeof entry.name !== 'string' || !entry.name.trim()) throw new Error('Modelo adicionado inválido.')
+    }
+    const value: ModelPreferences = { disabled: [...new Set(disabled)], custom: custom.map(entry => ({ provider: entry.provider, id: entry.id.trim(), name: entry.name.trim().slice(0, 80) })) }
+    const write = (key: string, data: unknown) => this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, JSON.stringify(data))
+    write('model_disabled', value.disabled)
+    write('model_custom', value.custom)
+    return value
+  }
+  terminalEnabled(): boolean {    const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get('terminal_enabled') as { value: string } | undefined
     return row ? row.value === 'true' : true
   }
   saveTerminalAccess(enabled: boolean): void {
@@ -462,12 +500,17 @@ export class WorkspaceStore {
   }
   saveAgent(input: Partial<Agent>): Agent {
     const previous = input.id ? this.agent(input.id) : undefined
+    // O Assistente padrão não é um Boo cadastrado: salvar por aqui criava uma cópia dele na equipe.
+    if (input.id === ASSISTANT_ID) throw new Error('O Assistente padrão tem preferências próprias. Ajuste permissões e cor nas Configurações.')
     const name = requiredText(input.name, 'Nome', 80)
     const alias = requiredText(input.alias || name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-'), 'Menção', 80)
     if (!/^[\p{L}\p{N}_-]+$/u.test(alias)) throw new Error('Use letras, números, hífen ou sublinhado na menção.')
-    if (alias.toLowerCase() === ASSISTANT.alias || this.agents().some(agent => agent.id !== input.id && agent.alias.toLowerCase() === alias.toLowerCase())) throw new Error('Essa menção já pertence a outro agente.')
+    // A mensagem diz quem é o dono da menção: o modal rápido de Boo não tem campo de menção para corrigir às cegas.
+    if (alias.toLowerCase() === ASSISTANT.alias) throw new Error('A menção @assistente é reservada ao Assistente padrão. Escolha outra menção.')
+    const clash = this.agents().find(agent => agent.id !== input.id && agent.alias.toLowerCase() === alias.toLowerCase())
+    if (clash) throw new Error(`A menção @${alias} já pertence ao Boo ${clash.name}. Escolha outra menção.`)
     const runtime = input.runtime ?? previous?.runtime ?? 'codex'
-    if (!['codex', 'claude', 'pi', 'opencode', 'antigravity'].includes(runtime)) throw new Error('Motor de agente inválido.')
+    if (!['codex', 'claude', 'pi', 'opencode'].includes(runtime)) throw new Error('Motor de agente inválido.')
     const approvalMode = input.approvalMode ?? previous?.approvalMode ?? 'ask'
     if (approvalMode !== 'ask' && approvalMode !== 'automatic' && approvalMode !== 'bypass') throw new Error('Modo de aprovação inválido.')
     const runtimePermissionMode = input.runtimePermissionMode ?? previous?.runtimePermissionMode ?? 'managed'

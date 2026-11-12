@@ -18,7 +18,6 @@ const fakeDirectory = () => {
 const fixture = (): ProviderInfo[] => ([
   { id: 'codex', name: 'Codex', binary: 'codex', found: true, operational: true, executable: true, version: '0.160', path: '/codex', modelSource: 'runtime', models: [{ id: 'gpt-x', name: 'GPT X' }] },
   { id: 'claude', name: 'Claude Code', binary: 'claude', found: true, operational: true, executable: false, version: '2.1', path: '/claude', models: null },
-  { id: 'antigravity', name: 'Antigravity', binary: 'agy', found: true, operational: true, executable: false, version: '1.4', path: '/agy', models: null },
   { id: 'opencode', name: 'OpenCode', binary: 'opencode', found: true, operational: false, executable: false, version: null, path: '/opencode', modelSource: 'configuration', models: [{ id: 'model-local', name: 'Local' }] },
   { id: 'pi', name: 'Pi', binary: 'pi', found: false, version: null, path: null, models: null },
 ])
@@ -33,7 +32,7 @@ describe('inventário persistente de CLIs', () => {
     const [first, second] = await Promise.all([registry.list(), registry.list()])
     expect(first).toEqual(second)
     expect(scan).toHaveBeenCalledTimes(1)
-    expect((await registry.list()).providers).toHaveLength(5)
+    expect((await registry.list()).providers).toHaveLength(4)
     const again = new ProviderRegistry(directory, vi.fn(async () => { throw new Error('Não deve detectar') }))
     expect((await again.list()).providers.find(item => item.id === 'opencode')?.operational).toBe(false)
     expect(scan).toHaveBeenCalledTimes(1)

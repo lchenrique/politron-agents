@@ -1,5 +1,5 @@
 /** CLIs de agente de código que o Politron sabe procurar na máquina, inspirado na detecção do Paseo. */
-export type ProviderId = 'codex' | 'claude' | 'opencode' | 'pi' | 'antigravity'
+export type ProviderId = 'codex' | 'claude' | 'opencode' | 'pi'
 
 export interface ProviderModel {
   id: string; name: string

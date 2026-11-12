@@ -57,11 +57,13 @@ async function openCodeModels(home: string): Promise<ProviderModelCatalog> {
   return { models, source: 'configuration' }
 }
 
-const MODEL_READERS: Partial<Record<ProviderId, (home: string) => Promise<ProviderModelCatalog>>> = { pi: piModels, opencode: openCodeModels }
+const MODEL_READERS: Partial<Record<ProviderId, (home: string) => Promise<ProviderModelCatalog>>> = { pi: piModels }
 
 export interface ProviderDetectionOptions {
   runtimeModels?: Partial<Record<ProviderId, (binaryPath?: string) => Promise<ProviderModelCatalog>>>
   modelTimeoutMs?: number
+  /** Provedor por API key: sem binário no PATH, o estado vem da chave salva. */
+  hasOpenCodeKey?: () => Promise<boolean>
 }
 
 /** Limita a espera sem encerrar runtimes que podem estar atendendo conversas. */
@@ -86,8 +88,8 @@ async function readModels(provider: ProviderId, home: string, options: ProviderD
 const PROVIDERS: { id: ProviderId; name: string; binary: string }[] = [
   { id: 'codex', name: 'Codex', binary: 'codex' },
   { id: 'claude', name: 'Claude Code', binary: 'claude' },
-  { id: 'antigravity', name: 'Antigravity', binary: 'agy' },
-  { id: 'opencode', name: 'OpenCode', binary: 'opencode' },
+  // OpenCode entra por API key (Console), não pelo CLI instalado.
+  { id: 'opencode', name: 'OpenCode', binary: 'api' },
   { id: 'pi', name: 'Pi', binary: 'pi' },
 ]
 
@@ -102,6 +104,13 @@ async function resolvePaths(binary: string): Promise<string[]> {
 
 /** Primeira linha de `<binário> --version`; CLIs instalados sem terminar a configuração ainda contam como encontrados. */
 async function probe(provider: (typeof PROVIDERS)[number], home: string, options: ProviderDetectionOptions): Promise<ProviderInfo> {
+  if (provider.binary === 'api') {
+    const hasKey = options.hasOpenCodeKey ? await options.hasOpenCodeKey().catch(() => false) : false
+    if (!hasKey) return { ...provider, found: false, operational: false, executable: false, version: null, path: null, models: null, modelReason: 'Informe a chave da API do OpenCode em Configurações → Provedores.' }
+    const catalog = await readModels(provider.id, home, options)
+    const executable = !!catalog.models?.length
+    return { ...provider, found: true, operational: executable, executable, version: 'API', path: null, models: catalog.models, modelSource: catalog.source, modelReason: catalog.reason || (!executable ? 'A chave está salva, mas o catálogo de modelos não respondeu.' : undefined) }
+  }
   const candidates = await resolvePaths(provider.binary)
   let path = candidates[0]
   if (!path) return { ...provider, found: false, version: null, path: null, models: null }

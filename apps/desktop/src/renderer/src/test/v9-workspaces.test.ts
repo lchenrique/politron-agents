@@ -269,6 +269,35 @@ describe('Assistente padrão e conversas por workspace V9', () => {
     expect(() => service.saveConversation({ agentIds: [ASSISTANT_ID] })).toThrow()
   })
 
+  it('guarda a cor do Assistente nas preferências dele, sem criar um Boo na equipe', () => {
+    const { service } = open(tempDirectory())
+    const before = service.store.snapshot()
+    const saved = service.saveAssistantPreferences({ color: '#10b981' })
+    expect(saved.color).toBe('#10b981')
+    expect(service.store.agent(ASSISTANT_ID).color).toBe('#10b981')
+    // Sem cadastro duplicado: a equipe continua com os mesmos Boos e o Assistente mantém o id reservado.
+    expect(service.store.snapshot().agents.map(agent => agent.id)).toEqual(before.agents.map(agent => agent.id))
+    expect(service.store.snapshot().agents.some(agent => agent.id === ASSISTANT_ID)).toBe(false)
+    // Cor inválida não apaga a anterior.
+    expect(service.saveAssistantPreferences({ color: 'verde' }).color).toBe('#10b981')
+    // O caminho de Boo continua recusando o Assistente, com mensagem que aponta o lugar certo.
+    expect(() => service.saveAgent({ id: ASSISTANT_ID, name: 'Assistente', instructions: 'x' })).toThrow('preferências próprias')
+  })
+
+  it('esconde modelos e guarda os modelos adicionados, com validação', () => {
+    const { service } = open(tempDirectory())
+    expect(service.modelPreferences()).toEqual({ disabled: [], custom: [] })
+    const saved = service.saveModelPreferences({ disabled: ['codex:gpt-5'], custom: [{ provider: 'opencode', id: 'big-pickle', name: 'Big Pickle' }] })
+    expect(saved).toEqual({ disabled: ['codex:gpt-5'], custom: [{ provider: 'opencode', id: 'big-pickle', name: 'Big Pickle' }] })
+    // Persistiu: uma releitura do mesmo serviço devolve o que foi salvo.
+    expect(service.modelPreferences()).toEqual(saved)
+    // Atualizar só os ocultos preserva os adicionados.
+    expect(service.saveModelPreferences({ disabled: [] })).toEqual({ disabled: [], custom: saved.custom })
+    expect(() => service.saveModelPreferences({ disabled: ['sem-provedor'] })).toThrow('ocultos')
+    expect(() => service.saveModelPreferences({ custom: [{ provider: 'antigravity' as never, id: 'x', name: 'x' }] })).toThrow('Modelo adicionado')
+    expect(() => service.saveModelPreferences({ custom: [{ provider: 'codex', id: 'gpt-5', name: '' }] })).toThrow('Modelo adicionado')
+  })
+
   it('renomear a conversa não troca a sessão; trocar a pasta cria nova sessão', async () => {
     const { service, runtime } = open(tempDirectory())
     const conversation = service.saveConversation({ name: 'Original' })

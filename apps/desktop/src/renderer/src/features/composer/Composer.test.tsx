@@ -4,15 +4,21 @@ import { Composer } from './Composer'
 import { ModelSlot, ModelSlotProvider } from './ComposerModelSlot'
 import type { Agent } from '../../../../shared/v9'
 
+const recorderTest = vi.hoisted(() => ({ record: vi.fn<() => Promise<Uint8Array>>() }))
+
 vi.mock('../voice/voice-recorder', () => ({
   VoiceRecorder: class {
-    async record() { return new Uint8Array(48) }
+    async record() { return recorderTest.record() }
     stop() {}
     cancel() {}
   },
 }))
 
-beforeEach(() => { sessionStorage.clear(); localStorage.clear() })
+beforeEach(() => {
+  sessionStorage.clear()
+  localStorage.clear()
+  recorderTest.record.mockReset().mockResolvedValue(new Uint8Array(48))
+})
 
 function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
   const onSubmit = vi.fn().mockResolvedValue(undefined)
@@ -29,29 +35,58 @@ function setup(overrides: Partial<React.ComponentProps<typeof Composer>> = {}) {
 describe('Composer compacto e elástico', () => {
   it('diz para quem vai a mensagem', () => {
     const { textarea } = setup({ recipientName: 'Atlas' })
-    expect(textarea).toHaveAttribute('placeholder', 'Mensagem para Atlas...')
+    expect(textarea).toHaveAttribute('placeholder', 'Envie uma mensagem para Atlas…')
   })
 
-  it('com a barra superior do chat presente, o seletor de modelo sai do composer e mantém a lógica de modelo', () => {
+  it('mantém o seletor de modelo no composer mesmo com a barra superior do chat presente', () => {
     const onModelChange = vi.fn()
     render(<ModelSlotProvider><ModelSlot /><Composer conversationId="slot-test" models={[{ name: 'Modelo real', efforts: ['medium'], defaultEffort: 'medium' }]} defaultModelName="Modelo real" onModelChange={onModelChange} onSubmit={vi.fn()} onStop={vi.fn()} /></ModelSlotProvider>)
     const picker = screen.getByRole('button', { name: 'Selecionar modelo' })
-    expect(picker.closest('[data-model-slot]')).not.toBeNull()
     const row = (screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).parentElement!
-    expect(row).not.toContainElement(picker)
+    expect(row).toContainElement(picker)
     expect(picker).toHaveTextContent('Modelo real')
-    for (const name of ['Anexar arquivo, comando ou permissão', 'Gravar áudio', 'Enviar mensagem']) expect(row).toContainElement(screen.getByRole('button', { name }))
     // A prancheta saiu da linha: planejamento agora mora no menu do "+".
     expect(screen.queryByRole('button', { name: 'Modo planejamento' })).not.toBeInTheDocument()
   })
 
-  it('fica numa linha: anexar (com menu), texto, modelo, microfone e enviar', () => {
-    const { textarea } = setup()
-    const row = textarea.parentElement!
-    for (const name of ['Anexar arquivo, comando ou permissão', 'Selecionar modelo', 'Gravar áudio', 'Enviar mensagem']) expect(row).toContainElement(screen.getByRole('button', { name }))
+  it('empilha: campo em cima e, embaixo, anexar (com menu), destinatário, permissão, modelo, microfone e enviar', () => {
+    const { textarea } = setup({ recipientName: 'Atlas', mentionAgents: [{ id: 'atlas', name: 'Atlas', alias: 'atlas', color: '#786bea', avatar: '', approvalMode: 'ask' } as Agent], recipientApprovalMode: 'ask', onApprovalModeChange: vi.fn() })
+    const stack = textarea.parentElement!
+    const [campo, linha] = [...stack.children]
+    expect(campo).toBe(textarea)
+    for (const name of ['Anexar arquivo, comando ou permissão', 'Selecionar modelo', 'Gravar áudio', 'Enviar mensagem']) expect(linha).toContainElement(screen.getByRole('button', { name }))
+    // Destinatário e permissão ficam na mesma linha, à esquerda; modelo, microfone e enviar à direita.
+    expect(linha).toContainElement(screen.getByRole('button', { name: /@Atlas/ }))
+    expect(linha).toContainElement(screen.getByRole('button', { name: 'Permissão do Boo: Perguntar' }))
     const model = screen.getByRole('button', { name: 'Selecionar modelo' })
     expect(model).toHaveTextContent('Modelo real')
-    expect(model).toHaveAttribute('title', expect.stringContaining('Modelo real'))
+  })
+
+  it('seletor de modelo segue o mock: header, lista com marca no ativo e atalho de provedores', () => {
+    const onModelChange = vi.fn()
+    setup({ models: [{ id: 'codex:gpt-5', name: 'Modelo real' }, { id: 'claude:sonnet', name: 'Outro modelo' }], defaultModelName: 'codex:gpt-5', onModelChange })
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar modelo' }))
+    const menu = screen.getByRole('menu', { name: 'Modelo Ativo' })
+    expect(menu).toHaveTextContent('Modelo Ativo')
+    expect(within(menu).getByRole('button', { name: /Modelo real/ })).toBeInTheDocument()
+    fireEvent.click(within(menu).getByRole('button', { name: /Outro modelo/ }))
+    expect(onModelChange).toHaveBeenCalledWith('claude:sonnet')
+    expect(screen.queryByRole('menu', { name: 'Modelo Ativo' })).not.toBeInTheDocument()
+  })
+
+  it('chip de permissão mostra o modo do Boo e troca pelo menu', () => {
+    const onApprovalModeChange = vi.fn()
+    setup({ recipientName: 'Atlas', recipientApprovalMode: 'automatic', onApprovalModeChange })
+    const trigger = screen.getByRole('button', { name: 'Permissão do Boo: Automático' })
+    expect(trigger).toHaveAttribute('data-approval-mode', 'automatic')
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('button', { name: /Acesso total/ }))
+    expect(onApprovalModeChange).toHaveBeenCalledWith('bypass')
+  })
+
+  it('não mostra o chip de permissão sem um destinatário conhecido', () => {
+    setup()
+    expect(screen.queryByRole('button', { name: /Permissão do Boo/ })).not.toBeInTheDocument()
   })
 
   it('o "+" abre o menu do mock: anexar arquivos e modo planejamento', () => {
@@ -114,6 +149,33 @@ describe('Composer compacto e elástico', () => {
     expect(screen.getByRole('button', { name: 'Anexar arquivo, comando ou permissão' })).toHaveAttribute('data-plan-mode', 'true')
   })
 
+  it('cancela a checagem de voz e não inicia o microfone depois do cancelamento', async () => {
+    let resolveVoiceStatus!: (status: { transcription: boolean; speech: boolean }) => void
+    const voiceStatus = vi.fn(() => new Promise<{ transcription: boolean; speech: boolean }>(resolve => { resolveVoiceStatus = resolve }))
+    vi.stubGlobal('appAPI', { voiceStatus, voiceTranscribe: vi.fn() })
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: 'Gravar áudio' }))
+    await waitFor(() => expect(voiceStatus).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: 'Gravar áudio' }))
+    resolveVoiceStatus({ transcription: true, speech: true })
+    await waitFor(() => expect(recorderTest.record).not.toHaveBeenCalled())
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    vi.unstubAllGlobals()
+  })
+
+  it('limpa o estado de gravação quando troca de conversa', async () => {
+    recorderTest.record.mockImplementation(() => new Promise(() => undefined))
+    const props = { conversationId: 'voice-one', models: [], onModelChange: vi.fn(), onSubmit: vi.fn(), onStop: vi.fn() }
+    const { rerender } = render(<Composer {...props} />)
+    vi.stubGlobal('appAPI', { voiceStatus: vi.fn().mockResolvedValue({ transcription: true, speech: true }), voiceTranscribe: vi.fn() })
+    fireEvent.click(screen.getByRole('button', { name: 'Gravar áudio' }))
+    await screen.findByRole('status')
+    rerender(<Composer {...props} conversationId="voice-two" />)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Gravar áudio' })).toBeEnabled()
+    vi.unstubAllGlobals()
+  })
+
   it('grava, transcreve localmente e insere a fala como rascunho editável sem enviar automaticamente', async () => {
     const voiceTranscribe = vi.fn().mockResolvedValue('Abra meu projeto')
     vi.stubGlobal('appAPI', { voiceStatus: vi.fn().mockResolvedValue({ transcription: true, speech: true }), voiceTranscribe })
@@ -126,25 +188,24 @@ describe('Composer compacto e elástico', () => {
     expect(textarea).toHaveValue('Abra meu projeto no editor')
   })
 
-  it('começa em uma única linha, sem abrir espaço vazio e sem texto auxiliar redundante', () => {
+  it('começa numa linha de 34px, sem espaço vazio e sem texto auxiliar redundante', () => {
     const { textarea } = setup()
-    expect(textarea).toHaveClass('min-h-[36px]')
-    expect(textarea.style.height).toBe('36px')
+    expect(textarea.style.height).toBe('34px')
     expect(screen.queryByText(/Agentes podem errar/)).not.toBeInTheDocument()
   })
 
-  it('cresce automaticamente com múltiplas linhas até o limite de 336px', () => {
+  it('cresce até seis linhas (132px) e para', () => {
     const { textarea } = setup()
-    let measuredHeight = 126
+    let measuredHeight = 44
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, get: () => measuredHeight })
-    fireEvent.change(textarea, { target: { value: 'uma linha\nsegunda linha\nterceira linha' } })
-    expect(textarea.style.height).toBe('126px')
+    fireEvent.change(textarea, { target: { value: 'uma linha\nsegunda linha' } })
+    expect(textarea.style.height).toBe('44px')
     measuredHeight = 400
     fireEvent.change(textarea, { target: { value: 'uma linha\nsegunda linha\nterceira linha\nquarta' } })
-    expect(textarea.style.height).toBe('336px')
-    measuredHeight = 30
+    expect(textarea.style.height).toBe('132px')
+    measuredHeight = 10
     fireEvent.change(textarea, { target: { value: '' } })
-    expect(textarea.style.height).toBe('36px')
+    expect(textarea.style.height).toBe('34px')
   })
 
   it('Enter envia e Shift+Enter permite nova linha', async () => {
@@ -200,17 +261,41 @@ describe('autocomplete de menções', () => {
 })
 
 describe('modelos por provedor no composer', () => {
-  it('oferece somente esforços suportados e envia o identificador correto', async () => {
-    const { textarea, onSubmit } = setup({ models: [{ id: 'codex:gpt', name: 'GPT', provider: 'Codex', efforts: ['low', 'high'], defaultEffort: 'low' }], defaultModelName: 'codex:gpt' })
+  it('agrupa por provedor e filtra pela busca', () => {
+    setup({ models: [
+      { id: 'codex:gpt-5', name: 'GPT-5', provider: 'Codex' },
+      { id: 'codex:gpt-5-mini', name: 'GPT-5 Mini', provider: 'Codex' },
+      { id: 'claude:sonnet', name: 'Sonnet 4.5', provider: 'Claude' },
+    ], defaultModelName: 'codex:gpt-5' })
     fireEvent.click(screen.getByRole('button', { name: 'Selecionar modelo' }))
-    const effortSlider = await screen.findByRole('slider', { name: 'Esforço de raciocínio' })
-    expect(effortSlider).toHaveAttribute('aria-valuetext', 'Baixo')
-    expect(screen.queryByText('Máximo')).not.toBeInTheDocument()
-    fireEvent.keyDown(effortSlider, { key: 'ArrowRight' })
-    expect(effortSlider).toHaveAttribute('aria-valuetext', 'Alto')
-    fireEvent.change(textarea, { target: { value: 'teste de esforço' } })
+    const menu = screen.getByRole('menu', { name: 'Modelo Ativo' })
+    // Cabeçalhos de provedor em mono maiúsculo, como as seções do mock.
+    expect(menu).toHaveTextContent('Codex')
+    expect(menu).toHaveTextContent('Claude')
+    const search = within(menu).getByRole('textbox', { name: 'Buscar modelo' })
+    fireEvent.change(search, { target: { value: 'sonnet' } })
+    expect(within(menu).queryByRole('button', { name: /GPT-5$/ })).not.toBeInTheDocument()
+    expect(within(menu).getByRole('button', { name: /Sonnet 4\.5/ })).toBeInTheDocument()
+    fireEvent.change(search, { target: { value: 'zzz' } })
+    expect(within(menu).getByText('Nenhum modelo encontrado.')).toBeInTheDocument()
+  })
+
+  it('sem herdar, oferece voltar ao modelo do Boo', () => {
+    const onModelChange = vi.fn()
+    setup({ models: [{ id: 'codex:gpt-5', name: 'GPT-5', provider: 'Codex' }], defaultModelName: 'codex:gpt-5', inheritModelName: 'GPT-5', onModelChange })
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar modelo' }))
+    const menu = screen.getByRole('menu', { name: 'Modelo Ativo' })
+    fireEvent.click(within(menu).getByRole('button', { name: /Voltar a herdar do Boo/ }))
+    expect(onModelChange).toHaveBeenCalledWith('Usar o modelo do agente')
+  })
+
+  it('escolher um modelo no menu envia o identificador dele', async () => {
+    const { textarea, onSubmit } = setup({ models: [{ id: 'codex:gpt', name: 'GPT', provider: 'Codex', efforts: ['low', 'high'], defaultEffort: 'low' }, { id: 'claude:sonnet', name: 'Sonnet', provider: 'Claude' }], defaultModelName: 'codex:gpt' })
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar modelo' }))
+    fireEvent.click(within(screen.getByRole('menu', { name: 'Modelo Ativo' })).getByRole('button', { name: /Sonnet/ }))
+    fireEvent.change(textarea, { target: { value: 'teste de modelo' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('teste de esforço', 'codex:gpt', expect.objectContaining({ effort: 'high' })))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('teste de modelo', 'claude:sonnet', expect.any(Object)))
   })
 
   it('omite esforço quando o modelo não oferece essa capacidade', () => {
@@ -219,40 +304,17 @@ describe('modelos por provedor no composer', () => {
     expect(screen.queryByRole('slider', { name: 'Esforço de raciocínio' })).not.toBeInTheDocument()
   })
 
-  it('agrupa as CLIs, desabilita catálogos sem executor e envia IDs com prefixo', async () => {
-    const onSubmit = vi.fn().mockResolvedValue(undefined)
-    render(<Composer conversationId="catalog-test" models={[
+  it('lista no menu só os modelos habilitados, sem seção por provedor', () => {
+    setup({ models: [
       { id: 'codex:gpt-x', name: 'GPT X', provider: 'Codex', enabled: true },
       { id: 'opencode:local', name: 'Modelo local', provider: 'OpenCode', enabled: false },
       { id: 'pi:pi-x', name: 'Pi X', provider: 'Pi', enabled: false },
-    ]} defaultModelName="Usar o modelo do agente" onModelChange={vi.fn()} onSubmit={onSubmit} onStop={vi.fn()} />)
-    const selector = screen.getByRole('button', { name: 'Selecionar modelo' })
-    expect(selector).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByLabelText('Modelos disponíveis')).not.toBeInTheDocument()
-    fireEvent.click(selector)
-    expect(selector).toHaveAttribute('aria-expanded', 'true')
-    const popup = await screen.findByRole('dialog', { name: 'Modelos disponíveis' })
-    expect(popup).toHaveAttribute('data-dsh-menu-surface', 'true')
-    expect(await screen.findByRole('option', { name: /^OpenCode\s+1 modelos$/ })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /^Pi\s+1 modelos$/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('option', { name: /^OpenCode\s+1 modelos$/ }))
-    const localModel = await screen.findByRole('option', { name: /^Modelo local\s+local$/ })
-    expect(localModel).toHaveAttribute('aria-disabled', 'true')
-    fireEvent.click(localModel)
-    expect(popup).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar aos provedores' }))
-    fireEvent.click(await screen.findByRole('option', { name: /^Pi\s+1 modelos$/ }))
-    expect(await screen.findByRole('option', { name: /^Pi X\s+pi-x$/ })).toHaveAttribute('aria-disabled', 'true')
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar aos provedores' }))
-    fireEvent.click(await screen.findByRole('option', { name: /^Codex\s+1 modelos$/ }))
-    expect(screen.getByRole('dialog', { name: 'Modelos disponíveis' })).toBe(popup)
-    expect(document.querySelectorAll('button[aria-label="Selecionar modelo"]')).toHaveLength(1)
-    fireEvent.click(await screen.findByRole('option', { name: /^GPT X\s+gpt-x$/ }))
-    expect(selector).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByLabelText('Modelos disponíveis')).not.toBeInTheDocument()
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), { target: { value: 'teste' } })
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message' }), { key: 'Enter' })
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('teste', 'codex:gpt-x', expect.any(Object)))
+    ], defaultModelName: 'Usar o modelo do agente' })
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar modelo' }))
+    const menu = screen.getByRole('menu', { name: 'Modelo Ativo' })
+    expect(within(menu).getByRole('button', { name: /GPT X/ })).toBeInTheDocument()
+    expect(within(menu).queryByRole('button', { name: /Modelo local/ })).not.toBeInTheDocument()
+    expect(within(menu).queryByRole('button', { name: /Pi X/ })).not.toBeInTheDocument()
   })
 })
 
@@ -348,18 +410,16 @@ describe('instruções durante uma tarefa', () => {
   })
 
   it('recolhe ajustes sem apagar o rascunho ao atualizar o modelo', () => {
-    const props = { conversationId: 'settings-test', models: [{ name: 'Modelo A' }, { name: 'Modelo B' }], defaultModelName: 'Modelo A', onModelChange: vi.fn(), onSubmit: vi.fn(), onStop: vi.fn() }
+    const props = { conversationId: 'settings-test', models: [{ id: 'a', name: 'Modelo A' }, { id: 'b', name: 'Modelo B' }], defaultModelName: 'Modelo A', onModelChange: vi.fn(), onSubmit: vi.fn(), onStop: vi.fn() }
     const { rerender } = render(<Composer {...props} />)
     const textarea = screen.getByRole('textbox', { name: 'Message' })
     fireEvent.change(textarea, { target: { value: 'Meu rascunho' } })
     const selector = screen.getByRole('button', { name: 'Selecionar modelo' })
-    expect(screen.queryByLabelText('Modelos disponíveis')).not.toBeInTheDocument()
+    expect(screen.queryByRole('menu', { name: 'Modelo Ativo' })).not.toBeInTheDocument()
     fireEvent.click(selector)
-    const inlineList = screen.getByRole('dialog', { name: 'Modelos disponíveis' })
-    expect(inlineList).toBeInTheDocument()
-    expect(inlineList.closest('[role="dialog"]')).toBe(inlineList)
-    fireEvent.keyDown(inlineList, { key: 'Escape' })
-    expect(screen.queryByLabelText('Modelos disponíveis')).not.toBeInTheDocument()
+    const menu = screen.getByRole('menu', { name: 'Modelo Ativo' })
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    expect(screen.queryByRole('menu', { name: 'Modelo Ativo' })).not.toBeInTheDocument()
     rerender(<Composer {...props} defaultModelName="Modelo B" />)
     expect(textarea).toHaveValue('Meu rascunho')
   })

@@ -42,6 +42,23 @@ html[data-theme="boobot"] {
   --accent-primary: #059669;
   --accent-soft: rgba(5, 150, 105, 0.1);
 
+  /* Composer do mock: pílula, chip do destinatário e controles */
+  --composer-surface: #ffffff;
+  --composer-border: #d4d4cd;
+  --composer-border-focus: #b8b8b0;
+  --composer-chip-surface: #e6e6e1;
+  --composer-chip-border: #d4d4cd;
+  --composer-chip-text: #171717;
+  --composer-plus: #52525b;
+  --composer-mic: #71717a;
+  --composer-model-text: #71717a;
+  --composer-hover-surface: #e6e6e1;
+  --composer-menu-surface: #ffffff;
+  --composer-menu-border: #d4d4cd;
+  --composer-menu-hover: #e6e6e1;
+  --panel-card-surface: #ffffff;
+  --panel-card-border: #e2e2dc;
+
   /* Tokens semânticos do app mapeados para o Paper */
   --chrome: var(--bg-rail);
   --background: var(--bg-pane);
@@ -169,6 +186,23 @@ html.dark[data-theme="boobot"] {
   --accent-primary: #10b981;
   --accent-soft: rgba(16, 185, 129, 0.12);
 
+  /* Composer do mock (Carbon): valores exatos do HTML de referência */
+  --composer-surface: #1a1a1a;
+  --composer-border: #2a2a2a;
+  --composer-border-focus: #3e3e3e;
+  --composer-chip-surface: #222222;
+  --composer-chip-border: #303030;
+  --composer-chip-text: #e5e5e5;
+  --composer-plus: #a1a1aa;
+  --composer-mic: #71717a;
+  --composer-model-text: #8e8e96;
+  --composer-hover-surface: #262626;
+  --composer-menu-surface: #181818;
+  --composer-menu-border: #2c2c2c;
+  --composer-menu-hover: #242424;
+  --panel-card-surface: #161616;
+  --panel-card-border: #242424;
+
   --chrome: var(--bg-rail);
   --background: var(--bg-pane);
   --foreground: var(--text-primary);
@@ -274,6 +308,23 @@ html.dark[data-theme="warm"] {
   --text-muted: #78716c;
   --accent-primary: #10b981;
   --accent-soft: rgba(16, 185, 129, 0.12);
+
+  /* Composer do mock (Carbon): valores exatos do HTML de referência */
+  --composer-surface: #1a1a1a;
+  --composer-border: #2a2a2a;
+  --composer-border-focus: #3e3e3e;
+  --composer-chip-surface: #222222;
+  --composer-chip-border: #303030;
+  --composer-chip-text: #e5e5e5;
+  --composer-plus: #a1a1aa;
+  --composer-mic: #71717a;
+  --composer-model-text: #8e8e96;
+  --composer-hover-surface: #262626;
+  --composer-menu-surface: #181818;
+  --composer-menu-border: #2c2c2c;
+  --composer-menu-hover: #242424;
+  --panel-card-surface: #161616;
+  --panel-card-border: #242424;
 
   --primary-soft: rgba(16, 185, 129, 0.12);
   --primary-soft-foreground: #34d399;

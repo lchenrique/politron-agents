@@ -123,15 +123,17 @@ describe('autoaprendizado no fim da execução', () => {
     expect(broken.runtime.inputs).toHaveLength(1)
   })
 
-  it('a mensagem enfileirada roda depois da revisão, na mesma thread', async () => {
-    const { service, runtime, conversation } = setup([work(5), [say('nada a aprender')], [say('Segunda resposta.')]])
+  it('a mensagem enfileirada roda sem esperar a revisão, na mesma thread', async () => {
+    // Com mensagem na fila a revisão é opcional e não pode segurar a vaga (ver shouldReflect).
+    // Os dois envios saem no mesmo tick: assim o segundo está garantidamente na fila quando o
+    // primeiro turno termina, sem depender do tempo dos timers do runtime falso.
+    const { service, runtime, conversation } = setup([work(5), [say('Segunda resposta.')]])
     const first = service.send(conversation.id, 'Primeira')
-    await vi.waitFor(() => expect(runtime.inputs).toHaveLength(1))
     const second = service.send(conversation.id, 'Segunda')
     await Promise.all([first, second])
-    expect(runtime.inputs).toHaveLength(3)
-    expect(runtime.inputs[1]).toContain('Revisão interna')
-    expect(runtime.inputs[2]).toContain('Segunda')
+    expect(runtime.inputs).toHaveLength(2)
+    expect(runtime.inputs.some(input => input.includes('Revisão interna'))).toBe(false)
+    expect(runtime.inputs[1]).toContain('Segunda')
     const replies = service.store.history(conversation.id).filter(message => message.role === 'assistant' && message.text.trim()).map(message => message.text)
     expect(replies).toEqual(['Feito.', 'Segunda resposta.'])
   })

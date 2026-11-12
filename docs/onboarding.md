@@ -12,7 +12,7 @@ npm run dev
 
 ## Integrações opcionais
 
-O aplicativo pode usar CLIs instaladas no sistema. A detecção procura os binários Codex (`codex`), Claude Code (`claude`), Antigravity (`agy`), OpenCode (`opencode`) e Pi (`pi`). Uma CLI encontrada não implica que esteja autenticada ou que seu runtime esteja pronto. O detector lê catálogos locais de Pi e OpenCode; para outros provedores, veja as fontes de modelo próprias da aplicação e o editor de agente.
+O aplicativo pode usar CLIs instaladas no sistema. A detecção procura os binários Codex (`codex`), Claude Code (`claude`) e Pi (`pi`). O OpenCode não usa CLI: entra pela API do Console com uma chave salva em Configurações → Provedores. Uma CLI encontrada não implica que esteja autenticada ou que seu runtime esteja pronto. O detector lê catálogos locais de Pi e OpenCode; para outros provedores, veja as fontes de modelo próprias da aplicação e o editor de agente.
 
 As integrações de voz em tempo real aceitam `GEMINI_API_KEY` e `GROQ_API_KEY` no ambiente do processo principal ou chaves salvas nas configurações do app. O modo gratuito pode usar Parakeet local para transcrição ou Groq/Whisper, e exige os modelos locais de VAD/Piper instalados. A disponibilidade e o modo escolhido são exibidos pelas configurações de voz. A voz dos Pits tem instalação local independente.
 

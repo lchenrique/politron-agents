@@ -1,5 +1,5 @@
 // @vitest-environment node
-import type { HeadlessInternals, ClaudeInternals, CodexInternals, RuntimeEvent } from './test-support'
+import type { ClaudeInternals, CodexInternals, RuntimeEvent } from './test-support'
 import { EventEmitter } from 'node:events'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ASSISTANT, SCHEMA_VERSION, WorkspaceStore } from './store'
-import { HeadlessCliRuntime } from './headless-cli'
+import { OpenCodeApiRuntime } from './opencode-api'
 import { CodexRuntime } from './codex'
 import { ClaudeRuntime } from './claude'
 import { SessionUnavailableError } from './agent-runtime'
@@ -62,17 +62,15 @@ class AmbiguousRuntime extends EventEmitter {
 }
 
 describe('continuidade real de sessão', () => {
-  it('Headless só informa histórico retido enquanto a instância mantém a conversa em memória', async () => {
-    const directory = temporary('politron-headless-continuity-')
-    const first = new HeadlessCliRuntime('opencode', directory)
-    ;(first as unknown as HeadlessInternals).binary = 'opencode'
+  it('OpenCode (API) só informa histórico retido enquanto a instância mantém a conversa em memória', async () => {
+    const directory = temporary('politron-opencode-continuity-')
+    const first = new OpenCodeApiRuntime(async () => 'chave-de-teste-com-tamanho-valido')
     const created = await first.thread({ ...ASSISTANT, runtime: 'opencode' }, directory, [])
     expect(created.history).toBe('empty')
     expect((await first.thread({ ...ASSISTANT, runtime: 'opencode' }, directory, [], created.id)).history).toBe('retained')
     first.close()
 
-    const restarted = new HeadlessCliRuntime('opencode', directory)
-    ;(restarted as unknown as HeadlessInternals).binary = 'opencode'
+    const restarted = new OpenCodeApiRuntime(async () => 'chave-de-teste-com-tamanho-valido')
     expect((await restarted.thread({ ...ASSISTANT, runtime: 'opencode' }, directory, [], created.id)).history).toBe('empty')
     restarted.close()
   })

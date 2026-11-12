@@ -41,7 +41,8 @@ describe('detecção de CLIs de agente instaladas', () => {
     })
     const { detectProviders } = await import('./detect')
     const providers = await detectProviders(fakeHome())
-    expect(providers.every(provider => provider.path === 'C:/Usuário Novo/cli.exe' && provider.version === '2.0')).toBe(true)
+    // OpenCode entrou por API key, então só os CLIs de verdade passam pelo PATH aqui.
+    expect(providers.filter(provider => provider.id !== 'opencode').every(provider => provider.path === 'C:/Usuário Novo/cli.exe' && provider.version === '2.0')).toBe(true)
   })
 
   it('sonda a versão pelo shim localizado no PATH do Windows', async () => {
@@ -64,71 +65,50 @@ describe('detecção de CLIs de agente instaladas', () => {
     expect(crossSpawnMock).toHaveBeenCalledWith('C:\\npm\\codex.cmd', ['--version'], expect.objectContaining({ windowsHide: true, stdio: 'pipe' }))
   })
 
-  it('informa ausência dos arquivos de configuração sem inventar catálogo', async () => {
+  it('informa ausência do catálogo do Pi sem inventar modelos', async () => {
     installedClis()
     const home = fakeHome()
     rmSync(join(home, '.pi', 'agent', 'models.json'))
-    rmSync(join(home, '.config', 'opencode', 'opencode.json'))
     const { detectProviders } = await import('./detect')
     const providers = await detectProviders(home)
-    for (const id of ['pi', 'opencode']) expect(providers.find(p => p.id === id)).toMatchObject({ models: null, modelReason: 'Arquivo de configuração não encontrado.' })
+    expect(providers.find(p => p.id === 'pi')).toMatchObject({ models: null, modelReason: 'Arquivo de configuração não encontrado.' })
   })
 
-  it.each([null, 'texto', [], { provider: [] }, { provider: null }, { provider: 'texto' }])('recusa configuração sem mapa válido de provedores: %j', async config => {
+  it('OpenCode é provedor de API: sem chave fica indisponível e explica onde configurar', async () => {
     installedClis()
-    const home = fakeHome()
-    writeFileSync(join(home, '.config', 'opencode', 'opencode.json'), JSON.stringify(config))
     const { detectProviders } = await import('./detect')
-    const providers = await detectProviders(home)
-    expect(providers.find(p => p.id === 'opencode')).toMatchObject({ models: null, modelReason: expect.stringMatching(/ausente ou inválido/) })
-    expect(providers.find(p => p.id === 'pi')?.models).toHaveLength(1)
+    const provider = (await detectProviders(fakeHome())).find(p => p.id === 'opencode')
+    expect(provider).toMatchObject({ found: false, operational: false, executable: false, models: null })
+    expect(provider?.modelReason).toMatch(/Configurações → Provedores/)
   })
 
-  it('interpreta JSONC com comentários, vírgulas finais e barras dentro de strings', async () => {
+  it('OpenCode com chave consulta o catálogo do Console pelo loader injetado', async () => {
     installedClis()
-    const home = fakeHome()
-    rmSync(join(home, '.config', 'opencode', 'opencode.json'))
-    writeFileSync(join(home, '.config', 'opencode', 'opencode.jsonc'), `{
-      // Catálogo local
-      "provider": { "local": { "models": {
-        "modelo": { "name": "https://example.test/a//b/*literal*/", },
-      }, }, },
-    }`)
     const { detectProviders } = await import('./detect')
-    expect((await detectProviders(home)).find(p => p.id === 'opencode')?.models).toEqual([
-      { id: 'local/modelo', name: 'https://example.test/a//b/*literal*/' },
-    ])
+    const providers = await detectProviders(fakeHome(), {
+      hasOpenCodeKey: async () => true,
+      runtimeModels: { opencode: async () => ({ models: [{ id: 'big-pickle', name: 'Big Pickle' }], source: 'runtime' }) },
+    })
+    expect(providers.find(p => p.id === 'opencode')).toMatchObject({ found: true, operational: true, executable: true, version: 'API', models: [{ id: 'big-pickle', name: 'Big Pickle' }] })
+  })
+
+  it('OpenCode com chave salva, mas catálogo fora do ar, não fica executável', async () => {
+    installedClis()
+    const { detectProviders } = await import('./detect')
+    const providers = await detectProviders(fakeHome(), {
+      hasOpenCodeKey: async () => true,
+      runtimeModels: { opencode: async () => { throw new Error('tempo limite') } },
+    })
+    expect(providers.find(p => p.id === 'opencode')).toMatchObject({ found: true, executable: false, models: null, modelReason: expect.stringMatching(/tempo limite/) })
   })
 
   it('ignora entradas malformadas sem impedir a leitura dos outros provedores', async () => {
     installedClis()
     const home = fakeHome()
     writeFileSync(join(home, '.pi', 'agent', 'models.json'), JSON.stringify({ providers: { invalid: { models: 'oops' }, local: { models: [null, { id: 12 }, { id: 'valid', name: {} }, { id: '' }] } } }))
-    writeFileSync(join(home, '.config', 'opencode', 'opencode.json'), JSON.stringify({ provider: { missing: null, broken: { models: 'oops' }, valid: { models: { okay: { name: 12 }, invalid: null } } } }))
     const { detectProviders } = await import('./detect')
     const providers = await detectProviders(home)
     expect(providers.find(p => p.id === 'pi')?.models).toEqual([{ id: 'local/valid', name: 'valid' }])
-    expect(providers.find(p => p.id === 'opencode')?.models).toEqual([{ id: 'valid/okay', name: 'okay' }])
-  })
-
-  it('recusa JSONC com erro de sintaxe em vez de aceitar o resultado parcial do parser', async () => {
-    installedClis()
-    const home = fakeHome()
-    rmSync(join(home, '.config', 'opencode', 'opencode.json'))
-    writeFileSync(join(home, '.config', 'opencode', 'opencode.jsonc'), '{"provider":{"local":{"models":{"partial":{}}}}} trailing')
-    const { detectProviders } = await import('./detect')
-    const provider = (await detectProviders(home)).find(p => p.id === 'opencode')
-    expect(provider?.models).toBeNull()
-    expect(provider?.modelReason).toMatch(/inválid/i)
-  })
-
-  it('não ignora JSON inválido presente usando outro catálogo silenciosamente', async () => {
-    installedClis()
-    const home = fakeHome()
-    writeFileSync(join(home, '.config', 'opencode', 'opencode.json'), '{"provider":')
-    writeFileSync(join(home, '.config', 'opencode', 'opencode.jsonc'), '{"provider":{"local":{"models":{"other":{}}}}}')
-    const { detectProviders } = await import('./detect')
-    expect((await detectProviders(home)).find(p => p.id === 'opencode')).toMatchObject({ models: null, modelReason: expect.stringMatching(/inválid/) })
   })
 
   it('consulta modelos reais por loader injetado e informa ausência de credencial', async () => {
@@ -154,11 +134,11 @@ describe('detecção de CLIs de agente instaladas', () => {
     expect(providers.find(p => p.id === 'pi')?.models).toHaveLength(1)
   })
 
-  it('reporta os cinco provedores e aceita RPC válido mesmo quando --version falha', async () => {
+  it('reporta os quatro provedores e aceita RPC válido mesmo quando --version falha', async () => {
     execFileMock.mockImplementation((command: string, args: string[], _opts: unknown, callback: (error: unknown, result: { stdout: string; stderr: string }) => void) => {
       if (command === 'where' || command === 'which') {
         const binary = args.at(-1)!
-        const known = ['codex', 'claude', 'agy', 'opencode', 'pi']
+        const known = ['codex', 'claude', 'opencode', 'pi']
         callback(known.includes(binary) ? null : new Error('not found'), { stdout: known.includes(binary) ? `C:\\tools\\${binary}.exe\n` : '', stderr: '' })
         return
       }
@@ -166,9 +146,7 @@ describe('detecção de CLIs de agente instaladas', () => {
         const binary = command.split(/[\\/]/).at(-1)?.replace(/\.(?:exe|cmd|bat)$/i, '')
         if (binary === 'codex') return callback(null, { stdout: 'codex-cli 0.160.1\n', stderr: '' })
         if (binary === 'claude') return callback(null, { stdout: '2.1.282 (Claude Code)\n', stderr: '' })
-        if (binary === 'agy') return callback(null, { stdout: '1.4.0\n', stderr: '' })
         if (binary === 'pi') return callback(new Error('version timeout'), { stdout: '', stderr: '' })
-        if (binary === 'opencode') return callback(new Error('postinstall not run'), { stdout: '', stderr: '' })
       }
       callback(new Error('unexpected call: ' + command), { stdout: '', stderr: '' })
     })
@@ -178,10 +156,8 @@ describe('detecção de CLIs de agente instaladas', () => {
     } })
     expect(providers.find(p => p.id === 'codex')).toMatchObject({ found: true, version: 'codex-cli 0.160.1', models: null })
     expect(providers.find(p => p.id === 'claude')).toMatchObject({ found: true, version: '2.1.282 (Claude Code)', models: null })
-    // Antigravity não tem fonte local conhecida de modelos ainda; listar exigiria chamar o CLI, que pode travar esperando login.
-    expect(providers.find(p => p.id === 'antigravity')).toMatchObject({ found: true, version: '1.4.0', models: null })
-    // Instalado mas com --version falhando continua "encontrado", só sem versão.
-    expect(providers.find(p => p.id === 'opencode')).toMatchObject({ found: true, version: null, models: [{ id: '9router/oc/big-pickle', name: 'oc/big-pickle' }] })
+    // OpenCode não usa CLI: sem chave salva, fica indisponível com o motivo.
+    expect(providers.find(p => p.id === 'opencode')).toMatchObject({ found: false, operational: false, models: null })
     expect(providers.find(p => p.id === 'pi')).toMatchObject({ found: true, operational: true, executable: true, version: null, modelReason: undefined, models: [{ id: 'anthropic/claude-opus-4-6', name: 'claude-opus-4-6 (anthropic)' }] })
   })
 
@@ -245,6 +221,6 @@ describe('detecção com binários reais desta máquina', () => {
     const { detectProviders } = await import('./detect')
     const providers = await detectProviders()
     for (const provider of providers) console.log(`[smoke] ${provider.id}: found=${provider.found} version=${provider.version ?? '(sem versão)'} path=${provider.path ?? '-'} modelos=${provider.models?.length ?? '(n/d)'}`)
-    expect(providers).toHaveLength(5)
+    expect(providers).toHaveLength(4)
   }, 30_000)
 })

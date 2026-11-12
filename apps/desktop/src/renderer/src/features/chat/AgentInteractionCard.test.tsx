@@ -23,6 +23,19 @@ it('apresenta opções, envia escolha única ao backend e mostra resposta persis
   expect(screen.getByText('Resposta: Vue')).toBeInTheDocument()
 })
 
+it('preserva e exibe por inteiro uma opção de resposta longa', async () => {
+  const longOption = 'Monitorar, revisar e aprovar sozinho o que passar nos critérios (como no Harvey), escalando casos de preço, proposta ou reunião marcada.'
+  const answerQuestion = vi.fn(async () => undefined)
+  vi.stubGlobal('appAPI', { answerQuestion })
+  render(<AgentInteractionCard approval={{ ...base, details: { question: 'O que devo fazer?', options: [longOption] } }} onNotice={vi.fn()} />)
+  const option = screen.getByRole('button', { name: /Monitorar, revisar e aprovar sozinho/ })
+  expect(option).toHaveTextContent(longOption)
+  expect(option.querySelector('span.flex-1')).not.toHaveClass('truncate')
+  fireEvent.click(option)
+  fireEvent.click(screen.getByRole('button', { name: /Enviar resposta/ }))
+  await waitFor(() => expect(answerQuestion).toHaveBeenCalledWith('q-1', longOption))
+})
+
 it('marca a opção recomendada sem remover as outras escolhas', () => {
   render(<AgentInteractionCard approval={{ ...base, details: { ...base.details, recommendedOption: 'Vue' } }} onNotice={vi.fn()} />)
   expect(screen.getByText('Recomendado')).toBeInTheDocument()

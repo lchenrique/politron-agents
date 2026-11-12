@@ -1,5 +1,5 @@
 import { promises as fs, realpathSync } from 'node:fs'
-import { basename, isAbsolute, join, relative } from 'node:path'
+import { basename, isAbsolute, join, parse, relative } from 'node:path'
 import { ASSISTANT_ID, type Agent, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type Mission, type MissionAction, type Routine, type StartMissionInput, type Workspace } from '../../shared/v9'
 import { describeTrigger, validateTrigger, ACTIVE_MISSION } from '../../shared/missions'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
@@ -54,7 +54,7 @@ export interface ChiefCall {
   record: (value: string) => void
 }
 
-const RUNTIMES = ['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const
+const RUNTIMES = ['codex', 'claude', 'pi', 'opencode'] as const
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 const ACTIVE_RUN = ['queued', 'running', 'waiting']
 
@@ -97,6 +97,28 @@ function assertOutsideAppData(directory: string, dataDirectory: string) {
   if (sameOrInside(b, a) || sameOrInside(a, b)) throw new Error('Essa pasta contém ou fica dentro dos dados do Boobot; escolha outra.')
 }
 
+/** Resolve diferenças comuns de separador no nome de cada pasta, sem busca recursiva nem escolha ambígua. */
+export async function resolveProjectDirectory(raw: string): Promise<string> {
+  try { const exact = canonicalDirectory(raw); if (exact) return exact } catch { /* tenta somente equivalências de separador nos segmentos */ }
+  if (!isAbsolute(raw)) throw new Error('Informe o caminho absoluto de uma pasta existente.')
+  const root = parse(raw).root
+  const segments = raw.slice(root.length).split(/[\\/]+/).filter(Boolean)
+  let current = root
+  const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_-]+/g, '').toLocaleLowerCase('pt-BR')
+  for (const segment of segments) {
+    let entries
+    try { entries = await fs.readdir(current, { withFileTypes: true }) } catch { throw new Error('Selecione uma pasta existente.') }
+    const exact = entries.find(entry => entry.isDirectory() && entry.name === segment)
+    const matches = exact ? [exact] : entries.filter(entry => entry.isDirectory() && normalize(entry.name) === normalize(segment))
+    if (matches.length > 1) throw new Error('O trecho ' + segment + ' corresponde a mais de uma pasta: ' + matches.slice(0, 5).map(entry => entry.name).join(', ') + '.')
+    if (!matches.length) throw new Error('Selecione uma pasta existente.')
+    current = join(current, matches[0]!.name)
+  }
+  const resolved = canonicalDirectory(current)
+  if (!resolved) throw new Error('Selecione uma pasta existente.')
+  return resolved
+}
+
 function routineTrigger(args: Record<string, unknown>) {
   const schedule = String(args.schedule)
   return validateTrigger(schedule === 'daily' ? { kind: 'daily', time: args.time, weekdays: args.weekdays } : schedule === 'interval' ? { kind: 'interval', minutes: args.minutes } : { kind: 'event', event: schedule })
@@ -118,7 +140,7 @@ export function chiefToolDefinitions(tool: (name: string, description: string, p
   ]
   if (planning) return read
   return [...read,
-    tool('project_create', 'Cria um projeto. Com path (pasta existente, caminho absoluto indicado pelo usuário) usa essa pasta; sem path cria Documentos\\Boobot\\<nome>. Ação direta.', { name: { type: 'string' }, path: { type: 'string', description: 'Caminho absoluto de uma pasta existente (opcional).' } }, ['name']),
+    tool('project_create', 'Cria um projeto. Com path usa a pasta existente indicada pelo usuário; reconhece diferenças simples entre espaços, hífens e underscores em cada segmento. Se houver mais de uma pasta correspondente, informa as opções sem escolher. Sem path cria Documentos\\Boobot\\<nome>. Ação direta.', { name: { type: 'string' }, path: { type: 'string', description: 'Caminho absoluto de uma pasta existente (opcional).' } }, ['name']),
     tool('project_update', 'Renomeia um projeto ou troca as instruções do projeto. Ação direta.', { project_id: projectId, name: { type: 'string' }, instructions: { type: 'string' } }, ['project_id']),
     tool('session_create', 'Cria uma sessão em qualquer projeto. Sem agents, usa o time padrão do projeto (ou o Assistente). Ação direta.', { project_id: projectId, name: { type: 'string' }, agents }, ['project_id']),
     tool('session_update', 'Renomeia uma sessão. Ação direta.', { conversation_id: sessionId, name: { type: 'string' } }, ['conversation_id', 'name']),
@@ -246,7 +268,7 @@ export async function runChiefTool(host: ChiefHost, call: ChiefCall, name: strin
     if (args.path !== undefined && args.path !== '') {
       const raw = str(args.path, 1000, 'Caminho')
       if (!isAbsolute(raw)) throw new Error('Informe o caminho absoluto de uma pasta existente.')
-      directory = canonicalDirectory(raw)!
+      directory = await resolveProjectDirectory(raw)
     } else {
       const target = join(host.documentsDirectory(), 'Boobot', projectFolderName(projectTitle))
       await fs.mkdir(target, { recursive: true })

@@ -17,7 +17,7 @@ export interface Agent {
   /** Skills do Marketplace deste Boo (slugs). Skills globais valem para todos e não entram aqui. */
   skillIds?: string[]
   id: string; name: string; alias: string; description: string; instructions: string
-  runtime: 'codex' | 'claude' | 'pi' | 'opencode' | 'antigravity'; model: string; color: string; avatar: string
+  runtime: 'codex' | 'claude' | 'pi' | 'opencode'; model: string; color: string; avatar: string
   role?: 'agent' | 'chief'
   /** Boos temporários pertencem a um workspace; aposentados preservam histórico e resultados. */
   temporary?: boolean
@@ -169,12 +169,17 @@ export interface BoardTaskMission { taskId: string; role: 'worker' | 'reviewer';
 export interface BoardEvidence { id: string; taskId: string; round: number; kind: 'diff' | 'test' | 'command' | 'note' | 'conversation'; label: string; summary: string; reference?: string; createdAt: string }
 export interface BoardTaskInput { title: string; description: string; acceptanceCriteria: string; kind: BoardTaskKind; teamId: string; workspaceId?: string | null }
 export interface BoardSnapshot { teams: BoardTeam[]; tasks: BoardTask[]; events: BoardEvent[]; missions: BoardTaskMission[]; evidence: BoardEvidence[] }
+/** Modelos que o usuário esconde do seletor e modelos adicionados à mão, por provedor. */
+export type ModelPreferences = {
+  disabled: string[]
+  custom: Array<{ provider: Agent['runtime']; id: string; name: string }>
+}
 export type ModelEffort = NonNullable<Agent['effort']>
 export interface ModelOptionChoice { id: string; name: string; description?: string }
 /** Configurações específicas do modelo aplicadas somente ao turno enviado. */
 export interface ModelRuntimeOptions { serviceTier?: string | null; fastMode?: boolean; variant?: string }
 export interface Model {
-  id: string; name: string; runtime: 'codex' | 'claude' | 'pi' | 'antigravity' | 'opencode'; isDefault: boolean
+  id: string; name: string; runtime: 'codex' | 'claude' | 'pi' | 'opencode'; isDefault: boolean
   description?: string
   supportedEfforts?: ModelEffort[]
   defaultEffort?: ModelEffort
@@ -195,8 +200,8 @@ export interface PitVoicesInfo { choices: { id: PitVoiceId; name: string; engine
 export interface DecisionModel { id: string; name: string; free?: boolean }
 export interface DecisionModelCatalog { source: 'openrouter'; models: DecisionModel[] }
 export interface OpenRouterDecisionStatus { configured: boolean; modelId: string }
-/** Quem gera imagens para os Boos: motor já logado (Codex/Antigravity), chave de API ou nenhum. */
-export type ImageGenerationProvider = 'off' | 'codex' | 'antigravity' | 'api'
+/** Quem gera imagens para os Boos: motor já logado (Codex), chave de API ou nenhum. */
+export type ImageGenerationProvider = 'off' | 'codex' | 'api'
 export type ImageApiProvider = 'openai' | 'gemini' | 'openrouter'
 export interface ImageGenerationSettings { provider: ImageGenerationProvider; apiProvider: ImageApiProvider; model: string }
 /** Padrões conferidos na documentação oficial de cada provedor em 31/10/2026; o usuário pode trocar o modelo. */
@@ -204,7 +209,7 @@ export const DEFAULT_IMAGE_MODELS: Record<ImageApiProvider, string> = { openai: 
 /** Nunca carrega a chave: só se há uma salva para cada provedor de API. */
 export interface ImageGenerationStatus extends ImageGenerationSettings {
   keys: Record<ImageApiProvider, boolean>
-  engines: Record<'codex' | 'antigravity', { available: boolean; reason?: string }>
+  engines: Record<'codex', { available: boolean; reason?: string }>
 }
 export interface ProjectFileEntry { name: string; path: string; directory: boolean }
 export interface ProjectFileContent { path: string; name: string; content: string; hash: string }
@@ -228,7 +233,7 @@ export interface AppAPI {
   /** Somente Desktop: autoriza o navegador real para todas as conversas. */
   saveExternalBrowserAlways?(enabled: boolean): Promise<void>
   saveAgent(input: Partial<Agent>): Promise<Agent>
-  saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode' | 'runtimePermissionMode'>>): Promise<Agent>
+  saveAssistantPreferences(input: Partial<Pick<Agent, 'canWrite' | 'computerUse' | 'approvalMode' | 'runtimePermissionMode' | 'color'>>): Promise<Agent>
   approvalGrants(agentId: string): Promise<ApprovalGrant[]>
   removeApprovalGrant(grantId: string, agentId: string): Promise<void>
   saveTerminalAccess(enabled: boolean): Promise<void>
@@ -287,6 +292,11 @@ export interface AppAPI {
   voiceClearOpenRouterKey(): Promise<VoiceStatus>
   cancelDelegation(delegationId: string): Promise<void>
   models(runtime?: 'codex' | 'claude'): Promise<Model[]>
+  modelPreferences(): Promise<ModelPreferences>
+  saveModelPreferences(input: ModelPreferences): Promise<ModelPreferences>
+  hasOpenCodeCredential(): Promise<boolean>
+  saveOpenCodeCredential(apiKey: string): Promise<void>
+  clearOpenCodeCredential(): Promise<void>
   hasClaudeCredential(): Promise<boolean>
   saveClaudeCredential(apiKey: string): Promise<void>
   clearClaudeCredential(): Promise<void>

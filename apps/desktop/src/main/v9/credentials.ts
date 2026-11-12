@@ -24,3 +24,26 @@ export class ClaudeCredentialStore {
     }
   }
 }
+
+/** Chave da API do OpenCode Console (antiga Zen), no mesmo cofre do Electron que a do Claude. */
+export class OpenCodeCredentialStore {
+  private readonly path: string
+  constructor(dataDirectory: string) { this.path = join(dataDirectory, 'opencode-api-key.enc') }
+  async has(): Promise<boolean> { try { return (await fs.stat(this.path)).isFile() } catch { return false } }
+  async clear(): Promise<void> { await fs.unlink(this.path).catch((error: unknown) => { if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) throw error }) }
+  async save(apiKey: string): Promise<void> {
+    const value = typeof apiKey === 'string' ? apiKey.trim() : ''
+    if (value.length < 20 || value.length > 500) throw new Error('Informe uma chave de API do OpenCode válida.')
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('O armazenamento seguro do sistema está indisponível.')
+    await fs.writeFile(this.path, safeStorage.encryptString(value), { mode: 0o600 })
+  }
+  async load(): Promise<string | null> {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error('O armazenamento seguro do sistema está indisponível.')
+      return safeStorage.decryptString(await fs.readFile(this.path))
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return null
+      throw error
+    }
+  }
+}

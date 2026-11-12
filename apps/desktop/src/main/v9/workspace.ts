@@ -28,14 +28,13 @@ import { ImageGenerationService, imageExtension, NOT_CONFIGURED } from './image-
 import { CodexRuntime, type DynamicTool } from './codex'
 import { ClaudeRuntime } from './claude'
 import { PiRuntime } from './pi'
-import { HeadlessCliRuntime } from './headless-cli'
-import { OpenCodeServerRuntime } from './opencode-server'
+import { OpenCodeApiRuntime } from './opencode-api'
 import { chooseBooIdentity } from './boo-identity'
 import { marketplaceRoot } from '../marketplace/catalog'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
 import { agentModelInput, CHIEF_READ_TOOLS, CHIEF_TOOLS, chiefToolDefinitions, runChiefTool, type ChiefCall } from './chief-control'
 import { SessionUnavailableError, type AgentInput, type AgentRuntime, type RuntimeThread } from './agent-runtime'
-import { ClaudeCredentialStore } from './credentials'
+import { ClaudeCredentialStore, OpenCodeCredentialStore } from './credentials'
 import { AttachmentStore } from '../attachments/attachment-store'
 import { canonicalDirectory, WorkspaceStore, type AssistantPreferences } from './store'
 import { SkillsService } from './skills/service'
@@ -48,7 +47,7 @@ import { delegatedConversationName } from '../../shared/delegation-title'
 import { MEMORY_KINDS, type MemoryInput } from '../../shared/memory'
 import type { MemoryActor } from './memories'
 
-const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
+const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode' }
 
 type RunContext = { nativeItems?: Map<string, Message>; run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
   /** Autoaprendizado: chamadas de ferramenta (fora as de skill), erro seguido de sucesso, skill já gravada e revisão final em curso. */
@@ -132,8 +131,8 @@ export class AppService extends EventEmitter {
   readonly claudeRuntime: AgentRuntime
   readonly piRuntime: AgentRuntime
   readonly openCodeRuntime: AgentRuntime
-  readonly antigravityRuntime: AgentRuntime
   readonly credentials: ClaudeCredentialStore
+  readonly openCodeCredentials: OpenCodeCredentialStore
   readonly attachments: AttachmentStore
   readonly decisionRouting: OpenRouterDecisionService
   readonly imageGeneration: ImageGenerationService
@@ -294,14 +293,13 @@ export class AppService extends EventEmitter {
     for (const boo of this.store.agents().filter(item => item.temporary && item.temporaryStatus === 'working'))
       this.store.saveAgent({ ...boo, temporaryStatus: 'retired' })
     this.credentials = new ClaudeCredentialStore(dataDirectory)
+    this.openCodeCredentials = new OpenCodeCredentialStore(dataDirectory)
     this.decisionRouting = new OpenRouterDecisionService(dataDirectory)
     this.imageGeneration = new ImageGenerationService(dataDirectory)
     this.claudeRuntime = claudeRuntime || new ClaudeRuntime(dataDirectory, () => this.credentials.load())
     this.piRuntime = new PiRuntime(join(dataDirectory, 'pi-runtime'))
-    this.openCodeRuntime = process.env.BOOBOT_OPENCODE_TRANSPORT === 'cli'
-      ? new HeadlessCliRuntime('opencode', join(dataDirectory, 'opencode-chat'))
-      : new OpenCodeServerRuntime(join(dataDirectory, 'opencode-server'))
-    this.antigravityRuntime = new HeadlessCliRuntime('antigravity', join(dataDirectory, 'antigravity-chat'))
+    // OpenCode entra por API key (Console), sem depender do CLI instalado na máquina.
+    this.openCodeRuntime = new OpenCodeApiRuntime(() => this.openCodeCredentials.load())
     this.gitWorkspaces = new GitWorkspaceService(join(dataDirectory, 'worktrees'))
     this.skills = new SkillsService(dataDirectory, join(marketplaceRoot(), 'skills'))
     this.missions = new MissionEngine({
@@ -334,10 +332,8 @@ export class AppService extends EventEmitter {
     this.piRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.piRuntime))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
     this.openCodeRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.openCodeRuntime))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
-    this.antigravityRuntime.on('event', (event: any) => void this.onRuntimeEvent(event, this.antigravityRuntime))
     this.agentTerminals.on('event', (event: WorkspaceEvent) => this.emitEvent(event))
-    for (const [name, runtime] of [['Codex', this.runtime], ['Claude', this.claudeRuntime], ['Pi', this.piRuntime], ['OpenCode', this.openCodeRuntime], ['Antigravity', this.antigravityRuntime]] as const) {
+    for (const [name, runtime] of [['Codex', this.runtime], ['Claude', this.claudeRuntime], ['Pi', this.piRuntime], ['OpenCode', this.openCodeRuntime]] as const) {
       runtime.on('disconnected', (error: Error) => {
         for (const context of this.contexts.values()) {
           if (context.runtime !== runtime) continue
@@ -349,7 +345,7 @@ export class AppService extends EventEmitter {
     }
     this.board.restore()
   }
-  snapshot() { return { ...this.store.snapshot(), board: this.board.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function'), imageRuntimes: (['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const).filter(name => this.runtimeFor(name).supportsImages === true) } }
+  snapshot() { return { ...this.store.snapshot(), board: this.board.snapshot(), steeringRuntimes: (['codex', 'claude', 'pi'] as const).filter(name => typeof this.runtimeFor(name).steer === 'function'), imageRuntimes: (['codex', 'claude', 'pi', 'opencode'] as const).filter(name => this.runtimeFor(name).supportsImages === true) } }
   boardSnapshot(): BoardSnapshot { return this.board.snapshot() }
   saveBoardTeam(input: Partial<BoardTeam> & { name: string }) { return this.board.saveTeam(input) }
   deleteBoardTeam(teamId: string) { this.board.deleteTeam(teamId) }
@@ -380,7 +376,7 @@ export class AppService extends EventEmitter {
   // Small read for Settings; avoid materializing conversations, runs and file changes.
   settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, runtimePermissionMode: assistant.runtimePermissionMode || 'managed', terminalEnabled: this.store.terminalEnabled(), externalBrowserAlways: this.store.externalBrowserAlways() } }
   saveExternalBrowserAlways(enabled: boolean) { this.store.saveExternalBrowserAlways(enabled); this.emitEvent({ type: 'changed' }) }
-  private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : name === 'antigravity' ? this.antigravityRuntime : this.runtime }
+  private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : this.runtime }
   /** Usa o inventário validado na inicialização ou atualizado manualmente; envio não varre CLI. */
   setCachedModelResolver(resolver: (runtime: Agent['runtime']) => Promise<Model[]>): void { this.cachedModels = resolver }
   private refreshWorkspaceStatuses(): Promise<void> {
@@ -832,7 +828,7 @@ export class AppService extends EventEmitter {
     const selectedRuntime = model?.includes(':') ? model.slice(0, model.indexOf(':')) as Agent['runtime'] : undefined
     const selectedModel = selectedRuntime ? model!.slice(model!.indexOf(':') + 1) : model
     let selectedCatalog: Model | undefined
-    if (selectedRuntime && !['codex', 'claude', 'pi', 'opencode', 'antigravity'].includes(selectedRuntime)) throw new Error('Motor selecionado inválido.')
+    if (selectedRuntime && !['codex', 'claude', 'pi', 'opencode'].includes(selectedRuntime)) throw new Error('Motor selecionado inválido.')
     if (selectedModel) {
       const modelRuntime = selectedRuntime || agents[0]?.runtime || 'codex'
       const available = await (this.cachedModels ? this.cachedModels(modelRuntime) : this.runtimeFor(modelRuntime).models())
@@ -1106,6 +1102,11 @@ export class AppService extends EventEmitter {
       if (message) { const next = { ...message, status: 'interrupted' as const, text: `${message.text.split('\n')[0]}\nPedido cancelado pelo usuário.` }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next }) }
     }
   }
+  modelPreferences() { return this.store.modelPreferences() }
+  saveModelPreferences(input: Parameters<typeof this.store.saveModelPreferences>[0]) { const value = this.store.saveModelPreferences(input); this.emitEvent({ type: 'changed' }); return value }
+  async hasOpenCodeCredential() { return this.openCodeCredentials.has() }
+  async saveOpenCodeCredential(apiKey: string) { await this.openCodeCredentials.save(apiKey); this.emit('provider-auth-changed') }
+  async clearOpenCodeCredential() { await this.openCodeCredentials.clear(); this.emit('provider-auth-changed') }
   async hasClaudeCredential() { return this.credentials.has() }
   async saveClaudeCredential(apiKey: string) { await this.credentials.save(apiKey); this.emit('provider-auth-changed') }
   async clearClaudeCredential() { await this.credentials.clear(); this.emit('provider-auth-changed') }
@@ -1135,7 +1136,7 @@ export class AppService extends EventEmitter {
       } finally { if (timer) clearTimeout(timer) }
     }
     if (runtimeName) return load(runtimeName)
-    const names: Agent['runtime'][] = this.cachedModels ? ['codex', 'claude', 'pi', 'opencode', 'antigravity'] : ['codex', 'claude']
+    const names: Agent['runtime'][] = this.cachedModels ? ['codex', 'claude', 'pi', 'opencode'] : ['codex', 'claude']
     const results = await Promise.allSettled(names.map(load))
     const models = results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
     if (results.every(result => result.status === 'rejected')) {
@@ -1320,7 +1321,8 @@ export class AppService extends EventEmitter {
     const { run } = context
     const threadId = run.threadId
     if (signal.aborted || !threadId || context.voiceReply || !shouldReflect({ status: run.status, planMode: run.planMode === true, delegated: !!run.parentId,
-      toolCalls: context.toolCalls || 0, recoveredFromError: !!context.recovered, savedSkill: !!context.savedSkill })) return
+      toolCalls: context.toolCalls || 0, recoveredFromError: !!context.recovered, savedSkill: !!context.savedSkill,
+      queuedWork: this.store.runs().some(item => item.id !== run.id && item.status === 'queued' && item.agentId === run.agentId && item.conversationId === run.conversationId) })) return
     context.reflecting = true
     let turnId: string | undefined
     const timeout = new AbortController()
@@ -1428,7 +1430,7 @@ export class AppService extends EventEmitter {
       tool('read_skill', 'Lê o conteúdo completo (SKILL.md) de uma skill pelo id ou nome devolvido por list_skills. Com file, lê um arquivo auxiliar dentro da pasta da skill (ex.: references/social.md).', { id: { type: 'string' }, file: { type: 'string', description: 'Opcional: caminho relativo de um arquivo auxiliar dentro da pasta da skill.' } }, ['id']),
       ...(!planning ? [tool('save_skill', 'Grava ou corrige uma skill própria do Boobot (nunca mexe nas skills do Codex/Claude Code da máquina) para reaproveitar um procedimento que funcionou e provavelmente vai se repetir. Use só depois de confirmar com workspace_read/list_skills que já não existe uma igual; para corrigir uma skill aprendida existente, use operation "update" com o mesmo slug, sem recriar do zero.', { operation: { type: 'string', enum: ['create', 'update'] }, slug: { type: 'string', description: 'Identificador curto em minúsculas com hífen, ex.: corrigir-login-expirado.' }, name: { type: 'string' }, description: { type: 'string', description: 'Quando essa skill deve ser usada; é isso que decide se ela aparece relevante depois.' }, content: { type: 'string', description: 'O procedimento em si, em markdown.' } }, ['operation', 'slug', 'description', 'content'])] : []),
       ...(context.agent.role === 'chief' && !planning ? [
-        tool('agent_create', 'Cria 1 a 5 Boos de uma vez, direto, sem pedir confirmação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Herda as permissões e o modo de aprovação do Chief, sem ampliar seu acesso; runtime, model e effort são opcionais (padrão: os seus). Para purpose=team, exige chiefManageTeam e associa os Boos à equipe padrão e à conversa atual na mesma operação; sem essa permissão, falha antes de criar qualquer Boo. Continue com ask_agent se o pedido incluir trabalho para o time.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário criado espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' }, skillIds: { type: 'array', items: { type: 'string' }, description: 'Opcional: slugs de skills do Marketplace para este Boo (ids marketplace:<slug> de list_skills, sem o prefixo).' }, runtime: { type: 'string', enum: ['codex', 'claude', 'pi', 'opencode', 'antigravity'] }, model: { type: 'string' }, effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'] } }, required: ['instructions'] } } }, ['agents']),
+        tool('agent_create', 'Cria 1 a 5 Boos de uma vez, direto, sem pedir confirmação. Primeiro consulte group_members e reutilize especialistas adequados. Se o usuário pedir uma EQUIPE, escolha purpose=team (padrão): os novos Boos são PERMANENTES, mesmo que ele cite um projeto ou tarefa, exceto se pedir explicitamente temporários. Se o Chief identificar, por iniciativa própria, falta de especialista para uma tarefa pontual, escolha purpose=task: os novos Boos são TEMPORÁRIOS e se aposentam após a delegação; não crie se um Boo existente servir. Cada Boo recebe nome de mitologia misturada e cor coerente com a função, quando não informados. O campo temporary substitui o padrão individual apenas para respeitar pedido explícito do usuário. Herda as permissões e o modo de aprovação do Chief, sem ampliar seu acesso; runtime, model e effort são opcionais (padrão: os seus). Para purpose=team, exige chiefManageTeam e associa os Boos à equipe padrão e à conversa atual na mesma operação; sem essa permissão, falha antes de criar qualquer Boo. Continue com ask_agent se o pedido incluir trabalho para o time.', { purpose: { type: 'string', enum: ['team', 'task'], description: 'team (padrão) = equipe permanente pedida pelo usuário; task = reforço temporário criado espontaneamente pelo Chief para lacuna numa tarefa pontual.' }, agents: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string' }, temporary: { type: 'boolean', description: 'Defina apenas se o usuário pedir exceção explícita. O padrão depende de purpose.' }, skillIds: { type: 'array', items: { type: 'string' }, description: 'Opcional: slugs de skills do Marketplace para este Boo (ids marketplace:<slug> de list_skills, sem o prefixo).' }, runtime: { type: 'string', enum: ['codex', 'claude', 'pi', 'opencode'] }, model: { type: 'string' }, effort: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'] } }, required: ['instructions'] } } }, ['agents']),
       ] : []),
       tool('ask_agent', context.agent.role === 'chief' ? 'Delegue a qualquer Boo com canDelegate=true em group_members (o catálogo inteiro, não só o time), quando o usuário pedir encaminhamento ou quando a tarefa se beneficiar de trabalho paralelo. Delegar não pede confirmação; o Boo entra no time desta conversa. A delegação do Chief nunca prende a conversa: sempre roda em segundo plano, mesmo com mode=wait; você recebe um recibo na hora, deve encerrar o turno e será acionado automaticamente quando o Boo terminar (sucesso ou falha). Se o usuário fizer um follow-up curto, consulte search_history para identificar o pedido original antes de perguntar novamente. Escreva um pedido autônomo com objetivo, sintomas ou contexto, arquivos relevantes e resultado esperado; não dependa de referências como “isso” ou de histórico que o destinatário não verá. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta; isso reutiliza a conversa privada e preserva as evidências.' : 'Pede a outro agente cadastrado uma análise ou tarefa. O pedido será executado em uma conversa privada, com as instruções e permissões próprias do destinatário. Use mode=background para continuar sem aguardar; o resultado será publicado nesta conversa quando terminar. Marque continue_on_result para receber uma continuação sua depois do resultado. Para complementar uma tarefa anterior do mesmo especialista, use delegation_id da resposta.', { agent: { type: 'string', description: 'Nome ou menção do agente.' }, task: { type: 'string', description: 'Pedido autônomo: objetivo, problema e sintomas, contexto e resultado esperado.' }, delegation_id: { type: 'string', description: 'ID devolvido por uma delegação anterior para continuar com o mesmo destinatário na mesma conversa privada.' }, mode: { type: 'string', enum: ['wait', 'background'], description: 'wait aguarda o resultado; background devolve um recibo e publica o resultado mais tarde.' }, continue_on_result: { type: 'boolean', description: 'Depois do resultado em background, iniciar uma única continuação sua nesta conversa.' } }, ['agent', 'task']),
       tool('delegation_result', 'Consulta o resultado, as evidências de arquivos e os registros de comandos de uma delegação autorizada. Use o ID recebido em ask_agent antes de repetir trabalho ou pedir um complemento.', { delegation_id: { type: 'string', description: 'ID da delegação recebida na resposta de ask_agent.' } }, ['delegation_id'])
@@ -1437,6 +1439,9 @@ export class AppService extends EventEmitter {
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registros dinâmicos de migração/IPC/eventos de runtime; tipar exigiria refatoração fora do escopo
   private async onRuntimeEvent(event: any, runtime: AgentRuntime) {
+    // Evento que chega depois do dispose (runtime fechando, timer pendente) escreveria em banco já fechado
+    // e viraria rejeição não tratada — foi o que apareceu como "database is locked"/"database is not open".
+    if (this.statusSignal.signal.aborted) return
     const params = event?.params || {}
     if (event.method === 'turn/completed' && params.threadId && params.turn?.id) {
       const outcomes = this.completedTurns.get(runtime) || new Map<string, { status: string; error?: string }>()
@@ -2213,6 +2218,6 @@ export class AppService extends EventEmitter {
     for (const context of this.contexts.values()) if (context.flushTimer) clearTimeout(context.flushTimer)
     for (const key of [...this.externalBrowserProxies.keys()]) this.closeExternalBrowserProxy(key)
     this.computerUseSessions.closeAll()
-    this.platformBrowser?.revokeSharing(); this.runtime.close(); this.claudeRuntime.close(); this.piRuntime.close(); this.openCodeRuntime.close(); this.antigravityRuntime.close(); this.store.close()
+    this.platformBrowser?.revokeSharing(); this.runtime.close(); this.claudeRuntime.close(); this.piRuntime.close(); this.openCodeRuntime.close(); this.store.close()
   }
 }

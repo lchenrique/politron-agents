@@ -39,13 +39,16 @@ export class VoiceRecorder {
   private timer: ReturnType<typeof setInterval> | null = null
   private partialTimer: ReturnType<typeof setInterval> | null = null
   private cancelled = false
+  private stopRequested = false
 
   async record(autoSilence = false, onLevel?: (value: number) => void, onPartial?: (wav: Uint8Array) => Promise<void>, partialMs = 1800): Promise<Uint8Array> {
     if (this.media) throw new Error('Microfone ocupado.')
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) throw new Error('Microfone indisponível.')
     this.cancelled = false
+    this.stopRequested = false
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      if (this.stopRequested) throw new Error('Gravação cancelada.')
       this.context = new AudioContext()
       const analyser = this.context.createAnalyser()
       analyser.fftSize = 1024
@@ -87,7 +90,11 @@ export class VoiceRecorder {
     } catch (error) { this.cleanup(); throw error }
   }
 
-  stop() { if (this.media?.state === 'recording') this.media.stop() }
+  stop() {
+    if (this.media?.state === 'recording') this.media.stop()
+    else if (!this.media) this.stopRequested = true
+  }
+
   cancel() { this.cancelled = true; this.stop(); if (!this.media) this.cleanup() }
   private cleanup() {
     if (this.timer) clearInterval(this.timer)

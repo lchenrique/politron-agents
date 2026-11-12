@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Folder, FolderGit2, FolderOpen, FolderPlus, Loader2, Palette, ShieldCheck, Sparkles, TriangleAlert, UserRound, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -99,6 +99,19 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
   const targetFolderName = origin === 'new' ? folderName.trim() || name.trim() : folderName.trim() || lastSegment(repository)
   const [problem, setProblem] = useState('')
   const [saving, setSaving] = useState(false)
+  // O editor é um diálogo próprio: sem isto, o Esc não fechava nada e o modal só saía pelo X ou pelo fundo.
+  // Selects e menus flutuantes tratam o Esc primeiro; nesse caso o editor não pode fechar junto.
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || saving) return
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('[data-radix-popper-content-wrapper],[role="menu"],[role="listbox"],[data-floating-menu]')) return
+      if (document.querySelector('[data-radix-popper-content-wrapper]')) return
+      onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose, saving])
   const pickInto = (set: (value: string) => void, current: string) => async () => { try { set(await onPickFolder() || current) } catch (error) { setProblem(errorText(error)) } }
   const [agentSection, setAgentSection] = useState<AgentSection>('identity')
   const currentAgentSection = AGENT_SECTIONS.find(item => item.id === agentSection) || AGENT_SECTIONS[0]
@@ -204,8 +217,8 @@ export function Editor({ kind, agents, models, initial, workspaceId, defaultAgen
             <EditorGroup title="Modelo" description="Motor, modelo e esforço usados quando este agente responde.">
             <label className="block space-y-1.5 text-sm">Perfil rápido<Select value="" onValueChange={profile => { if (profile === 'codex-balanced' || profile === 'codex-focused') { setRuntime('codex'); setModel(''); setEffort(profile === 'codex-focused' ? 'high' : 'medium') } else if (profile.startsWith('claude-')) { setRuntime('claude'); const desired = profile === 'claude-opus' ? /opus/i : /sonnet/i; setModel(models.find(item => item.runtime === 'claude' && desired.test(item.name))?.id.replace(/^claude:/, '') || ''); setEffort(profile === 'claude-opus' ? 'high' : 'medium') } }}><SelectTrigger aria-label="Perfil rápido"><SelectValue placeholder="Escolha uma base…" /></SelectTrigger><SelectContent><SelectItem value="codex-balanced">Codex equilibrado</SelectItem><SelectItem value="codex-focused">Codex focado</SelectItem><SelectItem value="claude-sonnet">Claude Sonnet equilibrado</SelectItem><SelectItem value="claude-opus">Claude Opus avançado</SelectItem></SelectContent></Select></label>
             <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block space-y-1.5 text-sm">Motor<Select value={runtime} onValueChange={value => { setRuntime(value as Agent['runtime']); setModel('') }}><SelectTrigger aria-label="Motor"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="codex">Codex</SelectItem><SelectItem value="claude">Claude Agent SDK</SelectItem><SelectItem value="pi">Pi Coding Agent (CLI)</SelectItem><SelectItem value="opencode">OpenCode (agente com ferramentas Boobot)</SelectItem><SelectItem value="antigravity">Antigravity (chat em modo plano)</SelectItem></SelectContent></Select></label>
-            <div className="flex min-w-0 flex-col gap-1.5 text-sm [&_button]:w-full [&_button]:max-w-none [&_button]:justify-between"><span>Modelo</span><ModelSelector label="Modelo" variant="outline" allowInherit={false} value={model ? runtime + ':' + model : ''} onValueChange={value => setModel(value.replace(/^(codex|claude|pi|opencode|antigravity):/, ''))} models={models.filter(item => item.runtime === runtime).map(item => ({ ...item, provider: runtime === 'claude' ? 'Claude Code' : runtime === 'pi' ? 'Pi' : runtime === 'opencode' ? 'OpenCode' : runtime === 'antigravity' ? 'Antigravity' : 'Codex' }))} /></div>
+            <label className="block space-y-1.5 text-sm">Motor<Select value={runtime} onValueChange={value => { setRuntime(value as Agent['runtime']); setModel('') }}><SelectTrigger aria-label="Motor"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="codex">Codex</SelectItem><SelectItem value="claude">Claude Agent SDK</SelectItem><SelectItem value="pi">Pi Coding Agent (CLI)</SelectItem><SelectItem value="opencode">OpenCode (agente com ferramentas Boobot)</SelectItem></SelectContent></Select></label>
+            <div className="flex min-w-0 flex-col gap-1.5 text-sm [&_button]:w-full [&_button]:max-w-none [&_button]:justify-between"><span>Modelo</span><ModelSelector label="Modelo" variant="outline" allowInherit={false} value={model ? runtime + ':' + model : ''} onValueChange={value => setModel(value.replace(/^(codex|claude|pi|opencode):/, ''))} models={models.filter(item => item.runtime === runtime).map(item => ({ ...item, provider: runtime === 'claude' ? 'Claude Code' : runtime === 'pi' ? 'Pi' : runtime === 'opencode' ? 'OpenCode' : 'Codex' }))} /></div>
             </div>
             {allowedEfforts.length > 0 && <label className="block space-y-1.5 text-sm sm:max-w-[calc(50%-0.5rem)]">Esforço<Select value={selectedEffort} onValueChange={value => setEffort(value as typeof effort)}><SelectTrigger aria-label="Esforço"><SelectValue /></SelectTrigger><SelectContent>{allowedEfforts.map(level => <SelectItem key={level} value={level}>{EFFORT_LABELS[level]}</SelectItem>)}</SelectContent></Select></label>}
             </EditorGroup>

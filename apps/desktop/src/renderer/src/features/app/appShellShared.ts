@@ -1,6 +1,8 @@
 import { ASSISTANT_ID, type Agent, type Snapshot } from '../../../../shared/v9'
 
 export const assistantPlaceholder: Agent = { id: ASSISTANT_ID, name: 'Assistente', alias: 'assistente', description: '', instructions: '', runtime: 'codex', model: '', color: '#6366f1', avatar: '', canWrite: true, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '' }
+/** Rótulos curtos do modo de aprovação do Boo, do mais restrito ao mais solto. */
+export const APPROVAL_MODE_LABEL: Record<Agent['approvalMode'], string> = { ask: 'Perguntar', automatic: 'Automático', bypass: 'Acesso total' }
 export const emptySnapshot: Snapshot = { assistant: assistantPlaceholder, agents: [], workspaces: [], conversations: [], messages: [], runs: [], fileChanges: [], approvals: [], terminalEnabled: true }
 // O Electron prefixa erros de ipcRenderer.invoke com o nome do canal; o usuário só precisa da mensagem.
 // Canal sem handler: preload/renderer novos sobre um processo principal antigo (ex.: `electron-vite dev` sem -w não recompila o main).

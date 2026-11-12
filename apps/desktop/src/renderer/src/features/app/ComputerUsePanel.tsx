@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { errorText } from './appShellShared'
 
 const SOURCE_LABEL = { boobot: 'pasta do Boobot', cua: 'instalação oficial do Cua', openbot: 'cópia do OpenBot' } as const
-const RUNTIME_LABEL: Record<string, string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode', antigravity: 'Antigravity' }
+const RUNTIME_LABEL: Record<string, string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode' }
 
 /** Configurações → Computer Use: estado do cua-driver, motores suportados, o que a aprovação concede e as autorizações vigentes (revogáveis). */
 export function ComputerUsePanel() {

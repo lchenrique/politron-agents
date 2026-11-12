@@ -227,7 +227,7 @@ describe('Boos temporários do Chief', () => {
     expect(service.store.workspace(workspace.id).defaultAgentIds).toEqual([])
   })
 
-  it.each(['codex', 'claude', 'pi', 'opencode', 'antigravity'] as const)('cria equipe direto e preserva escopo em qualquer motor: %s', async runtime => {
+  it.each(['codex', 'claude', 'pi', 'opencode'] as const)('cria equipe direto e preserva escopo em qualquer motor: %s', async runtime => {
     const { service, workspace, propose, names } = setup(runtime)
     expect(names()).toEqual(expect.arrayContaining(['group_members', 'agent_create', 'team_set', 'ask_agent']))
     const approval = vi.spyOn(service as any, 'requestApproval')

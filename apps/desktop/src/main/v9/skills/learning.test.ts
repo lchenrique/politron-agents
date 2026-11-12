@@ -19,6 +19,7 @@ describe('shouldReflect', () => {
     expect(shouldReflect({ ...base, status: 'failed' })).toBe(false)
     expect(shouldReflect({ ...base, status: 'interrupted' })).toBe(false)
     expect(shouldReflect({ ...base, savedSkill: true })).toBe(false)
+    expect(shouldReflect({ ...base, queuedWork: true })).toBe(false)
   })
 })
 

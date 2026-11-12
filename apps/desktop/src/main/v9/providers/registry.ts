@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import type { ProviderId, ProviderInfo, ProviderSnapshot } from '../../../shared/providers'
 import { detectProviders } from './detect'
 
-const IDS: ProviderId[] = ['codex', 'claude', 'antigravity', 'opencode', 'pi']
+const IDS: ProviderId[] = ['codex', 'claude', 'opencode', 'pi']
 
 /** Inventário persistente. Abrir Configurações ou Composer não executa nenhum CLI. */
 export class ProviderRegistry {

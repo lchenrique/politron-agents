@@ -29,7 +29,7 @@ import AppShell from './AppShell'
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); observed.renders.length = 0 })
 
 function stubApp(snapshotAPI: () => Promise<Snapshot> = async () => emptySnapshot) {
-  vi.stubGlobal('appAPI', { snapshot: snapshotAPI, onEvent: () => () => undefined, setVisibleConversation: async () => undefined, workspaceDiff: async () => '' })
+  vi.stubGlobal('appAPI', { snapshot: snapshotAPI, modelPreferences: async () => ({ disabled: [], custom: [] }), onEvent: () => () => undefined, setVisibleConversation: async () => undefined, workspaceDiff: async () => '' })
   vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
 }
 
@@ -68,7 +68,7 @@ it('não renderiza novamente a árvore ao receber dez snapshots IPC idênticos',
   }
   let event!: (event: WorkspaceEvent) => void
   const snapshotAPI = vi.fn(async () => JSON.parse(JSON.stringify(snapshot)) as Snapshot)
-  vi.stubGlobal('appAPI', { snapshot: snapshotAPI, onEvent: (listener: typeof event) => { event = listener; return () => undefined }, setVisibleConversation: async () => undefined, workspaceDiff: async () => '' })
+  vi.stubGlobal('appAPI', { snapshot: snapshotAPI, modelPreferences: async () => ({ disabled: [], custom: [] }), onEvent: (listener: typeof event) => { event = listener; return () => undefined }, setVisibleConversation: async () => undefined, workspaceDiff: async () => '' })
   vi.stubGlobal('providersAPI', { list: async () => ({ providers: [] }), onChanged: () => () => undefined })
   await act(async () => { render(<AppShell />) })
   const initial = observed.renders.at(-1)!

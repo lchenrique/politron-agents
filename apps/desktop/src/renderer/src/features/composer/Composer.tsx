@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { LoaderCircle, Mic, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { ModelChoice, ModelProviderChoice } from './model-options'
-import AIModelSelector, { type ModelSelection } from '@/components/kokonutui/ai-model-selector'
+import type { ModelChoice } from './model-options'
+import type { ModelSelection } from '@/components/kokonutui/ai-model-selector'
 import type { Agent, FileChange, Message, ModelEffort, ModelRuntimeOptions } from '../../../../shared/v9'
 import { QueuedMessages } from './QueuedMessages'
 import { CompletedFileReview } from '../diff/CompletedFileReview'
@@ -11,10 +10,11 @@ import { INHERIT_MODEL_NAME, agentModelLabel, errorText } from '../app/appShellS
 import { VoiceRecorder } from '../voice/voice-recorder'
 import { PromptInput } from '@/components/ai/prompt-input'
 import { AgentChip } from './AgentChip'
+import { ModelMenu } from './ModelMenu'
+import { PermissionChip } from './PermissionChip'
 import { AttachMenu } from './AttachMenu'
 import { MentionSuggestions } from './MentionSuggestions'
 import { getMentionQuery, replaceMention, type MentionQuery } from './mentions'
-import { useModelSlotNode } from './modelSlotContext'
 import styles from './Composer.module.css'
 
 function ComposerFrame({ children }: { children: ReactNode }) {
@@ -32,9 +32,12 @@ const initialModelOptions = (models: ComposerModel[], name?: string): ModelRunti
   }
 }
 
-export function Composer({ models, modelProviders, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName }: {
+export function Composer({ models, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName, recipientApprovalMode, onApprovalModeChange }: {
   /** Boo que recebe a mensagem: o campo diz "Mensagem para <Boo>". */
   recipientName?: string
+  /** Modo de aprovação do Boo que recebe a mensagem; vira o chip de autonomia do composer. */
+  recipientApprovalMode?: Agent['approvalMode']
+  onApprovalModeChange?: (mode: Agent['approvalMode']) => void
   reviewChanges?: FileChange[]
   reviewKey?: string
   working?: boolean
@@ -46,7 +49,6 @@ export function Composer({ models, modelProviders, defaultModelName, inheritMode
   conversationId?: string
   mentionAgents?: Agent[]
   models: ComposerModel[]
-  modelProviders?: ModelProviderChoice[]
   defaultModelName?: string
   /** Nome do modelo que o Boo destinatário usa: é o rótulo exibido enquanto a seleção é herança. */
   inheritModelName?: string
@@ -56,7 +58,6 @@ export function Composer({ models, modelProviders, defaultModelName, inheritMode
   onStop: () => void
   onVoiceNotice?: (error: string) => void
 }) {
-  const modelSlot = useModelSlotNode()
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const [levels, setLevels] = useState<number[]>([])
@@ -84,6 +85,7 @@ export function Composer({ models, modelProviders, defaultModelName, inheritMode
   activeConversation.current = conversationId
   const busy = working || pendingSends > 0
   const recorder = useRef<VoiceRecorder | null>(null)
+  const recordingStarted = useRef(false)
   const sequence = useRef(0)
   const draftKey = conversationId ? 'politron.composer.draft.' + conversationId : undefined
   const mentionListId = 'composer-mentions'
@@ -176,18 +178,40 @@ export function Composer({ models, modelProviders, defaultModelName, inheritMode
     } catch { /* O rascunho continua disponível enquanto a conversa estiver aberta. */ }
   }, [draftKey, value])
 
-  useEffect(() => () => { sequence.current++; recorder.current?.cancel(); recorder.current = null }, [conversationId])
+  useEffect(() => () => {
+    sequence.current++
+    recorder.current?.cancel()
+    recorder.current = null
+    recordingStarted.current = false
+    setRecording(false)
+    setTranscribing(false)
+    setLevels([])
+  }, [conversationId])
 
   const notify = (cause: unknown) => { const message = errorText(cause); setError(message); onVoiceNotice?.(message) }
   const toggleRecord = async () => {
-    if (recorder.current) { recorder.current.stop(); return }
+    if (recorder.current) {
+      if (recordingStarted.current) recorder.current.stop()
+      else {
+        sequence.current++
+        recorder.current.cancel()
+        recorder.current = null
+        recordingStarted.current = false
+        setRecording(false)
+        setTranscribing(false)
+        setLevels([])
+      }
+      return
+    }
     const current = ++sequence.current
     const next = new VoiceRecorder()
     recorder.current = next
     setError('')
     try {
       const installed = await window.appAPI.voiceStatus()
+      if (current !== sequence.current || recorder.current !== next) return
       if (!installed.transcription) throw new Error('Instale o modelo de transcrição local nas configurações de voz antes de gravar.')
+      recordingStarted.current = true
       setRecording(true)
       setLevels([])
       let inserted = ''
@@ -211,7 +235,7 @@ export function Composer({ models, modelProviders, defaultModelName, inheritMode
     } catch (cause) {
       if (current === sequence.current && !(cause instanceof Error && cause.message === 'Gravação cancelada.')) notify(cause)
     } finally {
-      if (recorder.current === next) recorder.current = null
+      if (recorder.current === next) { recorder.current = null; recordingStarted.current = false }
       if (current === sequence.current) { setRecording(false); setTranscribing(false) }
     }
   }
@@ -258,20 +282,29 @@ ${message.text}` : message.text)
     pendingCaret.current = Number.MAX_SAFE_INTEGER
   })
 
-  // Sempre com o nome do modelo à vista: o seletor mora no composer, como no mock,
-  // e ali há espaço para o texto em vez do ícone compacto.
-  const modelPicker = <AIModelSelector key={conversationId} compact={false} side={modelSlot ? 'bottom' : 'top'} models={models} providers={modelProviders}
+  // Seletor do mock: fica no próprio composer (o menu lista os modelos ativos de todos os provedores).
+  const modelPicker = <ModelMenu
+    label={model === INHERIT_OPTION ? (inheritLabel || INHERIT_MODEL_NAME) : model.name}
+    options={models.filter(item => item.enabled !== false).map(item => ({ id: item.id || item.name, name: item.name, provider: item.provider }))}
+    value={model === INHERIT_OPTION ? '' : (model.id || model.name)}
     inheritLabel={inheritLabel}
-    value={{ model: model === INHERIT_OPTION ? INHERIT_MODEL_NAME : model.id || model.name, effort: selectedEffort, ...modelOptions }}
-    onChange={changeModel} disabled={busy} />
+    disabled={busy}
+    onSelect={id => changeModel({ model: id || INHERIT_MODEL_NAME })}
+    onOpenProviders={() => window.dispatchEvent(new CustomEvent('boobot:open-settings', { detail: 'provedores' }))}
+  />
 
   return <ComposerFrame>
       {reviewChanges.length > 0 && <CompletedFileReview key={reviewKey} changes={reviewChanges} />}
       <QueuedMessages messages={queued} onEdit={editQueued} onSendNow={message => runQueued(() => onSendQueuedNow ? onSendQueuedNow(message.id) : window.appAPI.sendQueuedNow(message.id))} onRemove={message => runQueued(() => onCancelQueued ? onCancelQueued(message.id) : window.appAPI.cancelQueuedMessage(message.id))} />
       <PromptInput
         className={styles.promptCard}
-        inline
-        leadingChip={mentionAgents.length > 0 ? <AgentChip agents={mentionAgents} selected={target} onSelect={chooseTarget} /> : undefined}
+        stacked
+        minTextareaHeight={34}
+        maxTextareaHeight={132}
+        leadingChip={mentionAgents.length > 0 || recipientApprovalMode ? <>
+          {mentionAgents.length > 0 ? <AgentChip agents={mentionAgents} selected={target} onSelect={chooseTarget} /> : null}
+          {recipientApprovalMode && onApprovalModeChange ? <PermissionChip mode={recipientApprovalMode} disabled={busy} onSelect={onApprovalModeChange} /> : null}
+        </> : undefined}
         value={value}
         onValueChange={setValue}
         textareaRef={textareaRef}
@@ -317,15 +350,15 @@ ${message.text}` : message.text)
         accept={`${canAttachImages ? 'image/png,image/jpeg,image/webp,' : ''}text/*,.md,.txt,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml`}
         onStop={onStop}
         submitLabel={working ? 'Adicionar à fila' : 'Enviar mensagem'}
-        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : `Mensagem para ${target?.name || recipientName || 'o Boo'}...`}
+        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : `Envie uma mensagem para ${target?.name || recipientName || 'o Boo'}…`}
         onSubmit={(message, selection) => { void submit(message, selection.files) }}
         trailingControls={working && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" title="Parar geração" onClick={onStop}><Square className="size-4 fill-current" /></Button>}
         attachTrigger={openFiles => <AttachMenu openFiles={openFiles} planMode={planMode} disabled={busy}
           onTogglePlanMode={() => setPlanMode(current => !current)} />}
         extraControls={<>
-          {!modelSlot && modelPicker}
-          <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground" aria-label={recording ? 'Parar gravação de voz' : 'Gravar áudio'} title={recording ? 'Parar e transcrever' : 'Ditado por voz local'} disabled={transcribing} onClick={() => void toggleRecord()}>
-            {transcribing ? <LoaderCircle /> : recording ? <Square /> : <Mic />}
+          {modelPicker}
+          <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground" aria-label={recording ? 'Parar gravação de voz' : 'Gravar áudio'} title={recording ? 'Parar e transcrever' : 'Ditado por voz local'} disabled={transcribing} onClick={() => void toggleRecord()}>
+            {transcribing ? <LoaderCircle className="size-3.5 animate-spin" /> : recording ? <Square className="size-3.5 fill-current" /> : <Mic className="size-3.5" />}
           </Button>
         </>}
       />
@@ -334,6 +367,5 @@ ${message.text}` : message.text)
         <p role="status">{recording ? 'Ouvindo… o texto aparece enquanto você fala. Clique no quadrado para finalizar.' : 'Finalizando a transcrição localmente…'}</p>
       </div>}
       {error && <p role="alert" className="px-3 pt-1 text-[11px] text-destructive">{error}</p>}
-      {modelSlot && createPortal(modelPicker, modelSlot)}
   </ComposerFrame>
 }

@@ -48,7 +48,7 @@ export async function discoverCuaDriver(deps: DriverDeps): Promise<ComputerUseDr
 
 export const computerUseRuntimeSupported = (runtime: string) => (COMPUTER_USE_RUNTIMES as readonly string[]).includes(runtime)
 export function computerUseRuntimes(): ComputerUseRuntimeStatus[] {
-  return ['codex', 'claude', 'pi', 'opencode', 'antigravity'].map(runtime => computerUseRuntimeSupported(runtime)
+  return ['codex', 'claude', 'pi', 'opencode'].map(runtime => computerUseRuntimeSupported(runtime)
     ? { runtime, supported: true, note: 'Ferramentas do driver via MCP, só durante uma execução autorizada.' }
     : { runtime, supported: false, note: 'Este motor não aceita servidores MCP por sessão; sem Computer Use.' })
 }

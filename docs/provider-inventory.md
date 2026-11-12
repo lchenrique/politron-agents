@@ -1,5 +1,7 @@
 # Detecção de provedores do Politron
 
+> **Atualização de 11/11/2026:** o motor **Antigravity (`agy`)** foi removido do produto — runtime, detecção, catálogo, geração de imagens e seletor. Onde este documento descreve o detetor ou a raiz do seletor em tempo presente, valem **Codex, Claude, OpenCode e Pi**. O restante é registro datado das investigações.
+
 ## Gratuitos nativos OpenCode: validação em 20/10/2026
 
 O catálogo nativo `opencode/*` oferece gratuitos pelo Zen/Console; Go é uma assinatura separada. Não é necessário iniciar 9router. A recusa observada antes foi reproduzida com nossa política que removia ferramentas nativas do catálogo, inclusive em Big Pickle. A CLI padrão respondeu normalmente. A política do processo filho agora exige aprovação (`ask`) para ferramentas nativas, e `opencode run` sem `--auto` recusa essas solicitações. Nenhuma configuração global ou credencial foi alterada. O modelo auxiliar também fica fixado no modelo escolhido.
@@ -30,7 +32,7 @@ As durações acima incluem inicialização das CLIs e múltiplas rodadas. Não 
 
 Conferência final: 55 testes de contrato/runtime, 16 de ciclo de execução/confiabilidade e 1 do texto do seletor aprovados (72 testes locais, em oito arquivos). Tipos e build do processo principal aprovados; o build final levou 18,67 s. O renderer teve somente alteração de texto do seletor, coberta pelo teste e pelo desenvolvimento com Vite; não foi produzido um novo build completo ou instalador nesta correção. A instância normal de desenvolvimento foi reiniciada depois de conferir que não havia execuções ativas.
 
-Para repetir as integrações opt-in, use `POLITRON_RUN_CLI_TOOL_INTEGRATION=1` com `headless-cli.integration.test.ts`; `POLITRON_ANTIGRAVITY_TEST_MODEL` permite escolher outro modelo Antigravity e `POLITRON_OPENCODE_TEST_MODEL` precisa indicar um modelo OpenCode configurado e acessível. O transporte controlado usa `POLITRON_RUN_CLI_TRANSPORT_INTEGRATION=1` com `opencode-tools.integration.test.ts`. Todos os cadastros são feitos em diretórios temporários.
+Para repetir as integrações opt-in, use `POLITRON_RUN_CLI_TOOL_INTEGRATION=1` com `headless-cli.integration.test.ts`; `POLITRON_OPENCODE_TEST_MODEL` precisa indicar um modelo OpenCode configurado e acessível. O transporte controlado usa `POLITRON_RUN_CLI_TRANSPORT_INTEGRATION=1` com `opencode-tools.integration.test.ts`. Todos os cadastros são feitos em diretórios temporários.
 
 ## Comparação com Paseo e portabilidade em 20/10/2026
 
@@ -64,7 +66,7 @@ Relatório e capturas: `%TEMP%/politron-model-selector-check/resume-20261020-M2g
 
 ## Inventário persistente de CLIs (continuação)
 
-O detector consulta Codex, Claude Code, Antigravity (agy), OpenCode e Pi. O resultado é salvo em `provider-inventory.json` dentro de `app.getPath('userData')` e utilizado pelas telas sem executar novamente comandos ao abrir as configurações. Na primeira execução sem cache ele realiza a detecção; depois, somente o botão **Atualizar detecção** dispara nova varredura. A UI recebe o novo inventário por evento IPC e a seleção do composer utiliza IDs com prefixo do provedor, evitando colisões entre nomes iguais.
+O detector consulta Codex, Claude Code, OpenCode e Pi. O resultado é salvo em `provider-inventory.json` dentro de `app.getPath('userData')` e utilizado pelas telas sem executar novamente comandos ao abrir as configurações. Na primeira execução sem cache ele realiza a detecção; depois, somente o botão **Atualizar detecção** dispara nova varredura. A UI recebe o novo inventário por evento IPC e a seleção do composer utiliza IDs com prefixo do provedor, evitando colisões entre nomes iguais.
 
 Há três estados diferentes: binário localizado, comando operacional e catálogo disponível para um adaptador do aplicativo. Codex e Claude têm ferramentas integradas; Pi usa RPC com a ponte de ferramentas do Boobot. OpenCode e Antigravity encaminham chamadas estruturadas ao mesmo broker de ferramentas e aprovações do Boobot. Claude reutiliza o login do CLI quando não existe chave própria configurada no aplicativo. OpenCode consulta `models --pure`; Pi e Antigravity também consultam os CLIs. Catálogo disponível não comprova autenticação para cada modelo. Todos têm entrada própria para navegação; modelos ficam desabilitados se o CLI não estiver operacional.
 

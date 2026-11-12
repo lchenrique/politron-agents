@@ -9,8 +9,9 @@ export const REFLECTION_MIN_TOOL_CALLS = 5
  * que ainda não gravou skill e teve trabalho relevante (5+ ferramentas, ou um erro de ferramenta corrigido depois).
  * Sub-execuções delegadas ficam de fora: atrasariam o resultado que o Boo pai está esperando.
  */
-export function shouldReflect(input: { status: string; planMode: boolean; delegated: boolean; toolCalls: number; recoveredFromError: boolean; savedSkill: boolean }): boolean {
-  if (input.status !== 'completed' || input.planMode || input.delegated || input.savedSkill) return false
+export function shouldReflect(input: { status: string; planMode: boolean; delegated: boolean; toolCalls: number; recoveredFromError: boolean; savedSkill: boolean; queuedWork?: boolean }): boolean {
+  // Com mensagem esperando na fila, a revisão opcional não pode segurar a vaga do agente.
+  if (input.status !== 'completed' || input.planMode || input.delegated || input.savedSkill || input.queuedWork) return false
   return input.toolCalls >= REFLECTION_MIN_TOOL_CALLS || input.recoveredFromError
 }
 

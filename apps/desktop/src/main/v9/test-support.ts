@@ -1,7 +1,5 @@
 import type { AppService } from './workspace'
 import type { ClaudeRuntime } from './claude'
-import type { HeadlessCliRuntime } from './headless-cli'
-import type { OpenCodeServerRuntime } from './opencode-server'
 import type { CodexRuntime } from './codex'
 
 // Contratos restritos dos membros privados exercitados pelos testes.
@@ -20,22 +18,6 @@ export interface ClaudeInternals {
   executable: ClaudeRuntime['executable']
   threads: ClaudeRuntime['threads']
   waits: ClaudeRuntime['waits']
-}
-export interface HeadlessInternals {
-  binary: HeadlessCliRuntime['binary']
-  sessions: HeadlessCliRuntime['sessions']
-  pendingTools: HeadlessCliRuntime['pendingTools']
-  receive(session: unknown, packet: Record<string, unknown>): void
-  structuredResult(session: unknown, action: Record<string, unknown>): void
-  resumeTool: HeadlessCliRuntime['resumeTool']
-  launch: HeadlessCliRuntime['launch']
-}
-export interface OpenCodeInternals {
-  sessions: OpenCodeServerRuntime['sessions']
-  bridge: OpenCodeServerRuntime['bridge']
-  nativeCalls: OpenCodeServerRuntime['nativeCalls']
-  onStreamEvent: OpenCodeServerRuntime['onStreamEvent']
-  finish: OpenCodeServerRuntime['finish']
 }
 export interface CodexInternals {
   pending: CodexRuntime['pending']

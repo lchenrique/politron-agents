@@ -62,8 +62,8 @@ describe('descoberta do cua-driver', () => {
 })
 
 describe('estado por motor e resumo do histórico', () => {
-  it('só Codex e Claude suportam; Pi, OpenCode e Antigravity aparecem como indisponíveis', () => {
-    expect(computerUseRuntimes().map(item => [item.runtime, item.supported])).toEqual([['codex', true], ['claude', true], ['pi', false], ['opencode', false], ['antigravity', false]])
+  it('só Codex e Claude suportam; Pi e OpenCode aparecem como indisponíveis', () => {
+    expect(computerUseRuntimes().map(item => [item.runtime, item.supported])).toEqual([['codex', true], ['claude', true], ['pi', false], ['opencode', false]])
   })
   it('o resumo traz ferramenta e alvo, nunca o texto digitado', () => {
     const summary = computerUseSummary('type_text', { pid: 12, window_id: 3, text: 'senha-secreta-123' })

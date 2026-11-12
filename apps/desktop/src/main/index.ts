@@ -15,8 +15,6 @@ import { VoiceService } from './v9/voice'
 import { RealtimeService, registerRealtimeIpc } from './v9/realtime/service'
 import { detectProviders, registerProviderDetectionIpc } from './v9/providers/detect'
 import { ProviderRegistry } from './v9/providers/registry'
-import { readOpenCodeModels } from './v9/opencode-models'
-import { AntigravityRuntime } from './v9/antigravity'
 import { SkillsService, registerSkillsIpc } from './v9/skills/service'
 import { marketplaceRoot } from './marketplace/catalog'
 import { HostManager } from './hosts/manager'
@@ -277,13 +275,8 @@ app.whenReady().then(async () => {
   registerV9Ipc(appService, hosts, voice)
   realtimeService = new RealtimeService(app.getPath('userData'), appService)
   registerRealtimeIpc(realtimeService, () => !!hosts?.remote)
-  const antigravityRuntime = new AntigravityRuntime()
-  const providerOptions = { modelTimeoutMs: 30_000, runtimeModels: {
-    opencode: async (binaryPath?: string) => {
-      try { return { models: await appService!.openCodeRuntime.models(binaryPath), source: 'runtime' as const } }
-      catch { return readOpenCodeModels(binaryPath) }
-    },
-    antigravity: async (binaryPath?: string) => ({ models: await antigravityRuntime.models(binaryPath), source: 'runtime' as const }),
+  const providerOptions = { modelTimeoutMs: 30_000, hasOpenCodeKey: async () => !!(await appService!.openCodeCredentials.load()), runtimeModels: {
+    opencode: async () => ({ models: await appService!.openCodeRuntime.models(), source: 'runtime' as const }),
     pi: async (binaryPath?: string) => ({ models: await appService!.piRuntime.models(binaryPath), source: 'runtime' as const }),
     codex: async (binaryPath?: string) => ({ models: await appService!.runtime.models(binaryPath), source: 'runtime' as const }),
     claude: async (binaryPath?: string) => {

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false }, safeStorage: { isEncryptionAvailable: () => false } }))
 
 import { AppService } from './workspace'
-import { projectFolderName } from './chief-control'
+import { projectFolderName, resolveProjectDirectory } from './chief-control'
 import type { Agent, Message, Mission, Run, StartMissionInput, WorkspaceEvent } from '../../shared/v9'
 
 class FakeRuntime extends EventEmitter {
@@ -177,6 +177,20 @@ describe('Chief age direto', () => {
     await expect(call('project_create', { name: 'Repetido', path: folder })).rejects.toThrow(/já usa essa pasta/)
     expect(approval).not.toHaveBeenCalled()
     expect(activities()).toEqual(expect.arrayContaining(['Sistema · Criou o projeto Loja: nova?', 'Sistema · Criou o projeto Site']))
+  })
+
+  it('resolve segmentos com espaço, hífen ou underscore quando há uma única pasta correspondente', async () => {
+    const { root } = setup()
+    const folder = join(root, 'Projetos-Pessoais')
+    mkdirSync(folder)
+    await expect(resolveProjectDirectory(join(root, 'projetos pessoais'))).resolves.toBe(realpathSync.native(folder))
+  })
+
+  it('não escolhe silenciosamente entre pastas com nomes normalizados iguais', async () => {
+    const { root } = setup()
+    mkdirSync(join(root, 'Projetos Pessoais'))
+    mkdirSync(join(root, 'projetos-pessoais'))
+    await expect(resolveProjectDirectory(join(root, 'PROJETOS_PESSOAIS'))).rejects.toThrow(/mais de uma pasta/)
   })
 
   it('recusa caminho relativo, inexistente ou que contém ou fica dentro dos dados do app', async () => {

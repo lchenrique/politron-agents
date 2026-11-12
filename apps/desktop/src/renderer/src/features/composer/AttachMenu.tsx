@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ClipboardList, Paperclip } from 'lucide-react'
+import { ClipboardList, Paperclip, Plus } from 'lucide-react'
 import { Menu, type MenuEntry } from '@/components/dsh'
 import { Button } from '@/components/ui/button'
 
@@ -51,6 +51,6 @@ export function AttachMenu({ openFiles, planMode, onTogglePlanMode, disabled = f
       title="Anexar arquivo, comando ou permissão"
       data-plan-mode={planMode ? 'true' : undefined}
       onClick={() => setOpen(current => !current)}
-    ><span aria-hidden="true">＋</span></Button>}
+    ><Plus aria-hidden="true" className="size-4" /></Button>}
   />
 }

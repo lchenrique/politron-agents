@@ -53,6 +53,15 @@ interface PromptInputProps extends Omit<React.ComponentProps<'form'>, 'onSubmit'
   value?: string
   /** Uma linha só: anexar à esquerda, texto no meio, controles e enviar à direita. */
   inline?: boolean
+  /** Campo em cima e controles numa linha embaixo (layout do composer de referência). */
+  stacked?: boolean
+  /** Altura mínima/máxima do campo em uma linha (o composer do mock usa 24→68 px). */
+  minTextareaHeight?: number
+  maxTextareaHeight?: number
+  /** Na linha única, tira o respiro de 2 px dos grupos para alinhar tudo pela base como no mock. */
+  flushInline?: boolean
+  /** Classes da linha única (o composer usa gap de 8 px, igual ao mock). */
+  inlineRowClassName?: string
 }
 
 const chipEnterClass =
@@ -95,6 +104,11 @@ function PromptInput({
   placeholder = 'Ask anything…',
   submitLabel = 'Enviar mensagem',
   inline = false,
+  stacked = false,
+  minTextareaHeight = 36,
+  maxTextareaHeight = 336,
+  flushInline = false,
+  inlineRowClassName,
   ...props
 }: PromptInputProps) {
   const [internalValue, setInternalValue] = useState(defaultValue)
@@ -121,7 +135,7 @@ function PromptInput({
 
   function resizeTextarea(element: HTMLTextAreaElement) {
     element.style.height = '0px'
-    element.style.height = `${Math.max(36, Math.min(element.scrollHeight, 336))}px`
+    element.style.height = `${Math.max(minTextareaHeight, Math.min(element.scrollHeight, maxTextareaHeight))}px`
   }
 
   useLayoutEffect(() => {
@@ -278,14 +292,20 @@ function PromptInput({
           ))}
         </div>
       )}
-      {inline ? <div className="flex items-end gap-1">
-        <div className="flex shrink-0 items-center pb-0.5">{attachButton}</div>
-        {leadingChip && <div className="flex shrink-0 items-center pb-0.5">{leadingChip}</div>}
+      {stacked ? <div className="flex flex-col gap-1">
         {textareaElement}
-        <div className="flex shrink-0 items-center gap-1 pb-0.5">{extraControls}{trailingControls}{submitButton}</div>
+        <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">{attachButton}{leadingChip}</div>
+          <div className="ml-auto flex shrink-0 items-center gap-1">{extraControls}{trailingControls}{submitButton}</div>
+        </div>
+      </div> : inline ? <div className={inlineRowClassName ?? 'flex items-end gap-1'}>
+        <div className={cn('flex shrink-0 items-center', !flushInline && 'pb-0.5')}>{attachButton}</div>
+        {leadingChip && <div className={cn('flex shrink-0 items-center', !flushInline && 'pb-0.5')}>{leadingChip}</div>}
+        {textareaElement}
+        <div className={cn('flex shrink-0 items-center gap-1', !flushInline && 'pb-0.5')}>{extraControls}{trailingControls}{submitButton}</div>
       </div> : textareaElement}
       {suggestions}
-      {!inline && <div className="flex items-center justify-between gap-2 pt-2">
+      {!inline && !stacked && <div className="flex items-center justify-between gap-2 pt-2">
         <div className="flex min-w-0 items-center gap-1">
           {attachButton}
           {showModelPicker && <PromptToolsMenu

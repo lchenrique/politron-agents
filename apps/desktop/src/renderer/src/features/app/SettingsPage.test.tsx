@@ -1,13 +1,18 @@
-﻿import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { SettingsPage } from './SettingsPage'
 
 const appAPI = {
   snapshot: vi.fn().mockResolvedValue({ assistant: { computerUse: false, approvalMode: 'ask' }, terminalEnabled: true }),
   settingsPreferences: vi.fn().mockResolvedValue({ canWrite: true, computerUse: false, approvalMode: 'ask', runtimePermissionMode: 'managed', terminalEnabled: true }),
+  modelPreferences: vi.fn().mockResolvedValue({ disabled: [], custom: [] }),
+  saveModelPreferences: vi.fn().mockImplementation(async (value) => value),
+  hasOpenCodeCredential: vi.fn().mockResolvedValue(false),
+  saveOpenCodeCredential: vi.fn().mockResolvedValue(undefined),
+  clearOpenCodeCredential: vi.fn().mockResolvedValue(undefined),
   hasClaudeCredential: vi.fn().mockResolvedValue(false),
   openRouterDecisionStatus: vi.fn().mockResolvedValue({ configured: false, modelId: 'typesafe/jev-1.13' }),
-  imageGenerationStatus: vi.fn().mockResolvedValue({ provider: 'off', apiProvider: 'openai', model: 'gpt-image-2.5-flare', keys: { openai: false, gemini: false, openrouter: false }, engines: { codex: { available: true }, antigravity: { available: true } } }),
+  imageGenerationStatus: vi.fn().mockResolvedValue({ provider: 'off', apiProvider: 'openai', model: 'gpt-image-2.5-flare', keys: { openai: false, gemini: false, openrouter: false }, engines: { codex: { available: true } } }),
   saveAssistantPreferences: vi.fn().mockResolvedValue(undefined),
   saveTerminalAccess: vi.fn().mockResolvedValue(undefined),
 }
@@ -123,10 +128,11 @@ describe('painel de configurações', () => {
     fireEvent.click(screen.getByRole('button', { name: /Provedores/ }))
     await waitFor(() => expect(providersAPI.list).toHaveBeenCalled())
     expect(await screen.findByText('codex-cli 0.160.1')).toBeInTheDocument()
-    expect(screen.getByText('Não encontrado')).toBeInTheDocument()
-    expect(screen.getByText('1 modelos')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Pi'))
-    expect(screen.getByText('claude-opus-4-6 (anthropic)')).toBeInTheDocument()
+    expect(screen.getByText('não encontrado')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    const cliCard = screen.getByText('CLIs de agentes instaladas').closest('section')!
+    fireEvent.click(within(cliCard).getByText('Pi'))
+    expect(within(cliCard).getByText('claude-opus-4-6 (anthropic)')).toBeInTheDocument()
   })
 
   it('é uma página do PageShell: sem botão Fechar nem diálogo, com a navegação de seções ao lado', () => {
@@ -153,10 +159,11 @@ describe('painel de configurações', () => {
     render(<SettingsPage open />)
     fireEvent.click(screen.getByRole('button', { name: /Provedores/ }))
     expect(await screen.findByText('Configure uma chave de API Anthropic no Politron.')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Claude Code').closest('summary')!)
+    const cliCard = screen.getByText('CLIs de agentes instaladas').closest('section')!
+    fireEvent.click(within(cliCard).getByText('Claude Code').closest('summary')!)
     expect(screen.getByText('Configure uma chave de API Anthropic no Politron.')).toBeVisible()
-    fireEvent.click(screen.getByText('Codex').closest('summary')!)
-    expect(screen.getByText('Catálogo do runtime')).toBeInTheDocument()
+    fireEvent.click(within(cliCard).getByText('Codex').closest('summary')!)
+    expect(screen.getByText('catálogo do runtime')).toBeInTheDocument()
     expect(screen.getByText('Modelo disponível')).toBeVisible()
   })
 
@@ -176,7 +183,7 @@ describe('painel de configurações', () => {
 describe('hierarquia das seções', () => {
   const sections: [string, RegExp][] = [
     ['Geral', /Modo visual/], ['Assistente', /Assistente padrão/], ['Ferramentas', /terminal/],
-    ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex, Antigravity/], ['Skills', /SKILL\.md/], ['Memória', /lembram entre conversas/], ['Computer Use', /cua-driver/], ['Voz em tempo real', /transcrição/],
+    ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex ou uma chave de API/], ['Skills', /SKILL\.md/], ['Memória', /lembram entre conversas/], ['Computer Use', /cua-driver/], ['Voz em tempo real', /transcrição/],
     ['Conexões', /outros dispositivos/], ['Telegram', /Chief/], ['Atualizações', /canal de atualização/],
   ]
 
@@ -241,7 +248,7 @@ describe('atualizações em Configurações', () => {
 })
 
 describe('Geração de imagens', () => {
-  const engines = { codex: { available: false, reason: 'O Codex está instalado, mas não parece logado. Faça login no CLI (codex login) e teste de novo.' }, antigravity: { available: true } }
+  const engines = { codex: { available: false, reason: 'O Codex está instalado, mas não parece logado. Faça login no CLI (codex login) e teste de novo.' } }
   const base = { apiProvider: 'openai' as const, model: 'gpt-image-2.5-flare', keys: { openai: false, gemini: false, openrouter: false }, engines }
 
   it('mostra quando o motor escolhido não está logado', async () => {
@@ -269,5 +276,34 @@ describe('Geração de imagens', () => {
     expect(key).toHaveAttribute('placeholder', 'Chave configurada; cole outra para substituir')
     fireEvent.click(screen.getByRole('button', { name: 'Testar' }))
     expect(await screen.findByAltText('Imagem de teste gerada')).toHaveAttribute('src', 'data:image/png;base64,AAAA')
+  })
+})
+
+describe('modelos por provedor nas configurações', () => {
+  it('interruptor esconde o modelo do seletor e salva a preferência', async () => {
+    vi.stubGlobal('appAPI', appAPI)
+    vi.stubGlobal('providersAPI', providersAPI)
+    vi.stubGlobal('skillsAPI', skillsAPI)
+    render(<SettingsPage open />)
+    fireEvent.click(screen.getByRole('button', { name: /Provedores/ }))
+    const toggle = await screen.findByRole('switch', { name: 'Ativar modelo claude-opus-4-6 (anthropic)' })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(toggle)
+    await waitFor(() => expect(appAPI.saveModelPreferences).toHaveBeenCalledWith({ disabled: ['pi:claude-opus-4-6'], custom: [] }))
+  })
+
+  it('adiciona um modelo manual ao provedor', async () => {
+    vi.stubGlobal('appAPI', appAPI)
+    vi.stubGlobal('providersAPI', providersAPI)
+    vi.stubGlobal('skillsAPI', skillsAPI)
+    render(<SettingsPage open />)
+    fireEvent.click(screen.getByRole('button', { name: /Provedores/ }))
+    await screen.findAllByRole('button', { name: '+ Adicionar modelo' })
+    const section = document.querySelector('[data-provider="pi"]') as HTMLElement
+    fireEvent.click(within(section).getByRole('button', { name: '+ Adicionar modelo' }))
+    fireEvent.change(within(section).getByLabelText('Id do modelo em Pi'), { target: { value: 'pi-custom' } })
+    fireEvent.change(within(section).getByLabelText('Nome do modelo em Pi'), { target: { value: 'Pi Custom' } })
+    fireEvent.click(within(section).getByRole('button', { name: 'Salvar modelo' }))
+    await waitFor(() => expect(appAPI.saveModelPreferences).toHaveBeenCalledWith({ disabled: [], custom: [{ provider: 'pi', id: 'pi-custom', name: 'Pi Custom' }] }))
   })
 })

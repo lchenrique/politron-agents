@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderPlus, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import type { ModelPreferences } from '../../../../shared/v9'
 import { ASSISTANT_ID, type Agent, type Conversation, type MessageAttachment, type Model, type Snapshot, type Workspace } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { HomeView } from '../sidebar/NavRail'
@@ -23,7 +24,7 @@ import { modelOptions } from '../composer/model-options'
 import { DockWorkspace, type DockWorkspaceHandle, type DockTool, type DockZone } from '../panels/DockWorkspace'
 import type { EditorData, EditorKind } from '../editors/Editor'
 import type { SettingsSection } from './SettingsPage'
-import { INHERIT_MODEL_NAME, agentModelLabel, emptySnapshot, errorText } from './appShellShared'
+import { APPROVAL_MODE_LABEL, INHERIT_MODEL_NAME, agentModelLabel, emptySnapshot, errorText } from './appShellShared'
 import { selectDescendantApprovals, selectVisibleRunEvidence } from './delegation-evidence'
 import { replaceEqualDeep } from '@tanstack/react-query'
 import { ChiefHome } from '../work/ChiefHome'
@@ -152,7 +153,7 @@ export default function AppShell() {
     void refresh()
     const applyProviders = (catalog: ProviderSnapshot) => {
       setProviderInventory(catalog)
-      const ready: Model[] = catalog.providers.filter(provider => provider.executable === true && (provider.id === 'codex' || provider.id === 'claude' || provider.id === 'pi' || provider.id === 'opencode' || provider.id === 'antigravity')).flatMap(provider =>
+      const ready: Model[] = catalog.providers.filter(provider => provider.executable === true && (provider.id === 'codex' || provider.id === 'claude' || provider.id === 'pi' || provider.id === 'opencode')).flatMap(provider =>
         (provider.models || []).map(model => ({
           ...model,
           id: provider.id + ':' + model.id,
@@ -313,16 +314,20 @@ export default function AppShell() {
     } catch (error) { setNotice(errorText(error)) }
   }
   const openAgent = async (agent: Agent, newConversation = false) => {
-    const previous = snapshot.conversations.filter(item => !item.archived && !item.parentConversationId && item.kind === 'direct' && item.agentIds.length === 1 && item.agentIds[0] === agent.id && snapshot.workspaces.some(workspace => workspace.id === item.workspaceId && workspace.kind === 'free')).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    // O Assistente não é um participante cadastrado: a conversa dele é a que não tem Boo fixo (`agentIds: []`).
+    const assistant = agent.id === snapshot.assistant.id
+    const matchesAgent = (item: { agentIds: string[] }) => assistant ? item.agentIds.length === 0 : item.agentIds.length === 1 && item.agentIds[0] === agent.id
+    const previous = snapshot.conversations.filter(item => !item.archived && !item.parentConversationId && item.kind === 'direct' && matchesAgent(item) && snapshot.workspaces.some(workspace => workspace.id === item.workspaceId && workspace.kind === 'free')).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
     if (previous && !newConversation) { selectConversation(previous.id); return }
     // Sem nome fixo: o título vem do primeiro pedido, e a lista não repete o nome do Boo em cada conversa.
-    try { const conversation = await window.appAPI.saveConversation({ kind: 'direct', agentIds: [agent.id] }); await refresh(); selectConversation(conversation.id) }
+    try { const conversation = await window.appAPI.saveConversation({ kind: 'direct', agentIds: assistant ? [] : [agent.id] }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
   const openWorkspaceAgent = async (workspaceId: string, agent: Agent) => {
-    const previous = snapshot.conversations.find(item => !item.archived && item.workspaceId === workspaceId && item.agentIds.length === 1 && item.agentIds[0] === agent.id)
+    const assistant = agent.id === snapshot.assistant.id
+    const previous = snapshot.conversations.find(item => !item.archived && item.workspaceId === workspaceId && (assistant ? item.agentIds.length === 0 : item.agentIds.length === 1 && item.agentIds[0] === agent.id))
     if (previous) { selectConversation(previous.id); return }
-    try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: [agent.id] }); await refresh(); selectConversation(conversation.id) }
+    try { const conversation = await window.appAPI.saveConversation({ workspaceId, kind: 'direct', agentIds: assistant ? [] : [agent.id] }); await refresh(); selectConversation(conversation.id) }
     catch (error) { setNotice(errorText(error)) }
   }
   const submitMessage = async (value: string, modelName: string, options: SendOptions) => {
@@ -353,8 +358,15 @@ export default function AppShell() {
       ...(Object.keys(options.modelOptions).length ? { modelOptions: options.modelOptions } : {}),
     })
   }
+  const [modelPrefs, setModelPrefs] = useState<ModelPreferences>({ disabled: [], custom: [] })
   const chatRuntime = useV1ThreadRuntime(submitMessage)
-  const promptOptions = useMemo(() => modelOptions(providerInventory?.providers || []), [providerInventory])
+  const promptOptions = useMemo(() => {
+    const base = modelOptions(providerInventory?.providers || [])
+    const hidden = new Set(modelPrefs.disabled)
+    const names: Record<string, string> = { codex: 'Codex', claude: 'Claude', opencode: 'OpenCode', pi: 'Pi' }
+    const custom = modelPrefs.custom.map(entry => ({ id: `${entry.provider}:${entry.id}`, name: entry.name, provider: names[entry.provider] || entry.provider, providerId: entry.provider, enabled: true }))
+    return { ...base, models: [...base.models.filter(model => !hidden.has(model.id || model.name)), ...custom] }
+  }, [providerInventory, modelPrefs])
   // Herança no composer: o rótulo é o modelo real do Boo que responde (o nome do catálogo),
   // sem trocar o envio — a herança continua sendo o que o host resolve por participante.
   const composerInheritModelName = useMemo(() => selected
@@ -403,6 +415,14 @@ export default function AppShell() {
     } catch { return 'all' }
   })
   useEffect(() => { try { localStorage.setItem('politron.sidebar.mode', sidebarMode) } catch { /* preferência opcional */ } }, [sidebarMode])
+  // Preferências de modelo vêm do v9_meta; a tela de Provedores avisa pelo evento quando muda.
+  useEffect(() => {
+    let active = true
+    const load = () => { void window.appAPI.modelPreferences().then(value => { if (active) setModelPrefs(value) }).catch(() => undefined) }
+    load()
+    window.addEventListener('boobot:model-preferences', load)
+    return () => { active = false; window.removeEventListener('boobot:model-preferences', load) }
+  }, [])
   const [sidebarWidth, setSidebarWidth] = useState(() => { try { const value = Number(localStorage.getItem('politron.sidebar.width')); return Number.isFinite(value) && value >= 200 && value <= 420 ? value : 248 } catch { return 248 } })
   useEffect(() => { try { localStorage.setItem('politron.sidebar.width', String(sidebarWidth)) } catch { /* preferência opcional */ } }, [sidebarWidth])
   const [resizingSidebar, setResizingSidebar] = useState(false)
@@ -435,6 +455,7 @@ export default function AppShell() {
     colors: appearance.colors,
   }), [snapshot.workspaces, snapshot.conversations, snapshot.approvals, selected?.id, appearance.expanded, appearance.colors])
   const sidebarQueue = useMemo(() => queueRows(snapshot), [snapshot])
+  const composerRecipient = (selected ? agentOf(selected.leaderAgentId || null) : undefined) || selectedAgents[0] || snapshot.assistant
   const project = activeProject({ workspaces: snapshot.workspaces, conversations: snapshot.conversations, selected, activeWorkspaceId })
   const projectOptions = useMemo(() => snapshot.workspaces.filter(workspace => !workspace.archived).map(workspace => ({ id: workspace.id, name: workspace.name, branch: workspace.branch || 'main' })), [snapshot.workspaces])
   const changeBooColor = async (id: string, hex: string) => {
@@ -448,13 +469,25 @@ export default function AppShell() {
       agents: current.agents.map(item => item.id === id ? { ...item, color: hex } : item),
     }))
     try {
-      await window.appAPI.saveAgent({ ...agent, color: hex })
+      // O Assistente não tem cadastro de Boo: a cor dele mora nas preferências do Assistente.
+      if (id === snapshot.assistant.id) await window.appAPI.saveAssistantPreferences({ color: hex })
+      else await window.appAPI.saveAgent({ ...agent, color: hex })
       await refresh()
       setNotice(`Cor de ${agent.name} atualizada.`)
     } catch (error) {
       await refresh()
       setNotice(errorText(error))
     }
+  }
+  // Chip de autonomia do composer: o modo do Boo que vai receber a mensagem, salvo no perfil dele
+  // (o Assistente tem preferências próprias, fora de `agents`).
+  const changeComposerApproval = async (agent: Agent, approvalMode: Agent['approvalMode']) => {
+    try {
+      if (agent.id === snapshot.assistant.id) await window.appAPI.saveAssistantPreferences({ approvalMode })
+      else await window.appAPI.saveAgent({ ...agent, approvalMode })
+      await refresh()
+      setNotice(`${agent.name}: permissão ${APPROVAL_MODE_LABEL[approvalMode]}.`)
+    } catch (error) { setNotice(errorText(error)) }
   }
   const moveSession = async (conversationId: string, workspaceId: string) => {
     try { await window.appAPI.saveConversation({ id: conversationId, workspaceId }); await refresh(); setNotice('Conversa movida de pasta.') } catch (error) { setNotice(errorText(error)) }
@@ -531,7 +564,7 @@ export default function AppShell() {
             memory={{ entries: memoryCount, mcp: [] }}
             activeAgentId={selectedAgents[0]?.id}
             worktrees={snapshot.workspaces.filter(workspace => workspace.kind === 'worktree' && !workspace.archived).length}
-            onSelectAgent={row => { const agent = snapshot.agents.find(item => item.id === row.id); if (agent) void openAgent(agent) }}
+            onSelectAgent={row => { const agent = row.id === snapshot.assistant.id ? snapshot.assistant : snapshot.agents.find(item => item.id === row.id); if (agent) void openAgent(agent) }}
             onSelectSession={(_, sessionId) => selectConversation(sessionId)}
             onToggleWorkspace={appearance.toggleExpanded}
             onNewBoo={() => setEditor({ kind: 'agent' })}
@@ -595,7 +628,9 @@ export default function AppShell() {
             <div hidden={Boolean(composerTakeoverApproval)}>
             <Composer
               mentionAgents={selectedAgents}
-              recipientName={(agentOf(selected.leaderAgentId || null) || selectedAgents[0] || snapshot.assistant)?.name}
+              recipientName={composerRecipient.name}
+              recipientApprovalMode={composerRecipient.approvalMode}
+              onApprovalModeChange={mode => void changeComposerApproval(composerRecipient, mode)}
               working={conversationRuns.length > 0}
               queued={queuedMessages}
               canAttachImages={canAttachImages}
@@ -603,7 +638,6 @@ export default function AppShell() {
               reviewChanges={latestReview}
               reviewKey={finishedWithChanges?.runId || ''}
               models={promptOptions.models}
-              modelProviders={promptOptions.providers}
               defaultModelName={selectedModelName}
               inheritModelName={composerInheritModelName}
               defaultEffort={selectedEffort}
