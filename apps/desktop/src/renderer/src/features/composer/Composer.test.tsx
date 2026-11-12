@@ -424,3 +424,13 @@ describe('instruções durante uma tarefa', () => {
     expect(textarea).toHaveValue('Meu rascunho')
   })
 })
+
+  it('menu de permissão mostra os três modos com a descrição de cada um', () => {
+    setup({ recipientName: 'Atlas', recipientApprovalMode: 'ask', onApprovalModeChange: vi.fn() })
+    fireEvent.click(screen.getByRole('button', { name: 'Permissão do Boo: Perguntar' }))
+    const menu = screen.getByRole('menu')
+    for (const label of ['Perguntar', 'Automático', 'Acesso total']) expect(within(menu).getByRole('button', { name: new RegExp(label) })).toBeInTheDocument()
+    // A descrição vai numa linha de apoio, não no `hint` à direita (que truncava o rótulo).
+    expect(menu).toHaveTextContent('Pede aprovação antes de cada ação sensível')
+    expect(menu).toHaveTextContent('Sem confirmação, inclusive no terminal')
+  })

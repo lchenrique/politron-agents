@@ -157,7 +157,7 @@ export function StatusPill({ children, tone = 'default' }: { children: ReactNode
 }
 
 /** Item de menu suspenso usado no top bar, no menu do painel e no menu do sidebar. */
-export function MenuItem({ icon, label, onClick, danger, hint, disabled }: { icon?: ReactNode; label: ReactNode; onClick?: () => void; danger?: boolean; hint?: ReactNode; disabled?: boolean }) {
+export function MenuItem({ icon, label, onClick, danger, hint, description, disabled }: { icon?: ReactNode; label: ReactNode; onClick?: () => void; danger?: boolean; hint?: ReactNode; /** Linha de apoio embaixo do rótulo (texto longo não cabe no `hint`). */ description?: ReactNode; disabled?: boolean }) {
   return (
     <button
       type="button"
@@ -171,7 +171,10 @@ export function MenuItem({ icon, label, onClick, danger, hint, disabled }: { ico
     >
       <span className="flex min-w-0 items-center gap-2">
         {icon ? <span className="shrink-0 text-[var(--text-secondary)]">{icon}</span> : null}
-        <span className="truncate">{label}</span>
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate">{label}</span>
+          {description ? <span className="truncate text-[10.5px] text-[var(--text-muted)]">{description}</span> : null}
+        </span>
       </span>
       {hint ? <span className="shrink-0 font-mono text-[10px] text-[var(--text-muted)]">{hint}</span> : null}
     </button>

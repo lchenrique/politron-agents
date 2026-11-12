@@ -33,7 +33,7 @@ export function AgentChip({ agents, selected, onSelect }: {
       <span>@{atual.name}</span>
       <ChevronDown className="size-3 text-[var(--text-muted)]" />
     </button>
-    <Dropdown open={open} onClose={() => setOpen(false)} anchor={trigger} align="left" width={220}>
+    <Dropdown open={open} onClose={() => setOpen(false)} anchor={trigger} align="left" side="top" width={220}>
       <MenuSection>Enviar para</MenuSection>
       {agents.map(agent => <MenuItem
         key={agent.id}

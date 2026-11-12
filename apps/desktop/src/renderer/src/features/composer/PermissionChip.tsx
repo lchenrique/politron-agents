@@ -42,12 +42,12 @@ export function PermissionChip({ mode, disabled = false, onSelect }: {
       <span>{label}</span>
       <ChevronDown aria-hidden="true" className="size-3 text-[var(--text-muted)]" />
     </button>
-    <Dropdown open={open} onClose={() => setOpen(false)} anchor={trigger} align="left" width={260}>
+    <Dropdown open={open} onClose={() => setOpen(false)} anchor={trigger} align="left" side="top" width={260}>
       <MenuSection>Permissão do Boo</MenuSection>
       {MODES.map(item => <MenuItem
         key={item.id}
         label={item.label}
-        hint={item.hint}
+        description={item.hint}
         onClick={() => { setOpen(false); if (item.id !== mode) onSelect(item.id) }}
       />)}
     </Dropdown>
