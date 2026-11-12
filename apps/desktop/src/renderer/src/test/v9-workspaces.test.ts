@@ -515,3 +515,14 @@ describe('migração do SQLite V9', () => {
     reopened.close()
   })
 })
+
+  it('configura o SQLite para esperar lock em vez de falhar na hora', () => {
+    const directory = tempDirectory()
+    const { service } = open(directory)
+    // Duas conexões no mesmo arquivo (app + host / segunda instância): a espera evita o
+    // "database is locked" que já derrubou escrita de mensagem no log real.
+    const db = (service.store as unknown as { db: DatabaseSync }).db
+    const row = db.prepare('PRAGMA busy_timeout').get() as { timeout?: number; busy_timeout?: number }
+    expect(row.timeout ?? row.busy_timeout).toBe(5000)
+    expect((db.prepare('PRAGMA journal_mode').get() as { journal_mode?: string }).journal_mode).toBe('wal')
+  })

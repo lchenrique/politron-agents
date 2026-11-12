@@ -95,7 +95,9 @@ export class WorkspaceStore {
       const backup = join(directory, `politron-v9.backup-schema${previousSchema}-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`)
       this.db.prepare('VACUUM INTO ?').run(backup)
     }
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
+    // Duas conexões (app + host, ou uma segunda instância) escrevem no mesmo arquivo: sem espera,
+    // a segunda recebia "database is locked" na hora e derrubava a escrita. 5 s cobre o pior caso do WAL.
+    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS v9_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_agents (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_workspaces (id TEXT PRIMARY KEY, data TEXT NOT NULL);
