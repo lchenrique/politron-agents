@@ -32,7 +32,7 @@ const initialModelOptions = (models: ComposerModel[], name?: string): ModelRunti
   }
 }
 
-export function Composer({ models, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName, recipientApprovalMode, onApprovalModeChange, onUndoRun }: {
+export function Composer({ models, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName, recipientApprovalMode, onApprovalModeChange, onUndoRun, sessionAgents, onAddParticipant }: {
   /** Boo que recebe a mensagem: o campo diz "Mensagem para <Boo>". */
   recipientName?: string
   /** Modo de aprovação do Boo que recebe a mensagem; vira o chip de autonomia do composer. */
@@ -50,6 +50,9 @@ export function Composer({ models, defaultModelName, inheritModelName, defaultEf
   canAttachImages?: boolean
   conversationId?: string
   mentionAgents?: Agent[]
+  /** Equipe inteira para o chip do destinatário: escolher um Boo de fora o coloca na sessão. */
+  sessionAgents?: Agent[]
+  onAddParticipant?: (agent: Agent) => void
   models: ComposerModel[]
   defaultModelName?: string
   /** Nome do modelo que o Boo destinatário usa: é o rótulo exibido enquanto a seleção é herança. */
@@ -119,15 +122,23 @@ export function Composer({ models, defaultModelName, inheritModelName, defaultEf
   }, [value])
 
   // Destinatário escolhido na pílula. A escolha vira menção no texto, então o roteamento
-  // que já existe (@alias) endereça só para esse Boo.
+  // que já existe (@alias) endereça só para esse Boo. Um Boo de fora da sessão entra nela.
   const [target, setTarget] = useState<Agent | null>(null)
   const chooseTarget = (agent: Agent) => {
     setTarget(agent)
+    const inSession = (mentionAgents || []).some(item => item.id === agent.id)
+    if (!inSession && onAddParticipant) {
+      // Escolher um Boo que não participa da conversa o coloca na sessão, em vez de só
+      // escrever a menção (que o roteamento ignoraria).
+      onAddParticipant(agent)
+      return
+    }
     if (!agent.alias) return
     const mention = `@${agent.alias}`
     setValue(current => (current.startsWith(mention) ? current : `${mention} ${current}`.trimEnd()))
   }
-  useEffect(() => { setMention(null); dismissedMention.current = null; setTarget(null) }, [conversationId, mentionAgents])
+  // Atualizar os participantes da mesma conversa não deve apagar o destinatário escolhido.
+  useEffect(() => { setMention(null); dismissedMention.current = null; setTarget(null) }, [conversationId])
   // Herança mostra o modelo real de quem responde: o alvo escolhido na pílula manda;
   // sem escolha, vale o Boo que o AppShell já resolveu para esta conversa.
   const inheritLabel = (target ? agentModelLabel(target, models) : undefined) || inheritModelName
@@ -304,7 +315,7 @@ ${message.text}` : message.text)
         minTextareaHeight={34}
         maxTextareaHeight={132}
         leadingChip={mentionAgents.length > 0 || recipientApprovalMode ? <>
-          {mentionAgents.length > 0 ? <AgentChip agents={mentionAgents} selected={target} onSelect={chooseTarget} /> : null}
+          {(sessionAgents || mentionAgents).length > 0 ? <AgentChip agents={sessionAgents || mentionAgents} selected={target} onSelect={chooseTarget} /> : null}
           {recipientApprovalMode && onApprovalModeChange ? <PermissionChip mode={recipientApprovalMode} disabled={busy} onSelect={onApprovalModeChange} /> : null}
         </> : undefined}
         value={value}

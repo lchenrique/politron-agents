@@ -492,9 +492,12 @@ export default function AppShell() {
   // Chip de autonomia do composer: o modo do Boo que vai receber a mensagem, salvo no perfil dele
   // (o Assistente tem preferências próprias, fora de `agents`).
   const changeComposerApproval = async (agent: Agent, approvalMode: Agent['approvalMode']) => {
+    // "Acesso total" também libera o motor (shell/edição nativos do Codex/Claude): sem isso o app
+    // recusava cada pedido nativo e o Codex respondia "rejeitado pela revisão automática".
+    const runtimePermissionMode: Agent['runtimePermissionMode'] = approvalMode === 'bypass' ? 'bypass' : 'managed'
     try {
-      if (agent.id === snapshot.assistant.id) await window.appAPI.saveAssistantPreferences({ approvalMode })
-      else await window.appAPI.saveAgent({ ...agent, approvalMode })
+      if (agent.id === snapshot.assistant.id) await window.appAPI.saveAssistantPreferences({ approvalMode, runtimePermissionMode })
+      else await window.appAPI.saveAgent({ ...agent, approvalMode, runtimePermissionMode })
       await refresh()
       setNotice(`${agent.name}: permissão ${APPROVAL_MODE_LABEL[approvalMode]}.`)
     } catch (error) { setNotice(errorText(error)) }
@@ -638,8 +641,10 @@ export default function AppShell() {
             <div hidden={Boolean(composerTakeoverApproval)}>
             <Composer
               mentionAgents={selectedAgents}
+              sessionAgents={[...selectedAgents, ...snapshot.agents.filter(agent => !selectedAgents.some(item => item.id === agent.id))]}
+              onAddParticipant={agent => void updateParticipants([...new Set([...selected.agentIds, agent.id])])}
               recipientName={composerRecipient.name}
-              recipientApprovalMode={composerRecipient.approvalMode}
+              recipientApprovalMode={composerRecipient.runtimePermissionMode === 'bypass' ? 'bypass' : composerRecipient.approvalMode}
               onApprovalModeChange={mode => void changeComposerApproval(composerRecipient, mode)}
               working={conversationRuns.length > 0}
               queued={queuedMessages}

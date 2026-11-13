@@ -434,3 +434,35 @@ describe('instruções durante uma tarefa', () => {
     expect(menu).toHaveTextContent('Pede aprovação antes de cada ação sensível')
     expect(menu).toHaveTextContent('Sem confirmação, inclusive no terminal')
   })
+
+describe('destinatário da sessão', () => {
+  const atlas = { id: 'atlas', name: 'Atlas', alias: 'atlas', color: '#786bea', avatar: '', approvalMode: 'ask' } as Agent
+  const chief = { id: 'chief', name: 'Chief', alias: 'chief', color: '#f59e0b', avatar: '', approvalMode: 'automatic' } as Agent
+
+  it('lista a equipe inteira no chip, não só os participantes', () => {
+    setup({ mentionAgents: [atlas], sessionAgents: [atlas, chief] })
+    fireEvent.click(screen.getByRole('button', { name: /@Atlas/ }))
+    const menu = screen.getByRole('menu')
+    expect(within(menu).getByRole('button', { name: /^Atlas/ })).toBeInTheDocument()
+    expect(within(menu).getByRole('button', { name: /^Chief/ })).toBeInTheDocument()
+  })
+
+  it('escolher um Boo de fora coloca ele na sessão em vez de só mencionar', () => {
+    const onAddParticipant = vi.fn()
+    const { textarea } = setup({ mentionAgents: [atlas], sessionAgents: [atlas, chief], onAddParticipant })
+    fireEvent.click(screen.getByRole('button', { name: /@Atlas/ }))
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: /^Chief/ }))
+    expect(onAddParticipant).toHaveBeenCalledWith(expect.objectContaining({ id: 'chief' }))
+    // Sem menção escrita: quem entra na sessão passa a ser o destinatário.
+    expect(textarea).toHaveValue('')
+  })
+
+  it('participante continua sendo escolhido pela menção no texto', () => {
+    const onAddParticipant = vi.fn()
+    const { textarea } = setup({ mentionAgents: [atlas], sessionAgents: [atlas, chief], onAddParticipant })
+    fireEvent.click(screen.getByRole('button', { name: /@Atlas/ }))
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: /^Atlas/ }))
+    expect(onAddParticipant).not.toHaveBeenCalled()
+    expect(textarea).toHaveValue('@atlas')
+  })
+})
