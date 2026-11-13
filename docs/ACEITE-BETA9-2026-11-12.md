@@ -66,3 +66,26 @@ Nos dois casos o agente retomou sozinho e repetiu a escolha. Evidência: `%TEMP%
 (prints e `evidencia.jsonl`). Com isso o aceite do beta.10 fica com **T01, T02, T04, T05, T06, T07, T09,
 T10, T11, T12, T15, T16, T17 aprovados**; restam T08, T13, T14 e T18, que dependem de reinício guiado,
 execução após plano, histórico longo e reinstalação.
+
+## Últimos itens no beta.10 instalado (13/11/2026)
+
+Executados no binário instalado, perfil descartável:
+
+| Item | Resultado | Evidência |
+|---|---|---|
+| T08 modo após reinício | **PASS** | Boo em `bypass` e em `ask` e Assistente em `automatic` continuaram iguais depois de fechar e abrir |
+| T13 executar depois do plano | **PASS** | plano com 2 etapas aprovado, nada criado durante o plano; depois da aprovação a etapa criou `plano.txt` com "etapa concluída" |
+| T14 histórico entre conversas | **PASS** | `MARCADOR-A` e `MARCADOR-B` não se cruzaram e continuaram após reiniciar |
+| T18 desinstalar e reinstalar | **bloqueado** | ver abaixo |
+
+### T18 — precisa de elevação
+
+O instalador registrou o app em `HKLM` (`UninstallString: "D:\boobot-beta10-test\Uninstall Boobot.exe" /allusers`),
+então a remoção exige administrador. Rodando `Uninstall Boobot.exe /S`, o processo trava esperando a
+elevação que não é concedida aqui (UAC), e o `Boobot.exe` permanece no lugar; `/allusers /S` tem o mesmo
+resultado. Tentei duas vezes, matei o processo travado e confirmei que o app continua íntegro
+(`boot ok, versão: 0.1.0-beta.10`).
+
+Para fechar o T18 na sua máquina: abra **Configurações → Aplicativos → Boobot → Desinstalar** (ou o
+`Uninstall Boobot.exe` na pasta) e aceite o UAC; depois rode o instalador do `beta.10` e confirme que
+Boos e conversas continuam.
