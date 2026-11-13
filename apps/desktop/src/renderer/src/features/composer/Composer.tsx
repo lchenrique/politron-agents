@@ -32,7 +32,7 @@ const initialModelOptions = (models: ComposerModel[], name?: string): ModelRunti
   }
 }
 
-export function Composer({ models, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName, recipientApprovalMode, onApprovalModeChange, onUndoRun, sessionAgents, onAddParticipant }: {
+export function Composer({ models, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName, recipientApprovalMode, onApprovalModeChange, onUndoRun, sessionAgents, onAddParticipant, workspaceAgentIds }: {
   /** Boo que recebe a mensagem: o campo diz "Mensagem para <Boo>". */
   recipientName?: string
   /** Modo de aprovação do Boo que recebe a mensagem; vira o chip de autonomia do composer. */
@@ -53,6 +53,8 @@ export function Composer({ models, defaultModelName, inheritModelName, defaultEf
   /** Equipe inteira para o chip do destinatário: escolher um Boo de fora o coloca na sessão. */
   sessionAgents?: Agent[]
   onAddParticipant?: (agent: Agent) => void
+  /** Equipe padrão do workspace: vira o grupo "Neste workspace" no chip. */
+  workspaceAgentIds?: string[]
   models: ComposerModel[]
   defaultModelName?: string
   /** Nome do modelo que o Boo destinatário usa: é o rótulo exibido enquanto a seleção é herança. */
@@ -315,7 +317,7 @@ ${message.text}` : message.text)
         minTextareaHeight={34}
         maxTextareaHeight={132}
         leadingChip={mentionAgents.length > 0 || recipientApprovalMode ? <>
-          {(sessionAgents || mentionAgents).length > 0 ? <AgentChip agents={sessionAgents || mentionAgents} selected={target} onSelect={chooseTarget} /> : null}
+          {(sessionAgents || mentionAgents).length > 0 ? <AgentChip agents={sessionAgents || mentionAgents} selected={target} onSelect={chooseTarget} sessionIds={sessionAgents ? mentionAgents.map(agent => agent.id) : undefined} workspaceIds={workspaceAgentIds} /> : null}
           {recipientApprovalMode && onApprovalModeChange ? <PermissionChip mode={recipientApprovalMode} disabled={busy} onSelect={onApprovalModeChange} /> : null}
         </> : undefined}
         value={value}

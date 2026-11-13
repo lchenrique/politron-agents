@@ -1,23 +1,45 @@
 import { useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, Plus } from 'lucide-react'
 import { Dropdown } from '@/shell/dropdown'
 import { MenuItem, MenuSection } from '@/shell/primitives'
 import type { Agent } from '../../../../shared/v9'
 
 /**
- * Pílula `● @Boo ⌄` do composer do mock: mostra e troca quem recebe a mensagem.
- * A escolha vira uma menção no texto, então o roteamento existente continua valendo.
+ * Pílula `● @Boo ⌄` do composer: mostra e troca quem recebe a mensagem.
+ * Agrupa em "Nesta conversa", "Neste workspace" e "Outros Boos". Escolher alguém da
+ * conversa direciona a mensagem; escolher alguém de fora o coloca na sessão e mantém
+ * o menu aberto, para montar um grupo com vários de uma vez.
  */
-export function AgentChip({ agents, selected, onSelect }: {
+export function AgentChip({ agents, selected, onSelect, sessionIds, workspaceIds = [] }: {
   agents: Agent[]
-  /** Agente escolhido; sem escolha, mostra o primeiro da equipe da conversa. */
+  /** Agente escolhido; sem escolha, mostra o primeiro da conversa. */
   selected?: Agent | null
   onSelect: (agent: Agent) => void
+  /** Quem já participa da conversa; sem isso, todos contam como participantes. */
+  sessionIds?: string[]
+  /** Equipe padrão do workspace da conversa. */
+  workspaceIds?: string[]
 }) {
   const [open, setOpen] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
-  const atual = selected ?? agents[0]
+  const inSession = (agent: Agent) => !sessionIds || sessionIds.includes(agent.id)
+  const atual = selected ?? agents.find(inSession) ?? agents[0]
   if (!agents.length || !atual) return null
+
+  const conversa = agents.filter(inSession)
+  const workspace = agents.filter(agent => !inSession(agent) && workspaceIds.includes(agent.id))
+  const outros = agents.filter(agent => !inSession(agent) && !workspaceIds.includes(agent.id))
+  const item = (agent: Agent) => {
+    const member = inSession(agent)
+    return <MenuItem
+      key={agent.id}
+      icon={<span className="block size-2 rounded-full" style={{ background: agent.color || 'var(--accent-primary)' }} />}
+      label={agent.name}
+      hint={member ? (agent.id === atual.id ? <Check aria-hidden="true" className="size-3 text-[var(--accent-primary)]" /> : agent.alias ? `@${agent.alias}` : agent.role) : <span className="flex items-center gap-0.5"><Plus aria-hidden="true" className="size-3" />adicionar</span>}
+      // Participante: direciona e fecha. De fora: entra na sessão e o menu fica aberto para somar mais.
+      onClick={() => { if (member) setOpen(false); onSelect(agent) }}
+    />
+  }
 
   return <>
     <button
@@ -31,17 +53,14 @@ export function AgentChip({ agents, selected, onSelect }: {
     >
       <span className="size-1.5 rounded-full" style={{ background: atual.color || 'var(--accent-primary)' }} />
       <span>@{atual.name}</span>
+      {conversa.length > 1 ? <span className="text-[var(--text-muted)]">+{conversa.length - 1}</span> : null}
       <ChevronDown className="size-3 text-[var(--text-muted)]" />
     </button>
-    <Dropdown open={open} onClose={() => setOpen(false)} anchor={trigger} align="left" side="top" width={220}>
-      <MenuSection>Enviar para</MenuSection>
-      {agents.map(agent => <MenuItem
-        key={agent.id}
-        icon={<span className="block size-2 rounded-full" style={{ background: agent.color || 'var(--accent-primary)' }} />}
-        label={agent.name}
-        hint={agent.alias ? `@${agent.alias}` : agent.role}
-        onClick={() => { setOpen(false); onSelect(agent) }}
-      />)}
+    <Dropdown open={open} onClose={() => setOpen(false)} anchor={trigger} align="left" side="top" width={240} className="max-h-80 overflow-y-auto">
+      <MenuSection>Nesta conversa</MenuSection>
+      {conversa.map(item)}
+      {workspace.length > 0 && <><MenuSection>Neste workspace</MenuSection>{workspace.map(item)}</>}
+      {outros.length > 0 && <><MenuSection>Outros Boos</MenuSection>{outros.map(item)}</>}
     </Dropdown>
   </>
 }

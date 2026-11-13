@@ -457,6 +457,22 @@ describe('destinatário da sessão', () => {
     expect(textarea).toHaveValue('')
   })
 
+  it('agrupa em conversa, workspace e outros, e de fora o menu fica aberto para somar mais', () => {
+    const nina = { id: 'nina', name: 'Nina', alias: 'nina', color: '#4098eb', avatar: '', approvalMode: 'ask' } as Agent
+    const onAddParticipant = vi.fn()
+    setup({ mentionAgents: [atlas], sessionAgents: [atlas, chief, nina], workspaceAgentIds: ['nina'], onAddParticipant })
+    fireEvent.click(screen.getByRole('button', { name: /@Atlas/ }))
+    const menu = screen.getByRole('menu')
+    const text = menu.textContent || ''
+    expect(text.indexOf('Nesta conversa')).toBeLessThan(text.indexOf('Atlas'))
+    expect(text.indexOf('Neste workspace')).toBeLessThan(text.indexOf('Nina'))
+    expect(text.indexOf('Outros Boos')).toBeLessThan(text.indexOf('Chief'))
+    expect(text.indexOf('Nina')).toBeLessThan(text.indexOf('Outros Boos'))
+    fireEvent.click(within(menu).getByRole('button', { name: /^Nina/ }))
+    expect(onAddParticipant).toHaveBeenCalledWith(expect.objectContaining({ id: 'nina' }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
+
   it('participante continua sendo escolhido pela menção no texto', () => {
     const onAddParticipant = vi.fn()
     const { textarea } = setup({ mentionAgents: [atlas], sessionAgents: [atlas, chief], onAddParticipant })

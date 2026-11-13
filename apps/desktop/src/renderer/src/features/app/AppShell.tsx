@@ -643,6 +643,7 @@ export default function AppShell() {
               mentionAgents={selectedAgents}
               sessionAgents={[...selectedAgents, ...snapshot.agents.filter(agent => !selectedAgents.some(item => item.id === agent.id))]}
               onAddParticipant={agent => void updateParticipants([...new Set([...selected.agentIds, agent.id])])}
+              workspaceAgentIds={snapshot.workspaces.find(workspace => workspace.id === selected.workspaceId)?.defaultAgentIds}
               recipientName={composerRecipient.name}
               recipientApprovalMode={composerRecipient.runtimePermissionMode === 'bypass' ? 'bypass' : composerRecipient.approvalMode}
               onApprovalModeChange={mode => void changeComposerApproval(composerRecipient, mode)}
