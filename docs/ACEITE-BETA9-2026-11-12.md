@@ -50,3 +50,19 @@ pedido) revelou a falha.
 - Feed de atualização não configurado (`update-feed.json` com `stable`/`beta` nulos), então nada de
   auto-update foi exercitado.
 - Computer Use ficou fora; o terminal (T07) foi executado com autorização do usuário, confinado a D:\\boobot-t07-test.
+
+## Revalidação no beta.10 instalado (13/11/2026)
+
+`Boobot-Setup-0.1.0-beta.10-x64.exe` instalado em `D:\boobot-beta10-test` (código 0, perfil descartável).
+T09 e T10 repetidos no binário instalado, dois cenários cada, com termo de resposta que não existe no
+pedido (`Kiwi-rápido` e `Kiwi-tardio`) para não repetir o falso positivo da primeira rodada:
+
+| Cenário | Resultado | Fim do histórico |
+|---|---|---|
+| T09 resposta imediata | **PASS** | `user: Resultado real de ask_user (...) Kiwi-rápido` → `assistant: Kiwi-rápido` |
+| T10 resposta 150 s depois | **PASS** | `user: Resultado real de ask_user (...) Kiwi-tardio` → `assistant: Kiwi-tardio` |
+
+Nos dois casos o agente retomou sozinho e repetiu a escolha. Evidência: `%TEMP%\boobot-pergunta-NyMEb3\`
+(prints e `evidencia.jsonl`). Com isso o aceite do beta.10 fica com **T01, T02, T04, T05, T06, T07, T09,
+T10, T11, T12, T15, T16, T17 aprovados**; restam T08, T13, T14 e T18, que dependem de reinício guiado,
+execução após plano, histórico longo e reinstalação.
