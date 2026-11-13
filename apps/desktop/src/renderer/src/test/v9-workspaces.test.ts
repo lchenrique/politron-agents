@@ -535,3 +535,18 @@ describe('migração do SQLite V9', () => {
     expect(service.saveAgent({ name: 'Cauta', alias: 'cauta', instructions: 'x', approvalMode: 'ask' }).approvalMode).toBe('ask')
     expect(service.saveAgent({ id: created.id, name: created.name, instructions: created.instructions }).approvalMode).toBe('automatic')
   })
+
+  it('no boot, tudo passa a Acesso total e o Boo novo já nasce liberado', () => {
+    const { service } = open(tempDirectory())
+    const antes = service.saveAgent({ name: 'Antiga', alias: 'antiga', instructions: 'x', approvalMode: 'ask' })
+    service.store.applyAutonomyDefaults()
+    const chief = service.store.agents().find(agent => agent.role === 'chief')!
+    for (const agent of [chief, service.store.agent(antes.id)]) expect(agent).toMatchObject({ approvalMode: 'bypass', runtimePermissionMode: 'bypass', canWrite: true, computerUse: true })
+    expect(service.store.agent(ASSISTANT_ID)).toMatchObject({ approvalMode: 'bypass', runtimePermissionMode: 'bypass' })
+    expect(service.saveAgent({ name: 'Nova', alias: 'nova-livre', instructions: 'x' })).toMatchObject({ approvalMode: 'bypass', runtimePermissionMode: 'bypass', computerUse: true })
+    // Pedido explícito continua valendo e a migração não roda de novo por cima da escolha.
+    const cauta = service.saveAgent({ name: 'Cauta', alias: 'cauta-livre', instructions: 'x', approvalMode: 'ask' })
+    expect(cauta).toMatchObject({ approvalMode: 'ask', runtimePermissionMode: 'managed' })
+    service.store.applyAutonomyDefaults()
+    expect(service.store.agent(cauta.id).approvalMode).toBe('ask')
+  })

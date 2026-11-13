@@ -323,8 +323,8 @@ export class WorkspaceStore {
     return {
       canWrite: read('canWrite')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.canWrite : read('canWrite')?.value === 'true',
       computerUse: read('computerUse')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.computerUse : read('computerUse')?.value === 'true',
-      approvalMode: read('approvalMode')?.value === 'automatic' || read('approvalMode')?.value === 'bypass' ? read('approvalMode')!.value as Agent['approvalMode'] : 'ask',
-      runtimePermissionMode: read('runtimePermissionMode')?.value === 'bypass' ? 'bypass' : 'managed',
+      approvalMode: read('approvalMode')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.approvalMode : read('approvalMode')?.value === 'automatic' || read('approvalMode')?.value === 'bypass' ? read('approvalMode')!.value as Agent['approvalMode'] : 'ask',
+      runtimePermissionMode: read('runtimePermissionMode')?.value === undefined ? DEFAULT_ASSISTANT_PREFERENCES.runtimePermissionMode : read('runtimePermissionMode')?.value === 'bypass' ? 'bypass' : 'managed',
       // A cor do Assistente não tem cadastro em v9_agents: fica nas preferências dele, como as permissões.
       color: /^#[\da-f]{6}$/i.test(read('color')?.value || '') ? read('color')!.value : ASSISTANT.color
     }
@@ -513,10 +513,11 @@ export class WorkspaceStore {
     if (clash) throw new Error(`A menção @${alias} já pertence ao Boo ${clash.name}. Escolha outra menção.`)
     const runtime = input.runtime ?? previous?.runtime ?? 'codex'
     if (!['codex', 'claude', 'pi', 'opencode'].includes(runtime)) throw new Error('Motor de agente inválido.')
-    // Boo novo nasce solto (extensão digital): Automático já trabalha sozinho e pede só ações sensíveis.
-    const approvalMode = input.approvalMode ?? previous?.approvalMode ?? 'automatic'
+    // Com `default_access=bypass` (gravado no boot do app) o Boo novo nasce em Acesso total; sem ele, Automático.
+    const unrestricted = !previous && this.unrestrictedByDefault()
+    const approvalMode = input.approvalMode ?? previous?.approvalMode ?? (unrestricted ? 'bypass' : 'automatic')
     if (approvalMode !== 'ask' && approvalMode !== 'automatic' && approvalMode !== 'bypass') throw new Error('Modo de aprovação inválido.')
-    const runtimePermissionMode = input.runtimePermissionMode ?? previous?.runtimePermissionMode ?? 'managed'
+    const runtimePermissionMode = input.runtimePermissionMode ?? previous?.runtimePermissionMode ?? (unrestricted && approvalMode === 'bypass' ? 'bypass' : 'managed')
     if (runtimePermissionMode !== 'managed' && runtimePermissionMode !== 'bypass') throw new Error('Permissão do motor inválida.')
     const effort = input.effort ?? previous?.effort ?? 'medium'
     if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error('Esforço do agente inválido.')
@@ -552,7 +553,7 @@ export class WorkspaceStore {
       pitsAnimate: input.pitsAnimate ?? previous?.pitsAnimate ?? true,
       pitsAccentColor: /^#[\da-f]{6}$/i.test(input.pitsAccentColor || '') ? input.pitsAccentColor : previous?.pitsAccentColor,
       pitsHeadset: input.pitsHeadset ?? previous?.pitsHeadset ?? true,
-      canWrite: input.canWrite ?? previous?.canWrite ?? true, computerUse: input.computerUse ?? previous?.computerUse ?? false, approvalMode, runtimePermissionMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
+      canWrite: input.canWrite ?? previous?.canWrite ?? true, computerUse: input.computerUse ?? previous?.computerUse ?? unrestricted, approvalMode, runtimePermissionMode, revision: (previous?.revision || 0) + 1, createdAt: previous?.createdAt || new Date().toISOString() }
     this.put('v9_agents', value); return value
   }
   private userAgents(ids: string[]): void {
@@ -900,14 +901,23 @@ export class WorkspaceStore {
   }
   /** Uma vez por banco: agentes em "perguntar" passam ao modo automático com guarda-corpos, e o Chief passa a existir. */
   applyAutonomyDefaults(): void {
-    if (this.db.prepare("SELECT 1 FROM v9_meta WHERE key='autonomy_defaults_v1'").get()) return
+    if (this.db.prepare("SELECT 1 FROM v9_meta WHERE key='autonomy_defaults_v1'").get()) { this.applyUnrestrictedDefaults(); return }
     for (const agent of this.agents().filter(item => item.approvalMode === 'ask')) this.put('v9_agents', { ...agent, approvalMode: 'automatic' })
     if (!this.agents().some(agent => agent.role === 'chief')) {
       this.saveAgent({ name: 'Chief', alias: 'chief', role: 'chief', description: 'Coordena objetivos, equipes e rotinas.', color: '#f0a05b', pitsHeadAccessory: 'crown',
         instructions: 'Você é o Chief: o principal ponto de contato do usuário. Transforme pedidos em missões, monte e coordene equipes de Boos, delegue, acompanhe e valide até entregar resultados verificáveis. Só procure o usuário quando precisar de uma decisão real.',
-        canWrite: true, computerUse: true, approvalMode: 'automatic' })
+        canWrite: true, computerUse: true, approvalMode: 'bypass', runtimePermissionMode: 'bypass' })
     }
     this.db.prepare("INSERT INTO v9_meta(key,value) VALUES('autonomy_defaults_v1','1')").run()
+    this.applyUnrestrictedDefaults()
   }
+  /** Uma vez por banco: todos os agentes e o Assistente passam a Acesso total (o usuário pode restringir depois). */
+  applyUnrestrictedDefaults(): void {
+    if (this.db.prepare("SELECT 1 FROM v9_meta WHERE key='autonomy_defaults_v2'").get()) return
+    for (const agent of this.agents()) this.put('v9_agents', { ...agent, canWrite: true, computerUse: true, approvalMode: 'bypass', runtimePermissionMode: 'bypass' })
+    this.saveAssistantPreferences({ canWrite: true, computerUse: true, approvalMode: 'bypass', runtimePermissionMode: 'bypass' })
+    this.db.prepare("INSERT INTO v9_meta(key,value) VALUES('autonomy_defaults_v2','1'),('default_access','bypass')").run()
+  }
+  unrestrictedByDefault(): boolean { return (this.db.prepare("SELECT value FROM v9_meta WHERE key='default_access'").get() as { value: string } | undefined)?.value === 'bypass' }
   close(): void { this.db.close() }
 }
