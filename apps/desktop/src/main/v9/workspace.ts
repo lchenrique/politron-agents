@@ -53,6 +53,8 @@ const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claud
 type RunContext = { nativeItems?: Map<string, Message>; run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
   /** Autoaprendizado: chamadas de ferramenta (fora as de skill), erro seguido de sucesso, skill já gravada e revisão final em curso. */
   voiceReply?: boolean; toolCalls?: number; toolFailed?: boolean; recovered?: boolean; savedSkill?: boolean; reflecting?: boolean
+  /** Resultado de ferramenta que chegou depois de o turno encerrar: vira uma continuação, uma vez só. */
+  lateToolFollowUp?: boolean
   /** remember/update_memory/forget_memory do turno: só gravam se o turno terminar bem. */
   pendingMemories?: Array<{ op: 'save'; input: MemoryInput } | { op: 'forget'; id: string }> }
 const MEMORY_WRITE_TOOLS = ['remember', 'update_memory', 'forget_memory']
@@ -1301,6 +1303,18 @@ export class AppService extends EventEmitter {
   private updateMessage(message: Message, status: Message['status'], value: string) {
     const next = { ...message, text: value, status }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
   }
+  /**
+   * Resultado de ferramenta entregue depois de o turno encerrar (decisão humana lenta): o runtime já fechou
+   * o turno e o agente não continua sozinho. Manda o resultado numa continuação, uma vez por execução.
+   */
+  private continueAfterLateResult(context: RunContext, tool: unknown, result: unknown): void {
+    if (context.run.status !== 'completed' || context.lateToolFollowUp) return
+    if (context.signal?.aborted) return
+    context.lateToolFollowUp = true
+    const value = (typeof result === 'string' ? result : JSON.stringify(result) ?? '').slice(0, 1200)
+    const name = typeof tool === 'string' ? tool : 'ferramenta'
+    void this.send(context.conversation.id, `Resultado real de ${name} (chegou depois do turno encerrado): ${value}\nContinue exatamente de onde parou e responda curto, em português.`).catch(() => undefined)
+  }
   private async finish(context: RunContext, status: Run['status'], value: string) {
     if (['completed', 'interrupted', 'failed'].includes(context.run.status)) return
     if (context.flushTimer) clearTimeout(context.flushTimer)
@@ -1472,6 +1486,9 @@ export class AppService extends EventEmitter {
         const result = await this.callTool(context, params.tool, params.arguments || {}, String(event.id ?? params.toolCallId ?? ''))
         runtime.respond(event.id, { success: true, contentItems: [{ type: 'inputText', text: typeof result === 'string' ? result : JSON.stringify(result) }] })
         settle('completed', result)
+        // O turno pode ter encerrado enquanto a pessoa decidia (aprovação/pergunta demorada).
+        // Nesse caso o resultado volta para um turno morto e o agente nunca continua: abre uma continuação.
+        this.continueAfterLateResult(context, params.tool, result)
         if (counts) { context.toolCalls = (context.toolCalls || 0) + 1; if (context.toolFailed) context.recovered = true }
       } catch (error) {
         runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: error instanceof Error ? error.message : 'A ferramenta falhou.' }] })
