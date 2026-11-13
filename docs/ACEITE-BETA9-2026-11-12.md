@@ -26,7 +26,7 @@ Modelo dos testes: Codex `gpt-6-luna`. Evidências: prints e `evidencia.jsonl` e
 | T09 | Cartão de pergunta devolve a escolha ao agente | **FALHOU** |
 | T10 | Resposta livre ("Outra resposta") volta ao agente | **FALHOU** |
 | T03 | Boo lê pasta e arquivo do workspace | coberto parcialmente pelo turno real (respondeu), leitura não conferida linha a linha |
-| T07 | Terminal em Bypass sem pedir confirmação | **não executado** — exige supervisão humana |
+| T07 | Terminal em Bypass sem pedir confirmação | **PASS** — autorizado pelo usuário, confinado a `D:\boobot-t07-test` |
 | T08, T13, T14, T18 | Reinício do modo, execução após plano, histórico, reinstalação | **não executados** |
 
 ## Defeito encontrado (T09/T10)
@@ -49,4 +49,4 @@ pedido) revelou a falha.
 - Instalador **sem assinatura** (`NotSigned`): o Windows mostra o aviso do SmartScreen.
 - Feed de atualização não configurado (`update-feed.json` com `stable`/`beta` nulos), então nada de
   auto-update foi exercitado.
-- Terminal e Computer Use ficaram fora por exigirem supervisão humana.
+- Computer Use ficou fora; o terminal (T07) foi executado com autorização do usuário, confinado a D:\\boobot-t07-test.
