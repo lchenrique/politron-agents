@@ -526,3 +526,12 @@ describe('migração do SQLite V9', () => {
     expect(row.timeout ?? row.busy_timeout).toBe(5000)
     expect((db.prepare('PRAGMA journal_mode').get() as { journal_mode?: string }).journal_mode).toBe('wal')
   })
+
+  it('Boo novo nasce em Automático, a menos que o pedido diga outra coisa', () => {
+    const { service } = open(tempDirectory())
+    const created = service.saveAgent({ name: 'Nova', alias: 'nova', instructions: 'Trabalhe.' })
+    expect(created.approvalMode).toBe('automatic')
+    // Pedido explícito continua valendo, e editar não troca o modo salvo.
+    expect(service.saveAgent({ name: 'Cauta', alias: 'cauta', instructions: 'x', approvalMode: 'ask' }).approvalMode).toBe('ask')
+    expect(service.saveAgent({ id: created.id, name: created.name, instructions: created.instructions }).approvalMode).toBe('automatic')
+  })

@@ -184,10 +184,10 @@ describe('hierarquia das seções', () => {
   const sections: [string, RegExp][] = [
     ['Geral', /Modo visual/], ['Assistente', /Assistente padrão/], ['Ferramentas', /terminal/],
     ['Provedores', /CLIs detectadas/], ['Geração de imagens', /Codex ou uma chave de API/], ['Skills', /SKILL\.md/], ['Memória', /lembram entre conversas/], ['Computer Use', /cua-driver/], ['Voz em tempo real', /transcrição/],
-    ['Conexões', /outros dispositivos/], ['Telegram', /Chief/], ['Atualizações', /canal de atualização/],
+    ['Conexões', /outros dispositivos/], ['Telegram', /Chief/], ['Atualizações', /canal de atualização/], ['Atividade', /Comandos rodados/],
   ]
 
-  it('mantém as doze seções na navegação e dá a cada página título e propósito próprios', () => {
+  it('mantém as treze seções na navegação e dá a cada página título e propósito próprios', () => {
     vi.stubGlobal('appAPI', { ...appAPI, voiceStatus: vi.fn().mockResolvedValue({ voiceKeyConfigured: false }) })
     vi.stubGlobal('providersAPI', providersAPI)
     vi.stubGlobal('skillsAPI', skillsAPI)
@@ -305,5 +305,28 @@ describe('modelos por provedor nas configurações', () => {
     fireEvent.change(within(section).getByLabelText('Nome do modelo em Pi'), { target: { value: 'Pi Custom' } })
     fireEvent.click(within(section).getByRole('button', { name: 'Salvar modelo' }))
     await waitFor(() => expect(appAPI.saveModelPreferences).toHaveBeenCalledWith({ disabled: [], custom: [{ provider: 'pi', id: 'pi-custom', name: 'Pi Custom' }] }))
+  })
+})
+
+describe('auditoria de atividade', () => {
+  it('lista comandos e arquivos com o Boo e a conversa de cada registro', async () => {
+    const activityAPI = {
+      ...appAPI,
+      activityLog: vi.fn().mockResolvedValue({
+        commands: [{ id: 'cmd-1', runId: 'run-1', toolCallId: 't1', agentId: 'agent-1', conversationId: 'conv-1', workspaceId: 'ws-1', command: 'npm test', cwd: 'C:/projeto', output: '', exitCode: 0, status: 'completed', truncated: false, createdAt: '2026-11-12T10:00:00.000Z', finishedAt: '2026-11-12T10:00:05.000Z' }],
+        files: [{ id: 'file-1', runId: 'run-1', messageId: 'm1', toolCallId: 't1', agentId: 'agent-1', workspaceId: 'ws-1', path: 'src/app.ts', status: 'applied', before: '', after: '', additions: 3, deletions: 1, truncated: false, binary: false, createdAt: '2026-11-12T10:00:00.000Z' }],
+      }),
+      snapshot: vi.fn().mockResolvedValue({ assistant: { id: 'assistant', name: 'Assistente', alias: 'assistente', description: '', instructions: '', runtime: 'codex', model: '', color: '#fff', avatar: '', canWrite: false, computerUse: false, approvalMode: 'ask', revision: 1, createdAt: '' }, agents: [{ id: 'agent-1', name: 'Atlas', alias: 'atlas', description: '', instructions: '', runtime: 'codex', model: '', color: '#fff', avatar: '', canWrite: false, computerUse: false, approvalMode: 'automatic', revision: 1, createdAt: '' }], workspaces: [], conversations: [{ id: 'conv-1', name: 'Refatoração', kind: 'direct', agentIds: ['agent-1'], workspaceId: 'ws-1', createdAt: '', archived: false }], messages: [], runs: [], fileChanges: [], approvals: [], terminalEnabled: true }),
+    }
+    vi.stubGlobal('appAPI', activityAPI)
+    vi.stubGlobal('providersAPI', providersAPI)
+    vi.stubGlobal('skillsAPI', skillsAPI)
+    render(<SettingsPage open />)
+    fireEvent.click(screen.getByRole('button', { name: /Atividade/ }))
+    expect(await screen.findByText('npm test')).toBeInTheDocument()
+    expect(screen.getByText('Atlas · Refatoração', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText('src/app.ts')).toBeInTheDocument()
+    expect(screen.getByText('+3')).toBeInTheDocument()
+    expect(screen.getByText('completed · 0')).toBeInTheDocument()
   })
 })

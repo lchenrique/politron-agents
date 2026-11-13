@@ -513,7 +513,8 @@ export class WorkspaceStore {
     if (clash) throw new Error(`A menção @${alias} já pertence ao Boo ${clash.name}. Escolha outra menção.`)
     const runtime = input.runtime ?? previous?.runtime ?? 'codex'
     if (!['codex', 'claude', 'pi', 'opencode'].includes(runtime)) throw new Error('Motor de agente inválido.')
-    const approvalMode = input.approvalMode ?? previous?.approvalMode ?? 'ask'
+    // Boo novo nasce solto (extensão digital): Automático já trabalha sozinho e pede só ações sensíveis.
+    const approvalMode = input.approvalMode ?? previous?.approvalMode ?? 'automatic'
     if (approvalMode !== 'ask' && approvalMode !== 'automatic' && approvalMode !== 'bypass') throw new Error('Modo de aprovação inválido.')
     const runtimePermissionMode = input.runtimePermissionMode ?? previous?.runtimePermissionMode ?? 'managed'
     if (runtimePermissionMode !== 'managed' && runtimePermissionMode !== 'bypass') throw new Error('Permissão do motor inválida.')
@@ -741,6 +742,8 @@ export class WorkspaceStore {
     if (!row) throw new Error('A evidência do comando não foi persistida.')
     return JSON.parse(row.data) as CommandEvidence
   }
+  recentFileChanges(limit = 200): FileChange[] { const size = Math.max(1, Math.min(limit, 1000)); return this.recent<FileChange>('v9_file_changes', size) }
+  recentCommandEvidence(limit = 200): CommandEvidence[] { const size = Math.max(1, Math.min(limit, 1000)); return (this.db.prepare('SELECT data FROM v9_command_evidence ORDER BY rowid DESC LIMIT ?').all(size) as { data: string }[]).map(row => JSON.parse(row.data) as CommandEvidence) }
   commandEvidenceForRun(runId: string): CommandEvidence[] { return (this.db.prepare('SELECT data FROM v9_command_evidence WHERE run_id=? ORDER BY rowid').all(runId) as { data: string }[]).map(row => JSON.parse(row.data)) }
   approvals(): Approval[] { return (this.db.prepare('SELECT data FROM v9_approvals ORDER BY rowid').all() as { data: string }[]).map(row => JSON.parse(row.data)) }
   approval(id: string): Approval | undefined { const row = this.db.prepare('SELECT data FROM v9_approvals WHERE id=?').get(id) as { data: string } | undefined; return row ? JSON.parse(row.data) as Approval : undefined }

@@ -122,6 +122,7 @@ const appAPI: AppAPI = {
   deleteRoutine: (id) => ipcRenderer.invoke('v9:deleteRoutine', id),
   runRoutine: (id) => ipcRenderer.invoke('v9:runRoutine', id),
   models: (runtime) => ipcRenderer.invoke('v9:models', runtime),
+  activityLog: (limit) => ipcRenderer.invoke('v9:activityLog', limit),
   undoRun: (runId) => ipcRenderer.invoke('v9:undoRun', runId),
   runSnapshot: (runId) => ipcRenderer.invoke('v9:runSnapshot', runId),
   modelPreferences: () => ipcRenderer.invoke('v9:modelPreferences'),

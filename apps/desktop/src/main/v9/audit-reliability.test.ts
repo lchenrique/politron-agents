@@ -232,7 +232,7 @@ describe('auditoria de isolamento e falha dos runtimes', () => {
   })
   it('remove o listener de interrupção após resolver uma aprovação', async () => {
     const { service, codex, conversation, sends } = setup()
-    const agent = service.saveAgent({ instructions: 'Apenas a fixture.', name: 'Aprovação', alias: 'aprovacao' })
+    const agent = service.saveAgent({ instructions: 'Apenas a fixture.', name: 'Aprovação', alias: 'aprovacao', approvalMode: 'ask' })
     const chat = conversation(agent)
     sends.push(service.send(chat.id, 'Aguarde.'))
     await vi.waitFor(() => expect(service.store.runs()[0]?.turnId).toBe('shared-turn'))

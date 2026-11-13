@@ -1105,6 +1105,8 @@ export class AppService extends EventEmitter {
       if (message) { const next = { ...message, status: 'interrupted' as const, text: `${message.text.split('\n')[0]}\nPedido cancelado pelo usuário.` }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next }) }
     }
   }
+  /** Auditoria legível: comandos executados e arquivos alterados, do mais recente para o mais antigo. */
+  activityLog(limit = 200) { const size = Math.max(1, Math.min(limit, 500)); return { commands: this.store.recentCommandEvidence(size), files: this.store.recentFileChanges(size) } }
   runSnapshotStatus(runId: string) { return this.runSnapshots.status(runId) }
   async undoRun(runId: string) { if (!runId) throw new Error('Execução inválida.'); const result = await this.runSnapshots.undo(runId); this.emitEvent({ type: 'changed' }); return result }
   modelPreferences() { return this.store.modelPreferences() }

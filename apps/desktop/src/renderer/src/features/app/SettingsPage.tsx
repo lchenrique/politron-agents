@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
-import { AudioLines, Brain, Download, FolderPlus, GraduationCap, ImagePlus, KeyRound, Monitor, MousePointerClick, Palette, Pencil, Plug, Router, Send, TerminalSquare, Trash2, Wrench, X } from 'lucide-react'
+import { Activity, AudioLines, Brain, Download, FolderPlus, GraduationCap, ImagePlus, KeyRound, Monitor, MousePointerClick, Palette, Pencil, Plug, Router, Send, TerminalSquare, Trash2, Wrench, X } from 'lucide-react'
+import type { CommandEvidence, FileChange } from '../../../../shared/v9'
 import { ASSISTANT_ID, type ModelPreferences, type Agent, type DecisionModel, type OpenRouterDecisionStatus } from '../../../../shared/v9'
 import type { ProviderSnapshot } from '../../../../shared/providers'
 import type { SkillInfo } from '../../../../shared/skills'
@@ -22,7 +23,7 @@ import { ComputerUsePanel } from './ComputerUsePanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
 import css from './SettingsPage.module.css'
 
-export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'imagens' | 'skills' | 'memoria' | 'computer-use' | 'voz' | 'conexoes' | 'telegram' | 'atualizacoes'
+export type SettingsSection = 'geral' | 'assistente' | 'ferramentas' | 'provedores' | 'imagens' | 'skills' | 'memoria' | 'computer-use' | 'voz' | 'conexoes' | 'telegram' | 'atualizacoes' | 'atividade'
 type Section = SettingsSection
 const SECTIONS: { id: Section; label: string; icon: typeof Palette; description: string }[] = [
   { id: 'geral', label: 'Geral', icon: Palette, description: 'Modo visual do Boobot e animação dos Boos neste dispositivo.' },
@@ -37,6 +38,7 @@ const SECTIONS: { id: Section; label: string; icon: typeof Palette; description:
   { id: 'conexoes', label: 'Conexões', icon: Monitor, description: 'Acesso a este computador pelos seus outros computadores.' },
   { id: 'telegram', label: 'Telegram', icon: Send, description: 'Fale com o Chief e aprove ações pelo celular com um bot seu do Telegram.' },
   { id: 'atualizacoes', label: 'Atualizações', icon: Download, description: 'Versão instalada, canal de atualização e instalação de novas versões.' },
+  { id: 'atividade', label: 'Atividade', icon: Activity, description: 'O que os Boos executaram e alteraram, do mais recente para o mais antigo.' },
 ]
 const SOURCE_LABEL: Record<SkillInfo['source'], string> = { codex: 'Codex', claude: 'Claude Code', custom: 'Adicionada aqui', learned: 'Aprendida por um agente', marketplace: 'Marketplace' }
 
@@ -265,6 +267,63 @@ function ModelProvidersList() {
       </div>
     })}
     {notice && <p role="status" className="text-[11.5px] text-[var(--text-muted)]">{notice}</p>}
+  </div>
+}
+/** Auditoria das execuções: comandos rodados e arquivos alterados, com nome do Boo e da conversa. */
+function ActivityPanel() {
+  const [log, setLog] = useState<{ commands: CommandEvidence[]; files: FileChange[] } | null>(null)
+  const [names, setNames] = useState<{ conversations: Map<string, string>; agents: Map<string, string> }>({ conversations: new Map(), agents: new Map() })
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = async () => {
+    setBusy(true); setError('')
+    try {
+      const [activity, snapshot] = await Promise.all([window.appAPI.activityLog(200), window.appAPI.snapshot()])
+      setLog(activity)
+      setNames({
+        conversations: new Map(snapshot.conversations.map(item => [item.id, item.name])),
+        agents: new Map([[snapshot.assistant.id, snapshot.assistant.name], ...snapshot.agents.map(agent => [agent.id, agent.name] as const)]),
+      })
+    } catch (cause) { setError(errorText(cause)) } finally { setBusy(false) }
+  }
+  useEffect(() => { void load() }, [])
+  const when = (value: string) => { try { return new Date(value).toLocaleString('pt-BR') } catch { return value } }
+  const conversationName = (id: string) => names.conversations.get(id) || 'conversa removida'
+  const agentName = (id: string) => names.agents.get(id) || 'Boo removido'
+  const statusTone = (status: string) => status === 'completed' ? 'text-emerald-400' : status === 'failed' ? 'text-rose-400' : 'text-amber-400'
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="text-[12px] text-[var(--text-muted)]">{log ? `${log.commands.length} comando(s) e ${log.files.length} arquivo(s) registrados` : 'Carregando…'}</p>
+      <button type="button" disabled={busy} onClick={() => void load()} className="rounded-full border border-[var(--border-default)] bg-[var(--bg-hover)] px-3.5 py-1.5 text-[12px] font-medium text-[var(--text-primary)] transition hover:bg-[var(--bg-active)] disabled:opacity-60">{busy ? 'Atualizando…' : 'Atualizar'}</button>
+    </div>
+    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+    <div>
+      <h4 className="mb-1.5 font-mono text-[10px] tracking-wider text-[var(--text-muted)] uppercase">Comandos</h4>
+      <div className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--bg-pane)]">
+        {(log?.commands || []).map(command => <div key={command.id} className="flex items-center justify-between gap-3 px-3.5 py-2">
+          <div className="min-w-0">
+            <p className="truncate font-mono text-[12px] text-[var(--text-primary)]">{command.command}</p>
+            <p className="truncate text-[10.5px] text-[var(--text-muted)]">{agentName(command.agentId)} · {conversationName(command.conversationId)} · {when(command.createdAt)}</p>
+          </div>
+          <span className={'shrink-0 font-mono text-[11px] ' + statusTone(command.status)}>{command.status}{command.exitCode === null ? '' : ` · ${command.exitCode}`}</span>
+        </div>)}
+        {log && !log.commands.length && <p className="px-3.5 py-3 text-[12px] text-[var(--text-muted)]">Nenhum comando executado ainda.</p>}
+      </div>
+    </div>
+    <div>
+      <h4 className="mb-1.5 font-mono text-[10px] tracking-wider text-[var(--text-muted)] uppercase">Arquivos alterados</h4>
+      <div className="divide-y divide-[var(--border-subtle)] overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--bg-pane)]">
+        {(log?.files || []).map(file => <div key={file.id} className="flex items-center justify-between gap-3 px-3.5 py-2">
+          <div className="min-w-0">
+            <p className="truncate font-mono text-[12px] text-[var(--text-primary)]">{file.path}</p>
+            <p className="truncate text-[10.5px] text-[var(--text-muted)]">{agentName(file.agentId)} · {conversationName(file.messageId ? file.runId : file.runId)} · {when(file.createdAt)}</p>
+          </div>
+          <span className="shrink-0 font-mono text-[11px]"><span className="text-emerald-400">+{file.additions}</span> <span className="text-rose-400">−{file.deletions}</span></span>
+        </div>)}
+        {log && !log.files.length && <p className="px-3.5 py-3 text-[12px] text-[var(--text-muted)]">Nenhum arquivo alterado ainda.</p>}
+      </div>
+    </div>
+    <p className="text-[11px] text-[var(--text-muted)]">Cada arquivo alterado tem backup automático: no chat, a barra de revisão da execução oferece <strong>Desfazer</strong>.</p>
   </div>
 }
 function SkillsSection() {
@@ -541,6 +600,7 @@ export function SettingsPage({ open = true, initialSection = 'geral', embedded =
             </div>
           </SettingsCard>
         </>}
+        {section === 'atividade' && <SettingsCard icon={<Activity className="size-4" />} title="Atividade das execuções" description="Comandos rodados e arquivos alterados pelos Boos, com o Boo e a conversa de cada registro. Em Acesso total não há aprovação registrando o sim humano; é aqui que fica o rastro."><ActivityPanel /></SettingsCard>}
         {section === 'imagens' && <Field icon={ImagePlus} title="Provedor de imagens" description="Quando você pede uma arte, capa ou criativo, o Boo usa a ferramenta generate_image com o provedor escolhido aqui e salva o arquivo na pasta da conversa. Sem provedor, os Boos não geram imagens."><ImageGenerationPanel /></Field>}
         {section === 'skills' && <>
           <SkillsSection />

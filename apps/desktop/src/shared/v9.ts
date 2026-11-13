@@ -292,6 +292,8 @@ export interface AppAPI {
   voiceClearOpenRouterKey(): Promise<VoiceStatus>
   cancelDelegation(delegationId: string): Promise<void>
   models(runtime?: 'codex' | 'claude'): Promise<Model[]>
+  /** Auditoria do que as execuções fizeram: comandos e arquivos alterados. */
+  activityLog(limit?: number): Promise<{ commands: CommandEvidence[]; files: FileChange[] }>
   /** Restaura os arquivos de uma execução a partir do backup automático. */
   undoRun(runId: string): Promise<{ restored: number; removed: number }>
   runSnapshot(runId: string): Promise<{ available: boolean; files: number }>
