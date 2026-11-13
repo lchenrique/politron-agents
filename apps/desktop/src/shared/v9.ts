@@ -292,6 +292,9 @@ export interface AppAPI {
   voiceClearOpenRouterKey(): Promise<VoiceStatus>
   cancelDelegation(delegationId: string): Promise<void>
   models(runtime?: 'codex' | 'claude'): Promise<Model[]>
+  /** Restaura os arquivos de uma execução a partir do backup automático. */
+  undoRun(runId: string): Promise<{ restored: number; removed: number }>
+  runSnapshot(runId: string): Promise<{ available: boolean; files: number }>
   modelPreferences(): Promise<ModelPreferences>
   saveModelPreferences(input: ModelPreferences): Promise<ModelPreferences>
   hasOpenCodeCredential(): Promise<boolean>

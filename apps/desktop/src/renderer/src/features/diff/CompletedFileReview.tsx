@@ -6,7 +6,7 @@ import type { FileChange } from '../../../../shared/v9'
 import { toFileDiff } from './file-diff-model'
 
 /** Read-only review of already applied changes: docked above the composer or inline under older replies. */
-export function CompletedFileReview({ changes, label = 'Revisão de arquivos modificados' }: { changes: FileChange[]; label?: string }) {
+export function CompletedFileReview({ changes, label = 'Revisão de arquivos modificados', onUndo }: { changes: FileChange[]; label?: string; /** Restaura os arquivos de antes desta execução (backup automático). */ onUndo?: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const applied = useMemo(() => {
@@ -56,6 +56,7 @@ export function CompletedFileReview({ changes, label = 'Revisão de arquivos mod
         <span className="shrink-0 font-mono text-[11px] text-rose-400">−{totals.removed}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1 font-medium text-[var(--text-primary)]">Revisar<ChevronDown aria-hidden className={'size-3 transition-transform ' + (expanded ? 'rotate-180' : '')} /></span>
       </Button>
+      {onUndo && <Button type="button" variant="ghost" size={null} aria-label="Desfazer execução" title="Restaurar os arquivos de antes desta execução" className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" onClick={onUndo}>Desfazer</Button>}
       <Button type="button" variant="ghost" size={null} aria-label="Dispensar revisão" title="Ocultar revisão" className="rounded-full p-0.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]" onClick={() => setDismissed(true)}><X className="size-3" /></Button>
     </div>
     {expanded && <div className="mt-1 max-h-72 overflow-y-auto rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] p-1.5">

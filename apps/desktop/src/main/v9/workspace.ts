@@ -29,6 +29,7 @@ import { CodexRuntime, type DynamicTool } from './codex'
 import { ClaudeRuntime } from './claude'
 import { PiRuntime } from './pi'
 import { OpenCodeApiRuntime } from './opencode-api'
+import { RunSnapshots } from './run-snapshots'
 import { chooseBooIdentity } from './boo-identity'
 import { marketplaceRoot } from '../marketplace/catalog'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
@@ -133,6 +134,7 @@ export class AppService extends EventEmitter {
   readonly openCodeRuntime: AgentRuntime
   readonly credentials: ClaudeCredentialStore
   readonly openCodeCredentials: OpenCodeCredentialStore
+  readonly runSnapshots: RunSnapshots
   readonly attachments: AttachmentStore
   readonly decisionRouting: OpenRouterDecisionService
   readonly imageGeneration: ImageGenerationService
@@ -294,6 +296,7 @@ export class AppService extends EventEmitter {
       this.store.saveAgent({ ...boo, temporaryStatus: 'retired' })
     this.credentials = new ClaudeCredentialStore(dataDirectory)
     this.openCodeCredentials = new OpenCodeCredentialStore(dataDirectory)
+    this.runSnapshots = new RunSnapshots(dataDirectory)
     this.decisionRouting = new OpenRouterDecisionService(dataDirectory)
     this.imageGeneration = new ImageGenerationService(dataDirectory)
     this.claudeRuntime = claudeRuntime || new ClaudeRuntime(dataDirectory, () => this.credentials.load())
@@ -1102,6 +1105,8 @@ export class AppService extends EventEmitter {
       if (message) { const next = { ...message, status: 'interrupted' as const, text: `${message.text.split('\n')[0]}\nPedido cancelado pelo usuário.` }; this.store.putMessage(next); this.emitEvent({ type: 'message', message: next }) }
     }
   }
+  runSnapshotStatus(runId: string) { return this.runSnapshots.status(runId) }
+  async undoRun(runId: string) { if (!runId) throw new Error('Execução inválida.'); const result = await this.runSnapshots.undo(runId); this.emitEvent({ type: 'changed' }); return result }
   modelPreferences() { return this.store.modelPreferences() }
   saveModelPreferences(input: Parameters<typeof this.store.saveModelPreferences>[0]) { const value = this.store.saveModelPreferences(input); this.emitEvent({ type: 'changed' }); return value }
   async hasOpenCodeCredential() { return this.openCodeCredentials.has() }
@@ -1587,6 +1592,8 @@ export class AppService extends EventEmitter {
         return `Alteração negada pelo usuário: ${relativePath}`
       }
       try {
+        // Backup antes da escrita: é o que permite desfazer a execução depois (workspace_write e generate_image).
+        await this.runSnapshots.capture(context.run.id, root, relativePath).catch(() => undefined)
         await commitFileWrite({ root, relativePath, content: next, expectedVersion, signal: this.active.get(context.run.id)?.signal })
         const afterBinary = next.includes(0)
         const after = afterBinary ? '' : next.subarray(0, 200_000).toString('utf8')

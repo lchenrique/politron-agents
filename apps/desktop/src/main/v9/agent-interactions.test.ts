@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -159,5 +159,26 @@ describe('Ferramentas de pergunta, plano e autonomia', () => {
     const { broker, context } = await setup()
     expect(broker.tools(context).map(tool => tool.name)).toContain('workspace_write')
     expect(broker.tools(context).map(tool => tool.name)).toContain('browser_open')
+  })
+})
+
+describe('desfazer execução', () => {
+  it('restaura o arquivo alterado e remove o criado, preservando o resto da pasta', async () => {
+    const { service, broker, context } = await setup()
+    const root = context.run.workspacePath
+    writeFileSync(join(root, 'app.ts'), 'original')
+    writeFileSync(join(root, 'intocado.ts'), 'fora do run')
+
+    await broker.callTool(context, 'workspace_write', { path: 'app.ts', content: 'versão do Boo' })
+    await broker.callTool(context, 'workspace_write', { path: 'novo.ts', content: 'criado pelo Boo' })
+    expect(readFileSync(join(root, 'app.ts'), 'utf8')).toBe('versão do Boo')
+    expect(await service.runSnapshotStatus('run-test')).toEqual({ available: true, files: 2 })
+
+    await expect(service.undoRun('run-test')).resolves.toEqual({ restored: 1, removed: 1 })
+    expect(readFileSync(join(root, 'app.ts'), 'utf8')).toBe('original')
+    expect(existsSync(join(root, 'novo.ts'))).toBe(false)
+    expect(readFileSync(join(root, 'intocado.ts'), 'utf8')).toBe('fora do run')
+    // O backup é consumido: não dá para desfazer duas vezes.
+    expect(await service.runSnapshotStatus('run-test')).toEqual({ available: false, files: 0 })
   })
 })

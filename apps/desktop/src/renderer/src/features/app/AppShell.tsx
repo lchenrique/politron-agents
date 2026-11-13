@@ -313,6 +313,16 @@ export default function AppShell() {
       setNotice(chief ? `${updated.name} agora é Chief.` : `${updated.name} voltou a ser um agente da equipe.`)
     } catch (error) { setNotice(errorText(error)) }
   }
+  // Desfaz a última execução que alterou arquivos, restaurando o backup tirado antes de cada escrita.
+  const undoRun = async (runId: string) => {
+    try {
+      const result = await window.appAPI.undoRun(runId)
+      await refresh()
+      setNotice(result.restored || result.removed
+        ? `Execução desfeita: ${result.restored} arquivo(s) restaurado(s) e ${result.removed} removido(s).`
+        : 'Esta execução não tem arquivos para desfazer.')
+    } catch (error) { setNotice(errorText(error)) }
+  }
   const openAgent = async (agent: Agent, newConversation = false) => {
     // O Assistente não é um participante cadastrado: a conversa dele é a que não tem Boo fixo (`agentIds: []`).
     const assistant = agent.id === snapshot.assistant.id
@@ -637,6 +647,7 @@ export default function AppShell() {
               conversationId={selected.id}
               reviewChanges={latestReview}
               reviewKey={finishedWithChanges?.runId || ''}
+              onUndoRun={finishedWithChanges?.runId ? () => void undoRun(finishedWithChanges.runId!) : undefined}
               models={promptOptions.models}
               defaultModelName={selectedModelName}
               inheritModelName={composerInheritModelName}

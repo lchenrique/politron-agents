@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { FileChange } from '../../../../shared/v9'
 import { CompletedFileReview } from './CompletedFileReview'
 
@@ -32,3 +32,15 @@ describe('revisão de arquivos após a tarefa', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+  it('oferece desfazer a execução quando o backup automático está disponível', () => {
+    const onUndo = vi.fn()
+    render(<CompletedFileReview changes={[change]} onUndo={onUndo} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Desfazer execução' }))
+    expect(onUndo).toHaveBeenCalledTimes(1)
+  })
+
+  it('sem backup, não mostra a ação de desfazer', () => {
+    render(<CompletedFileReview changes={[change]} />)
+    expect(screen.queryByRole('button', { name: 'Desfazer execução' })).not.toBeInTheDocument()
+  })

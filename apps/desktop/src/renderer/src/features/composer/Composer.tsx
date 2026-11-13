@@ -32,12 +32,14 @@ const initialModelOptions = (models: ComposerModel[], name?: string): ModelRunti
   }
 }
 
-export function Composer({ models, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName, recipientApprovalMode, onApprovalModeChange }: {
+export function Composer({ models, defaultModelName, inheritModelName, defaultEffort, onModelChange, onSubmit, onStop, conversationId, reviewChanges = [], reviewKey = '', onVoiceNotice, mentionAgents = [], working = false, queued = [], canAttachImages = false, onCancelQueued, onSendQueuedNow, recipientName, recipientApprovalMode, onApprovalModeChange, onUndoRun }: {
   /** Boo que recebe a mensagem: o campo diz "Mensagem para <Boo>". */
   recipientName?: string
   /** Modo de aprovação do Boo que recebe a mensagem; vira o chip de autonomia do composer. */
   recipientApprovalMode?: Agent['approvalMode']
   onApprovalModeChange?: (mode: Agent['approvalMode']) => void
+  /** Desfaz a última execução com alterações (backup automático por run). */
+  onUndoRun?: () => void
   reviewChanges?: FileChange[]
   reviewKey?: string
   working?: boolean
@@ -294,7 +296,7 @@ ${message.text}` : message.text)
   />
 
   return <ComposerFrame>
-      {reviewChanges.length > 0 && <CompletedFileReview key={reviewKey} changes={reviewChanges} />}
+      {reviewChanges.length > 0 && <CompletedFileReview key={reviewKey} changes={reviewChanges} onUndo={onUndoRun} />}
       <QueuedMessages messages={queued} onEdit={editQueued} onSendNow={message => runQueued(() => onSendQueuedNow ? onSendQueuedNow(message.id) : window.appAPI.sendQueuedNow(message.id))} onRemove={message => runQueued(() => onCancelQueued ? onCancelQueued(message.id) : window.appAPI.cancelQueuedMessage(message.id))} />
       <PromptInput
         className={styles.promptCard}
