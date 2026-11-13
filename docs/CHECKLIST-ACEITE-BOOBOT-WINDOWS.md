@@ -1,5 +1,7 @@
 # Boobot — checklist manual de aceite (instalador Windows)
 
+> Execução parcial automatizada em 12/11/2026 sobre o beta.9: veja [ACEITE-BETA9-2026-11-12.md](ACEITE-BETA9-2026-11-12.md). Este arquivo continua sendo o roteiro completo, com os itens que exigem supervisão humana.
+
 Beta 0.1.0 — 22/10/2026. Execute estes testes no aplicativo **instalado**, em uma pasta descartável e usando **OpenCode Zen gratuito**. Não misture com projetos reais até aprovar os critérios.
 
 ## Preparação
