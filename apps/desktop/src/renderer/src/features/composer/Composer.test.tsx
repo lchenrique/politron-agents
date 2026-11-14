@@ -439,6 +439,18 @@ describe('destinatário da sessão', () => {
   const atlas = { id: 'atlas', name: 'Atlas', alias: 'atlas', color: '#786bea', avatar: '', approvalMode: 'ask' } as Agent
   const chief = { id: 'chief', name: 'Chief', alias: 'chief', color: '#f59e0b', avatar: '', approvalMode: 'automatic' } as Agent
 
+  it('em grupo, sem escolha, a mensagem vai para a equipe e dá para voltar a isso depois de fixar alguém', () => {
+    const { textarea } = setup({ mentionAgents: [atlas, chief], sessionAgents: [atlas, chief] })
+    expect(textarea).toHaveAttribute('placeholder', expect.stringContaining('a equipe'))
+    fireEvent.click(screen.getByRole('button', { name: /Equipe · 2/ }))
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: /^Chief/ }))
+    expect(textarea).toHaveValue('@chief')
+    fireEvent.click(screen.getByRole('button', { name: /@Chief/ }))
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('button', { name: /Equipe decide/ }))
+    expect(textarea).toHaveValue('')
+    expect(screen.getByRole('button', { name: /Equipe · 2/ })).toBeInTheDocument()
+  })
+
   it('lista a equipe inteira no chip, não só os participantes', () => {
     setup({ mentionAgents: [atlas], sessionAgents: [atlas, chief] })
     fireEvent.click(screen.getByRole('button', { name: /@Atlas/ }))

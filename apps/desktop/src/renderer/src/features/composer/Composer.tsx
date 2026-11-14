@@ -139,6 +139,11 @@ export function Composer({ models, defaultModelName, inheritModelName, defaultEf
     const mention = `@${agent.alias}`
     setValue(current => (current.startsWith(mention) ? current : `${mention} ${current}`.trimEnd()))
   }
+  const clearTarget = () => {
+    const mention = target?.alias ? `@${target.alias}` : ''
+    setTarget(null)
+    if (mention) setValue(current => current.startsWith(mention) ? current.slice(mention.length).trimStart() : current)
+  }
   // Atualizar os participantes da mesma conversa não deve apagar o destinatário escolhido.
   useEffect(() => { setMention(null); dismissedMention.current = null; setTarget(null) }, [conversationId])
   // Herança mostra o modelo real de quem responde: o alvo escolhido na pílula manda;
@@ -317,7 +322,7 @@ ${message.text}` : message.text)
         minTextareaHeight={34}
         maxTextareaHeight={132}
         leadingChip={mentionAgents.length > 0 || recipientApprovalMode ? <>
-          {(sessionAgents || mentionAgents).length > 0 ? <AgentChip agents={sessionAgents || mentionAgents} selected={target} onSelect={chooseTarget} sessionIds={sessionAgents ? mentionAgents.map(agent => agent.id) : undefined} workspaceIds={workspaceAgentIds} /> : null}
+          {(sessionAgents || mentionAgents).length > 0 ? <AgentChip agents={sessionAgents || mentionAgents} selected={target} onSelect={chooseTarget} onClear={clearTarget} sessionIds={sessionAgents ? mentionAgents.map(agent => agent.id) : undefined} workspaceIds={workspaceAgentIds} /> : null}
           {recipientApprovalMode && onApprovalModeChange ? <PermissionChip mode={recipientApprovalMode} disabled={busy} onSelect={onApprovalModeChange} /> : null}
         </> : undefined}
         value={value}
@@ -365,7 +370,7 @@ ${message.text}` : message.text)
         accept={`${canAttachImages ? 'image/png,image/jpeg,image/webp,' : ''}text/*,.md,.txt,.json,.csv,.ts,.tsx,.js,.jsx,.css,.html,.xml,.yaml,.yml`}
         onStop={onStop}
         submitLabel={working ? 'Adicionar à fila' : 'Enviar mensagem'}
-        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : `Envie uma mensagem para ${target?.name || recipientName || 'o Boo'}…`}
+        placeholder={working ? 'Enter adiciona à fila · Ctrl/Cmd+Enter envia para o turno em andamento' : `Envie uma mensagem para ${target?.name || (mentionAgents.length > 1 ? 'a equipe' : recipientName) || 'o Boo'}…`}
         onSubmit={(message, selection) => { void submit(message, selection.files) }}
         trailingControls={working && <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0 rounded-full" aria-label="Parar geração" title="Parar geração" onClick={onStop}><Square className="size-4 fill-current" /></Button>}
         attachTrigger={openFiles => <AttachMenu openFiles={openFiles} planMode={planMode} disabled={busy}

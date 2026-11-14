@@ -22,11 +22,18 @@ function setup() {
 }
 
 describe('líder do grupo', () => {
-  it('conversa nova usa líder por padrão e escolhe o primeiro participante', () => {
+  it('conversa nova usa o automático (roteador com fallback no líder) e escolhe o primeiro participante', () => {
     const { store, alice, beto } = setup()
     const conversation = store.saveConversation({ agentIds: [alice.id, beto.id], kind: 'group', name: 'Equipe' })
-    expect(conversation.responseMode).toBe('leader')
+    expect(conversation.responseMode).toBe('auto')
     expect(conversation.leaderAgentId).toBe(alice.id)
+  })
+
+  it('o Chief do grupo vira líder mesmo sem ser o primeiro', () => {
+    const { store, alice } = setup()
+    const chief = store.agents().find(agent => agent.role === 'chief') ?? store.saveAgent({ name: 'Chefe', alias: 'chefe', instructions: 'x', role: 'chief' })
+    const conversation = store.saveConversation({ agentIds: [alice.id, chief.id], kind: 'group', name: 'Equipe' })
+    expect(conversation.leaderAgentId).toBe(chief.id)
   })
 
   it('interpreta conversas antigas sem configuração como líder único sem alterar o registro original', () => {
