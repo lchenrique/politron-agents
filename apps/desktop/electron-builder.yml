@@ -33,6 +33,14 @@ win:
       arch:
         - x64
   executableName: Boobot
+  # Assinatura: sem certificado o build sai sem assinar (como hoje). Com
+  # CSC_LINK + CSC_KEY_PASSWORD (ou WIN_CSC_LINK) no ambiente, o electron-builder
+  # assina o app e o instalador com signtool. Para Azure Trusted Signing, troque
+  # signtoolOptions por azureSignOptions (veja docs/release.md).
+  signtoolOptions:
+    signingHashAlgorithms:
+      - sha256
+    rfc3161TimeStampServer: http://timestamp.digicert.com
 nsis:
   artifactName: Boobot-Setup-${version}-${arch}.${ext}
   oneClick: false
@@ -41,12 +49,12 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   runAfterFinish: true
-# Repositório é privado: o app rodando não consegue checar/baixar releases sem
-# um token, e não dá pra embutir token de acesso num instalador distribuído.
-# Só funciona de verdade se o repo virar público ou as releases saírem daqui
-# pra um host público (ex.: bucket HTTP com provider "generic").
+# Releases no GitHub. Publicar exige GH_TOKEN e --publish explícito; o
+# dist:win usa --publish never. O app instalado lê o repositório de
+# update-feed.json e não usa token: com repositório privado a checagem falha
+# (404) até as releases irem para um repositório público (docs/release.md).
 publish:
-  provider: generic
-  url: https://updates.example.invalid/boobot/
-# O URL acima é apenas placeholder de empacotamento; o updater usa exclusivamente
-# os feeds HTTPS definidos em update-feed.json. Configure o host antes de publicar.
+  provider: github
+  owner: lchenrique
+  repo: politron-agents
+  releaseType: draft

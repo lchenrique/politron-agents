@@ -1,4 +1,8 @@
 {
   "stable": null,
-  "beta": null
+  "beta": null,
+  "github": {
+    "owner": "lchenrique",
+    "repo": "politron-agents"
+  }
 }

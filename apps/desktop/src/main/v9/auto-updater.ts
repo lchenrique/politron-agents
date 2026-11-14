@@ -3,13 +3,14 @@ import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { ReleaseChannel, UpdateSnapshot } from '../../shared/updates'
-import { defaultUpdateChannel, parseUpdateFeeds, type UpdateFeeds } from './update-config'
+import { defaultUpdateChannel, describeUpdateError, parseGithubReleases, parseUpdateFeeds, updateFeedOptions, type GithubReleases, type UpdateFeeds } from './update-config'
 
 const INTERVAL_MS = 30 * 60 * 1000
 const SETTINGS_NAME = 'update-preferences.json'
 const FEED_NAME = 'update-feed.json'
 let initialized = false
 let feeds: UpdateFeeds = {}
+let github: GithubReleases | null = null
 let downloadedVersion: string | null = null
 let checkInFlight: Promise<UpdateSnapshot> | null = null
 let releaseChannel: ReleaseChannel = 'stable'
@@ -36,20 +37,19 @@ function readPreferences(): ReleaseChannel {
 function savePreferences(channel: ReleaseChannel): void {
   writeFileSync(join(app.getPath('userData'), SETTINGS_NAME), JSON.stringify({ channel }), 'utf8')
 }
-function readFeeds(): UpdateFeeds {
-  try {
-    return parseUpdateFeeds(JSON.parse(readFileSync(join(process.resourcesPath, FEED_NAME), 'utf8')))
-  } catch { return {} }
+function readFeedFile(): unknown {
+  try { return JSON.parse(readFileSync(join(process.resourcesPath, FEED_NAME), 'utf8')) } catch { return null }
 }
+const currentOptions = () => updateFeedOptions(feeds, github, releaseChannel)
 function configureFeed(): boolean {
   if (!app.isPackaged) { update({ phase: 'development' }); return false }
-  const url = feeds[releaseChannel]
-  if (!url) {
+  const options = currentOptions()
+  if (!options) {
     update({ phase: 'not-configured', latestVersion: null, progressPercent: null,
       error: null, releaseNotes: null })
     return false
   }
-  autoUpdater.setFeedURL({ provider: 'generic', url })
+  autoUpdater.setFeedURL(options)
   autoUpdater.channel = releaseChannel === 'beta' ? 'beta' : 'latest'
   autoUpdater.allowPrerelease = releaseChannel === 'beta'
   autoUpdater.allowDowngrade = false
@@ -74,7 +74,7 @@ async function check(): Promise<UpdateSnapshot> {
           latestVersion: version, releaseNotes: notes(result.updateInfo.releaseNotes) })
       }
     } catch (error) {
-      update({ phase: 'error', error: error instanceof Error ? error.message.slice(0, 350) : 'Falha ao consultar atualizações.' })
+      update({ phase: 'error', error: error instanceof Error ? describeUpdateError(error.message, currentOptions()) : 'Falha ao consultar atualizações.' })
     } finally {
       update({ lastCheckedAt: new Date().toISOString() })
       checkInFlight = null
@@ -97,7 +97,7 @@ async function changeChannel(value: ReleaseChannel): Promise<UpdateSnapshot> {
 }
 
 async function install(): Promise<{ installing: boolean; message: string }> {
-  if (!app.isPackaged || !feeds[releaseChannel])
+  if (!app.isPackaged || !currentOptions())
     throw new Error('Atualizações só são instaladas por versões empacotadas com feed público configurado.')
   const version = downloadedVersion
   if (!version || snapshot.phase !== 'downloaded')
@@ -120,7 +120,9 @@ export function initAutoUpdater(): void {
   snapshot.currentVersion = app.getVersion()
   releaseChannel = readPreferences()
   snapshot.channel = releaseChannel
-  feeds = readFeeds()
+  const feedFile = readFeedFile()
+  feeds = parseUpdateFeeds(feedFile)
+  github = parseGithubReleases(feedFile)
 
   ipcMain.handle('updates:status', () => ({ ...snapshot }))
   ipcMain.handle('updates:check', () => check())
@@ -149,7 +151,7 @@ export function initAutoUpdater(): void {
   })
   autoUpdater.on('error', error => {
     console.error('[Boobot updater]', error)
-    update({ phase: 'error', error: error.message.slice(0, 350) })
+    update({ phase: 'error', error: describeUpdateError(error.message, currentOptions()) })
   })
   configureFeed()
 

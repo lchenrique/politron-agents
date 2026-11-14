@@ -32,7 +32,7 @@ Substitua `SEU-DOMINIO` por um host real ANTES da compilação de uma release. O
 5. Instale uma versão anterior em ambiente de teste e confirme: atualização disponível → download → aviso → confirmação → fechamento → nova versão.
 6. Assine o instalador com certificado confiável antes da distribuição pública. Preserve o mesmo certificado/identidade entre releases.
 
-O `publish.provider: generic` no `electron-builder.yml` contém um URL `.invalid` deliberado para gerar manifests **sem apontar para o repositório privado**. A aplicação ignora essa configuração embutida e usa exclusivamente os feeds explícitos de `update-feed.json`. Não use o placeholder como destino de deploy.
+O `electron-builder.yml` agora publica em GitHub Releases (`docs/release.md`). A aplicação continua usando só o que está em `update-feed.json`: um URL HTTPS do canal tem prioridade; sem ele, usa o bloco `github` (Releases públicas, sem token).
 
 ## Limites em relação ao Paseo
 O Paseo usa rollout progressivo, controle de instalação no encerramento, validação de manifests e pipeline de publicação automatizada. A primeira versão do Boobot implementa um fluxo mais simples: não há rollout percentual, assinatura automatizada, CI de upload ou rollback. Esses itens dependem do serviço de distribuição e da política de releases.
