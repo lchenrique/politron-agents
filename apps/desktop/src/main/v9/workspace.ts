@@ -126,8 +126,8 @@ const SELF_PROFILE_PROPERTIES: Record<string, unknown> = {
 /** Como e onde habilitar cada permissão do Chief, para a mensagem de recusa orientar o usuário em vez de só negar. */
 const howToEnablePermission = (label: string) => ` Para habilitar, abra o menu (⋯) deste workspace, escolha Editar e marque "${label}" em Permissões do workspace.`
 
-/** Notificações automáticas seguidas (Boo terminou → Chief acordado → nova delegação...) permitidas por mensagem do usuário. */
-export const MAX_CONTINUATION_DEPTH = 8
+/** Notificações automáticas seguidas (Boo terminou, Chief acordado, nova delegação) por mensagem do usuário: trava contra laço, folgada para missões com vários Boos. */
+export const MAX_CONTINUATION_DEPTH = 24
 export class AppService extends EventEmitter {
   readonly store: WorkspaceStore
   readonly runtime: AgentRuntime
@@ -162,7 +162,7 @@ export class AppService extends EventEmitter {
   externalBrowserStatus(owner: PlatformBrowserOwner): ExternalBrowserStatus {
     const valid = [owner?.workspaceId, owner?.conversationId, owner?.agentId].every(value => typeof value === 'string' && !!value && value.length <= 200)
     if (!valid) throw new Error('Dados inválidos para o navegador externo.')
-    return { granted: this.canShareBrowser(owner) && (this.store.externalBrowserAlways() || this.store.externalBrowserGrant(owner.conversationId, owner.agentId)), problems: this.externalBrowserBridge.probe() }
+    return { granted: this.canShareBrowser(owner) && (this.store.externalBrowserAlways() || this.implicitGrant(owner) || this.store.externalBrowserGrant(owner.conversationId, owner.agentId)), problems: this.externalBrowserBridge.probe() }
   }
   setExternalBrowserGrant(owner: PlatformBrowserOwner, enabled: boolean): ExternalBrowserStatus {
     this.externalBrowserStatus(owner)
@@ -243,6 +243,10 @@ export class AppService extends EventEmitter {
     this.computerUseSessions.close(`${conversationId}:${agentId}`)
     return this.computerUseOverview()
   }
+  /** Acesso total já é o consentimento: navegador real e Windows não pedem autorização separada por conversa. */
+  private implicitGrant(owner: PlatformBrowserOwner): boolean {
+    try { return hasFullAccess(this.store.agent(owner.agentId)) } catch { return false }
+  }
   private computerUseAllowed(context: RunContext) {
     const owner = { workspaceId: context.run.workspaceId, conversationId: context.conversation.id, agentId: context.agent.id }
     return { owner, key: `${owner.conversationId}:${owner.agentId}`, allowed: computerUseRuntimeSupported(context.agent.runtime) && !context.run.planMode && !this.boardReviewerConversations.has(owner.conversationId) && this.canShareBrowser(owner) }
@@ -257,7 +261,7 @@ export class AppService extends EventEmitter {
   private async authorizeComputerUseCall(owner: PlatformBrowserOwner, runId: string | undefined, tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<string | null> {
     const context = runId ? this.contexts.get(runId) : undefined
     if (!context || context.conversation.id !== owner.conversationId || context.agent.id !== owner.agentId || !this.computerUseAllowed(context).allowed || context.signal?.aborted || signal.aborted) return 'Nenhuma execução ativa e autorizada deste Boo para controlar o Windows nesta conversa; nada foi executado.'
-    if (!this.store.computerUseGrant(owner.conversationId, owner.agentId)) return 'O usuário não autorizou este Boo a controlar o Windows nesta conversa. Use a ferramenta computer_use_request.'
+    if (!this.store.computerUseGrant(owner.conversationId, owner.agentId) && !this.implicitGrant(owner)) return 'O usuário não autorizou este Boo a controlar o Windows nesta conversa. Use a ferramenta computer_use_request.'
     // Cada ferramenta de desktop usada vira atividade no histórico (nome e resumo curto; textos digitados não são gravados).
     this.addMessage(context.conversation.id, context.agent, 'activity', computerUseSummary(tool, args), 'completed', context.run.id)
     return null
@@ -1978,7 +1982,7 @@ export class AppService extends EventEmitter {
       const driver = await this.computerUseDriver(true)
       const blocker = !computerUseRuntimeSupported(context.agent.runtime) ? `O motor ${context.agent.runtime} não aceita servidores MCP por sessão; Computer Use só funciona em Codex e Claude. Use terminal, arquivos e navegador.`
         : driver.state !== 'installed' ? `cua-driver indisponível (${driver.error}) ${driver.instructions}` : context.run.planMode ? 'No modo plano o Windows não é controlado.' : ''
-      let granted = this.store.computerUseGrant(owner.conversationId, owner.agentId)
+      let granted = this.store.computerUseGrant(owner.conversationId, owner.agentId) || this.implicitGrant(owner)
       if (name === 'computer_use_request') {
         if (blocker) return `Não foi possível pedir autorização: ${blocker}`
         if (!granted) {

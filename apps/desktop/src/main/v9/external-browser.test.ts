@@ -358,3 +358,15 @@ describe('navegador real liberado por autorização da conversa', () => {
     }
   })
 })
+
+describe('Acesso total como consentimento', () => {
+  it('navegador real e Windows já contam como autorizados, sem pedido por conversa', async () => {
+    Object.assign(process.env, { CODEX_HOME: bridge().codexHome })
+    const { service, broker, context, owner } = await setup(true, 'codex')
+    expect(service.externalBrowserStatus(owner).granted).toBe(false)
+    const livre = service.saveAgent({ ...service.store.agent(owner.agentId), runtimePermissionMode: 'bypass' })
+    expect(service.externalBrowserStatus(owner).granted).toBe(true)
+    await expect(broker.callTool({ ...context, agent: livre }, 'computer_use_status', {})).resolves.toMatch(/granted: true/)
+    expect(service.store.approvals().filter(item => item.status === 'pending')).toHaveLength(0)
+  })
+})

@@ -9,7 +9,7 @@ import type { DynamicTool } from './codex'
 
 /**
  * Controle total do Chief (Parte 3 da spec Chief 2.0): ver tudo, agir direto dentro do Boobot e pedir confirmação
- * (sempre, mesmo no Bypass) só no que apaga, arquiva ou amplia acesso externo.
+ * só no que apaga, arquiva ou amplia acesso externo, e só fora do Acesso total.
  */
 export const CHIEF_READ_TOOLS = new Set(['project_list', 'project_overview', 'session_history', 'mission_list', 'routine_list', 'board_team_list', 'board_task_list'])
 const CHIEF_ACTION_TOOLS = ['project_create', 'project_update', 'session_create', 'session_update', 'session_send', 'team_set', 'agent_update', 'self_update',
@@ -48,7 +48,7 @@ export interface ChiefHost {
 
 export interface ChiefCall {
   agent: Agent; conversationId: string; workspaceId: string; inputMessageId?: string
-  /** requestApproval com alwaysAsk: pergunta mesmo no Bypass. */
+  /** requestApproval com alwaysAsk: pergunta mesmo em Automático; Acesso total aprova direto. */
   confirm: (action: string, task: string, desktopOnly?: boolean) => Promise<boolean>
   /** Linha de atividade na conversa do Chief. */
   record: (value: string) => void

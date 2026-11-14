@@ -33,7 +33,7 @@ describe('preâmbulo de sistema compartilhado entre Codex e Claude', () => {
   it('Chief age direto, confirma só o que não tem volta e nunca aprova a si mesmo; Boo comum segue com propostas', () => {
     const chief = buildAgentSystemPrompt({ ...agent, role: 'chief' })
     for (const name of ['project_list', 'project_overview', 'session_history', 'project_create', 'session_send', 'agent_update', 'self_update', 'project_delete', 'settings_update']) expect(chief).toContain(name)
-    expect(chief).toContain('mesmo no Bypass')
+    expect(chief).toContain('em Acesso total o Boobot já aprova e você executa direto')
     expect(chief).toContain('nunca responde nem aprova essas confirmações')
     expect(chief).toContain('Documentos\\Boobot\\<nome>')
     expect(chief).toContain('Conduza cada pedido até o resultado solicitado')
