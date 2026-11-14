@@ -64,6 +64,24 @@ describe('motores múltiplos', () => {
     expect(service.store.delegations()[0]).toMatchObject({ requesterAgentId: reviewer.id, recipientAgentId: coder.id, status: 'completed' })
   })
 
+  it('em grupo, a resposta diz por que aquele agente respondeu', async () => {
+    const codex = new FakeRuntime(); const claude = new FakeRuntime()
+    const service = new AppService(temp(), codex, claude); services.push(service)
+    const ana = service.saveAgent({ name: 'Ana', alias: 'ana', instructions: 'x' })
+    const bia = service.saveAgent({ name: 'Bia', alias: 'bia', instructions: 'x' })
+    const conversation = service.saveConversation({ kind: 'group', name: 'Dupla', agentIds: [ana.id, bia.id], workspacePath: temp() })
+    expect(conversation.responseMode).toBe('auto')
+    const reply = () => service.store.history(conversation.id).filter(message => message.role === 'assistant').at(-1)!
+    const choose = vi.spyOn(service.decisionRouting, 'choose').mockResolvedValueOnce({ agentId: bia.id, confidence: 0.82 })
+    await service.send(conversation.id, 'quem resolve isso?')
+    expect(reply()).toMatchObject({ agentId: bia.id, routing: 'roteador · 82%' })
+    choose.mockResolvedValueOnce(null)
+    await service.send(conversation.id, 'e agora?')
+    expect(reply()).toMatchObject({ agentId: ana.id, routing: 'líder · roteador sem chave' })
+    await service.send(conversation.id, '@bia só você')
+    expect(reply()).toMatchObject({ agentId: bia.id, routing: 'mencionado' })
+  })
+
   it('normaliza uma sessão Claude simulada e retoma o id real do SDK', async () => {
     type QuerySdk = NonNullable<ConstructorParameters<typeof ClaudeRuntime>[2]>
     const captured: Parameters<QuerySdk>[0][] = []

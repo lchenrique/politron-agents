@@ -652,11 +652,13 @@ export class WorkspaceStore {
     if (kind === 'group' && !agentIds.length) throw new Error('Selecione de um a dez agentes para um grupo.')
     const named = typeof input.name === 'string' && input.name.trim() !== ''
     const name = named ? requiredText(input.name, 'Nome', 100) : previous?.name || 'Nova conversa'
-    // Sem escolha explícita, o grupo usa o automático: o roteador decide quando há chave OpenRouter; sem ela, responde o líder.
-    const responseMode = input.responseMode ?? previous?.responseMode ?? 'auto'
+    // Sem escolha explícita: com Chief, ele lidera e distribui o trabalho (o roteador só o desviaria);
+    // sem Chief, o automático decide quando há chave OpenRouter e, sem ela, responde o líder.
+    const chiefId = agentIds.find(id => this.agent(id).role === 'chief')
+    const responseMode = input.responseMode ?? previous?.responseMode ?? (chiefId ? 'leader' : 'auto')
     if (responseMode !== 'broadcast' && responseMode !== 'leader' && responseMode !== 'auto' && responseMode !== 'discussion') throw new Error('Modo de resposta do grupo inválido.')
     // O líder também é o fallback do modo automático. Se o grupo ainda não tinha líder, o Chief assume; sem Chief, o primeiro participante.
-    const defaultLeader = agentIds.find(id => this.agent(id).role === 'chief') || agentIds[0]
+    const defaultLeader = chiefId || agentIds[0]
     const leaderAgentId = kind === 'group' && responseMode !== 'broadcast' ? (input.leaderAgentId !== undefined ? input.leaderAgentId : previous?.leaderAgentId) || defaultLeader || null : null
     if (kind === 'group' && responseMode !== 'broadcast' && (!leaderAgentId || !agentIds.includes(leaderAgentId))) throw new Error('Escolha um líder que participe desta conversa.')
     const value: Conversation = { id: previous?.id || randomUUID(), kind, name, agentIds, workspaceId: workspace.id, titleAuto: named ? false : previous?.titleAuto ?? true, responseMode, leaderAgentId, revision: previous ? previous.revision + (workspace.id !== previous.workspaceId ? 1 : 0) : 1, archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }

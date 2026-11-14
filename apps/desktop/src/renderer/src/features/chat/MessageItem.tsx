@@ -147,6 +147,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
         <Avatar agent={agent} size="xxs" state={message.status === 'running' ? 'working' : message.status === 'waiting' ? 'waiting' : 'idle'} />
         <span className="text-[12.5px] font-semibold text-[var(--text-primary)]" title={dshName}>{dshName}</span>
         <span className="truncate font-mono text-[11px] text-[var(--text-muted)]">{agent?.alias ? `${agent.alias} · ` : ''}{time?.short}</span>
+        {message.routing && <span className="shrink-0 rounded-full border border-[var(--border-default)] px-1.5 text-[10.5px] text-[var(--text-muted)]" title="Por que este agente respondeu nesta conversa em grupo">{message.routing}</span>}
         {message.status === 'waiting' && <span className="text-[11.5px] font-medium text-amber-400">aguarda sua aprovação</span>}
         {message.status === 'queued' && <span className="text-[11.5px] text-[var(--text-muted)]">na fila</span>}
       </div>}
@@ -173,6 +174,7 @@ export const MessageItem = memo(function MessageItem({ message, agent, relatedCo
         <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center rounded-md text-[11px] font-bold" style={{ color: accent, background: `color-mix(in srgb, ${accent} 16%, transparent)`, border: `1px solid color-mix(in srgb, ${accent} 42%, transparent)` }}>{initials}</span>
         <span className="text-[12.5px] font-semibold text-[var(--text-primary)]">{agentName}</span>
         <span className="truncate font-mono text-[11px] text-[var(--text-muted)]">{agent?.alias ? `${agent.alias} · ` : ''}{time?.short}</span>
+        {message.routing && <span className="shrink-0 rounded-full border border-[var(--border-default)] px-1.5 text-[10.5px] text-[var(--text-muted)]" title="Por que este agente respondeu nesta conversa em grupo">{message.routing}</span>}
         {message.status === 'waiting' && <span className="text-[11.5px] font-medium text-amber-400">aguarda sua aprovação</span>}
         {message.status === 'queued' && <span className="text-[11.5px] text-[var(--text-muted)]">na fila</span>}
         {message.status === 'failed' && <span className="text-[11.5px] text-rose-400">falhou</span>}

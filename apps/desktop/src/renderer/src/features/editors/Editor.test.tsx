@@ -34,19 +34,19 @@ describe('criação simples de conversa', () => {
     expect(screen.getByRole('button', { name: 'Criar grupo' })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Nome da conversa'), { target: { value: 'Revisão' } })
     fireEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: 'group', name: 'Revisão', agentIds: ['a', 'b'], responseMode: 'leader', leaderAgentId: 'a' })))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ kind: 'group', name: 'Revisão', agentIds: ['a', 'b'], responseMode: 'auto', leaderAgentId: 'a' })))
   })
 
-  it('permite escolher o Jev para responder sem menção e mantém o líder como fallback', async () => {
+  it('permite trocar o automático padrão por só o líder', async () => {
     const onSave = renderEditor([agent('a', 'Alice'), agent('b', 'Beto')])
     fireEvent.click(screen.getAllByRole('checkbox')[0])
     fireEvent.click(screen.getAllByRole('checkbox')[1])
     fireEvent.change(screen.getByLabelText('Nome da conversa'), { target: { value: 'Equipe' } })
     const mode = screen.getByRole('combobox', { name: 'Quem responde sem menção?' })
     fireEvent.click(mode)
-    fireEvent.click(await screen.findByRole('option', { name: 'Automático · Jev pelo OpenRouter' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Só o líder do grupo' }))
     fireEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ responseMode: 'auto', leaderAgentId: 'a' })))
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ responseMode: 'leader', leaderAgentId: 'a' })))
   })
 })
 

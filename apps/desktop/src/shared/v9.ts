@@ -71,6 +71,8 @@ export interface Message {
   runId: string | null; delegationId?: string; relatedConversationId?: string; attachments?: MessageAttachment[]; createdAt: string
   /** Texto integral do pedido, na mensagem de origem de uma delegação. */
   delegationTask?: string
+  /** Em grupo: por que este agente respondeu (líder, roteador com confiança, menção). */
+  routing?: string
   /** Atividade de ferramenta do Boobot com dados estruturados (mensagens antigas só têm o texto "Categoria · detalhe"). */
   tool?: ActivityTool
   /** Quando a resposta terminou; só na última resposta de um run concluído/falho/interrompido. */

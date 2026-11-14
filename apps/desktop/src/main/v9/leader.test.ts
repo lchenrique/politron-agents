@@ -29,11 +29,13 @@ describe('líder do grupo', () => {
     expect(conversation.leaderAgentId).toBe(alice.id)
   })
 
-  it('o Chief do grupo vira líder mesmo sem ser o primeiro', () => {
+  it('com Chief no grupo, ele vira líder (mesmo sem ser o primeiro) e o modo padrão é só o líder', () => {
     const { store, alice } = setup()
     const chief = store.agents().find(agent => agent.role === 'chief') ?? store.saveAgent({ name: 'Chefe', alias: 'chefe', instructions: 'x', role: 'chief' })
     const conversation = store.saveConversation({ agentIds: [alice.id, chief.id], kind: 'group', name: 'Equipe' })
     expect(conversation.leaderAgentId).toBe(chief.id)
+    // Com Chief, ele lidera e distribui: o roteador não desvia a mensagem dele.
+    expect(conversation.responseMode).toBe('leader')
   })
 
   it('interpreta conversas antigas sem configuração como líder único sem alterar o registro original', () => {

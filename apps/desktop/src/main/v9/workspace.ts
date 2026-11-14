@@ -777,8 +777,8 @@ export class AppService extends EventEmitter {
   searchHistory(id: string, query: string, limit?: number) { this.store.conversation(id); return this.store.searchHistory(id, text(query, 200), limit) }
   historyAround(id: string, cursor: number, limit?: number) { this.store.conversation(id); return this.store.historyAround(id, cursor, limit) }
   private emitEvent(event: WorkspaceEvent) { this.emit('workspace-event', event) }
-  private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null, details: { id?: string; attachments?: MessageAttachment[]; tool?: ActivityTool } = {}) {
-    const message: Message = { id: details.id || randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, ...(details.attachments?.length ? { attachments: details.attachments } : {}), ...(details.tool ? { tool: details.tool } : {}), createdAt: new Date().toISOString() }
+  private addMessage(conversationId: string, agent: Agent | null, role: Message['role'], value: string, status: Message['status'], runId: string | null, details: { id?: string; attachments?: MessageAttachment[]; tool?: ActivityTool; routing?: string } = {}) {
+    const message: Message = { id: details.id || randomUUID(), conversationId, agentId: agent?.id || null, author: agent?.name || (role === 'user' ? 'Você' : 'Sistema'), role, text: value, status, runId, ...(details.attachments?.length ? { attachments: details.attachments } : {}), ...(details.tool ? { tool: details.tool } : {}), ...(details.routing ? { routing: details.routing } : {}), createdAt: new Date().toISOString() }
     this.store.putMessage(message); this.emitEvent({ type: 'message', message })
     // Texto que chegar depois de uma atividade vira mensagem nova, abaixo dela (ver replyFor).
     if (role === 'activity' && runId) { const context = this.contexts.get(runId); if (context) context.activitySince = true }
@@ -855,14 +855,18 @@ export class AppService extends EventEmitter {
     const mentioned = preferredAgentId ? undefined : mentionedRecipients(input, agents)
     let selected = preferredAgentId ? agents : mentioned || recipients(input, agents, mode, conversation.leaderAgentId)
     if (!selected.length) throw new Error('Não há agentes para responder nesta conversa.')
+    // Por que este agente responde: aparece na resposta, só em grupos com escolha de um único agente.
+    const pickedOne = agents.length > 1 && (mode === 'leader' || mode === 'auto')
+    let routing: string | undefined = !pickedOne ? undefined : preferredAgentId || mentioned ? 'mencionado' : mode === 'leader' ? 'líder do grupo' : undefined
     const turnAlreadyActive = this.store.runs().some(run => run.conversationId === conversationId && ['queued', 'running', 'waiting'].includes(run.status))
     if (recordInput && !preferredAgentId && !mentioned && mode === 'auto' && agents.length > 1) {
       const responding = agents.filter(agent => [...this.contexts.values()].some(context => context.run.conversationId === conversationId && context.agent.id === agent.id && ['running', 'waiting'].includes(context.run.status)))
-      if (responding.length === 1) selected = responding
+      if (responding.length === 1) { selected = responding; routing = 'já estava respondendo' }
       else {
         const history = this.store.history(conversationId).slice(-8).map(message => ({ author: message.author, text: message.text }))
         const decision = await this.decisionRouting.choose({ message: input, conversation: conversation.name, agents: agents.map(agent => ({ id: agent.id, name: agent.name, description: agent.description })), history })
-        if (decision) selected = agents.filter(agent => agent.id === decision.agentId)
+        if (decision) { selected = agents.filter(agent => agent.id === decision.agentId); routing = `roteador · ${Math.round(decision.confidence * 100)}%` }
+        else routing = (await this.decisionRouting.status().catch(() => ({ configured: false }))).configured ? 'líder · roteador sem decisão' : 'líder · roteador sem chave'
       }
     }
     if (attachments.length && !recordInput) throw new Error('Imagens só podem ser enviadas em mensagens da conversa.')
@@ -933,7 +937,7 @@ export class AppService extends EventEmitter {
       const run: Run = { id: randomUUID(), conversationId, agentId: agent.id, rootId: '', parentId: null, ancestry: [agent.id], status: 'queued', threadId: null, turnId: null, messageId: '', input: planMode ? '[MODO PLANO ATIVO] Analise a tarefa, consulte apenas ferramentas de leitura e use propose_plan para apresentar um plano em etapas. NÃO modifique arquivos, execute comandos ou realize alterações até o usuário enviar outra tarefa fora do modo plano.\n\n' + runInput : runInput, planMode, inputMessageId: recordInput ? userMessage.id : undefined, agent: runAgent, ...(Object.keys(modelOptions).length ? { modelOptions } : {}), workspaceId: workspace.id, workspacePath: workspace.path, createdAt: new Date().toISOString() }
       run.rootId = run.id
       // Mensagem na fila do usuário: a resposta só nasce quando a vez chegar, abaixo do que já foi dito.
-      let message = userMessage.status === 'queued' && recordInput ? undefined : this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
+      let message = userMessage.status === 'queued' && recordInput ? undefined : this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id, { routing })
       run.messageId = message?.id || ''
       this.store.putRun(run)
       const controller = new AbortController()
@@ -944,7 +948,7 @@ export class AppService extends EventEmitter {
       const task = this.queue.enqueue(chiefLane ? chiefLaneKey(workspace.path, conversationId) : workspace.path, controller.signal, lease => {
         if (!message) {
           this.dispatchQueuedInput(userMessage.id)
-          message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id)
+          message = this.addMessage(conversationId, agent, 'assistant', '', 'queued', run.id, { routing })
           run.messageId = message.id
           this.store.putRun(run)
         }

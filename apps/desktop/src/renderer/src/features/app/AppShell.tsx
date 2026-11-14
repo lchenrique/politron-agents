@@ -217,9 +217,10 @@ export default function AppShell() {
     const nameWasDerivedFromAgent = previousAgentNames.includes(selected.name)
     const nextName = !nameWasDerivedFromAgent ? selected.name : agentIds.length === 0 ? 'Nova conversa' : agentIds.length === 1 ? snapshot.agents.find(agent => agent.id === agentIds[0])?.name || 'Nova conversa' : 'Conversa em equipe'
     const update: Partial<Conversation> = { id: selected.id, agentIds, kind: agentIds.length > 1 ? 'group' : 'direct' }
-    // Virou grupo: o roteador escolhe quem responde (sem chave OpenRouter, responde o líder).
-    if (selected.kind !== 'group' && agentIds.length > 1) update.responseMode = 'auto'
-    if (selected.responseMode !== 'broadcast' && (!selected.leaderAgentId || !agentIds.includes(selected.leaderAgentId))) update.leaderAgentId = agentIds.find(id => snapshot.agents.find(agent => agent.id === id)?.role === 'chief') || agentIds[0] || null
+    const chiefId = agentIds.find(id => snapshot.agents.find(agent => agent.id === id)?.role === 'chief')
+    // Virou grupo: com Chief, ele lidera e distribui; sem Chief, o roteador escolhe (sem chave OpenRouter, responde o líder).
+    if (selected.kind !== 'group' && agentIds.length > 1) update.responseMode = chiefId ? 'leader' : 'auto'
+    if (selected.responseMode !== 'broadcast' && (!selected.leaderAgentId || !agentIds.includes(selected.leaderAgentId))) update.leaderAgentId = chiefId || agentIds[0] || null
     if (nameWasDerivedFromAgent) update.name = nextName
     try { await window.appAPI.saveConversation(update); await refresh() } catch (error) { setNotice(errorText(error)) }
   }
