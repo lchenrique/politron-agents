@@ -602,7 +602,8 @@ export class WorkspaceStore {
       filesWrite: filesWrite as NonNullable<Workspace['permissions']>['filesWrite'],
       computerUse: computerUse as NonNullable<Workspace['permissions']>['computerUse']
     }
-    const value: Workspace = { id, name, kind, path, branch: input.branch ?? previous?.branch ?? null, baseBranch: input.baseBranch ?? previous?.baseBranch ?? null, parentWorkspaceId, instructions: instructions.trim(), defaultAgentIds, permissions, changes: Math.max(0, input.changes ?? previous?.changes ?? 0), archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString() }
+    const isolateTasks = input.isolateTasks ?? previous?.isolateTasks
+    const value: Workspace = { id, name, kind, path, branch: input.branch ?? previous?.branch ?? null, baseBranch: input.baseBranch ?? previous?.baseBranch ?? null, parentWorkspaceId, instructions: instructions.trim(), defaultAgentIds, permissions, changes: Math.max(0, input.changes ?? previous?.changes ?? 0), archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString(), ...(typeof isolateTasks === 'boolean' ? { isolateTasks } : {}) }
     this.put('v9_workspaces', value)
     return value
   }

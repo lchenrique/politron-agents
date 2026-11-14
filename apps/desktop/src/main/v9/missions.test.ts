@@ -36,7 +36,7 @@ describe('missões autônomas', () => {
       async (context, b) => { await call(b, context, 'mission_update', { steps: [{ title: 'Pesquisar mercado', status: 'done' }, { title: 'Montar plano de lançamento', status: 'doing' }], note: 'Pesquisa salva em notas.md' }) },
       async (context, b) => { await call(b, context, 'mission_complete', { result: 'Plano entregue em plano.md; 3 concorrentes analisados.' }) },
     ])
-    const mission = service.startMission({ goal: 'Preciso lançar um novo produto.', workspaceId: workspace.id })
+    const mission = await service.startMission({ goal: 'Preciso lançar um novo produto.', workspaceId: workspace.id })
     expect(mission.ownerAgentId).toBe(service.store.agents().find(agent => agent.role === 'chief')!.id)
     await vi.waitFor(() => expect(service.store.mission(mission.id)!.status).toBe('completed'), { timeout: 15_000, interval: 100 })
     const done = service.store.mission(mission.id)!
@@ -54,7 +54,7 @@ describe('missões autônomas', () => {
       async () => undefined,
       async (context, b) => { await call(b, context, 'mission_complete', { result: 'Feito com a orientação.' }) },
     ])
-    const mission = service.startMission({ goal: 'Descubra por que o projeto não funciona.', workspaceId: workspace.id })
+    const mission = await service.startMission({ goal: 'Descubra por que o projeto não funciona.', workspaceId: workspace.id })
     await vi.waitFor(() => expect(service.store.mission(mission.id)!.status).toBe('waiting'), { timeout: 15_000, interval: 100 })
     expect(service.store.mission(mission.id)!.question).toMatch(/progresso/)
     await service.missionAction(mission.id, 'reply', 'Olhe o build primeiro.')
@@ -66,7 +66,7 @@ describe('missões autônomas', () => {
   it('nota de "aguardando" sem mudar o plano não conta como progresso e não vira laço de consultas', async () => {
     const waiting = async (context: any, b: any) => { await call(b, context, 'mission_update', { note: 'Aguardando os Boos terminarem.' }) }
     const { service, workspace, inputs } = setup([waiting, waiting, waiting, waiting, waiting])
-    const mission = service.startMission({ goal: 'Acompanhe a equipe.', workspaceId: workspace.id })
+    const mission = await service.startMission({ goal: 'Acompanhe a equipe.', workspaceId: workspace.id })
     await vi.waitFor(() => expect(service.store.mission(mission.id)!.status).toBe('waiting'), { timeout: 15_000, interval: 100 })
     expect(service.store.mission(mission.id)!.question).toMatch(/progresso/)
     expect(inputs.length).toBeLessThanOrEqual(2)
@@ -77,7 +77,7 @@ describe('missões autônomas', () => {
       async (context, b) => { await call(b, context, 'mission_block', { question: 'Qual público-alvo?', options: ['B2B', 'B2C'] }) },
       async (context, b) => { await call(b, context, 'mission_complete', { result: 'Segmentado para B2C.' }) },
     ])
-    const mission = service.startMission({ goal: 'Pesquise o mercado.', workspaceId: workspace.id })
+    const mission = await service.startMission({ goal: 'Pesquise o mercado.', workspaceId: workspace.id })
     await vi.waitFor(() => expect(service.store.mission(mission.id)).toMatchObject({ status: 'waiting', options: ['B2B', 'B2C'] }), { timeout: 10_000, interval: 100 })
     await service.send(mission.conversationId, 'B2C')
     await vi.waitFor(() => expect(service.store.mission(mission.id)!.status).toBe('completed'), { timeout: 10_000, interval: 100 })

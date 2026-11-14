@@ -153,7 +153,8 @@ export class GitWorkspaceService {
     return { path: target, branch, baseBranch }
   }
 
-  async removeWorktree(path: string): Promise<void> {
+  /** force descarta alterações locais: só para descarte explícito de tarefa. */
+  async removeWorktree(path: string, force = false): Promise<void> {
     const target = resolve(path)
     await fs.mkdir(this.root, { recursive: true })
     const realRoot = await fs.realpath(this.root)
@@ -168,8 +169,8 @@ export class GitWorkspaceService {
     const registeredPath = worktrees.split('\n').some(line => line.startsWith('worktree ') && resolve(line.slice('worktree '.length)) === realTarget)
     if (!registeredPath) throw new Error('O Git não reconhece este caminho como worktree registrado.')
     const status = await runGit(realTarget, ['status', '--porcelain=v1', '--untracked-files=all'])
-    if (status) throw new Error('Não é possível remover um worktree com alterações locais.')
+    if (status && !force) throw new Error('Não é possível remover um worktree com alterações locais.')
 
-    await runGit(sourceRoot, ['worktree', 'remove', realTarget])
+    await runGit(sourceRoot, ['worktree', 'remove', ...(force ? ['--force'] : []), realTarget])
   }
 }

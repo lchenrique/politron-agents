@@ -21,6 +21,7 @@ import { COMPUTER_USE_MCP, ComputerUseSessions, computerUseRuntimeSupported, com
 import type { ComputerUseDriverStatus, ComputerUseStatus } from '../../shared/computer-use'
 import { EXTERNAL_BROWSER_MCP, ExternalBrowserProxy, externalBrowserApprovalPreview, type NodeReplServer } from './external-browser-proxy'
 import { cloneGithubRepository, createProjectFolder, GitWorkspaceService } from './git-workspaces'
+import { TaskWorktrees } from './task-worktrees'
 import { WorkspaceQueue, chiefLaneKey, mentionedRecipients, parseConcurrencyLimit, recipients, sessionLockKey, type WorkspaceLease } from './routing'
 import { redactAnswer, validateAnswer, validateCard, type CardAnswer, type InteractiveCard } from '../../shared/interactive-card'
 import { OpenRouterDecisionService } from './decision-routing'
@@ -268,6 +269,7 @@ export class AppService extends EventEmitter {
   }
   readonly agentTerminals = new AgentTerminalService()
   readonly gitWorkspaces: GitWorkspaceService
+  readonly taskWorktrees: TaskWorktrees
   // Mesma pasta de dados do app; tools de skill (list_skills/read_skill/save_skill) usam esta instância direto, sem passar por IPC.
   private readonly skills: SkillsService
   readonly missions: MissionEngine
@@ -310,6 +312,7 @@ export class AppService extends EventEmitter {
     // OpenCode entra por API key (Console), sem depender do CLI instalado na máquina.
     this.openCodeRuntime = new OpenCodeApiRuntime(() => this.openCodeCredentials.load())
     this.gitWorkspaces = new GitWorkspaceService(join(dataDirectory, 'worktrees'))
+    this.taskWorktrees = new TaskWorktrees({ store: this.store, gitWorkspaces: this.gitWorkspaces, createWorktree: input => this.createWorktree(input), emitChanged: () => this.emitEvent({ type: 'changed' }) })
     this.skills = new SkillsService(dataDirectory, join(marketplaceRoot(), 'skills'))
     this.missions = new MissionEngine({
       store: this.store,
@@ -319,6 +322,8 @@ export class AppService extends EventEmitter {
       emit: event => {
         this.emitEvent(event)
         if (event.type === 'mission') void this.board?.onMissionUpdated(event.mission)
+        // Missão concluída num worktree de tarefa termina em commit na branch boo/.
+        if (event.type === 'mission' && event.mission.status === 'completed') void this.taskWorktrees.finish(event.mission.workspaceId, event.mission.title).then(note => { if (note) this.addMessage(event.mission.conversationId, null, 'activity', `Sistema · ${note}`, 'completed', null) })
       },
       notify: (conversationId, title, body) => this.notifyWhenAway(conversationId, title, body),
     })
@@ -529,7 +534,14 @@ export class AppService extends EventEmitter {
     this.store.deleteAgent(agentId)
     this.emitEvent({ type: 'changed' })
   }
-  startMission(input: StartMissionInput) { return this.missions.start(input) }
+  /** Missão nova num repositório git (com a opção ligada) roda numa branch boo/ própria. */
+  async startMission(input: StartMissionInput) {
+    const writes = input.agentId ? this.store.agent(input.agentId).canWrite : true
+    const isolated = !input.conversationId && input.workspaceId ? await this.taskWorktrees.isolate(input.workspaceId, input.title || input.goal, writes) : undefined
+    return this.missions.start(isolated ? { ...input, workspaceId: isolated.id } : input)
+  }
+  openTaskPullRequest(workspaceId: string) { return this.taskWorktrees.openPullRequest(workspaceId) }
+  cleanupTaskWorktree(workspaceId: string, discard = false) { return this.taskWorktrees.cleanup(workspaceId, discard) }
   missionAction(missionId: string, action: MissionAction, value?: string) { return this.missions.action(missionId, action, value) }
   saveRoutine(input: Partial<Routine>) { return this.missions.saveRoutine(input) }
   deleteRoutine(routineId: string) { this.missions.deleteRoutine(routineId) }
@@ -2109,15 +2121,11 @@ export class AppService extends EventEmitter {
     try { const target = this.store.workspace(targetWorkspaceId); return target.kind === 'worktree' && target.parentWorkspaceId === parentWorkspaceId } catch { return false }
   }
   /**
-   * Delegação em segundo plano num projeto git roda numa worktree própria: Boos não esperam um ao outro na fila da pasta
-   * nem editam os mesmos arquivos. Sem git (ou se a worktree falhar), segue na pasta de quem pediu.
+   * Delegação em segundo plano a um Boo que escreve, num projeto git com "Isolar tarefas em worktree": roda numa worktree própria,
+   * sem esperar outros Boos na fila da pasta. Sem git, opção desligada ou falha, segue na pasta de quem pediu.
    */
-  private async isolatedDelegationWorkspace(parent: RunContext, recipient: Agent): Promise<Workspace | undefined> {
-    const source = this.store.workspace(parent.run.workspaceId)
-    if (source.kind === 'free') return undefined
-    try { await this.gitWorkspaces.inspect(source.path) } catch { return undefined }
-    const slug = (recipient.alias || recipient.name).toLocaleLowerCase('en-US').normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'boo'
-    try { return await this.createWorktree({ sourceWorkspaceId: source.id, branch: `boo/${slug}-${randomUUID().slice(0, 8)}` }) } catch { return undefined }
+  private isolatedDelegationWorkspace(parent: RunContext, recipient: Agent): Promise<Workspace | undefined> {
+    return this.taskWorktrees.isolate(parent.run.workspaceId, recipient.alias || recipient.name, recipient.canWrite)
   }
   private async delegate(parent: RunContext, recipient: Agent, task: string, idempotencyKey: string, inheritLease = false, previousDelegation?: Delegation): Promise<string> {
     // A autonomia escolhida pelo usuário no agente que delega vale também para
@@ -2187,7 +2195,9 @@ export class AppService extends EventEmitter {
       this.updateMessage(resultMessage, 'interrupted', 'Pedido cancelado antes do início.')
     }
     const completed = this.store.runs().find(run => run.id === child.id)!
-    const result = this.store.message(completed.messageId)?.text || ''
+    let result = this.store.message(completed.messageId)?.text || ''
+    // Sucesso em worktree isolada: o trabalho fica commitado na branch e o resultado diz onde.
+    if (isolated && completed.status === 'completed') { const note = await this.taskWorktrees.finish(isolated.id, `${recipient.name}: ${task}`); if (note) result = `${result}\n\n${note}` }
     if (!this.store.delegation(delegation.id) || !this.store.conversations().some(item => item.id === parent.conversation.id)) throw new Error('A conversa de origem foi excluída; o resultado não foi republicado nela.')
     delegation.status = completed.status; delegation.result = completed.status === 'completed' ? result : ''; delegation.error = completed.status === 'completed' ? '' : result || `O pedido terminou como ${completed.status}.`; delegation.updatedAt = new Date().toISOString(); this.store.putDelegation(delegation)
     const finalOrigin = { ...runningOrigin, status: completed.status, text: completed.status === 'completed' ? `Pedido concluído por ${recipient.name}. Resultado disponível na conversa relacionada.\n\n${result}` : `Pedido para ${recipient.name}: ${task}\n${completed.status === 'interrupted' ? 'Cancelado.' : `Falhou: ${delegation.error}`}` }

@@ -46,6 +46,8 @@ export interface Workspace {
   instructions: string; defaultAgentIds: string[]; changes: number
   permissions?: { chiefCreateAgents: boolean; chiefEditAgents: boolean; chiefManageTeam: boolean; chiefCreateSessions: boolean; filesWrite: 'inherit' | 'deny'; computerUse: 'inherit' | 'deny' }
   archived: boolean; createdAt: string
+  /** Isolar tarefas em worktree: ausente = ligado quando a pasta é um repositório git. */
+  isolateTasks?: boolean
 }
 export interface Conversation {
   id: string; kind: 'direct' | 'group'; name: string; agentIds: string[]

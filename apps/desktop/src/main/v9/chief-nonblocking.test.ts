@@ -199,13 +199,42 @@ describe('WorkspaceQueue: faixa do Chief e prioridade', () => {
 })
 
 describe('delegação em worktree própria', () => {
-  it('em projeto git, cada Boo delegado em segundo plano ganha uma worktree e os dois rodam ao mesmo tempo', async () => {
-    const runtime = new FakeRuntime(); runtime.holdAgents.add('Operário'); runtime.holdAgents.add('Revisor')
-    const { service, chief, conversation, context } = setup(runtime)
-    const repo = conversation.workspaceId ? service.store.workspace(conversation.workspaceId).path : ''
+  const gitSetup = (runtime: FakeRuntime, reviewerWrites: boolean) => {
+    const setupResult = setup(runtime)
+    const { service, conversation, worker } = setupResult
+    service.saveAgent({ ...worker, canWrite: true })
+    const repo = service.store.workspace(conversation.workspaceId).path
     for (const args of [['init', '-q', '-b', 'main'], ['config', 'user.email', 'qa@boobot.test'], ['config', 'user.name', 'QA']]) execFileSync('git', args, { cwd: repo })
     writeFileSync(join(repo, 'README.md'), 'teste'); execFileSync('git', ['add', '.'], { cwd: repo }); execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: repo })
-    const reviewer = service.saveAgent({ name: 'Revisor', alias: 'revisor', instructions: 'Revisa.', canWrite: false })
+    const reviewer = service.saveAgent({ name: 'Revisor', alias: 'revisor', instructions: 'Revisa.', canWrite: reviewerWrites })
+    return { ...setupResult, repo, reviewer }
+  }
+
+  it('Boo que só lê fica na pasta de origem, sem worktree, e mesmo assim não espera o Boo que escreve', async () => {
+    const runtime = new FakeRuntime(); runtime.holdAgents.add('Operário'); runtime.holdAgents.add('Revisor')
+    const { service, chief, context, repo, reviewer } = gitSetup(runtime, false)
+    const internals = service as unknown as Internals
+    await internals.callTool(context, 'ask_agent', { agent: 'operario', task: 'Tarefa A' }, 'call-a')
+    await internals.callTool(context, 'ask_agent', { agent: reviewer.alias, task: 'Tarefa B' }, 'call-b')
+    await vi.waitFor(() => expect(runtime.inputs.filter(item => item.agent !== chief.name)).toHaveLength(2), { timeout: 20000 })
+    const reader = service.store.runs().find(run => run.agentId === reviewer.id)!
+    expect(reader.workspacePath).toBe(repo)
+    expect(reader.input).not.toMatch(/Worktree isolada/)
+  })
+
+  it('com "Isolar tarefas em worktree" desligado, os Boos trabalham na pasta do projeto', async () => {
+    const runtime = new FakeRuntime(); runtime.holdAgents.add('Operário')
+    const { service, chief, conversation, context, repo } = gitSetup(runtime, true)
+    service.store.saveWorkspace({ id: conversation.workspaceId, isolateTasks: false })
+    await (service as unknown as Internals).callTool(context, 'ask_agent', { agent: 'operario', task: 'Tarefa A' }, 'call-a')
+    await vi.waitFor(() => expect(runtime.inputs.filter(item => item.agent !== chief.name)).toHaveLength(1), { timeout: 20000 })
+    expect(service.store.runs().find(run => run.agentId !== chief.id)!.workspacePath).toBe(repo)
+    expect(service.store.workspaces().some(item => item.kind === 'worktree')).toBe(false)
+  })
+
+  it('em projeto git, cada Boo que escreve, delegado em segundo plano, ganha uma worktree e os dois rodam ao mesmo tempo', async () => {
+    const runtime = new FakeRuntime(); runtime.holdAgents.add('Operário'); runtime.holdAgents.add('Revisor')
+    const { service, chief, context, repo, reviewer } = gitSetup(runtime, true)
     const internals = service as unknown as Internals
     await internals.callTool(context, 'ask_agent', { agent: 'operario', task: 'Tarefa A' }, 'call-a')
     await internals.callTool(context, 'ask_agent', { agent: reviewer.alias, task: 'Tarefa B' }, 'call-b')

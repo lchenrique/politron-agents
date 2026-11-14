@@ -13,7 +13,7 @@ import type { DynamicTool } from './codex'
  */
 export const CHIEF_READ_TOOLS = new Set(['project_list', 'project_overview', 'session_history', 'mission_list', 'routine_list', 'board_team_list', 'board_task_list'])
 const CHIEF_ACTION_TOOLS = ['project_create', 'project_update', 'session_create', 'session_update', 'session_send', 'team_set', 'agent_update', 'self_update',
-  'routine_create', 'routine_update', 'mission_create', 'mission_control', 'sidebar_update', 'board_team_create', 'board_task_create']
+  'routine_create', 'routine_update', 'mission_create', 'mission_control', 'sidebar_update', 'board_team_create', 'board_task_create', 'task_branch_pr', 'task_branch_cleanup']
 const CHIEF_CONFIRM_TOOLS = ['project_archive', 'project_delete', 'session_delete', 'agent_delete', 'routine_delete', 'mission_cancel', 'settings_update']
 export const CHIEF_TOOLS = new Set([...CHIEF_READ_TOOLS, ...CHIEF_ACTION_TOOLS, ...CHIEF_CONFIRM_TOOLS])
 
@@ -30,7 +30,10 @@ export interface ChiefHost {
   deleteAgent(agentId: string): Promise<void>
   saveRoutine(input: Partial<Routine>): Routine
   deleteRoutine(routineId: string): void
-  startMission(input: StartMissionInput): Mission
+  startMission(input: StartMissionInput): Mission | Promise<Mission>
+  /** Worktrees de tarefa (branch boo/...): PR via gh e limpeza depois de merge ou descarte. */
+  openTaskPullRequest(workspaceId: string): Promise<string>
+  cleanupTaskWorktree(workspaceId: string, discard?: boolean): Promise<string>
   boardSnapshot(): BoardSnapshot
   saveBoardTeam(input: Partial<BoardTeam> & { name: string }): BoardTeam
   validateBoardTask(input: BoardTaskInput, assigneeAgentId: string, reviewerAgentId: string): void
@@ -155,6 +158,8 @@ export function chiefToolDefinitions(tool: (name: string, description: string, p
     tool('sidebar_update', 'Muda a ordem e as pastas do sidebar. Envie só as chaves que mudam: projectOrder (IDs de projetos), groups ([{name, workspaceIds}]), sessionOrder ({projectId: [IDs de sessões]}), agentOrder (IDs de Boos). Ação direta.', { layout: { type: 'object' } }, ['layout']),
     tool('board_team_create', 'Cria uma equipe opcional no board da empresa. Explique o nome e os membros; sempre pede aprovação explícita antes de salvar.', { name: { type: 'string' }, description: { type: 'string' }, agents }, ['name', 'agents']),
     tool('board_task_create', 'Cria um cartão explícito no board, atribui um responsável e um revisor diferente e inicia a missão após aprovação do usuário. Mensagens comuns não viram cartão. Para código, informe project_id e revise os critérios de aceite antes de confirmar.', { title: { type: 'string' }, description: { type: 'string' }, acceptance_criteria: { type: 'string' }, kind: { type: 'string', enum: ['general', 'code'] }, team_id: { type: 'string' }, project_id: projectId, assignee: { type: 'string' }, reviewer: { type: 'string' } }, ['title', 'description', 'acceptance_criteria', 'kind', 'team_id', 'assignee', 'reviewer']),
+    tool('task_branch_pr', 'Abre um pull request (gh) da branch boo/... de um worktree de tarefa, depois de commitar o que estiver pendente. Só quando o usuário pedir PR. Sem gh ou sem remote, a branch fica local e a resposta explica.', { project_id: { type: 'string', description: 'ID do worktree de tarefa (project_id informado no resultado da tarefa).' } }, ['project_id']),
+    tool('task_branch_cleanup', 'Remove o worktree e a branch boo/... de uma tarefa. Sem discard, só depois do merge (local ou PR merged). Com discard=true apaga o trabalho não integrado e pede confirmação ao usuário.', { project_id: { type: 'string', description: 'ID do worktree de tarefa.' }, discard: { type: 'boolean' } }, ['project_id']),
     tool('project_archive', 'Arquiva um projeto (a pasta no disco é mantida). Pede confirmação ao usuário.', { project_id: projectId }, ['project_id']),
     tool('project_delete', 'Exclui um projeto e todas as sessões e históricos dele no Boobot. Pede confirmação ao usuário.', { project_id: projectId }, ['project_id']),
     tool('session_delete', 'Exclui uma sessão e o histórico dela. Pede confirmação ao usuário.', { conversation_id: sessionId }, ['conversation_id']),
@@ -390,7 +395,7 @@ export async function runChiefTool(host: ChiefHost, call: ChiefCall, name: strin
   if (name === 'mission_create') {
     const workspace = activeWorkspace(store, args.project_id ?? call.workspaceId)
     const owner = args.agent === undefined ? call.agent : findAgent(store, args.agent)
-    const mission = host.startMission({ goal: str(args.goal, 20000, 'Objetivo'), ...(args.title !== undefined ? { title: str(args.title, 120, 'Título') } : {}), workspaceId: workspace.id, agentId: owner.id, ...(typeof args.max_turns === 'number' ? { maxTurns: args.max_turns } : {}) })
+    const mission = await host.startMission({ goal: str(args.goal, 20000, 'Objetivo'), ...(args.title !== undefined ? { title: str(args.title, 120, 'Título') } : {}), workspaceId: workspace.id, agentId: owner.id, ...(typeof args.max_turns === 'number' ? { maxTurns: args.max_turns } : {}) })
     call.record(`Abriu a missão ${mission.title} em ${projectName(workspace)} com ${owner.name}`)
     return json({ id: mission.id, title: mission.title, sessionId: mission.conversationId, projectId: workspace.id })
   }
@@ -418,6 +423,18 @@ export async function runChiefTool(host: ChiefHost, call: ChiefCall, name: strin
     return 'Ordem do sidebar salva. Aparece quando o sidebar for aberto de novo (ao recarregar a janela ou o app).'
   }
 
+  if (name === 'task_branch_pr') {
+    const result = await host.openTaskPullRequest(id(args.project_id, 'Projeto'))
+    call.record(result)
+    return result
+  }
+  if (name === 'task_branch_cleanup') {
+    const workspace = store.workspace(id(args.project_id, 'Projeto'))
+    if (args.discard === true && !await confirmOrCancel(`Descartar a branch ${workspace.branch}`, `Remove o worktree ${workspace.path} e apaga a branch, inclusive trabalho não integrado, sem volta.`)) return 'O usuário não confirmou; nada foi descartado.'
+    const result = await host.cleanupTaskWorktree(workspace.id, args.discard === true)
+    call.record(result)
+    return result
+  }
   if (name === 'project_archive' || name === 'project_delete') {
     const workspace = store.workspace(id(args.project_id, 'Projeto'))
     if (workspace.id === call.workspaceId) throw new Error('Este é o projeto da sessão atual; o usuário pode fazer isso pela interface.')
