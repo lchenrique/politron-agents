@@ -32,6 +32,7 @@ describe('superfície IPC da V9', () => {
     expect(channels).toContain('v9:boardSnapshot')
     for (const channel of ['v9:saveBoardTeam', 'v9:createBoardTask', 'v9:updateBoardTask', 'v9:assignBoardTask', 'v9:reassignBoardTask', 'v9:boardTaskAction']) expect(channels).toContain(channel)
     expect(channels).toContain('v9:openFolder')
+    for (const channel of ['v9:openTaskPullRequest', 'v9:cleanupTaskWorktree', 'v9:taskPullRequestBlocker']) expect(channels).toContain(channel)
     expect(channels).toContain('v9:externalBrowserStatus')
     expect(channels).toContain('v9:setExternalBrowserGrant')
     dispose()

@@ -9,7 +9,7 @@
 - Quando o feed ainda não foi configurado, o app não tenta acessar GitHub privado e informa a pendência.
 
 ## Por que usar feed separado
-O repositório `lchenrique/politron-agents` é privado. Não colocar token pessoal do GitHub no instalador, renderer, repositório público ou URL de atualização.
+As releases do GitHub são lidas sem token, então o repositório configurado em `update-feed.json` precisa ser público (veja `docs/release.md`). Não colocar token pessoal do GitHub no instalador, renderer, repositório público ou URL de atualização.
 
 Publicar **somente os arquivos compilados** em bucket/CDN HTTPS público, por exemplo:
 - `https://SEU-DOMINIO/boobot/stable/latest.yml` e o instalador `.exe` correspondente (canal estável)

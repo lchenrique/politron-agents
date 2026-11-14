@@ -50,9 +50,10 @@ nsis:
   createStartMenuShortcut: true
   runAfterFinish: true
 # Releases no GitHub. Publicar exige GH_TOKEN e --publish explícito; o
-# dist:win usa --publish never. O app instalado lê o repositório de
-# update-feed.json e não usa token: com repositório privado a checagem falha
-# (404) até as releases irem para um repositório público (docs/release.md).
+# dist:win usa --publish never. O app instalado lê owner/repo de
+# update-feed.json (bloco github) e não usa token, então o repositório precisa
+# ser público. Para trocar o repositório de releases, mude owner/repo aqui E em
+# update-feed.json; um teste (update-config.test.ts) exige que os dois batam.
 publish:
   provider: github
   owner: lchenrique

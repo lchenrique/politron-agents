@@ -3,7 +3,7 @@ import type { RemoteEvent, RpcHandler } from './wire'
 // Lista explícita: pareamento não expõe IPC arbitrário nem ações da janela local.
 const METHODS = new Set([
   'snapshot', 'boardSnapshot', 'saveAgent', 'saveAssistantPreferences', 'saveTerminalAccess', 'saveConversation', 'sidebarLayout', 'saveSidebarLayout', 'saveWorkspace',
-  'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'deleteConversation', 'deleteAgent', 'workspaceDiff',
+  'createWorktree', 'archiveWorkspace', 'deleteWorkspace', 'openTaskPullRequest', 'cleanupTaskWorktree', 'taskPullRequestBlocker', 'deleteConversation', 'deleteAgent', 'workspaceDiff',
   'listProjectFiles', 'readProjectFile', 'writeProjectFile', 'respondApproval', 'reviewPlan', 'approvalGrants', 'removeApprovalGrant', 'setVisibleConversation', 'getVisibleConversation',
   'respondToAgent', 'history', 'historyPage', 'searchHistory', 'historyAround', 'send', 'cancelQueuedMessage', 'sendQueuedNow', 'stop', 'cancelDelegation', 'models',
   'openRouterDecisionStatus', 'saveOpenRouterDecisionModel',

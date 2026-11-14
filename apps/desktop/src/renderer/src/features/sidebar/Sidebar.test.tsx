@@ -251,6 +251,39 @@ describe('menus, favoritos e exclusão', () => {
     expect(openFolder).toHaveBeenCalledExactlyOnceWith('c-site')
   })
 
+  it('conversa em worktree de tarefa (boo/...) oferece PR, limpeza e descarte com confirmação', async () => {
+    const taskPullRequestBlocker = vi.fn(async () => 'GitHub CLI (gh) não encontrado; instale e autentique o gh.')
+    const cleanupTaskWorktree = vi.fn(async () => 'Worktree e branch boo/dev-1 descartados.')
+    const onNotice = vi.fn()
+    window.appAPI = { taskPullRequestBlocker, cleanupTaskWorktree, openTaskPullRequest: vi.fn() } as unknown as typeof window.appAPI
+    const local: Workspace = { ...workspace, id: 'ws-local', name: 'Politron', kind: 'local' }
+    const tree: Workspace = { ...workspace, id: 'ws-task', name: 'boo-dev', kind: 'worktree', branch: 'boo/dev-1', parentWorkspaceId: local.id }
+    renderSidebar({ onNotice, snapshot: { ...snapshot, workspaces: [local, tree], conversations: [session('c-task', 'Tarefa', tree.id)] } })
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Tarefa · Lyra' }).parentElement!)
+    expect(taskPullRequestBlocker).toHaveBeenCalledWith('ws-task')
+    expect(await screen.findByRole('menuitem', { name: /Abrir PR: GitHub CLI \(gh\) não encontrado/ })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Limpar depois do merge' })).toBeInTheDocument()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Descartar branch' }))
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(cleanupTaskWorktree).not.toHaveBeenCalled()
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Tarefa · Lyra' }).parentElement!)
+    confirm.mockReturnValueOnce(true)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Descartar branch' }))
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith('Worktree e branch boo/dev-1 descartados.'))
+    expect(cleanupTaskWorktree).toHaveBeenCalledWith('ws-task', true)
+    confirm.mockRestore()
+  })
+
+  it('worktree comum (board/...) não ganha as ações de branch de tarefa', () => {
+    const local: Workspace = { ...workspace, id: 'ws-local', name: 'Politron', kind: 'local' }
+    const tree: Workspace = { ...workspace, id: 'ws-tree', name: 'board', kind: 'worktree', branch: 'board/x', parentWorkspaceId: local.id }
+    renderSidebar({ snapshot: { ...snapshot, workspaces: [local, tree], conversations: [session('c-tree', 'Board', tree.id)] } })
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Board · Lyra' }).parentElement!)
+    expect(screen.queryByRole('menuitem', { name: /Abrir PR/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Arquivar worktree' })).toBeInTheDocument()
+  })
+
   it('projeto favorito sobe ao topo sem se repetir; conversa favorita entra em Favoritos', () => {
     const other: Workspace = { ...workspace, id: 'workspace-2', name: 'Alfa', kind: 'local' }
     renderSidebar({ snapshot: { ...snapshot, workspaces: [workspace, other], conversations: [session('c-1', 'Notas', other.id)] } })

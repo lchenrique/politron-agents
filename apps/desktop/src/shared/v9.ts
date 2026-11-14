@@ -264,6 +264,12 @@ export interface AppAPI {
   cancelClone(): Promise<void>
   archiveWorkspace(workspaceId: string, preserveDirtyWorktree?: boolean): Promise<void>
   deleteWorkspace(workspaceId: string): Promise<void>
+  /** Worktree de tarefa (branch boo/...): as mesmas operações das ferramentas task_branch_pr e task_branch_cleanup do Chief. Devolvem a mensagem para o usuário. */
+  openTaskPullRequest(workspaceId: string): Promise<string>
+  /** Sem discard exige merge; com discard apaga o trabalho não integrado (a interface confirma antes). */
+  cleanupTaskWorktree(workspaceId: string, discard?: boolean): Promise<string>
+  /** Motivo pelo qual "Abrir PR" está indisponível (sem gh ou remote), ou null. */
+  taskPullRequestBlocker(workspaceId: string): Promise<string | null>
   deleteConversation(conversationId: string): Promise<void>
   deleteAgent(agentId: string): Promise<void>
   workspaceDiff(workspaceId: string): Promise<string>

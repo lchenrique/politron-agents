@@ -82,6 +82,14 @@ export class TaskWorktrees {
     }
   }
 
+  /** Por que o PR não pode ser aberto agora (sem remote ou sem gh), ou null se pode. */
+  async pullRequestBlocker(workspaceId: string): Promise<string | null> {
+    const workspace = this.task(workspaceId)
+    if (!await remoteOf(workspace.path)) return 'O repositório não tem remote; a branch fica local.'
+    if (!await ghAvailable()) return 'GitHub CLI (gh) não encontrado; instale e autentique o gh.'
+    return null
+  }
+
   /** Abre PR com gh. Sem gh ou sem remote, deixa a branch local e explica. */
   async openPullRequest(workspaceId: string): Promise<string> {
     const workspace = this.task(workspaceId)

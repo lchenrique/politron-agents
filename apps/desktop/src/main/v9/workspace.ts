@@ -551,6 +551,7 @@ export class AppService extends EventEmitter {
   }
   openTaskPullRequest(workspaceId: string) { return this.taskWorktrees.openPullRequest(workspaceId) }
   cleanupTaskWorktree(workspaceId: string, discard = false) { return this.taskWorktrees.cleanup(workspaceId, discard) }
+  taskPullRequestBlocker(workspaceId: string) { return this.taskWorktrees.pullRequestBlocker(workspaceId) }
   missionAction(missionId: string, action: MissionAction, value?: string) { return this.missions.action(missionId, action, value) }
   saveRoutine(input: Partial<Routine>) { return this.missions.saveRoutine(input) }
   deleteRoutine(routineId: string) { this.missions.deleteRoutine(routineId) }

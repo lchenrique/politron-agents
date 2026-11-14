@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, Check, ChevronDown, ChevronRight, Crown, Folder, FolderOpen, FolderPlus, GitBranch, ListChecks, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Settings2, SquarePen, Star, Trash2, X } from 'lucide-react'
+import { Archive, Check, ChevronDown, ChevronRight, Crown, Folder, FolderOpen, FolderPlus, GitBranch, GitMerge, GitPullRequest, ListChecks, MessageSquarePlus, MoreHorizontal, Pencil, Plus, Search, Settings2, SquarePen, Star, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Menu, Modal, type MenuEntry, type MenuItem } from '@/components/dsh'
 import { GroupDialog, type GroupDraft } from './GroupDialog'
@@ -73,6 +73,8 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null)
   const [openConversationMenuId, setOpenConversationMenuId] = useState<string | null>(null)
   const [openWorkspaceMenuId, setOpenWorkspaceMenuId] = useState<string | null>(null)
+  // Motivo de "Abrir PR" indisponível por worktree de tarefa: undefined enquanto verifica, null quando pode.
+  const [prBlockers, setPrBlockers] = useState<Record<string, string | null>>({})
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   // Seções recolhidas (projetos, favoritos, sessões antigas); abertas por padrão.
   const [closedSections, setClosedSections] = useState<Set<string>>(() => readSet('politron.sidebar.closed-sections'))
@@ -174,13 +176,34 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     return placeholder && conversation.firstPrompt ? oneLine(conversation.firstPrompt) : conversationDisplayName(conversation.name)
   }
 
-  const conversationMenuEntries = (conversation: Conversation): MenuEntry[] => [
+  // Branch boo/... criada por TaskWorktrees (main/v9/task-worktrees.ts) para uma tarefa que escreve.
+  const taskWorktreeOf = (conversation: Conversation) => { const worktree = workspacesById.get(conversation.workspaceId); return worktree?.kind === 'worktree' && worktree.branch?.startsWith('boo/') ? worktree : undefined }
+  const openConversationMenu = (conversation: Conversation) => {
+    setOpenConversationMenuId(conversation.id)
+    const task = taskWorktreeOf(conversation)
+    if (task) void window.appAPI.taskPullRequestBlocker(task.id).then(reason => setPrBlockers(current => ({ ...current, [task.id]: reason })), error => setPrBlockers(current => ({ ...current, [task.id]: errorText(error) })))
+  }
+  const taskBranchAction = async (worktree: Workspace, action: 'pr' | 'discard' | 'cleanup') => {
+    if (action === 'discard' && !window.confirm(`Descartar a branch ${worktree.branch}? O worktree e todo o trabalho não integrado são apagados, sem volta.`)) return
+    try { onNotice(action === 'pr' ? await window.appAPI.openTaskPullRequest(worktree.id) : await window.appAPI.cleanupTaskWorktree(worktree.id, action === 'discard')) }
+    catch (error) { onNotice(errorText(error)) }
+  }
+  const conversationMenuEntries = (conversation: Conversation): MenuEntry[] => {
+    const task = taskWorktreeOf(conversation)
+    const blocker = task ? prBlockers[task.id] : null
+    return [
     { id: 'edit-conversation', label: 'Renomear ou editar', icon: <Pencil /> },
     { id: 'favorite-conversation', label: isFavorite('conversation', conversation.id) ? 'Remover dos favoritos' : 'Favoritar sessão', icon: <Star /> },
+    ...(task ? [
+      { id: 'task-pr', label: blocker === undefined ? 'Abrir PR (verificando…)' : blocker ? `Abrir PR: ${blocker}` : 'Abrir PR', icon: <GitPullRequest />, disabled: blocker !== null },
+      { id: 'task-cleanup', label: 'Limpar depois do merge', icon: <GitMerge /> },
+      { id: 'task-discard', label: 'Descartar branch', icon: <Trash2 />, danger: true },
+    ] : []),
     // Worktrees não têm mais cabeçalho próprio; arquivar fica na conversa que vive nele.
     ...(workspacesById.get(conversation.workspaceId)?.kind === 'worktree' ? [{ id: 'archive-worktree', label: 'Arquivar worktree', icon: <Archive /> }] : []),
     { id: 'delete-conversation', label: 'Excluir conversa', icon: <Trash2 />, danger: true },
   ]
+  }
   /** Linha de mensageiro: avatar do Boo com o estado no canto, título, Boo, hora e a prévia da última fala. */
   const conversationRow = (conversation: Conversation, context?: string) => {
     const family = [conversation, ...delegatedSubtree(conversation.id)]
@@ -221,17 +244,18 @@ export function Sidebar({ snapshot, selected, activeWorkspaceId, unreadCounts, a
     if (selecting) return <div key={conversation.id} data-active={checked} className="dsh-chat">
       <Button variant="ghost" size={null} role="checkbox" aria-checked={checked} aria-label={label} onClick={() => toggleChecked(conversation.id)} className="dsh-chat-main">{body}</Button>
     </div>
-    return <div key={conversation.id} data-active={conversation.id === selected?.id} className="dsh-chat group" onContextMenu={event => { event.preventDefault(); setOpenConversationMenuId(conversation.id) }}>
+    return <div key={conversation.id} data-active={conversation.id === selected?.id} className="dsh-chat group" onContextMenu={event => { event.preventDefault(); openConversationMenu(conversation) }}>
       <Button variant="ghost" size={null} onClick={() => onSelectConversation(conversation.id)} aria-label={label} aria-current={conversation.id === selected?.id ? 'page' : undefined} className="dsh-chat-main">{body}</Button>
       <Menu open={openConversationMenuId === conversation.id} onClose={() => setOpenConversationMenuId(null)} align="end" portal autoFocus
         anchor={<Button variant="ghost" size={null} className="dsh-row-action" aria-label={'Ações da conversa ' + conversation.name} aria-haspopup="menu" aria-expanded={openConversationMenuId === conversation.id}
           onKeyDown={event => { if (['ArrowDown', 'Enter', ' '].includes(event.key)) { event.preventDefault(); setOpenConversationMenuId(current => current === conversation.id ? null : conversation.id) } }}
-          onClick={() => setOpenConversationMenuId(current => current === conversation.id ? null : conversation.id)}><MoreHorizontal /></Button>}
+          onClick={() => { if (openConversationMenuId === conversation.id) setOpenConversationMenuId(null); else openConversationMenu(conversation) }}><MoreHorizontal /></Button>}
         items={conversationMenuEntries(conversation)} onSelect={id => {
           setOpenConversationMenuId(null)
           if (id === 'edit-conversation') onOpenEditor({ kind: 'conversation', initial: conversation })
           else if (id === 'favorite-conversation') toggleFavorite(favoriteKey('conversation', conversation.id))
           else if (id === 'archive-worktree') { const worktree = workspacesById.get(conversation.workspaceId); if (worktree) void archiveWorkspace(worktree) }
+          else if (id.startsWith('task-')) { const task = taskWorktreeOf(conversation); if (task) void taskBranchAction(task, id === 'task-pr' ? 'pr' : id === 'task-discard' ? 'discard' : 'cleanup') }
           else if (id === 'delete-conversation') removeConversation(conversation)
         }} />
     </div>

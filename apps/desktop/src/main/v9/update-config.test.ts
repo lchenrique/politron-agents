@@ -38,4 +38,11 @@ describe('configuração do canal de atualização', () => {
     const raw = JSON.parse(readFileSync(join(__dirname, '../../../update-feed.json'), 'utf8'))
     expect(updateFeedOptions(parseUpdateFeeds(raw), parseGithubReleases(raw), 'stable')).toEqual({ provider: 'github', owner: 'lchenrique', repo: 'politron-agents', private: false })
   })
+  it('publish do electron-builder.yml publica no mesmo owner/repo que o app lê', () => {
+    const feed = parseGithubReleases(JSON.parse(readFileSync(join(__dirname, '../../../update-feed.json'), 'utf8')))
+    const publish = readFileSync(join(__dirname, '../../../electron-builder.yml'), 'utf8').split(/^publish:\s*$/m)[1] ?? ''
+    const field = (name: string) => publish.match(new RegExp(`^\\s+${name}:\\s*(\\S+)`, 'm'))?.[1]
+    expect(field('provider')).toBe('github')
+    expect({ owner: field('owner'), repo: field('repo') }).toEqual(feed)
+  })
 })

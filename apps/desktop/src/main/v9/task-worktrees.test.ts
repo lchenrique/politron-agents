@@ -77,6 +77,8 @@ describe('worktrees de tarefa', () => {
     expect(await git(task.path, 'status', '--porcelain')).toBe('')
     expect(await git(repo, 'log', '-1', '--format=%s', task.branch!)).toBe('Lyra: cria novo.txt')
     expect(await tasks.openPullRequest(task.id)).toMatch(/não tem remote/)
+    expect(await tasks.pullRequestBlocker(task.id)).toMatch(/não tem remote/)
+    await expect(tasks.pullRequestBlocker(source.id)).rejects.toThrow(/não é um worktree de tarefa/)
     expect(await tasks.finish(source.id, 'nada')).toBe('')
   })
 

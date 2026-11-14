@@ -4,7 +4,7 @@ Este guia cobre o que está configurado no repositório e os passos manuais de u
 
 ## O que está configurado
 
-- `apps/desktop/electron-builder.yml` tem `publish.provider: github` apontando para `lchenrique/politron-agents`, com `releaseType: draft`. Uma publicação cria um rascunho de release, que precisa ser revisado e publicado à mão.
+- `apps/desktop/electron-builder.yml` tem `publish.provider: github` apontando para `lchenrique/politron-agents` (configurável, veja "Onde ficam as releases"), com `releaseType: draft`. Uma publicação cria um rascunho de release, que precisa ser revisado e publicado à mão.
 - `npm run dist:win` continua com `--publish never`. Gerar o instalador não envia nada ao GitHub.
 - `apps/desktop/update-feed.json` é o que o app instalado lê para saber onde procurar atualizações:
   ```json
@@ -14,17 +14,31 @@ Este guia cobre o que está configurado no repositório e os passos manuais de u
 - O app empacotado verifica 15 s depois de abrir e a cada 30 minutos, baixa em segundo plano e mostra o aviso "Boobot X está pronto para instalar". A instalação só acontece quando o usuário confirma em Configurações > Atualizações. Em `npm run dev` nada é verificado.
 - Canal estável usa `latest.yml` da release mais recente. Canal beta aceita pré-releases e usa `beta.yml`.
 
-## Impacto do repositório privado
+## Onde ficam as releases
 
-O `electron-updater` lê as releases pelo endereço público do GitHub. Com `lchenrique/politron-agents` privado, essa leitura responde 404 e o app mostra em Configurações > Atualizações: "Não foi possível ler as Releases de lchenrique/politron-agents. O repositório precisa ser público...". O aviso de atualização pronta não aparece, porque nada é baixado.
+O padrão é o próprio `lchenrique/politron-agents`, que será tornado público. O `electron-updater` lê as releases pelo endereço público do GitHub, sem token. Enquanto o repositório estiver privado, essa leitura responde 404 e o app mostra em Configurações > Atualizações: "Não foi possível ler as Releases de lchenrique/politron-agents. O repositório precisa ser público...". O aviso de atualização pronta não aparece, porque nada é baixado.
 
 O `electron-updater` aceita repositório privado com `private: true` e um `GH_TOKEN` no ambiente do app instalado. Isso não foi configurado de propósito: o token iria dentro de cada instalação e daria leitura de todo o código do repositório a qualquer pessoa com o instalador, além de cair no limite de requisições da API. O app sempre passa `private: false`.
 
-Para a atualização funcionar de verdade, escolha uma das opções:
+### Configurar owner/repo
 
-1. **Repositório público só de releases (recomendado).** Crie, por exemplo, `lchenrique/boobot-releases` público e vazio. Troque `repo` em `publish` (`electron-builder.yml`) e em `github` (`update-feed.json`) para ele. O código continua privado; só instaladores e manifestos ficam públicos.
-2. **Tornar `politron-agents` público.** Nenhuma mudança de configuração.
-3. **Host HTTPS próprio.** Preencha `stable`/`beta` em `update-feed.json` e siga `docs/auto-updates.md` com `npm run stage:update`.
+O repositório de releases aparece em dois lugares, que precisam bater (o teste `update-config.test.ts` falha se divergirem):
+
+- `apps/desktop/electron-builder.yml`, bloco `publish` (`owner` e `repo`): para onde a publicação envia.
+- `apps/desktop/update-feed.json`, bloco `github` (`owner` e `repo`): de onde o app instalado lê.
+
+A mudança só chega aos usuários numa versão nova: quem tem a versão anterior instalada continua lendo o repositório antigo, então publique essa versão de transição também no repositório antigo.
+
+### Alternativa opcional: repositório público só de releases
+
+Se preferir manter o código privado, use um repositório público só com binários, por exemplo `lchenrique/boobot-releases`:
+
+1. Crie o repositório: `gh repo create lchenrique/boobot-releases --public`.
+2. Troque `repo` para `boobot-releases` em `electron-builder.yml` (`publish`) e em `update-feed.json` (`github`).
+3. Publique (passo 5 abaixo) com um `GH_TOKEN` que tenha permissão de escrita em releases **nesse** repositório; um token restrito a `politron-agents` falha.
+4. Confirme a atualização com o passo 7 abaixo.
+
+Outra opção é um host HTTPS próprio: preencha `stable`/`beta` em `update-feed.json` e siga `docs/auto-updates.md` com `npm run stage:update`.
 
 O token para **publicar** (`GH_TOKEN` com permissão de escrita em releases) fica só na máquina ou no CI que gera a release, nunca no app.
 
@@ -80,6 +94,6 @@ Para conferir um instalador: `Get-AuthenticodeSignature .\dist\Boobot-Setup-<ver
 
 ## Limites conhecidos
 
-- Atualização real não foi testada: o repositório é privado e não há release publicada.
+- Atualização real não foi testada: até o repositório ficar público e haver uma release publicada, a checagem responde 404.
 - A assinatura não foi testada, porque não há certificado.
 - Não há CI de release, rollout gradual nem rollback automático.
