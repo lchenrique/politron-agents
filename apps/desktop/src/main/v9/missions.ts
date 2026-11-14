@@ -3,8 +3,12 @@ import { ASSISTANT_ID, type Agent, type Mission, type MissionAction, type Routin
 import { DEFAULT_MISSION_TURNS, DEFAULT_ROUTINE_TURNS, decideAfterTurn, missionBrief, nextRoutineRun, normalizeSteps, validateTrigger } from '../../shared/missions'
 import type { WorkspaceStore } from './store'
 import { wakeBlock } from './waits'
+import { BUDGET_STOP_PREFIX, addUsage, budgetCheck, buildMissionReport, parseTasks, sanitizeBudget, taskGoal, type UsageDelta } from './mission-budget'
 
 const ACTIVE_RUN = ['queued', 'running', 'waiting']
+const FINISHED: Mission['status'][] = ['completed', 'failed', 'cancelled']
+/** Parar para pedir decisão também gera relatório: quem volta de manhã vê o que aconteceu. */
+const REPORTED: Mission['status'][] = [...FINISHED, 'waiting']
 const text = (value: unknown, label: string, max: number) => { if (typeof value !== 'string' || !value.trim() || value.length > max) throw new Error(`${label}: informe um texto de até ${max} caracteres.`); return value.trim() }
 
 export interface MissionHost {
@@ -15,6 +19,8 @@ export interface MissionHost {
   emit(event: WorkspaceEvent): void
   notify(conversationId: string, title: string, body: string): void
 }
+/** Execução única não se repete depois de disparar (nem depois de falhar ao disparar). */
+const afterRun = (routine: Routine, now: Date) => routine.trigger.kind === 'once' ? null : nextRoutineRun(routine.trigger, now)
 export type MissionToolContext = { conversationId: string; agentId: string; runId: string; parentRunId: string | null; workspaceId: string }
 
 /**
@@ -27,14 +33,52 @@ export class MissionEngine {
   private readonly scheduler: ReturnType<typeof setInterval>
   private disposed = false
   constructor(private readonly host: MissionHost) {
-    this.scheduler = setInterval(() => void this.tickRoutines(), 30_000)
+    this.scheduler = setInterval(() => { this.tickRoutines(); this.checkBudgets() }, 30_000)
     this.scheduler.unref?.()
   }
   private get store() { return this.host.store }
   private save(mission: Mission): Mission {
     const next = { ...mission, updates: mission.updates.slice(-100), updatedAt: new Date().toISOString() }
-    this.store.putMission(next); this.host.emit({ type: 'mission', mission: next }); return next
+    // Missões de rotina (inclusive a noturna) param com relatório fixo na conversa e notificação.
+    const before = this.store.mission(next.id)
+    const report = next.routineId && REPORTED.includes(next.status) && (!before || !REPORTED.includes(before.status)) ? buildMissionReport(next, this.changedFiles(next)) : null
+    if (report) next.report = report
+    this.store.putMission(next); this.host.emit({ type: 'mission', mission: next })
+    if (report) { this.host.post(next.conversationId, 'activity', null, report); this.host.notify(next.conversationId, `Relatório: ${next.title}`, report.split('\n')[0]) }
+    return next
   }
+  /** Conversas da missão: a própria e as privadas das delegações feitas a partir dela. */
+  private missionConversations(mission: Mission) {
+    return [mission.conversationId, ...this.store.delegations().filter(item => item.sourceConversationId === mission.conversationId).map(item => item.targetConversationId)]
+  }
+  private changedFiles(mission: Mission): string[] {
+    const conversations = new Set(this.missionConversations(mission))
+    const runs = this.store.runs().filter(run => conversations.has(run.conversationId) && run.createdAt >= mission.createdAt)
+    return [...new Set(runs.flatMap(run => this.store.fileChangesForRun(run.id)).filter(change => change.status === 'applied').map(change => change.path))]
+  }
+  /** Consumo informado por um motor numa conversa da missão (ou numa delegação dela). */
+  onUsage(conversationId: string, delta: UsageDelta) {
+    // shortcut: só sobe um nível de delegação; delegações aninhadas não somam ao orçamento da missão de origem.
+    const mission = this.store.openMission(conversationId)
+      || this.store.delegations().filter(item => item.targetConversationId === conversationId).map(item => this.store.openMission(item.sourceConversationId)).find(Boolean)
+    if (!mission || (!delta.inputTokens && !delta.outputTokens && !delta.costUsd)) return
+    this.enforceBudget(this.save({ ...mission, usage: addUsage(mission.usage, delta) }))
+  }
+  /** Aviso único a 80%; a 100% encerra a missão e interrompe as execuções dela. Devolve true quando parou. */
+  private enforceBudget(mission: Mission): boolean {
+    if (!mission.budget || FINISHED.includes(mission.status)) return false
+    const check = budgetCheck(mission)
+    if (check.level === 'ok' || (check.level === 'warn' && mission.budgetWarned)) return false
+    if (check.level === 'warn') {
+      this.save(this.note({ ...mission, budgetWarned: true }, 'system', `Aviso: 80% do orçamento usado (${check.reason}).`))
+      this.host.post(mission.conversationId, 'activity', null, `Aviso de orçamento: 80% usado (${check.reason}).`)
+      return false
+    }
+    const stopped = this.save(this.note({ ...mission, status: 'failed', budgetWarned: true, question: null, options: [], completedAt: new Date().toISOString() }, 'error', `${BUDGET_STOP_PREFIX}: ${check.reason}. As execuções da missão foram interrompidas.`))
+    for (const conversationId of this.missionConversations(stopped)) void this.host.stop(conversationId).catch(() => undefined)
+    return true
+  }
+  checkBudgets() { if (!this.disposed) for (const mission of this.store.missions(500)) if (mission.budget && !FINISHED.includes(mission.status)) this.enforceBudget(mission) }
   private note(mission: Mission, kind: Mission['updates'][number]['kind'], value: string, agentId: string | null = null): Mission {
     return { ...mission, updates: [...mission.updates, { at: new Date().toISOString(), agentId, kind, text: value.slice(0, 2000) }] }
   }
@@ -56,8 +100,9 @@ export class MissionEngine {
     if (owner.id !== ASSISTANT_ID && !conversation.agentIds.includes(owner.id)) throw new Error(`${owner.name} não participa desta conversa.`)
     const maxTurns = Math.max(1, Math.min(100, Math.round(input.maxTurns ?? DEFAULT_MISSION_TURNS)))
     const now = new Date().toISOString()
-    const mission = this.save({ id: missionId || randomUUID(), title, goal, workspaceId: conversation.workspaceId, conversationId: conversation.id, ownerAgentId: owner.id,
-      routineId: input.routineId ?? null, model: input.model || null, status: 'active', steps: [], updates: [{ at: now, agentId: null, kind: 'system', text: `Missão atribuída a ${owner.name}.` }],
+    const tasks = parseTasks(input.tasks), budget = sanitizeBudget(input.budget)
+    const mission = this.save({ id: missionId || randomUUID(), title, goal, ...(budget ? { budget } : {}), workspaceId: conversation.workspaceId, conversationId: conversation.id, ownerAgentId: owner.id,
+      routineId: input.routineId ?? null, model: input.model || null, status: 'active', steps: tasks.length ? normalizeSteps(tasks) : [], updates: [{ at: now, agentId: null, kind: 'system', text: `Missão atribuída a ${owner.name}.` }],
       question: null, options: [], result: null, turns: 0, maxTurns, idleTurns: 0, failures: 0, lastProgressAt: null, createdAt: now, updatedAt: now, completedAt: null })
     this.host.emit({ type: 'changed' })
     this.host.post(conversation.id, 'user', null, goal)
@@ -97,6 +142,7 @@ export class MissionEngine {
   evaluate(missionId: string) {
     const mission = this.store.mission(missionId)
     if (!mission || mission.status !== 'active' || this.disposed || this.busy(mission.conversationId)) return
+    if (this.enforceBudget(mission)) return
     const last = this.store.runs().filter(run => run.conversationId === mission.conversationId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
     if (!last || this.evaluatedRuns.get(mission.id) === last.id) return
     this.evaluatedRuns.set(mission.id, last.id)
@@ -189,7 +235,9 @@ export class MissionEngine {
   saveRoutine(input: Partial<Routine>): Routine {
     const previous = input.id ? this.store.routine(input.id) : undefined
     const name = text(input.name ?? previous?.name, 'Nome', 80)
-    const instructions = text(input.instructions ?? previous?.instructions, 'O que fazer', 8000)
+    const tasks = parseTasks(input.tasks ?? previous?.tasks)
+    const instructions = text(input.instructions || previous?.instructions || (tasks.length ? 'Execute a lista de tarefas abaixo e entregue um relatório do que foi feito.' : ''), 'O que fazer', 8000)
+    const budget = sanitizeBudget(input.budget === undefined ? previous?.budget : input.budget)
     const agentId = this.ownerOf(input.agentId ?? previous?.agentId).id
     const workspace = input.workspaceId ?? previous?.workspaceId ?? this.store.workspaces().find(item => !item.archived && item.kind === 'free' && item.name === 'Livre')?.id
     if (!workspace || this.store.workspace(workspace).archived) throw new Error('Escolha um projeto ativo para a rotina.')
@@ -203,7 +251,8 @@ export class MissionEngine {
       model: input.model === undefined ? previous?.model ?? null : input.model || null,
       conversationId: workspace === previous?.workspaceId && agentId === previous?.agentId ? previous.conversationId : null,
       lastRunAt: previous?.lastRunAt ?? null, nextRunAt: triggerChanged || !previous?.nextRunAt ? nextRoutineRun(trigger, new Date()) : previous.nextRunAt,
-      lastMissionId: previous?.lastMissionId ?? null, createdAt: previous?.createdAt || now, updatedAt: now }
+      lastMissionId: previous?.lastMissionId ?? null, createdAt: previous?.createdAt || now, updatedAt: now,
+      ...(tasks.length ? { tasks } : {}), ...(budget ? { budget } : {}) }
     this.store.putRoutine(value); this.host.emit({ type: 'changed' }); return value
   }
   deleteRoutine(id: string) { this.store.routine(id); this.store.deleteRoutine(id); this.host.emit({ type: 'changed' }) }
@@ -216,8 +265,8 @@ export class MissionEngine {
     const now = new Date()
     // Esperas do Boo (sem rotina ou desta rotina) são retomadas por esta execução.
     const woken = routine.agentId === ASSISTANT_ID ? [] : this.store.waits.wake(routine.agentId, routine.id, randomUUID(), now)
-    this.store.putRoutine({ ...routine, conversationId, lastRunAt: now.toISOString(), nextRunAt: nextRoutineRun(routine.trigger, now), updatedAt: now.toISOString() })
-    const mission = this.start({ goal: `${routine.instructions}\n\n(Rotina "${routine.name}", disparada por ${reason} em ${now.toLocaleString('pt-BR')}. Compare com as execuções anteriores desta conversa e entregue um resumo objetivo do que verificou, corrigiu e do que precisa da decisão do usuário.)${wakeBlock(woken)}`,
+    this.store.putRoutine({ ...routine, conversationId, lastRunAt: now.toISOString(), nextRunAt: afterRun(routine, now), updatedAt: now.toISOString() })
+    const mission = this.start({ tasks: routine.tasks, budget: routine.budget, goal: `${taskGoal(routine.instructions, routine.tasks || [])}\n\n(Rotina "${routine.name}", disparada por ${reason} em ${now.toLocaleString('pt-BR')}. Compare com as execuções anteriores desta conversa e entregue um resumo objetivo do que verificou, corrigiu e do que precisa da decisão do usuário.)${wakeBlock(woken)}`,
       title: `${routine.name} · ${now.toLocaleDateString('pt-BR')}`, conversationId, agentId: routine.agentId, maxTurns: routine.maxTurns, model: routine.model, routineId: routine.id })
     this.store.putRoutine({ ...this.store.routine(routine.id), lastMissionId: mission.id })
     this.host.emit({ type: 'changed' })
@@ -227,7 +276,7 @@ export class MissionEngine {
     try { this.runRoutine(routine.id, reason) }
     catch (error) {
       // Evita repetir a cada 30 s quando a rotina anterior ainda está aberta.
-      this.store.putRoutine({ ...routine, nextRunAt: nextRoutineRun(routine.trigger, new Date()), updatedAt: new Date().toISOString() })
+      this.store.putRoutine({ ...routine, nextRunAt: afterRun(routine, new Date()), updatedAt: new Date().toISOString() })
       console.warn('[Rotinas]', routine.name, error instanceof Error ? error.message : error)
     }
   }

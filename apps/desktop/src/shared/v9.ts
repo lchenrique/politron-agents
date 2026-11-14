@@ -146,18 +146,25 @@ export interface Mission {
   steps: MissionStep[]; updates: MissionUpdate[]; question: string | null; options: string[]; result: string | null
   turns: number; maxTurns: number; idleTurns: number; failures: number; lastProgressAt: string | null
   createdAt: string; updatedAt: string; completedAt: string | null
+  /** Limites opcionais e consumo informado pelos motores; regras em main/v9/mission-budget.ts. */
+  budget?: MissionBudget; usage?: MissionUsage; budgetWarned?: boolean; report?: string | null
 }
+export interface MissionBudget { maxCostUsd?: number; maxTokens?: number; maxMinutes?: number }
+export interface MissionUsage { inputTokens: number; outputTokens: number; costUsd: number; reports: number }
 export type RoutineTrigger =
   | { kind: 'daily'; time: string; weekdays: number[] }
   | { kind: 'interval'; minutes: number }
   | { kind: 'event'; event: 'app-start' | 'project-changed' }
+  | { kind: 'once'; at: string }
 /** Responsabilidade contínua: cada disparo abre uma missão na mesma conversa da rotina. */
 export interface Routine {
   id: string; name: string; instructions: string; agentId: string; workspaceId: string; trigger: RoutineTrigger
   enabled: boolean; maxTurns: number; model: string | null; conversationId: string | null
   lastRunAt: string | null; nextRunAt: string | null; lastMissionId: string | null; createdAt: string; updatedAt: string
+  /** Missão noturna: lista de tarefas, uma por passo, e orçamento copiado para cada missão disparada. */
+  tasks?: string[]; budget?: MissionBudget
 }
-export interface StartMissionInput { goal: string; title?: string; workspaceId?: string | null; conversationId?: string; agentId?: string; maxTurns?: number; model?: string | null }
+export interface StartMissionInput { goal: string; title?: string; workspaceId?: string | null; conversationId?: string; agentId?: string; maxTurns?: number; model?: string | null; tasks?: string[]; budget?: MissionBudget }
 export type MissionAction = 'pause' | 'resume' | 'cancel' | 'reply' | 'extend'
 export type BoardTaskKind = 'general' | 'code'
 export type BoardTaskStatus = 'backlog' | 'ready' | 'queued' | 'doing' | 'review' | 'rework' | 'integration' | 'blocked' | 'done' | 'cancelled'

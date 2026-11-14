@@ -388,7 +388,7 @@ export default function AppShell() {
   const agentStates = useMemo(() => Object.fromEntries(snapshot.agents.map(agent => { const activeRuns = snapshot.runs.filter(run => run.agentId === agent.id && ['queued', 'running', 'waiting'].includes(run.status)); return [agent.id, activeRuns.some(run => run.status === 'waiting') ? 'waiting' : activeRuns.length ? 'working' : 'idle'] as const })), [snapshot.agents, snapshot.runs])
   const openHome = useCallback((next: HomeView) => { activeWorkspaceIdRef.current = null; setActiveWorkspaceId(null); setView(next) }, [])
   useEffect(() => { const open = (event: Event) => { const section = (event as CustomEvent).detail; setSettingsSection(section === 'voz' || section === 'conexoes' || section === 'atualizacoes' ? section : 'geral'); setSettingsOpen(true) }; window.addEventListener('boobot:open-settings', open); return () => window.removeEventListener('boobot:open-settings', open) }, [])
-  const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && ['active', 'waiting', 'paused'].includes(item.status)).at(-1) : undefined
+  const selectedMission = selected ? (snapshot.missions || []).filter(item => item.conversationId === selected.id && (['active', 'waiting', 'paused'].includes(item.status) || !!item.report)).at(-1) : undefined
   const openBoardTasks = snapshot.board?.tasks.filter(item => !['done', 'cancelled'].includes(item.status)).length || 0
   const enabledRoutines = snapshot.routines?.filter(item => item.enabled).length || 0
   const attentionCount = (snapshot.missions || []).filter(item => item.status === 'waiting').length + snapshot.approvals.filter(item => item.status === 'pending').length

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { claudeUsage } from './mission-budget'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -203,6 +204,7 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
           this.emit('event', { method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'nativeTool', id: item.tool_use_id, output: item.content, isError: item.is_error === true } } })
       }
       if (message.type === 'result') {
+        this.emit('event', { method: 'turn/usage', params: { threadId, turnId: turn.id, usage: claudeUsage(message) } })
         const status = message.subtype === 'success' && !message.is_error ? 'completed' : 'failed'
         const detail = 'errors' in message && Array.isArray(message.errors) ? message.errors.filter((item: unknown) => typeof item === 'string').join('\n') : ''
         const missingResume = !didInit && !!context.sessionId && /no conversation found with session id|session (?:id )?[^\s]+ (?:was )?not found/i.test(detail)

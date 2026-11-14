@@ -22,11 +22,17 @@ export function validateTrigger(value: unknown): RoutineTrigger {
   }
   if (input?.kind === 'event' && ['app-start', 'project-changed'].includes(String((input as { event?: unknown }).event)))
     return { kind: 'event', event: (input as { event: 'app-start' | 'project-changed' }).event }
+  if (input?.kind === 'once') {
+    const at = new Date(String((input as { at?: unknown }).at || ''))
+    if (Number.isNaN(at.getTime())) throw new Error('Informe a data e o horário de início.')
+    return { kind: 'once', at: at.toISOString() }
+  }
   throw new Error('Gatilho de rotina inválido.')
 }
 
-/** Próxima execução no fuso local; eventos não têm horário. */
+/** Próxima execução no fuso local; eventos não têm horário. Execução única vale até disparar (quem dispara zera). */
 export function nextRoutineRun(trigger: RoutineTrigger, from: Date): string | null {
+  if (trigger.kind === 'once') return trigger.at
   if (trigger.kind === 'interval') return new Date(from.getTime() + trigger.minutes * 60_000).toISOString()
   if (trigger.kind !== 'daily') return null
   const [hours, minutes] = trigger.time.split(':').map(Number)
@@ -42,6 +48,7 @@ export function nextRoutineRun(trigger: RoutineTrigger, from: Date): string | nu
 
 const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
 export function describeTrigger(trigger: RoutineTrigger): string {
+  if (trigger.kind === 'once') return `Uma vez, ${new Date(trigger.at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}`
   if (trigger.kind === 'interval') return trigger.minutes % 60 === 0 ? `A cada ${trigger.minutes / 60} h` : `A cada ${trigger.minutes} min`
   if (trigger.kind === 'event') return trigger.event === 'app-start' ? 'Ao abrir o Boobot' : 'Quando o projeto mudar'
   const days = !trigger.weekdays.length || trigger.weekdays.length === 7 ? 'Todos os dias' : trigger.weekdays.join() === '1,2,3,4,5' ? 'Dias úteis' : trigger.weekdays.map(day => WEEKDAYS[day]).join(', ')

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Agent, Model } from '../../shared/v9'
 import type { AgentRuntime, RuntimeThread } from './agent-runtime'
 import type { DynamicTool } from './codex'
+import { openCodeUsage } from './mission-budget'
 import { buildAgentSystemPrompt } from './agent-prompt'
 
 /** OpenCode Console (Console/Zen) fala OpenAI por este caminho; a chave vai no Bearer. */
@@ -139,7 +140,7 @@ export class OpenCodeApiRuntime extends EventEmitter implements AgentRuntime {
       response = await this.fetchImpl(`${this.base}/openai/v1/chat/completions`, {
         method: 'POST',
         headers: { authorization: `Bearer ${body.key}`, 'content-type': 'application/json', accept: 'text/event-stream' },
-        body: JSON.stringify({ model: body.model, messages: body.messages, stream: true, tools: openCodeTools(session.tools) }),
+        body: JSON.stringify({ model: body.model, messages: body.messages, stream: true, stream_options: { include_usage: true }, tools: openCodeTools(session.tools) }),
         signal: controller.signal,
       })
     } catch (error) {
@@ -175,6 +176,8 @@ export class OpenCodeApiRuntime extends EventEmitter implements AgentRuntime {
           if (!payload || payload === '[DONE]') continue
           let packet: Packet
           try { packet = JSON.parse(payload) as Packet } catch { continue }
+          // Último pacote do stream traz o consumo quando o provedor honra include_usage.
+          if (packet.usage) this.emit('event', { method: 'turn/usage', params: { threadId: session.id, turnId: session.turnId, usage: openCodeUsage(packet) } })
           const choice = (packet.choices as Packet[] | undefined)?.[0] as Packet | undefined
           const delta = choice?.delta as Packet | undefined
           if (typeof delta?.content === 'string' && delta.content) {
