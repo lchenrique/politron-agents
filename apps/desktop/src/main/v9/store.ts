@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { ASSISTANT_ID, randomPitColor, type ModelPreferences, type Agent, type Approval, type ApprovalGrant, type BoardEvidence, type BoardEvent, type BoardTask, type BoardTaskMission, type BoardTeam, type CommandEvidence, type ContextCheckpoint, type Conversation, type Delegation, type FileChange, type Message, type MessageSearchHit, type Mission, type Routine, type Run, type SidebarLayout, type Snapshot, type Workspace } from '../../shared/v9'
 import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
+import type { Trigger } from '../../shared/triggers'
 import { ensureMemorySchema, MemoryBank } from './memories'
 import { ensureWaitSchema, WaitBank } from './waits'
 
@@ -120,6 +121,7 @@ export class WorkspaceStore {
       CREATE TABLE IF NOT EXISTS v9_missions (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS v9_mission_conversation ON v9_missions(conversation_id);
       CREATE TABLE IF NOT EXISTS v9_routines (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS v9_triggers (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_board_teams (id TEXT PRIMARY KEY, name_key TEXT NOT NULL UNIQUE, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS v9_board_tasks (id TEXT PRIMARY KEY, team_id TEXT NOT NULL REFERENCES v9_board_teams(id) ON DELETE RESTRICT, status TEXT NOT NULL, updated_at TEXT NOT NULL, data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS v9_board_task_status ON v9_board_tasks(status, updated_at DESC);
@@ -898,6 +900,10 @@ export class WorkspaceStore {
   routine(id: string): Routine { const value = this.get<Routine>('v9_routines', id); if (!value) throw new Error('Rotina não encontrada.'); return value }
   putRoutine(value: Routine): void { this.put('v9_routines', value) }
   deleteRoutine(id: string): void { this.db.prepare('DELETE FROM v9_routines WHERE id=?').run(id) }
+  triggers(): Trigger[] { return this.all<Trigger>('v9_triggers') }
+  trigger(id: string): Trigger { const value = this.get<Trigger>('v9_triggers', id); if (!value) throw new Error('Gatilho não encontrado.'); return value }
+  putTrigger(value: Trigger): void { this.put('v9_triggers', value) }
+  deleteTrigger(id: string): void { this.db.prepare('DELETE FROM v9_triggers WHERE id=?').run(id) }
   transaction<T>(operation: () => T): T {
     this.db.exec('BEGIN IMMEDIATE')
     try {

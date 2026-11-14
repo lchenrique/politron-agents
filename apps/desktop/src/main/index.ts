@@ -21,6 +21,7 @@ import { HostManager } from './hosts/manager'
 import { HostStore } from './hosts/secure-store'
 import { initAutoUpdater } from './v9/auto-updater'
 import { TelegramService, registerTelegramIpc } from './telegram/service'
+import { TriggerService, registerTriggersIpc } from './triggers/service'
 import { databaseFailureDetails, retryTransient, setAsideStaleWalIndex } from './startup'
 
 process.on('uncaughtException', (error) => {
@@ -48,6 +49,7 @@ let realtimeService: RealtimeService | null = null
 let hosts: HostManager | null = null
 let platformBrowser: PlatformBrowser | null = null
 let telegram: TelegramService | null = null
+let triggers: TriggerService | null = null
 
 // Marca nova, mantendo os dados do Politron já instalado. Em uma instalação nova,
 // o diretório de dados é boobot-desktop. Não renomear o banco nem copiar cegamente.
@@ -299,6 +301,10 @@ app.whenReady().then(async () => {
   // Canal Telegram: long polling de saída, sem porta aberta; o IPC fica fora da RPC de hosts.
   telegram = new TelegramService(app.getPath('userData'), appService, { transcriber: voice })
   registerTelegramIpc(telegram)
+  // Gatilhos automáticos: pasta observada e GitHub via gh viram mensagens nas conversas.
+  triggers = new TriggerService(appService)
+  registerTriggersIpc(triggers)
+  triggers.start()
   void telegram.start().catch(error => console.error('[Telegram] Falha ao iniciar', error instanceof Error ? error.message : 'erro'))
   registerSkillsIpc(new SkillsService(app.getPath('userData'), join(marketplaceRoot(), 'skills')), hosts)
   await hosts.initialize()
@@ -343,7 +349,7 @@ app.on('before-quit', () => {
   mascotWindow = null
   destroyAppWindow()
   realtimeService?.stop()
-  telegram?.dispose(); telegram = null
+  telegram?.dispose(); telegram = null; triggers?.dispose(); triggers = null
   void hosts?.close()
   platformBrowser?.close()
   appService?.dispose()

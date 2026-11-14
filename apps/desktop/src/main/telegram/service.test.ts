@@ -238,8 +238,82 @@ describe('andamento e parada', () => {
   it('ao concluir, edita o status e reage com 👍', async () => {
     const s = await working()
     s.host.emit('workspace-event', { type: 'message', message: { id: 'm1', conversationId: CONV, role: 'assistant', status: 'completed', author: 'Chief', text: 'pronto', finishedAt: '2026-01-01' } })
-    await vi.waitFor(() => expect(s.calls.some(c => c.method === 'editMessageText' && c.body.text === '✅ Concluído.')).toBe(true))
+    await vi.waitFor(() => expect(s.calls.some(c => c.method === 'editMessageText' && String(c.body.text).startsWith('✅ Concluído por Chief em ') && String(c.body.text).includes('Resumo: pronto'))).toBe(true))
     expect(s.calls.some(c => c.method === 'setMessageReaction' && JSON.stringify(c.body.reaction).includes('👍'))).toBe(true)
+  })
+})
+
+describe('controle remoto', () => {
+  const GROUP = '33333333-3333-4333-8333-333333333333'
+  const WS = 'ws-2'
+  const RUN_CONV = '44444444-4444-4444-8444-444444444444'
+  type Mutable = { snapshot: ReturnType<typeof vi.fn>; store: { conversation: (id: string) => unknown } }
+  async function remote() {
+    const s = setup(); await ready(s); await pair(s)
+    ;(s.service as unknown as { data: { enabled: boolean } }).data.enabled = true
+    const conversations = [
+      { id: CONV, name: 'Chief', kind: 'direct', agentIds: ['chief'], workspaceId: 'ws', archived: false, createdAt: '2026-01-01' },
+      { id: GROUP, name: 'Time Dev', kind: 'group', agentIds: ['dev', 'qa'], workspaceId: WS, archived: false, createdAt: '2026-01-02' },
+      { id: RUN_CONV, name: 'Pesquisa', kind: 'direct', agentIds: ['lyra'], workspaceId: 'ws', archived: false, createdAt: '2026-01-03' },
+    ]
+    const host = s.host as unknown as Mutable
+    host.snapshot.mockReturnValue({ agents: [{ id: 'chief', name: 'Chief', role: 'chief' }], conversations,
+      workspaces: [{ id: 'ws', name: 'Livre', kind: 'free', archived: false }, { id: WS, name: 'Boobot', kind: 'local', archived: false }],
+      runs: [{ id: 'r1', conversationId: RUN_CONV, status: 'running', agent: { name: 'Lyra' } }], approvals: [] })
+    host.store.conversation = (id: string) => { const found = conversations.find(item => item.id === id); if (!found) throw new Error('Conversa não encontrada.'); return found }
+    return s
+  }
+  const keyboard = (s: S, text: string) => (s.calls.filter(c => c.method === 'sendMessage' && String(c.body.text).includes(text)).at(-1)!.body as { reply_markup: { inline_keyboard: { text: string; callback_data: string }[][] } }).reply_markup.inline_keyboard.flat()
+
+  it('/projetos troca o workspace, /conversas filtra por ele e a tarefa vai para o grupo pelo roteamento normal', async () => {
+    const s = await remote()
+    await pollWith(s, msg(20, 7, '/projetos'))
+    const projects = keyboard(s, 'Escolha o projeto')
+    expect(projects.map(b => b.text)).toEqual(['Livre', 'Boobot', 'Todos os projetos'])
+    await pollWith(s, callback(21, 7, `w:${WS}`))
+    expect(sent(s.calls).join(' ')).toContain('Projeto: <b>Boobot</b>')
+    expect(keyboard(s, 'Escolha a conversa').map(b => b.callback_data)).toEqual([`c:${GROUP}`])
+    await pollWith(s, callback(22, 7, `c:${GROUP}`))
+    await pollWith(s, msg(23, 7, 'revisem o login'))
+    // Sem agente preferido: o send aplica líder ou roteador do grupo.
+    expect(s.host.send).toHaveBeenLastCalledWith(GROUP, 'revisem o login', undefined, undefined, undefined, false, true, false, expect.objectContaining({ delivery: 'queue' }))
+    await pollWith(s, msg(24, 7, '/status'))
+    expect(sent(s.calls).at(-1)).toContain('<b>Projeto:</b> Boobot')
+    expect(JSON.parse(readFileSync(join(s.dir, 'telegram.json'), 'utf8')).workspaces).toEqual({ 7: WS })
+    s.service.dispose()
+  })
+
+  it('resposta de grupo mostra a etiqueta de roteamento e o status final traz resumo', async () => {
+    const s = await remote()
+    await pollWith(s, callback(30, 7, `c:${GROUP}`))
+    await pollWith(s, { update_id: 31, message: { message_id: 131, chat: { id: 7, type: 'private' }, from: { id: 7 }, text: 'corrijam o bug' } })
+    await vi.waitFor(() => expect(sent(s.calls).some(text => text.includes('Trabalhando'))).toBe(true))
+    s.host.emit('workspace-event', { type: 'message', message: { id: 'g1', conversationId: GROUP, role: 'assistant', status: 'completed', author: 'Dev', routing: 'roteador · 82%', text: 'Corrigi o bug no login.\nDetalhes...',finishedAt: '2026-01-01' } })
+    await vi.waitFor(() => expect(sent(s.calls).some(text => text.startsWith('<b>Dev</b> (roteador · 82%)'))).toBe(true))
+    const edit = s.calls.find(c => c.method === 'editMessageText')!.body.text as string
+    expect(edit).toMatch(/^✅ Concluído por Dev \(roteador · 82%\) em \d+ s\.\nResumo: Corrigi o bug no login\. Detalhes\.\.\.$/)
+    s.service.dispose()
+  })
+
+  it('/cancelar lista execuções ativas de qualquer conversa e para a escolhida', async () => {
+    const s = await remote()
+    await pollWith(s, msg(40, 7, '/cancelar'))
+    const buttons = keyboard(s, 'Qual execução parar')
+    expect(buttons).toEqual([{ text: 'Parar Pesquisa (Lyra)', callback_data: `s:${RUN_CONV}` }])
+    await pollWith(s, callback(41, 7, `s:${GROUP}`))
+    expect(s.host.stop).not.toHaveBeenCalled()
+    await pollWith(s, callback(42, 7, buttons[0].callback_data))
+    expect(s.host.stop).toHaveBeenCalledWith(RUN_CONV)
+    ;(s.host as unknown as Mutable).snapshot.mockReturnValue({ agents: [], conversations: [], workspaces: [], runs: [], approvals: [] })
+    await pollWith(s, msg(43, 7, '/cancelar'))
+    expect(sent(s.calls).at(-1)).toContain('Nenhuma execução ativa')
+  })
+
+  it('/nova cria a conversa no projeto escolhido', async () => {
+    const s = await remote()
+    await pollWith(s, callback(50, 7, `w:${WS}`))
+    await pollWith(s, msg(51, 7, '/nova'))
+    expect(s.host.saveConversation).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'direct', workspaceId: WS }))
   })
 })
 

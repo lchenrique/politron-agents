@@ -5,6 +5,7 @@ import type { ProvidersAPI } from '../shared/providers'
 import type { SkillsAPI } from '../shared/skills'
 import type { UpdatesAPI } from '../shared/updates'
 import type { TelegramAPI } from '../shared/telegram'
+import type { TriggersAPI } from '../shared/triggers'
 import type { MemoryAPI } from '../shared/memory'
 import type { ComputerUseAPI } from '../shared/computer-use'
 
@@ -191,6 +192,14 @@ const telegramAPI: TelegramAPI = {
   revokeChat: chatId => ipcRenderer.invoke('telegram:revokeChat', chatId),
 }
 contextBridge.exposeInMainWorld('telegramAPI', telegramAPI)
+
+const triggersAPI: TriggersAPI = {
+  list: () => ipcRenderer.invoke('triggers:list'),
+  availability: () => ipcRenderer.invoke('triggers:availability'),
+  save: input => ipcRenderer.invoke('triggers:save', input),
+  remove: id => ipcRenderer.invoke('triggers:remove', id),
+}
+contextBridge.exposeInMainWorld('triggersAPI', triggersAPI)
 
 const memoryAPI: MemoryAPI = {
   list: filter => ipcRenderer.invoke('memory:list', filter),

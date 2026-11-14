@@ -11,6 +11,7 @@ import { DEFAULT_ROUTINE_TURNS, describeTrigger } from '../../../../shared/missi
 import { Avatar } from '../app/Avatar'
 import { errorText } from '../app/appShellShared'
 import { PhaseLabel, missionPhase, relativeTime } from './mission-ui'
+import { TriggersSection } from './TriggersSection'
 
 type Draft = { id?: string; name: string; instructions: string; agentId: string; workspaceId: string; kind: 'daily' | 'interval' | 'app-start' | 'project-changed'; time: string; weekdays: number[]; hours: number; maxTurns: number }
 const DAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
@@ -116,6 +117,7 @@ export function RoutinesPage({ snapshot, onOpenConversation, onNotice }: { snaps
         <p className="text-sm font-medium">Nenhuma rotina ainda</p>
         <Button variant="outline" className="mt-3" onClick={() => setDraft(blank())}><Plus className="size-4" />Criar primeira rotina</Button>
       </div>}
+      <TriggersSection snapshot={snapshot} onNotice={onNotice} />
     </div>
   </PageShell>
 }

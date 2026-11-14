@@ -21,7 +21,8 @@ type TgMessage = { message_id: number; chat: Chat; from?: { id: number; is_bot?:
 export type AudioTranscriber = { audioTranscriptionIssue(): Promise<string | null>; transcribeAudio(audio: Uint8Array): Promise<string> }
 type Update = { update_id: number; message?: TgMessage; callback_query?: { id: string; from: { id: number }; data?: string; message?: TgMessage } }
 type Button = { text: string; callback_data: string }
-type Persisted = { enabled: boolean; offset: number; chats: TelegramChat[]; conversations: Record<string, string> }
+/** `workspaces`: projeto escolhido por chat, que filtra /conversas e recebe as conversas criadas por /nova. */
+type Persisted = { enabled: boolean; offset: number; chats: TelegramChat[]; conversations: Record<string, string>; workspaces?: Record<string, string> }
 
 export class TelegramApiError extends Error {
   constructor(readonly status: number, message: string, readonly retryAfter?: number) { super(message) }
@@ -44,8 +45,10 @@ const HELP = [
   'Escreva normalmente para falar com o Chief (ou com a conversa escolhida).',
   '',
   '/status: execuções ativas e aprovações pendentes',
-  '/conversas: escolher uma das últimas 10 conversas',
-  '/nova: nova conversa com o Chief',
+  '/conversas: escolher uma das últimas 10 conversas (do projeto escolhido)',
+  '/projetos: escolher ou trocar o projeto (workspace)',
+  '/nova: nova conversa com o Chief no projeto escolhido',
+  '/cancelar: parar uma execução ativa',
   '/chief: voltar para a conversa do Chief',
   '/memoria: as 10 memórias mais recentes desta conversa',
   '/lembrar &lt;texto&gt;: guardar uma memória global essencial',
@@ -54,6 +57,16 @@ const HELP = [
   'Aprovações chegam com botões Aprovar e Recusar; nada é executado sem o seu toque.',
 ].join('\n')
 const UNAUTHORIZED = 'Este chat não está autorizado. No Boobot, abra Configurações → Telegram, gere um código e envie /parear <código>.'
+const ACTIVE: string[] = ['queued', 'running', 'waiting']
+/** Texto da mensagem "Trabalhando…" quando a execução termina: quem respondeu, por quê, quanto levou e o começo da resposta. */
+export function finishSummary(message: Message, done: boolean, elapsedMs: number): string {
+  const seconds = Math.max(0, Math.round(elapsedMs / 1000))
+  const took = seconds >= 60 ? `${Math.floor(seconds / 60)} min ${seconds % 60} s` : `${seconds} s`
+  const who = `${message.author}${message.routing ? ` (${message.routing})` : ''}`
+  const gist = message.text.replace(/\s+/g, ' ').trim()
+  const summary = gist ? `\nResumo: ${gist.length > 280 ? `${gist.slice(0, 279)}…` : gist}` : ''
+  return `${done ? '✅ Concluído' : message.status === 'failed' ? '❌ Falhou' : '⏹ Interrompido'} por ${who} em ${took}.${summary}`
+}
 const STATE_LABEL: Record<Approval['status'], string> = { pending: 'pendente', approved: 'aprovada', denied: 'recusada', interrupted: 'interrompida' }
 
 export class TelegramService {
@@ -77,7 +90,7 @@ export class TelegramService {
   private readonly questionMessages = new Map<string, string>()
   private readonly forwarded = new Set<string>()
   /** Mensagem "Trabalhando…" por chat: é editada com o resultado e traz o botão Parar. */
-  private readonly working = new Map<number, { statusId: number; userMessageId: number; conversationId: string }>()
+  private readonly working = new Map<number, { statusId: number; userMessageId: number; conversationId: string; startedAt: number }>()
   private readonly typing = new Map<number, { timer: ReturnType<typeof setInterval>; since: number }>()
   private generation = 0
   private pollFailures = 0
@@ -102,6 +115,7 @@ export class TelegramService {
         offset: Number.isSafeInteger(raw?.offset) ? raw.offset : 0,
         chats: Array.isArray(raw?.chats) ? raw.chats.filter((chat: TelegramChat) => Number.isSafeInteger(chat?.id) && typeof chat.name === 'string') : [],
         conversations: raw?.conversations && typeof raw.conversations === 'object' ? raw.conversations : {},
+        workspaces: raw?.workspaces && typeof raw.workspaces === 'object' ? raw.workspaces : {},
       }
     } catch { /* primeira execução */ }
     this.hasToken = await this.token.has()
@@ -140,7 +154,7 @@ export class TelegramService {
     await this.token.save(token)
     this.hasToken = true; this.botUsername = me.username || null
     // Outro bot: o offset e os chats pareados eram do bot anterior.
-    this.data = { ...this.data, enabled: true, offset: 0, chats: [], conversations: {} }
+    this.data = { ...this.data, enabled: true, offset: 0, chats: [], conversations: {}, workspaces: {} }
     this.pairing = null
     await this.persist()
     this.restart()
@@ -151,7 +165,7 @@ export class TelegramService {
     this.stop()
     await this.token.clear()
     this.hasToken = false; this.botUsername = null; this.error = null; this.pairing = null
-    this.data = { ...this.data, enabled: false, offset: 0, chats: [], conversations: {} }
+    this.data = { ...this.data, enabled: false, offset: 0, chats: [], conversations: {}, workspaces: {} }
     await this.persist()
     return this.status()
   }
@@ -178,6 +192,7 @@ export class TelegramService {
     if (!Number.isSafeInteger(chatId)) throw new Error('Chat inválido.')
     this.data.chats = this.data.chats.filter(chat => chat.id !== chatId)
     delete this.data.conversations[String(chatId)]
+    delete this.data.workspaces?.[String(chatId)]
     this.stopTyping(chatId)
     await this.persist()
     return this.status()
@@ -275,10 +290,12 @@ export class TelegramService {
     if (name === 'start' || name === 'parear') { await this.sendHtml(chatId, 'Este chat já está pareado com o Boobot.'); return }
     if (name === 'status') return this.sendStatus(chatId)
     if (name === 'conversas' || name === 'conversa') return this.listConversations(chatId)
+    if (name === 'projetos' || name === 'projeto' || name === 'workspace' || name === 'workspaces') return this.listWorkspaces(chatId)
+    if (name === 'cancelar' || name === 'parar') return this.listActive(chatId)
     if (name === 'chief') { this.setConversation(chatId, this.chiefConversation(false)); await this.sendHtml(chatId, `Agora você fala com ${escapeHtml(this.conversationName(this.conversationFor(chatId)))}.`); return }
     if (name === 'memoria' || name === 'memorias') return this.listMemories(chatId)
     if (name === 'lembrar') return this.remember(chatId, argument)
-    if (name === 'nova') { this.setConversation(chatId, this.chiefConversation(true)); await this.sendHtml(chatId, 'Nova conversa com o Chief criada. Pode escrever.'); return }
+    if (name === 'nova') { this.setConversation(chatId, this.chiefConversation(true, this.workspaceFor(chatId))); await this.sendHtml(chatId, `Nova conversa criada: ${escapeHtml(this.conversationName(this.conversationFor(chatId)))}. Pode escrever.`); return }
     await this.sendHtml(chatId, HELP)
   }
 
@@ -384,7 +401,7 @@ export class TelegramService {
   }
 
   /** Conversa direta mais recente com o Chief (ou com o Assistente, sem Chief); cria uma quando não existe ou quando pedida. */
-  private chiefConversation(create: boolean): string {
+  private chiefConversation(create: boolean, workspaceId?: string): string {
     const snapshot = this.host.snapshot()
     const chief = snapshot.agents.find(agent => agent.role === 'chief' && agent.temporaryStatus !== 'retired')
     const agentIds = chief ? [chief.id] : []
@@ -394,7 +411,7 @@ export class TelegramService {
         .sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt))[0]
       if (existing) return existing.id
     }
-    return this.host.saveConversation({ name: `${chief?.name || 'Assistente'} pelo Telegram`, kind: 'direct', agentIds }).id
+    return this.host.saveConversation({ name: `${chief?.name || 'Assistente'} pelo Telegram`, kind: 'direct', agentIds, ...(workspaceId ? { workspaceId } : {}) }).id
   }
 
   private conversationName(conversationId: string): string {
@@ -414,7 +431,7 @@ export class TelegramService {
       if (userMessageId !== undefined && !this.working.has(chatId)) {
         this.react(chatId, userMessageId, '👀')
         const statusId = await this.sendHtml(chatId, '⏳ <i>Trabalhando…</i>', [[{ text: 'Parar', callback_data: `s:${conversationId}` }]])
-        if (statusId !== null) this.working.set(chatId, { statusId, userMessageId, conversationId })
+        if (statusId !== null) this.working.set(chatId, { statusId, userMessageId, conversationId, startedAt: this.now() })
       }
     } catch (error) {
       await this.sendHtml(chatId, escapeHtml(`Não foi possível enviar: ${error instanceof Error ? error.message : 'erro desconhecido'}`))
@@ -458,13 +475,14 @@ export class TelegramService {
       if (!work || work.conversationId !== message.conversationId) continue
       this.working.delete(chat.id)
       const done = message.status === 'completed'
-      void this.call('editMessageText', { chat_id: chat.id, message_id: work.statusId, text: done ? '✅ Concluído.' : '⏹ Interrompido.' }).catch(() => undefined)
+      void this.call('editMessageText', { chat_id: chat.id, message_id: work.statusId, text: finishSummary(message, done, this.now() - work.startedAt) }).catch(() => undefined)
       this.react(chat.id, work.userMessageId, done ? '👍' : '👎')
     }
     if (this.forwarded.size > 500) this.forwarded.clear()
     this.forwarded.add(message.id)
     const body = message.text.trim() || (message.status === 'completed' ? '(Sem resposta em texto.)' : 'A execução não terminou.')
-    const chunks = telegramChunks(`**${message.author}**\n${body}`)
+    // Em grupo, a etiqueta diz por que este Boo respondeu (líder ou roteador com confiança).
+    const chunks = telegramChunks(`**${message.author}**${message.routing ? ` (${message.routing})` : ''}\n${body}`)
     for (const chat of chats) {
       for (const chunk of chunks) await this.sendHtml(chat.id, chunk)
     }
@@ -550,14 +568,26 @@ export class TelegramService {
     if (conversation) {
       try { if (this.host.store.conversation(conversation[1]).archived) throw new Error('arquivada') } catch { await answer('Conversa indisponível.'); return }
       this.setConversation(chatId, conversation[1])
+      this.setWorkspace(chatId, this.host.store.conversation(conversation[1]).workspaceId)
       await answer('Conversa escolhida.')
       await this.sendHtml(chatId, `Agora você fala em ${escapeHtml(this.conversationName(conversation[1]))}.`)
       return
     }
+    const workspace = /^w:([\w-]{1,64})$/.exec(data)
+    if (workspace) {
+      if (workspace[1] === 'all') { this.setWorkspace(chatId, null); await answer('Todos os projetos.'); return this.listConversations(chatId) }
+      const chosen = this.host.snapshot().workspaces.find(item => item.id === workspace[1] && !item.archived)
+      if (!chosen) { await answer('Projeto indisponível.'); return }
+      this.setWorkspace(chatId, chosen.id)
+      await answer('Projeto escolhido.')
+      await this.sendHtml(chatId, `Projeto: <b>${escapeHtml(chosen.name)}</b>. Escolha uma conversa dele abaixo ou use /nova para começar outra.`)
+      return this.listConversations(chatId)
+    }
     const stop = /^s:([0-9a-f-]{36})$/.exec(data)
     if (stop) {
-      if (this.conversationFor(chatId) !== stop[1]) { await answer('Esta conversa não está mais ativa.'); return }
-      try { await this.host.stop(stop[1]); await answer('Parando…') } catch { await answer('Não foi possível parar.') }
+      // A conversa atual do chat ou qualquer outra com execução ativa (/cancelar lista todas).
+      if (this.conversationFor(chatId) !== stop[1] && !this.host.snapshot().runs.some(run => run.conversationId === stop[1] && ACTIVE.includes(run.status))) { await answer('Nada em execução nesta conversa.'); return }
+      try { await this.host.stop(stop[1]); await answer('Parando…'); await this.sendHtml(chatId, `⏹ Parando a execução em ${escapeHtml(this.conversationName(stop[1]))}.`) } catch { await answer('Não foi possível parar.') }
       return
     }
     const decision = /^([aqk]):([0-9a-f-]{36}):(\d{1,2})$/.exec(data)
@@ -597,9 +627,11 @@ export class TelegramService {
 
   private async sendStatus(chatId: number): Promise<void> {
     const snapshot = this.host.snapshot()
-    const active = snapshot.runs.filter(run => ['queued', 'running', 'waiting'].includes(run.status))
+    const active = snapshot.runs.filter(run => ACTIVE.includes(run.status))
     const pending = snapshot.approvals.filter(approval => approval.status === 'pending')
-    const lines = [`<b>Conversa atual:</b> ${escapeHtml(this.conversationName(this.conversationFor(chatId)))}`, '', `<b>Execuções ativas:</b> ${active.length}`]
+    const workspaceId = this.workspaceFor(chatId)
+    const workspaceName = workspaceId ? snapshot.workspaces.find(item => item.id === workspaceId)?.name : undefined
+    const lines = [`<b>Conversa atual:</b> ${escapeHtml(this.conversationName(this.conversationFor(chatId)))}`, `<b>Projeto:</b> ${escapeHtml(workspaceName || 'todos')}`, '', `<b>Execuções ativas:</b> ${active.length}`]
     for (const run of active.slice(0, 10)) lines.push(`• ${escapeHtml(run.agent.name)} em ${escapeHtml(this.conversationName(run.conversationId))} (${run.status === 'waiting' ? 'aguardando você' : run.status === 'queued' ? 'na fila' : 'trabalhando'})`)
     lines.push('', `<b>Aprovações pendentes:</b> ${pending.length}`)
     for (const approval of pending.slice(0, 10)) lines.push(`• ${escapeHtml(this.conversationName(approval.conversationId))}: ${approval.kind}`)
@@ -608,13 +640,42 @@ export class TelegramService {
     for (const approval of pending) if (!this.approvalMessages.has(approval.id)) await this.onApproval(approval)
   }
 
+  private workspaceFor(chatId: number): string | undefined {
+    const id = this.data.workspaces?.[String(chatId)]
+    return id && this.host.snapshot().workspaces.some(item => item.id === id && !item.archived) ? id : undefined
+  }
+
+  private setWorkspace(chatId: number, workspaceId: string | null) {
+    const workspaces = this.data.workspaces ||= {}
+    if (workspaceId) workspaces[String(chatId)] = workspaceId
+    else delete workspaces[String(chatId)]
+    void this.persist()
+  }
+
+  private async listWorkspaces(chatId: number): Promise<void> {
+    const workspaces = this.host.snapshot().workspaces.filter(item => !item.archived && item.name && item.kind !== 'worktree').slice(0, 20)
+    if (!workspaces.length) { await this.sendHtml(chatId, 'Ainda não há projetos.'); return }
+    const current = this.workspaceFor(chatId)
+    await this.sendHtml(chatId, 'Escolha o projeto:', [...workspaces.map(item => [{ text: `${item.id === current ? '• ' : ''}${item.name}`.slice(0, 60), callback_data: `w:${item.id}` }]), [{ text: 'Todos os projetos', callback_data: 'w:all' }]])
+  }
+
+  /** Conversas com execução ativa, cada uma com botão Parar. */
+  private async listActive(chatId: number): Promise<void> {
+    const snapshot = this.host.snapshot()
+    const byConversation = new Map<string, string[]>()
+    for (const run of snapshot.runs.filter(item => ACTIVE.includes(item.status))) byConversation.set(run.conversationId, [...(byConversation.get(run.conversationId) || []), run.agent.name])
+    if (!byConversation.size) { await this.sendHtml(chatId, 'Nenhuma execução ativa agora.'); return }
+    await this.sendHtml(chatId, 'Qual execução parar?', [...byConversation].slice(0, 10).map(([id, agents]) => [{ text: `Parar ${this.conversationName(id)} (${[...new Set(agents)].join(', ')})`.slice(0, 60), callback_data: `s:${id}` }]))
+  }
+
   private async listConversations(chatId: number): Promise<void> {
+    const workspaceId = this.workspaceFor(chatId)
     const conversations = this.host.snapshot().conversations
-      .filter(item => !item.archived)
+      .filter(item => !item.archived && (!workspaceId || item.workspaceId === workspaceId))
       .sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt))
       .slice(0, 10)
-    if (!conversations.length) { await this.sendHtml(chatId, 'Ainda não há conversas.'); return }
-    await this.sendHtml(chatId, 'Escolha a conversa:', conversations.map(item => [{ text: (item.name || 'Conversa').slice(0, 60), callback_data: `c:${item.id}` }]))
+    if (!conversations.length) { await this.sendHtml(chatId, workspaceId ? 'Este projeto ainda não tem conversas. Use /nova para começar.' : 'Ainda não há conversas.'); return }
+    await this.sendHtml(chatId, 'Escolha a conversa:', conversations.map(item => [{ text: `${item.kind === 'group' ? '👥 ' : ''}${item.name || 'Conversa'}`.slice(0, 60), callback_data: `c:${item.id}` }]))
   }
 
   private persist(): Promise<void> {
