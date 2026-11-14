@@ -1,4 +1,4 @@
-import { Columns2, Database, FileDiff, Globe, Grid2x2, Plus, Sparkles, Terminal, Users } from 'lucide-react'
+import { Columns2, Database, FileDiff, Globe, Grid2x2, History, Plus, Sparkles, Terminal, Users } from 'lucide-react'
 import type { DockTool } from '@/features/panels/dock-layout'
 
 /**
@@ -13,6 +13,7 @@ const OPTIONS: ReadonlyArray<{ kind: DockTool; title: string; description: strin
   { kind: 'web', title: 'Preview Web', description: 'Navegador real com as abas em que os Boos trabalham.', icon: Globe },
   { kind: 'squad', title: 'Equipe de Boos', description: 'Especialistas, modelos e estado de cada agente.', icon: Users },
   { kind: 'memory', title: 'Memória & MCP', description: 'Decisões guardadas e servidores de ferramentas.', icon: Database },
+  { kind: 'report', title: 'O que os Boos fizeram', description: 'Execuções do dia por Boo, com arquivos, falhas e desfazer.', icon: History },
 ]
 
 export function LauncherTab({ onPick }: { workspaceId?: string | null; onPick: (kind: DockTool) => void }) {

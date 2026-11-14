@@ -1,4 +1,4 @@
-export type DockTool = 'chat' | 'files' | 'terminal' | 'web' | 'mascot' | 'diff' | 'agents' | 'squad' | 'memory' | 'launcher'
+export type DockTool = 'chat' | 'files' | 'terminal' | 'web' | 'mascot' | 'diff' | 'agents' | 'squad' | 'memory' | 'report' | 'launcher'
 export type DockZone = 'main' | 'side'
 export type DockEdge = 'left' | 'right' | 'top' | 'bottom'
 export type DockTab = { id: string; kind: DockTool | 'file'; label: string; workspaceId?: string; path?: string }
@@ -9,7 +9,7 @@ export interface DockLayoutState { root: DockNode; activeGroup: string }
 /** Presets de colunas do menu "Layout & Painéis" do top bar. */
 export type LayoutPreset = 'two-cols' | 'three-cols' | 'ide-split' | 'quad-grid' | 'focus-chat'
 
-const tools: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff', 'agents', 'squad', 'memory', 'launcher']
+const tools: DockTool[] = ['chat', 'files', 'terminal', 'web', 'mascot', 'diff', 'agents', 'squad', 'memory', 'report', 'launcher']
 /** Títulos iguais ao registro de abas do HTML de referência. */
 const names: Record<DockTool, string> = {
   chat: 'Chief · Orquestração',
@@ -21,6 +21,7 @@ const names: Record<DockTool, string> = {
   agents: 'Delegações',
   squad: 'Equipe de Boos',
   memory: 'Memória & MCP',
+  report: 'O que os Boos fizeram',
   launcher: 'Nova Aba',
 }
 /** Layouts salvos antes do navegador único guardam a aba 'browser' do agente; ela vira a aba do navegador da plataforma. */

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import {
-  ChevronDown, Columns2, Columns3, Database, FileDiff, Folder, FolderGit2, Globe, Grid2x2, LayoutPanelLeft,
+  ChevronDown, Columns2, Columns3, Database, FileDiff, Folder, FolderGit2, Globe, Grid2x2, History, LayoutPanelLeft,
   Maximize2, MessageSquare, Minus, RotateCcw, Search, Settings, Sparkles, Square, Terminal, Users, X,
 } from 'lucide-react'
 import { Dropdown, triggerClass } from './dropdown'
@@ -23,7 +23,7 @@ export function TopBar({ project, projects, onSelectProject, status, onOpenComma
   status: { text: string; tone: 'default' | 'warning' | 'success' } | null
   onOpenCommand: () => void
   onOpenSettings: () => void
-  onOpenTool: (tool: 'files' | 'terminal' | 'web' | 'squad' | 'memory') => void
+  onOpenTool: (tool: 'files' | 'terminal' | 'web' | 'squad' | 'memory' | 'report') => void
   onApplyPreset: (preset: LayoutPreset) => void
   onResetLayout: () => void
 }) {
@@ -115,6 +115,7 @@ export function TopBar({ project, projects, onSelectProject, status, onOpenComma
             <MenuItem icon={<Globe className="size-3.5" />} label="Navegador / Preview Web" onClick={() => { setMenu(null); onOpenTool('web') }} />
             <MenuItem icon={<Users className="size-3.5" />} label="Equipe de Boos" onClick={() => { setMenu(null); onOpenTool('squad') }} />
             <MenuItem icon={<Database className="size-3.5" />} label="Memória & MCP" onClick={() => { setMenu(null); onOpenTool('memory') }} />
+            <MenuItem icon={<History className="size-3.5" />} label="O que os Boos fizeram" onClick={() => { setMenu(null); onOpenTool('report') }} />
 
             <MenuDivider />
             <div className="px-2 pb-1">

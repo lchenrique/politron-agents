@@ -516,6 +516,7 @@ export default function AppShell() {
       { kind: 'web', label: 'Navegador / Preview Web' },
       { kind: 'squad', label: 'Equipe de Boos' },
       { kind: 'memory', label: 'Memória & MCP' },
+      { kind: 'report', label: 'O que os Boos fizeram' },
     ]
     const presets: Array<{ preset: 'two-cols' | 'three-cols' | 'ide-split' | 'quad-grid' | 'focus-chat'; label: string }> = [
       { preset: 'two-cols', label: 'Layout: 2 colunas (Chat + Código)' },

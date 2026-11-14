@@ -122,6 +122,8 @@ export interface Run {
   id: string; conversationId: string; agentId: string; rootId: string; parentId: string | null
   ancestry: string[]; /** Notificações automáticas encadeadas desde a última mensagem do usuário (limita o laço Chief↔Boo). */ continuationDepth?: number; status: RunStatus; threadId: string | null; turnId: string | null
   messageId: string; input: string; inputMessageId?: string; planMode?: boolean; agent: Agent; modelOptions?: ModelRuntimeOptions; workspaceId: string; workspacePath: string; createdAt: string
+  /** Gravado pelo store quando a execução chega a um estado final. */
+  finishedAt?: string
 }
 export interface Delegation {
   id: string; idempotencyKey: string; rootRunId: string; parentRunId: string; childRunId: string
@@ -297,7 +299,7 @@ export interface AppAPI {
   cancelDelegation(delegationId: string): Promise<void>
   models(runtime?: 'codex' | 'claude'): Promise<Model[]>
   /** Auditoria do que as execuções fizeram: comandos e arquivos alterados. */
-  activityLog(limit?: number): Promise<{ commands: CommandEvidence[]; files: FileChange[] }>
+  activityLog(limit?: number): Promise<{ commands: CommandEvidence[]; files: FileChange[]; runs: Run[] }>
   /** Restaura os arquivos de uma execução a partir do backup automático. */
   undoRun(runId: string): Promise<{ restored: number; removed: number }>
   runSnapshot(runId: string): Promise<{ available: boolean; files: number }>

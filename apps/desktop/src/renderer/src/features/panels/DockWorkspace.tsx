@@ -1,6 +1,6 @@
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
 import {
-  Code2, Columns2, Database, FileDiff, Files, Globe, MessageSquare, MoreHorizontal, PanelBottom, PanelBottomOpen,
+  Code2, Columns2, Database, FileDiff, Files, Globe, History, MessageSquare, MoreHorizontal, PanelBottom, PanelBottomOpen,
   PanelLeft, PanelLeftOpen, PanelRight, PanelRightOpen, PanelTop, PanelTopOpen, Plus, RotateCcw, Sparkles,
   Terminal, Trash2, UserRound, Users, X,
 } from 'lucide-react'
@@ -8,6 +8,7 @@ import type { Agent, Conversation, FileChange, Message, Run } from '../../../../
 import { ProjectExplorer } from './ProjectExplorer'
 import { FilePreview, type FileDraft, type FileDraftChange } from './FilePreview'
 import { DelegationOverview } from './DelegationOverview'
+import { BooDayReport } from './BooDayReport'
 import { BooWorkPanel, type BooWorkPanelProps } from './BooWorkPanel'
 import type { AgentAvatarState } from '../app/Avatar'
 import {
@@ -46,6 +47,7 @@ const icons: Record<DockTool, typeof MessageSquare> = {
   agents: Users,
   squad: Users,
   memory: Database,
+  report: History,
   launcher: Plus,
 }
 
@@ -260,6 +262,7 @@ export const DockWorkspace = forwardRef<DockWorkspaceHandle, {
       case 'diff': return <div className="h-full overflow-auto p-4"><h2 className="mb-3 text-xs font-semibold text-[var(--text-secondary)]">Alterações versus HEAD</h2><pre className="min-w-max font-mono text-[11px] leading-5 whitespace-pre">{workspaceDiff || 'Nenhuma alteração rastreada.'}</pre></div>
       case 'squad': return <SquadTab assistant={assistant} agents={agents} agentStates={agentStates} runs={runs} onEdit={onEditAgent} onStartConversation={onStartAgentConversation} />
       case 'memory': return <MemoryTab onOpenSettings={onOpenSettings} />
+      case 'report': return <BooDayReport assistant={assistant} agents={agents} conversations={conversations} onOpenConversation={onOpenRelatedConversation} />
       case 'launcher': return <LauncherTab workspaceId={workspaceId} onPick={kind => openInGroup(kind, groupWithTab(layout.root, tab.id)?.id || mainGroup(layout).id)} />
       default: return null
     }

@@ -734,7 +734,11 @@ export class WorkspaceStore {
   }
   /** Reinsere a mensagem para ela ficar no fim da ordem do histórico (rowid). */
   moveMessageToEnd(value: Message): void { this.db.prepare('DELETE FROM v9_messages WHERE id=?').run(value.id); this.putMessage(value) }
-  putRun(value: Run): void { this.put('v9_runs', value) }
+  putRun(value: Run): void {
+    // Carimba o fim uma única vez, para o painel de atividade medir a duração.
+    const done = ['completed', 'failed', 'interrupted', 'cancelled'].includes(value.status)
+    this.put('v9_runs', done && !value.finishedAt ? { ...value, finishedAt: this.run(value.id)?.finishedAt || new Date().toISOString() } : value)
+  }
   putFileChange(value: FileChange): boolean {
     const result = this.db.prepare('INSERT OR IGNORE INTO v9_file_changes(id,run_id,tool_call_id,workspace_id,data) VALUES(?,?,?,?,?)').run(value.id, value.runId, value.toolCallId, value.workspaceId, JSON.stringify(value))
     return result.changes > 0
@@ -748,6 +752,7 @@ export class WorkspaceStore {
     if (!row) throw new Error('A evidência do comando não foi persistida.')
     return JSON.parse(row.data) as CommandEvidence
   }
+  recentRuns(limit = 200): Run[] { return this.recent<Run>('v9_runs', Math.max(1, Math.min(limit, 1000))) }
   recentFileChanges(limit = 200): FileChange[] { const size = Math.max(1, Math.min(limit, 1000)); return this.recent<FileChange>('v9_file_changes', size) }
   recentCommandEvidence(limit = 200): CommandEvidence[] { const size = Math.max(1, Math.min(limit, 1000)); return (this.db.prepare('SELECT data FROM v9_command_evidence ORDER BY rowid DESC LIMIT ?').all(size) as { data: string }[]).map(row => JSON.parse(row.data) as CommandEvidence) }
   commandEvidenceForRun(runId: string): CommandEvidence[] { return (this.db.prepare('SELECT data FROM v9_command_evidence WHERE run_id=? ORDER BY rowid').all(runId) as { data: string }[]).map(row => JSON.parse(row.data)) }
