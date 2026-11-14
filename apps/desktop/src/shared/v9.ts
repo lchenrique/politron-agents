@@ -165,7 +165,7 @@ export interface Routine {
   tasks?: string[]; budget?: MissionBudget
 }
 export interface StartMissionInput { goal: string; title?: string; workspaceId?: string | null; conversationId?: string; agentId?: string; maxTurns?: number; model?: string | null; tasks?: string[]; budget?: MissionBudget }
-export type MissionAction = 'pause' | 'resume' | 'cancel' | 'reply' | 'extend'
+export type MissionAction = 'pause' | 'resume' | 'cancel' | 'reply' | 'extend' | 'raise_budget'
 export type BoardTaskKind = 'general' | 'code'
 export type BoardTaskStatus = 'backlog' | 'ready' | 'queued' | 'doing' | 'review' | 'rework' | 'integration' | 'blocked' | 'done' | 'cancelled'
 export interface BoardTeam { id: string; name: string; description: string; agentIds: string[]; createdAt: string; updatedAt: string }

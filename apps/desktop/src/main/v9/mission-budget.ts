@@ -7,7 +7,8 @@ import type { Mission, MissionBudget, MissionStep, MissionUsage } from '../../sh
  * - Codex: notificação `thread/tokenUsage/updated` do app-server (campo `last` de cada chamada ao modelo); só tokens, sem custo.
  * - Claude (Agent SDK): mensagem `result` de cada turno, com `usage` e `total_cost_usd`.
  * - OpenCode (API OpenAI-compatível): pacote `usage` do fim do stream, pedido com `stream_options.include_usage`; custo só se o provedor enviar.
- * - Pi e os motores por CLI sem interface de consumo não informam nada; contam só para o limite de duração.
+ * - Pi (RPC): `message_end` de cada mensagem do assistente traz `message.usage` (input, output, cacheRead, cacheWrite, cost.total), uma por chamada ao modelo.
+ * - Motores por CLI sem interface de consumo não informam nada; contam só para o limite de duração.
  */
 
 export type UsageDelta = { inputTokens: number; outputTokens: number; costUsd: number }
@@ -42,6 +43,12 @@ export function taskGoal(instructions: string, tasks: string[]): string {
 export function claudeUsage(message: unknown): UsageDelta {
   const value = record(message), usage = record(value.usage)
   return { inputTokens: num(usage.input_tokens) + num(usage.cache_read_input_tokens) + num(usage.cache_creation_input_tokens), outputTokens: num(usage.output_tokens), costUsd: num(value.total_cost_usd) }
+}
+
+/** `usage` do AssistantMessage do pi-ai (evento RPC `message_end`); custo vem calculado pelo Pi a partir da tabela do modelo. */
+export function piUsage(message: unknown): UsageDelta {
+  const usage = record(record(message).usage)
+  return { inputTokens: num(usage.input) + num(usage.cacheRead) + num(usage.cacheWrite), outputTokens: num(usage.output), costUsd: num(record(usage.cost).total) }
 }
 
 /** Pacote final do stream OpenAI-compatível do OpenCode (`usage`); custo só se o provedor mandar `usage.cost`. */
@@ -99,7 +106,8 @@ const STATUS: Partial<Record<Mission['status'], string>> = { completed: 'Conclu�
 
 /** Relatório final: tarefas, falhas com motivo, arquivos alterados e consumo informado. */
 export function buildMissionReport(mission: Mission, files: string[], now = new Date()): string {
-  const stoppedByBudget = mission.updates.some(update => update.text.startsWith(BUDGET_STOP_PREFIX))
+  // Só a última falha conta: uma missão retomada com orçamento maior não é mais "interrompida pelo orçamento".
+  const stoppedByBudget = mission.status === 'failed' && !!mission.updates.filter(update => update.kind === 'error').at(-1)?.text.startsWith(BUDGET_STOP_PREFIX)
   const status = stoppedByBudget ? 'Interrompida pelo orçamento' : STATUS[mission.status] || mission.status
   const lines = [`Relatório da missão "${mission.title}": ${status}.`, `Duração: ${duration(now.getTime() - new Date(mission.createdAt).getTime())} · turnos: ${mission.turns}.`]
   if (mission.steps.length) {
@@ -121,7 +129,28 @@ export function buildMissionReport(mission: Mission, files: string[], now = new 
     : 'Consumo: os motores usados não informaram tokens nem custo.')
   if (mission.budget) {
     const check = budgetCheck(mission, now)
-    lines.push(`Orçamento: ${[mission.budget.maxCostUsd && usd(mission.budget.maxCostUsd), mission.budget.maxTokens && `${int(mission.budget.maxTokens)} tokens`, mission.budget.maxMinutes && duration(mission.budget.maxMinutes * 60_000)].filter(Boolean).join(' · ')}${check.reason ? ` (uso: ${check.reason})` : ''}.`)
+    lines.push(`Orçamento: ${describeBudget(mission.budget)}${check.reason ? ` (uso: ${check.reason})` : ''}.`)
   }
   return lines.join('\n')
+}
+
+export const describeBudget = (budget: MissionBudget) => [budget.maxCostUsd && usd(budget.maxCostUsd), budget.maxTokens && `${int(budget.maxTokens)} tokens`, budget.maxMinutes && duration(budget.maxMinutes * 60_000)].filter(Boolean).join(' · ')
+
+/**
+ * Novo orçamento para retomar uma missão parada por ele. Sem pedido explícito, cada limite vira o maior entre o limite e o já usado, mais metade do limite.
+ * Limite pedido abaixo do consumo atual é recusado: a missão pararia de novo no próximo turno.
+ */
+export function raiseBudget(mission: Pick<Mission, 'budget' | 'usage' | 'createdAt'>, requested?: unknown, now = new Date()): MissionBudget {
+  const current = mission.budget || {}, asked = sanitizeBudget(requested) || {}
+  const usage = mission.usage || { inputTokens: 0, outputTokens: 0, costUsd: 0, reports: 0 }
+  const used: Required<MissionBudget> = { maxCostUsd: usage.costUsd, maxTokens: usage.inputTokens + usage.outputTokens, maxMinutes: (now.getTime() - new Date(mission.createdAt).getTime()) / 60_000 }
+  const next: MissionBudget = {}
+  for (const key of ['maxCostUsd', 'maxTokens', 'maxMinutes'] as const) {
+    const limit = current[key], wanted = asked[key]
+    if (wanted !== undefined) {
+      if (wanted <= used[key]) throw new Error(`O novo limite (${key}) precisa ser maior que o já usado.`)
+      next[key] = wanted
+    } else if (limit) next[key] = key === 'maxCostUsd' ? Math.max(limit, used[key]) + limit / 2 : Math.ceil(Math.max(limit, used[key]) + limit / 2)
+  }
+  return next
 }

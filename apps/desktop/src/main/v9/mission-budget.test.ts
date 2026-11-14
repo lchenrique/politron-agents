@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Mission } from '../../shared/v9'
 import { describeTrigger, nextRoutineRun, validateTrigger } from '../../shared/missions'
-import { addUsage, budgetCheck, buildMissionReport, claudeUsage, openCodeUsage, parseTasks, sanitizeBudget, usageFromRuntimeEvent } from './mission-budget'
+import { addUsage, budgetCheck, buildMissionReport, claudeUsage, openCodeUsage, parseTasks, piUsage, raiseBudget, sanitizeBudget, usageFromRuntimeEvent } from './mission-budget'
 
 const base = (patch: Partial<Mission> = {}): Mission => ({ id: 'm1', title: 'Noite', goal: 'g', workspaceId: 'w', conversationId: 'c', ownerAgentId: 'a', routineId: 'r', model: null, status: 'completed',
   steps: [], updates: [], question: null, options: [], result: null, turns: 3, maxTurns: 8, idleTurns: 0, failures: 0, lastProgressAt: null,
@@ -31,6 +31,9 @@ describe('consumo dos motores', () => {
     expect(openCodeUsage({ usage: { prompt_tokens: 5, completion_tokens: 1 } }).costUsd).toBe(0)
     expect(usageFromRuntimeEvent({ method: 'turn/usage', params: { threadId: 't', usage: { inputTokens: 1, outputTokens: 2, costUsd: 0.5 } } })?.usage.costUsd).toBe(0.5)
     expect(usageFromRuntimeEvent({ method: 'item/agentMessage/delta', params: { threadId: 't' } })).toBeNull()
+    expect(piUsage({ role: 'assistant', usage: { input: 10, output: 4, cacheRead: 6, cacheWrite: 2, totalTokens: 22, cost: { input: 0.001, output: 0.002, cacheRead: 0, cacheWrite: 0, total: 0.003 } } }))
+      .toEqual({ inputTokens: 18, outputTokens: 4, costUsd: 0.003 })
+    expect(piUsage({ role: 'assistant' })).toEqual({ inputTokens: 0, outputTokens: 0, costUsd: 0 })
   })
 })
 
@@ -48,6 +51,17 @@ describe('orçamento', () => {
     expect(cut.level).toBe('exceeded'); expect(cut.reason).toMatch(/custo/)
     expect(budgetCheck(base({ budget: { maxMinutes: 10 } }), now).level).toBe('exceeded')
     expect(budgetCheck(base(), now).level).toBe('ok')
+  })
+})
+
+describe('aumentar orçamento', () => {
+  it('sem pedido sobe metade acima do usado; pedido abaixo do usado é recusado', () => {
+    const now = new Date('2026-11-13T02:30:00.000Z')
+    const mission = base({ budget: { maxTokens: 1000, maxMinutes: 20, maxCostUsd: 1 }, usage: addUsage(undefined, { inputTokens: 1200, outputTokens: 0, costUsd: 0.4 }) })
+    expect(raiseBudget(mission, undefined, now)).toEqual({ maxTokens: 1700, maxMinutes: 40, maxCostUsd: 1.5 })
+    expect(raiseBudget(mission, { maxTokens: 3000 }, now)).toEqual({ maxTokens: 3000, maxMinutes: 40, maxCostUsd: 1.5 })
+    expect(() => raiseBudget(mission, { maxTokens: 1100 }, now)).toThrow(/maior que o já usado/)
+    expect(budgetCheck({ ...mission, budget: raiseBudget(mission, undefined, now) }, now).level).toBe('ok')
   })
 })
 

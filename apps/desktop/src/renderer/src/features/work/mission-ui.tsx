@@ -85,6 +85,10 @@ export function useMissionAction(onNotice: (text: string) => void) {
   return { busy, run }
 }
 
+/** Missão encerrada pelo orçamento (prefixo BUDGET_STOP_PREFIX de main/v9/mission-budget.ts): retomar sem aumentar pararia de novo. */
+const stoppedByBudget = (mission: Mission) => mission.status === 'failed' && !!mission.budget
+  && !!mission.updates.filter(update => update.kind === 'error').at(-1)?.text.startsWith('Orçamento esgotado')
+
 export function MissionControls({ mission, onNotice, compact = false }: { mission: Mission; onNotice: (text: string) => void; compact?: boolean }) {
   const { busy, run } = useMissionAction(onNotice)
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -93,7 +97,9 @@ export function MissionControls({ mission, onNotice, compact = false }: { missio
   return <>
     <div className="flex flex-wrap items-center gap-1">
       {mission.status === 'active' && <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'pause')}><Pause className="size-3.5" />Pausar</Button>}
-      {(mission.status === 'paused' || mission.status === 'failed') && <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'resume')}><Play className="size-3.5" />Retomar</Button>}
+      {stoppedByBudget(mission)
+        ? <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'raise_budget')}><Play className="size-3.5" />Aumentar orçamento e retomar</Button>
+        : (mission.status === 'paused' || mission.status === 'failed') && <Button size={size} variant="ghost" disabled={!!busy} onClick={() => void run(mission, 'resume')}><Play className="size-3.5" />Retomar</Button>}
       {open && <Button size={size} variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={!!busy} onClick={() => setCancelOpen(true)}><Square className="size-3.5" />Cancelar</Button>}
     </div>
     <Modal open={cancelOpen} onClose={() => setCancelOpen(false)} title="Cancelar missão?" description={`Cancelar a missão “${mission.title}”? O trabalho já feito é preservado.`} closeLabel="Fechar"

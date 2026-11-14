@@ -102,4 +102,66 @@ describe('missão noturna', () => {
     expect(mission.status).toBe('failed')
     expect(mission.report).toMatch(/duração 6 min de 5 min/)
   }, 20_000)
+
+  it('o Chief cria a missão noturna pela conversa: horário ou agora, tarefas e orçamento', async () => {
+    const { service, chief, workspace, broker, inputs } = setup([async (context, b) => { await call(b, context, 'mission_complete', { result: 'ok' }) }])
+    const conversation = service.saveConversation({ workspaceId: workspace.id, agentIds: [chief.id] })
+    const context = { agent: chief, conversation, run: { id: 'r', parentId: null, conversationId: conversation.id, workspaceId: workspace.id, workspacePath: workspace.path, planMode: false, ancestry: [chief.id] }, message: { id: 'm' }, signal: new AbortController().signal }
+    const at = '2099-01-01T23:00:00-03:00'
+    await expect(call(broker, context, 'routine_create', { name: 'Noite', schedule: 'once', at, tasks: ['Atualizar deps', 'Rodar testes'], max_cost_usd: 2, max_tokens: 50000, max_minutes: 90 })).resolves.toContain('Uma vez')
+    expect(service.store.routines().find(item => item.name === 'Noite')).toMatchObject({ trigger: { kind: 'once', at: '2099-01-02T02:00:00.000Z' }, nextRunAt: '2099-01-02T02:00:00.000Z',
+      tasks: ['Atualizar deps', 'Rodar testes'], budget: { maxCostUsd: 2, maxTokens: 50000, maxMinutes: 90 } })
+    expect(inputs).toHaveLength(0)
+
+    await expect(call(broker, context, 'routine_create', { name: 'Já', schedule: 'once', at: 'now', tasks: ['Revisar PRs'], max_tokens: 1000 })).resolves.toMatch(/iniciada agora \(1 tarefa/)
+    const routine = service.store.routines().find(item => item.name === 'Já')!
+    const mission = service.store.mission(routine.lastMissionId!)!
+    expect(mission).toMatchObject({ budget: { maxTokens: 1000 }, routineId: routine.id })
+    expect(mission.steps.map(step => step.title)).toEqual(['Revisar PRs'])
+    expect(routine.nextRunAt).toBeNull()
+    await vi.waitFor(() => expect(service.store.mission(mission.id)!.status).toBe('completed'), { timeout: 15_000, interval: 100 })
+  }, 20_000)
+
+  it('soma ao orçamento o consumo de delegações de delegações e para a árvore inteira', async () => {
+    const { service, chief, workspace, broker } = setup([])
+    const stop = vi.spyOn(broker as unknown as { stop(id: string): Promise<void> }, 'stop').mockResolvedValue(undefined)
+    const [a, b, c] = ['Missão', 'Dev', 'QA'].map(name => service.saveConversation({ name, workspaceId: workspace.id, agentIds: [chief.id] }))
+    const now = new Date().toISOString()
+    service.store.putMission({ id: 'm1', title: 'Noite', goal: 'g', workspaceId: workspace.id, conversationId: a.id, ownerAgentId: chief.id, routineId: null, model: null, status: 'active', budget: { maxTokens: 1000 },
+      steps: [], updates: [], question: null, options: [], result: null, turns: 1, maxTurns: 8, idleTurns: 0, failures: 0, lastProgressAt: null, createdAt: now, updatedAt: now, completedAt: null })
+    const run = (id: string, conversationId: string, parentId: string | null) => service.store.putRun({ id, conversationId, agentId: chief.id, rootId: 'r0', parentId, ancestry: [chief.id], status: 'running', threadId: null, turnId: null,
+      messageId: 'x', input: '', inputMessageId: 'x', agent: chief, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now } as never)
+    run('r0', a.id, null); run('r1', b.id, 'r0'); run('r2', c.id, 'r1')
+    const delegation = (id: string, source: string, target: string, parent: string, child: string) => service.store.putDelegation({ id, idempotencyKey: id, rootRunId: 'r0', parentRunId: parent, childRunId: child, sourceConversationId: source, targetConversationId: target, status: 'running' } as never)
+    delegation('d1', a.id, b.id, 'r0', 'r1'); delegation('d2', b.id, c.id, 'r1', 'r2')
+
+    broker.missions.onUsage(c.id, { inputTokens: 300, outputTokens: 0, costUsd: 0 }, 'r2')
+    broker.missions.onUsage(b.id, { inputTokens: 200, outputTokens: 0, costUsd: 0 }, 'r1')
+    expect(service.store.mission('m1')!.usage).toMatchObject({ inputTokens: 500, reports: 2 })
+    broker.missions.onUsage(c.id, { inputTokens: 600, outputTokens: 0, costUsd: 0 }, 'r2')
+    expect(service.store.mission('m1')!.status).toBe('failed')
+    expect(stop.mock.calls.map(([id]) => id).sort()).toEqual([a.id, b.id, c.id].sort())
+  })
+
+  it('aumenta o orçamento e retoma a missão parada por ele', async () => {
+    const { service, chief, workspace, broker, inputs } = setup([
+      async (context, b) => { await usage(b, context, 1200) },
+      async (context, b) => { await call(b, context, 'mission_complete', { result: 'Terminei depois do aumento.' }) },
+    ])
+    const routine = service.saveRoutine({ name: 'Teto', instructions: 'Trabalhe.', tasks: ['Tarefa'], workspaceId: workspace.id, trigger: { kind: 'once', at: new Date().toISOString() }, budget: { maxTokens: 1000 } })
+    const started = service.runRoutine(routine.id)
+    await vi.waitFor(() => expect(service.store.mission(started.id)!.status).toBe('failed'), { timeout: 15_000, interval: 100 })
+    await expect(service.missionAction(started.id, 'raise_budget', JSON.stringify({ maxTokens: 1100 }))).rejects.toThrow(/maior que o já usado/)
+
+    const other = service.saveConversation({ workspaceId: workspace.id, agentIds: [chief.id] })
+    const context = { agent: chief, conversation: other, run: { id: 'r', parentId: null, conversationId: other.id, workspaceId: workspace.id, workspacePath: workspace.path, planMode: false, ancestry: [chief.id] }, message: { id: 'm' }, signal: new AbortController().signal }
+    await expect(call(broker, context, 'mission_control', { mission_id: started.id, action: 'raise_budget', max_tokens: 5000 })).resolves.toContain('Aumentou o orçamento')
+    expect(service.store.mission(started.id)!.budget).toEqual({ maxTokens: 5000 })
+    await vi.waitFor(() => expect(service.store.mission(started.id)!.status).toBe('completed'), { timeout: 15_000, interval: 100 })
+    const mission = service.store.mission(started.id)!
+    expect(inputs).toHaveLength(2)
+    expect(inputs[1]).toContain('aumentou o orçamento')
+    expect(mission.updates.some(update => update.text.startsWith('Orçamento aumentado e missão retomada'))).toBe(true)
+    expect(mission.report).not.toContain('Interrompida pelo orçamento')
+  }, 25_000)
 })

@@ -11,6 +11,7 @@ import type { AgentRuntime, RuntimeThread } from './agent-runtime'
 import type { DynamicTool } from './codex'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { CliToolBridge } from './cli-tool-bridge'
+import { piUsage } from './mission-budget'
 
 type Value = Record<string, unknown>
 type ToolResult = { success: boolean; contentItems?: { text?: string }[] }
@@ -249,6 +250,7 @@ export class PiRuntime extends EventEmitter implements AgentRuntime {
       turn.error = assistant.stopReason === 'error' ? (typeof assistant.errorMessage === 'string' ? assistant.errorMessage : 'O modelo Pi não concluiu a resposta.') : undefined
       turn.interrupted = turn.interrupted || assistant.stopReason === 'aborted'
       this.publish(context, turn, { method: 'item/completed', params: { ...params, item: { type: 'agentMessage', text: turn.text } } })
+      if (record(assistant.usage)) this.publish(context, turn, { method: 'turn/usage', params: { ...params, usage: piUsage(assistant) } })
     }
     if (message.type === 'agent_settled') this.complete(context, turn.interrupted ? 'interrupted' : turn.error ? 'failed' : 'completed', turn.error)
     if (message.type === 'extension_error') { this.complete(context, 'failed', 'A extensão de ferramentas do Pi falhou.'); this.dispose(context) }

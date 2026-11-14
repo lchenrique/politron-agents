@@ -1,6 +1,6 @@
 import { promises as fs, realpathSync } from 'node:fs'
 import { basename, isAbsolute, join, parse, relative } from 'node:path'
-import { ASSISTANT_ID, type Agent, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type Mission, type MissionAction, type Routine, type StartMissionInput, type Workspace } from '../../shared/v9'
+import { ASSISTANT_ID, type Agent, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type Mission, type MissionAction, type MissionBudget, type Routine, type StartMissionInput, type Workspace } from '../../shared/v9'
 import { describeTrigger, validateTrigger, ACTIVE_MISSION } from '../../shared/missions'
 import { buildSelfProfileUpdate, SELF_PROFILE_FIELDS } from './boo-profile'
 import { validProjectFolderName } from './git-workspaces'
@@ -31,6 +31,7 @@ export interface ChiefHost {
   saveRoutine(input: Partial<Routine>): Routine
   deleteRoutine(routineId: string): void
   startMission(input: StartMissionInput): Mission | Promise<Mission>
+  runRoutine(routineId: string): Mission
   /** Worktrees de tarefa (branch boo/...): PR via gh e limpeza depois de merge ou descarte. */
   openTaskPullRequest(workspaceId: string): Promise<string>
   cleanupTaskWorktree(workspaceId: string, discard?: boolean): Promise<string>
@@ -122,8 +123,15 @@ export async function resolveProjectDirectory(raw: string): Promise<string> {
   return resolved
 }
 
+/** Orçamento em snake_case da ferramenta para o formato da missão; undefined quando nenhum limite veio. */
+function budgetArgs(args: Record<string, unknown>) {
+  const value = { maxCostUsd: args.max_cost_usd, maxTokens: args.max_tokens, maxMinutes: args.max_minutes }
+  return Object.values(value).some(item => item !== undefined) ? value as MissionBudget : undefined
+}
+
 function routineTrigger(args: Record<string, unknown>) {
   const schedule = String(args.schedule)
+  if (schedule === 'once') return validateTrigger({ kind: 'once', at: args.at === undefined || args.at === 'now' ? new Date().toISOString() : args.at })
   return validateTrigger(schedule === 'daily' ? { kind: 'daily', time: args.time, weekdays: args.weekdays } : schedule === 'interval' ? { kind: 'interval', minutes: args.minutes } : { kind: 'event', event: schedule })
 }
 
@@ -131,7 +139,10 @@ export function chiefToolDefinitions(tool: (name: string, description: string, p
   const projectId = { type: 'string', description: 'ID do projeto (de project_list).' }
   const sessionId = { type: 'string', description: 'ID da sessão (de project_overview).' }
   const agents = { type: 'array', items: { type: 'string' }, maxItems: 10, description: 'Nomes, @menções ou IDs dos Boos.' }
-  const schedule = { schedule: { type: 'string', enum: ['daily', 'interval', 'app-start', 'project-changed'] }, time: { type: 'string', description: 'HH:MM para daily.' }, weekdays: { type: 'array', items: { type: 'number' }, description: '0=domingo até 6=sábado; vazio = todos.' }, minutes: { type: 'number', description: 'Para interval, mínimo 15.' } }
+  const schedule = { schedule: { type: 'string', enum: ['daily', 'interval', 'app-start', 'project-changed', 'once'] }, time: { type: 'string', description: 'HH:MM para daily.' }, weekdays: { type: 'array', items: { type: 'number' }, description: '0=domingo até 6=sábado; vazio = todos.' }, minutes: { type: 'number', description: 'Para interval, mínimo 15.' },
+    at: { type: 'string', description: 'Para once: data e hora ISO 8601 com fuso (ex.: 2026-11-14T23:00:00-03:00) ou "now" para começar já.' } }
+  const budget = { max_cost_usd: { type: 'number', description: 'Teto de custo em US$ (só motores que informam custo).' }, max_tokens: { type: 'number', description: 'Teto de tokens, somando as delegações.' }, max_minutes: { type: 'number', description: 'Duração máxima em minutos.' } }
+  const tasks = { tasks: { type: 'array', items: { type: 'string' }, maxItems: 30, description: 'Lista de tarefas, uma por item; vira os passos da missão.' } }
   const read = [
     tool('project_list', 'Lista todos os projetos ativos do Boobot: pasta, sessões, time padrão, execuções ativas, missões abertas e rotinas, mais a organização atual do sidebar. Só leitura.', {}, []),
     tool('project_overview', 'Panorama de um projeto: sessões com última atividade, quem está trabalhando em quê, aprovações pendentes, delegações ativas, missões e rotinas. Só leitura.', { project_id: projectId }, ['project_id']),
@@ -151,10 +162,10 @@ export function chiefToolDefinitions(tool: (name: string, description: string, p
     tool('team_set', 'Define o time padrão de um projeto (project_id) ou os participantes de uma sessão (conversation_id). Informe só um dos dois. Ação direta.', { project_id: projectId, conversation_id: sessionId, agents }, ['agents']),
     tool('agent_update', 'Edita outro Boo: nome, menção, descrição, instruções, cor, motor, modelo e esforço. Não muda papel nem permissões. Para você mesmo, use self_update. Ação direta.', { agent: { type: 'string' }, name: { type: 'string' }, alias: { type: 'string' }, description: { type: 'string' }, instructions: { type: 'string' }, color: { type: 'string', description: '#RRGGBB' }, runtime: { type: 'string', enum: [...RUNTIMES] }, model: { type: 'string', description: 'Identificador do modelo; vazio usa o padrão do motor.' }, effort: { type: 'string', enum: [...EFFORTS] } }, ['agent']),
     tool('self_update', 'Edita o seu próprio perfil: descrição, instruções, nome, aparência, motor, modelo e esforço. Não muda papel nem permissões. Vale nas próximas respostas. Ação direta.', { ...profileProperties, runtime: { type: 'string', enum: [...RUNTIMES] }, model: { type: 'string' }, effort: { type: 'string', enum: [...EFFORTS] } }, []),
-    tool('routine_create', 'Cria uma rotina permanente em um projeto (padrão: o projeto atual): o Boobot dispara uma missão a cada execução, mesmo com o chat fechado. Use para acompanhamento recorrente, revisão diária, monitoramento ou reação a mudanças. Ação direta.', { name: { type: 'string' }, instructions: { type: 'string', description: 'O que verificar, o que pode corrigir sozinho e o que entregar no resumo.' }, ...schedule, project_id: projectId, agent: { type: 'string', description: 'Responsável; padrão é você.' }, max_turns: { type: 'number' } }, ['name', 'instructions', 'schedule']),
-    tool('routine_update', 'Edita uma rotina: nome, instruções, gatilho, responsável, turnos ou ativa/desativa. Ação direta.', { routine_id: { type: 'string' }, name: { type: 'string' }, instructions: { type: 'string' }, ...schedule, agent: { type: 'string' }, enabled: { type: 'boolean' }, max_turns: { type: 'number' } }, ['routine_id']),
+    tool('routine_create', 'Cria uma rotina em um projeto (padrão: o projeto atual): o Boobot dispara uma missão a cada execução, mesmo com o chat fechado. Use para acompanhamento recorrente, revisão diária, monitoramento ou reação a mudanças. Missão noturna: schedule once com at (horário ou "now"), tasks e orçamento (max_cost_usd, max_tokens, max_minutes); ao terminar fica um relatório na sessão. Ação direta.', { name: { type: 'string' }, instructions: { type: 'string', description: 'O que verificar, o que pode corrigir sozinho e o que entregar no resumo. Opcional quando há tasks.' }, ...schedule, ...tasks, ...budget, project_id: projectId, agent: { type: 'string', description: 'Responsável; padrão é você.' }, max_turns: { type: 'number' } }, ['name', 'schedule']),
+    tool('routine_update', 'Edita uma rotina: nome, instruções, gatilho, tarefas, orçamento, responsável, turnos ou ativa/desativa. Ação direta.', { routine_id: { type: 'string' }, name: { type: 'string' }, instructions: { type: 'string' }, ...schedule, ...tasks, ...budget, agent: { type: 'string' }, enabled: { type: 'boolean' }, max_turns: { type: 'number' } }, ['routine_id']),
     tool('mission_create', 'Abre uma missão em uma sessão nova de qualquer projeto, com um responsável (padrão: você), e começa a executar. Ação direta.', { goal: { type: 'string' }, title: { type: 'string' }, project_id: projectId, agent: { type: 'string' }, max_turns: { type: 'number' } }, ['goal']),
-    tool('mission_control', 'Pausa, retoma, responde ou estende uma missão de outra sessão. Cancelar é mission_cancel. Ação direta.', { mission_id: { type: 'string' }, action: { type: 'string', enum: ['pause', 'resume', 'reply', 'extend'] }, text: { type: 'string', description: 'Resposta, para reply.' } }, ['mission_id', 'action']),
+    tool('mission_control', 'Pausa, retoma, responde ou estende uma missão de outra sessão. raise_budget aumenta o orçamento de uma missão parada por ele e retoma; sem limites informados, cada limite sobe metade. Cancelar é mission_cancel. Ação direta.', { mission_id: { type: 'string' }, action: { type: 'string', enum: ['pause', 'resume', 'reply', 'extend', 'raise_budget'] }, text: { type: 'string', description: 'Resposta, para reply.' }, ...budget }, ['mission_id', 'action']),
     tool('sidebar_update', 'Muda a ordem e as pastas do sidebar. Envie só as chaves que mudam: projectOrder (IDs de projetos), groups ([{name, workspaceIds}]), sessionOrder ({projectId: [IDs de sessões]}), agentOrder (IDs de Boos). Ação direta.', { layout: { type: 'object' } }, ['layout']),
     tool('board_team_create', 'Cria uma equipe opcional no board da empresa. Explique o nome e os membros; sempre pede aprovação explícita antes de salvar.', { name: { type: 'string' }, description: { type: 'string' }, agents }, ['name', 'agents']),
     tool('board_task_create', 'Cria um cartão explícito no board, atribui um responsável e um revisor diferente e inicia a missão após aprovação do usuário. Mensagens comuns não viram cartão. Para código, informe project_id e revise os critérios de aceite antes de confirmar.', { title: { type: 'string' }, description: { type: 'string' }, acceptance_criteria: { type: 'string' }, kind: { type: 'string', enum: ['general', 'code'] }, team_id: { type: 'string' }, project_id: projectId, assignee: { type: 'string' }, reviewer: { type: 'string' } }, ['title', 'description', 'acceptance_criteria', 'kind', 'team_id', 'assignee', 'reviewer']),
@@ -385,11 +396,17 @@ export async function runChiefTool(host: ChiefHost, call: ChiefCall, name: strin
     if (args.enabled !== undefined && typeof args.enabled !== 'boolean') throw new Error('enabled precisa ser verdadeiro ou falso.')
     const routine = host.saveRoutine({ ...(previous ? { id: previous.id } : {}), ...(workspace ? { workspaceId: workspace.id } : {}),
       ...(args.name !== undefined || !previous ? { name: str(args.name, 80, 'Nome da rotina').trim() } : {}),
-      ...(args.instructions !== undefined || !previous ? { instructions: str(args.instructions, 8000, 'Instruções').trim() } : {}),
+      ...(args.instructions !== undefined || !previous ? { instructions: args.instructions === undefined && Array.isArray(args.tasks) ? '' : str(args.instructions, 8000, 'Instruções').trim() } : {}),
       ...(args.schedule !== undefined || !previous ? { trigger: routineTrigger(args) } : {}),
+      ...(args.tasks !== undefined ? { tasks: Array.isArray(args.tasks) ? args.tasks : [] } : {}), ...(budgetArgs(args) ? { budget: budgetArgs(args) } : {}),
       ...(owner ? { agentId: owner.id } : {}), ...(typeof args.enabled === 'boolean' ? { enabled: args.enabled } : {}),
       ...(typeof args.max_turns === 'number' ? { maxTurns: args.max_turns } : {}) })
     call.record(`${previous ? 'Atualizou' : 'Criou'} a rotina ${routine.name} (${describeTrigger(routine.trigger)})`)
+    // "now" começa já, sem esperar o próximo tique de 30 s do agendador.
+    if (!previous && args.schedule === 'once' && (args.at === undefined || args.at === 'now') && routine.enabled) {
+      const mission = host.runRoutine(routine.id)
+      return `Missão ${mission.title} iniciada agora (${mission.steps.length} tarefa(s)${mission.budget ? `, orçamento ${json(mission.budget)}` : ''}). Ao terminar, o relatório fica fixo na sessão ${mission.conversationId}.`
+    }
     return `Rotina ${routine.name} ${previous ? 'atualizada' : 'criada'} (${describeTrigger(routine.trigger)}${routine.enabled ? '' : ', desativada'}${routine.nextRunAt ? `, próxima em ${new Date(routine.nextRunAt).toLocaleString('pt-BR')}` : ''}). Roda mesmo com o chat fechado enquanto o Boobot estiver aberto ou na bandeja.`
   }
   if (name === 'mission_create') {
@@ -410,9 +427,10 @@ export async function runChiefTool(host: ChiefHost, call: ChiefCall, name: strin
       return `Missão ${mission.title} cancelada.`
     }
     const action = String(args.action)
-    if (!['pause', 'resume', 'reply', 'extend'].includes(action)) throw new Error('Ação inválida: use pause, resume, reply ou extend.')
-    const saved = await host.missionAction(mission.id, action as MissionAction, optional(args.text, 4000, 'Texto') || '')
-    const verb = { pause: 'Pausou', resume: 'Retomou', reply: 'Respondeu', extend: 'Estendeu' }[action as 'pause']
+    if (!['pause', 'resume', 'reply', 'extend', 'raise_budget'].includes(action)) throw new Error('Ação inválida: use pause, resume, reply, extend ou raise_budget.')
+    const raised = action === 'raise_budget' ? budgetArgs(args) : undefined
+    const saved = await host.missionAction(mission.id, action as MissionAction, action === 'raise_budget' ? (raised ? json(raised) : '') : optional(args.text, 4000, 'Texto') || '')
+    const verb = { pause: 'Pausou', resume: 'Retomou', reply: 'Respondeu', extend: 'Estendeu', raise_budget: 'Aumentou o orçamento e retomou' }[action as 'pause']
     call.record(`${verb} a missão ${saved.title}`)
     return `${verb} a missão ${saved.title} (estado: ${saved.status}).`
   }

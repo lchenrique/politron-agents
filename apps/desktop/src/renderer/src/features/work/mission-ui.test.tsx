@@ -39,4 +39,12 @@ describe('MissionControls', () => {
 
     await waitFor(() => expect(window.appAPI.missionAction).toHaveBeenCalledExactlyOnceWith('mission-1', 'cancel', undefined))
   })
+
+  it('missão parada pelo orçamento oferece aumentar e retomar no lugar de Retomar', async () => {
+    const stopped: Mission = { ...mission, status: 'failed', budget: { maxTokens: 1000 }, updates: [{ at: '', agentId: null, kind: 'error', text: 'Orçamento esgotado: 1.200 de 1.000 tokens.' }] }
+    render(<MissionControls mission={stopped} onNotice={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Retomar' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Aumentar orçamento e retomar' }))
+    await waitFor(() => expect(window.appAPI.missionAction).toHaveBeenCalledExactlyOnceWith('mission-1', 'raise_budget', undefined))
+  })
 })

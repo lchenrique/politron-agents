@@ -3,7 +3,7 @@ import { ASSISTANT_ID, type Agent, type Mission, type MissionAction, type Routin
 import { DEFAULT_MISSION_TURNS, DEFAULT_ROUTINE_TURNS, decideAfterTurn, missionBrief, nextRoutineRun, normalizeSteps, validateTrigger } from '../../shared/missions'
 import type { WorkspaceStore } from './store'
 import { wakeBlock } from './waits'
-import { BUDGET_STOP_PREFIX, addUsage, budgetCheck, buildMissionReport, parseTasks, sanitizeBudget, taskGoal, type UsageDelta } from './mission-budget'
+import { BUDGET_STOP_PREFIX, addUsage, budgetCheck, buildMissionReport, describeBudget, parseTasks, raiseBudget, sanitizeBudget, taskGoal, type UsageDelta } from './mission-budget'
 
 const ACTIVE_RUN = ['queued', 'running', 'waiting']
 const FINISHED: Mission['status'][] = ['completed', 'failed', 'cancelled']
@@ -47,9 +47,22 @@ export class MissionEngine {
     if (report) { this.host.post(next.conversationId, 'activity', null, report); this.host.notify(next.conversationId, `Relatório: ${next.title}`, report.split('\n')[0]) }
     return next
   }
-  /** Conversas da missão: a própria e as privadas das delegações feitas a partir dela. */
+  /** Conversas da missão: a própria e as privadas das delegações feitas a partir dela, em qualquer profundidade. */
   private missionConversations(mission: Mission) {
-    return [mission.conversationId, ...this.store.delegations().filter(item => item.sourceConversationId === mission.conversationId).map(item => item.targetConversationId)]
+    const delegations = this.store.delegations(), found = [mission.conversationId]
+    for (let index = 0; index < found.length; index++)
+      for (const item of delegations) if (item.sourceConversationId === found[index] && !found.includes(item.targetConversationId)) found.push(item.targetConversationId)
+    return found
+  }
+  /** Missão aberta da execução ou de algum ancestral dela (parentId até a raiz): delegações de delegações somam na missão de origem. */
+  private missionForRun(runId: string): Mission | undefined {
+    const seen = new Set<string>()
+    for (let run = this.store.run(runId); run && !seen.has(run.id); run = run.parentId ? this.store.run(run.parentId) : this.store.run(run.rootId)) {
+      seen.add(run.id)
+      const mission = this.store.openMission(run.conversationId)
+      if (mission) return mission
+    }
+    return undefined
   }
   private changedFiles(mission: Mission): string[] {
     const conversations = new Set(this.missionConversations(mission))
@@ -57,10 +70,8 @@ export class MissionEngine {
     return [...new Set(runs.flatMap(run => this.store.fileChangesForRun(run.id)).filter(change => change.status === 'applied').map(change => change.path))]
   }
   /** Consumo informado por um motor numa conversa da missão (ou numa delegação dela). */
-  onUsage(conversationId: string, delta: UsageDelta) {
-    // shortcut: só sobe um nível de delegação; delegações aninhadas não somam ao orçamento da missão de origem.
-    const mission = this.store.openMission(conversationId)
-      || this.store.delegations().filter(item => item.targetConversationId === conversationId).map(item => this.store.openMission(item.sourceConversationId)).find(Boolean)
+  onUsage(conversationId: string, delta: UsageDelta, runId?: string) {
+    const mission = this.store.openMission(conversationId) || (runId ? this.missionForRun(runId) : undefined)
     if (!mission || (!delta.inputTokens && !delta.outputTokens && !delta.costUsd)) return
     this.enforceBudget(this.save({ ...mission, usage: addUsage(mission.usage, delta) }))
   }
@@ -174,6 +185,17 @@ export class MissionEngine {
       const saved = this.save(this.note({ ...mission, status: action === 'pause' ? 'paused' : 'cancelled', completedAt: action === 'cancel' ? new Date().toISOString() : null }, 'system', action === 'pause' ? 'Pausada pelo usuário.' : 'Cancelada pelo usuário.'))
       await this.host.stop(mission.conversationId)
       return saved
+    }
+    if (action === 'raise_budget') {
+      if (!mission.budget) throw new Error('Esta missão não tem orçamento.')
+      if (!['waiting', 'paused', 'failed'].includes(mission.status)) throw new Error('A missão precisa estar parada para aumentar o orçamento e retomar.')
+      let requested: unknown
+      try { requested = reply ? JSON.parse(reply) : undefined } catch { throw new Error('Orçamento inválido: envie maxCostUsd, maxTokens ou maxMinutes.') }
+      const budget = raiseBudget(mission, requested)
+      const resumed = this.save(this.note({ ...mission, budget, budgetWarned: false, status: 'active', question: null, options: [], idleTurns: 0, failures: 0, completedAt: null,
+        maxTurns: mission.turns >= mission.maxTurns ? mission.maxTurns + DEFAULT_MISSION_TURNS / 2 : mission.maxTurns }, 'decision', `Orçamento aumentado e missão retomada (${describeBudget(budget)}).`))
+      if (!this.busy(resumed.conversationId)) this.continueMission(resumed, 'O usuário aumentou o orçamento e pediu para retomar. Confira o estado atual e continue de onde parou.')
+      return resumed
     }
     if (action === 'resume' || action === 'reply' || action === 'extend') {
       if (!['waiting', 'paused', 'failed'].includes(mission.status)) throw new Error('Esta missão não está aguardando você.')

@@ -1502,7 +1502,7 @@ export class AppService extends EventEmitter {
       this.completedTurns.set(runtime, outcomes)
     }
     const usage = usageFromRuntimeEvent(event)
-    if (usage) { const owner = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === usage.threadId); if (owner) this.missions.onUsage(owner.conversation.id, usage.usage); return }
+    if (usage) { const owner = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === usage.threadId); if (owner) this.missions.onUsage(owner.conversation.id, usage.usage, owner.run.id); return }
     if (event.method === 'item/tool/call') {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (!context) { runtime.respond(event.id, { success: false, contentItems: [{ type: 'inputText', text: 'Execução não encontrada.' }] }); return }
