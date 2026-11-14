@@ -26,6 +26,7 @@ export function shouldVerify(input: { command?: string; status: string; planMode
 
 /** O final da saída costuma ter o erro; o começo, o contexto. Fica com os dois, até ~4 KB. */
 export function summarizeOutput(output: string, max = SUMMARY_MAX): string {
+  // eslint-disable-next-line no-control-regex -- remove códigos de cor ANSI da saída do comando
   const clean = output.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim()
   if (clean.length <= max) return clean
   const head = Math.floor(max / 4)
