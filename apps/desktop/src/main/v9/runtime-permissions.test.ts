@@ -8,7 +8,7 @@ describe('permissões do runtime por agente', () => {
   })
 
   it('mapeia acesso total do Codex para sandbox irrestrito e política sem prompts', () => {
-    expect(codexRuntimePermissions({ runtimePermissionMode: 'bypass' })).toEqual({ sandbox: 'danger-full-access', approvalPolicy: 'never' })
+    expect(codexRuntimePermissions({ runtimePermissionMode: 'bypass' })).toEqual({ sandbox: 'danger-full-access', approvalPolicy: 'untrusted' })
   })
 
   it('mapeia bypass do Claude Code para bypassPermissions do SDK', () => {

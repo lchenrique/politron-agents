@@ -12,7 +12,8 @@ export const hasFullAccess = (agent: Pick<Agent, 'runtimePermissionMode'>) => ag
 
 export function codexRuntimePermissions(agent: Pick<Agent, 'runtimePermissionMode'>) {
   return hasFullAccess(agent)
-    ? { sandbox: 'danger-full-access' as const, approvalPolicy: 'never' as const }
+    // untrusted: o Codex pede cada exec/patch ao Boobot antes de rodar; no Acesso total o handler aprova na hora e só recusa a lista de bloqueio.
+    ? { sandbox: 'danger-full-access' as const, approvalPolicy: 'untrusted' as const }
     : { sandbox: 'read-only' as const, approvalPolicy: 'on-request' as const }
 }
 

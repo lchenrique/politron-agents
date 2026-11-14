@@ -13,7 +13,7 @@ import { createCommandEvidence, formatCommandEvidence } from './command-evidence
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
 import { blockedActionReason, codexApprovalAction, type GuardedAction } from './blocked-actions'
-import { shouldVerify, verifyTurn } from './verify-after-turn'
+import { gitFingerprint, shouldVerify, verifyTurn } from './verify-after-turn'
 import { effectiveRuntimeAgent, hasFullAccess } from './runtime-permissions'
 import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type BoardEvidence, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type ImageApiProvider, type ImageGenerationSettings, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
@@ -54,7 +54,7 @@ import type { MemoryActor } from './memories'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode' }
 
-type RunContext = { changedFiles?: boolean; nativeItems?: Map<string, Message>; run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
+type RunContext = { changedFiles?: boolean; gitBefore?: string | null; nativeItems?: Map<string, Message>; run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
   /** Autoaprendizado: chamadas de ferramenta (fora as de skill), erro seguido de sucesso, skill já gravada e revisão final em curso. */
   voiceReply?: boolean; toolCalls?: number; toolFailed?: boolean; recovered?: boolean; savedSkill?: boolean; reflecting?: boolean
   /** Resultado de ferramenta que chegou depois de o turno encerrar: vira uma continuação, uma vez só. */
@@ -1212,6 +1212,7 @@ export class AppService extends EventEmitter {
       context.runtime = runtime
       const directory = run.workspacePath
       await fs.mkdir(directory, { recursive: true })
+      if (this.store.workspace(run.workspaceId).verifyCommand) context.gitBefore = await gitFingerprint(directory, signal)
       const workspaceInstructions = this.store.workspace(run.workspaceId).instructions
       const workspaceContext = createHash('sha256').update(workspaceInstructions).digest('hex').slice(0, 16)
       const tools = this.tools(context)
@@ -1578,11 +1579,8 @@ export class AppService extends EventEmitter {
     // Ferramentas nativas (Acesso total): Codex manda commandExecution/fileChange; Claude manda nativeTool.
     if ((event.method === 'item/started' || event.method === 'item/completed') && ['commandExecution', 'fileChange', 'nativeTool'].includes(params.item?.type)) {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
+      // Bloqueio do Codex fica no pedido de aprovação acima (approvalPolicy untrusted): o item/started chega antes dele e ainda não executou nada.
       if (context && !context.reflecting) this.recordNativeTool(context, event.method === 'item/completed', params.item)
-      // shortcut: no Acesso total o Codex roda com approvalPolicy never e não pergunta; a ação bloqueada só é vista ao começar e o turno é interrompido. Trocar por regra nativa do Codex (execpolicy) quando der para configurá-la por sessão.
-      const native = context && event.method === 'item/started' && params.item.type !== 'nativeTool' ? nativeToolCall(params.item) : undefined
-      const blocked = native && context ? this.blockedReason(native.name === 'workspace_run_command' ? { command: String(native.args.command) } : { paths: changedPaths(params.item.changes) }, context.run.workspacePath) : null
-      if (blocked && context) { this.addMessage(context.conversation.id, context.agent, 'activity', `Turno interrompido. ${blocked}`, 'failed', context.run.id); void runtime.interrupt(params.threadId, params.turnId).catch(() => undefined) }
     }
   }
   private recordNativeTool(context: RunContext, done: boolean, item: Record<string, unknown>) {
@@ -1597,7 +1595,7 @@ export class AppService extends EventEmitter {
       if (id) items.set(id, recorded)
     }
     if (!done || !recorded.tool) return
-    const failed = item.isError === true || item.status === 'failed' || (typeof item.exitCode === 'number' && item.exitCode !== 0)
+    const failed = item.isError === true || item.status === 'failed' || item.status === 'declined' || (typeof item.exitCode === 'number' && item.exitCode !== 0)
     if (!failed && recorded.tool.name === 'workspace_write') context.changedFiles = true
     const output = item.aggregatedOutput ?? item.output ?? changedPaths(item.changes).join('\n')
     const next = { ...recorded, tool: { ...finishedTool(recorded.tool, failed ? 'failed' : 'completed', output, redactApprovalUrls), ...(typeof item.exitCode === 'number' ? { exitCode: item.exitCode } : {}) } }
@@ -2238,7 +2236,9 @@ export class AppService extends EventEmitter {
   private async verifyAfterTurn(context: RunContext, signal: AbortSignal): Promise<void> {
     const { run, agent, conversation } = context
     const command = this.store.workspace(run.workspaceId).verifyCommand
-    if (signal.aborted || !command || !shouldVerify({ command, status: run.status, planMode: run.planMode, changedFiles: context.changedFiles, verifyAttempt: run.verifyAttempt })) return
+    // Alteração feita só por comando de shell não passa por workspace_write: compara o estado git do início com o do fim.
+    const changedFiles = context.changedFiles || (context.gitBefore != null && await gitFingerprint(run.workspacePath, signal) !== context.gitBefore)
+    if (signal.aborted || !command || !shouldVerify({ command, status: run.status, planMode: run.planMode, changedFiles, verifyAttempt: run.verifyAttempt })) return
     const outcome = await verifyTurn({
       putCommandEvidence: evidence => this.store.putCommandEvidence(evidence),
       activity: (value, tool) => {

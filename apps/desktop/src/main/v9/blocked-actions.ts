@@ -72,17 +72,22 @@ function writesProductionEnv(command: string): string | null {
   return null
 }
 
+/** O comando e cada trecho entre aspas com espaço: o Codex manda `pwsh.exe -Command 'rm -rf x'` e `bash -lc "..."` como texto único. */
+const withNested = (command: string) => [command, ...[...command.matchAll(/"((?:[^"\\]|\\.)*\s(?:[^"\\]|\\.)*)"|'([^']*\s[^']*)'/g)].map(match => (match[1] ?? match[2]).replace(/\\"/g, '"'))]
+
 const refusal = (rule: string) => `Ação bloqueada pela lista do que nunca fazer (${rule}). Esta regra vale mesmo em Acesso total e não será aprovada. Não tente contornar; siga por outro caminho ou explique ao usuário o que precisa.`
 
 /** Motivo da recusa, ou null quando a ação pode seguir. Nunca pergunta ao usuário. */
 export function blockedActionReason(action: GuardedAction, root: string, rules: BlockedActionRules = DEFAULT_BLOCKED_ACTIONS, branch?: string | null): string | null {
   const command = action.command?.trim()
-  if (command) {
-    if (rules.forcePushMain && forcePushesMain(command, branch)) return refusal('push forçado para main/master')
-    const outside = rules.deleteOutsideWorkspace ? deletesOutside(command, root, action.cwd ? resolve(root, action.cwd) : root) : null
+  if (command) for (const candidate of withNested(command)) {
+    if (rules.forcePushMain && forcePushesMain(candidate, branch)) return refusal('push forçado para main/master')
+    const outside = rules.deleteOutsideWorkspace ? deletesOutside(candidate, root, action.cwd ? resolve(root, action.cwd) : root) : null
     if (outside) return refusal(`apagar fora da pasta do workspace: ${outside}`)
-    const env = rules.productionEnvWrite ? writesProductionEnv(command) : null
+    const env = rules.productionEnvWrite ? writesProductionEnv(candidate) : null
     if (env) return refusal(`escrever em ${env}`)
+  }
+  if (command) {
     const pattern = rules.patterns.find(value => { try { return new RegExp(value, 'i').test(command) } catch { return false } })
     if (pattern) return refusal(`padrão ${pattern}`)
   }

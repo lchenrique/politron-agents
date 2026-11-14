@@ -1,7 +1,10 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { ActivityTool, CommandEvidence, CommandResult } from '../../shared/v9'
 import { createCommandEvidence, runCommand } from './command-evidence'
 import { finishedTool, startedTool } from './tool-activity'
+import { runGit } from './git-processes'
 
 /** "Pronto com prova": no máximo 3 continuações automáticas para corrigir uma verificação que falhou. */
 export const MAX_VERIFY_ATTEMPTS = 3
@@ -22,6 +25,25 @@ export interface VerifyTurnHost {
 /** Verifica só turnos de execução concluídos que mexeram em arquivos, ou que já são a correção de uma verificação. */
 export function shouldVerify(input: { command?: string; status: string; planMode?: boolean; changedFiles?: boolean; verifyAttempt?: number }): boolean {
   return !!input.command?.trim() && input.status === 'completed' && !input.planMode && (!!input.changedFiles || (input.verifyAttempt ?? 0) > 0)
+}
+
+/**
+ * Retrato do estado git da pasta: HEAD, `git status` e tamanho/data de cada arquivo listado.
+ * Compara início e fim do turno para pegar alterações feitas só por comando de shell. Fora de git devolve null.
+ */
+export async function gitFingerprint(cwd: string, signal?: AbortSignal): Promise<string | null> {
+  try {
+    const top = await runGit(cwd, ['rev-parse', '--show-toplevel'], signal)
+    const head = await runGit(cwd, ['rev-parse', '--verify', '-q', 'HEAD'], signal).catch(() => '')
+    const status = await runGit(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], signal)
+    const hash = createHash('sha256').update(head).update('\0').update(status)
+    // O status não muda quando um arquivo já modificado é editado de novo; tamanho e data pegam esse caso.
+    for (const entry of status.split('\0').filter(Boolean)) {
+      const info = await stat(join(top, entry.slice(3))).catch(() => null)
+      hash.update(info ? `\0${info.size}:${info.mtimeMs}` : '\0-')
+    }
+    return hash.digest('hex')
+  } catch { return null }
 }
 
 /** O final da saída costuma ter o erro; o começo, o contexto. Fica com os dois, até ~4 KB. */

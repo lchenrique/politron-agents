@@ -137,8 +137,9 @@ export class CodexRuntime extends EventEmitter implements AgentRuntime {
       'features.browser_use_full_cdp_access': false,
       'features.apply_patch_freeform': false
     }
+    // Precisa de true: o app-server sobe com --disable shell_tool/unified_exec; só apagar a chave deixava o shell desligado.
     // Acesso total (como o full-access do Paseo): shell e edição nativos do Codex voltam a funcionar.
-    if (hasFullAccess(agent)) for (const key of ['features.shell_tool', 'features.unified_exec', 'features.apply_patch_freeform']) delete config[key]
+    if (hasFullAccess(agent)) for (const key of ['features.shell_tool', 'features.unified_exec', 'features.apply_patch_freeform']) config[key] = true
     for (const name of await this.configuredMcpNames(join(directory, '.codex', 'config.toml'))) config[`mcp_servers.${name}.enabled`] = false
     if (externalBrowser) {
       // Único MCP habilitado: o proxy do Politron, que pede aprovação a cada chamada. O node_repl oficial nunca é registrado aqui.

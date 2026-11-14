@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
@@ -8,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ActivityTool, CommandEvidence, CommandResult } from '../../shared/v9'
 import type { Agent, Conversation } from '../../shared/v9'
 import type { AgentRuntime } from './agent-runtime'
-import { MAX_VERIFY_ATTEMPTS, shouldVerify, summarizeOutput, verifyTurn } from './verify-after-turn'
+import { MAX_VERIFY_ATTEMPTS, gitFingerprint, shouldVerify, summarizeOutput, verifyTurn } from './verify-after-turn'
 
 vi.mock('electron', () => ({ app: {}, dialog: {}, shell: {}, BrowserWindow: { getAllWindows: () => [] }, Notification: { isSupported: () => false }, safeStorage: { isEncryptionAvailable: () => false } }))
 import { AppService } from './workspace'
@@ -169,19 +170,58 @@ describe('pronto com prova no AppService', () => {
     await first
   })
 
-  it('Codex sem pedido de aprovação (Acesso total): comando bloqueado interrompe o turno ao começar', async () => {
+  it('Codex: item/started do comando bloqueado não interrompe o turno; a recusa vem do pedido de aprovação', async () => {
     const { service, codex, conversation, sends } = setup()
     const interrupt = vi.spyOn(codex, 'interrupt')
     const first = service.send(conversation.id, 'Limpe')
     sends.push(first)
     await vi.waitFor(() => expect(codex.inputs).toHaveLength(1))
-    codex.emit('event', { method: 'item/started', params: { threadId: codex.threads[0], turnId: 'turn', item: { type: 'commandExecution', id: 'c1', command: 'npm test' } } })
-    expect(interrupt).not.toHaveBeenCalled()
+    // Ordem real do app-server (approvalPolicy untrusted): item/started, depois o pedido de aprovação, depois item/completed declined.
     codex.emit('event', { method: 'item/started', params: { threadId: codex.threads[0], turnId: 'turn', item: { type: 'commandExecution', id: 'c2', command: 'rm -rf /' } } })
-    expect(interrupt).toHaveBeenCalledWith(codex.threads[0], 'turn')
-    expect(service.store.history(conversation.id).some(message => message.role === 'activity' && message.text.startsWith('Turno interrompido. Ação bloqueada'))).toBe(true)
+    codex.approval(codex.threads[0], 'rm -rf /')
+    expect(codex.respond).toHaveBeenLastCalledWith('rm -rf /', { decision: 'decline' })
+    codex.emit('event', { method: 'item/completed', params: { threadId: codex.threads[0], turnId: 'turn', item: { type: 'commandExecution', id: 'c2', command: 'rm -rf /', status: 'declined' } } })
+    expect(interrupt).not.toHaveBeenCalled()
+    const history = service.store.history(conversation.id)
+    expect(history.some(message => message.role === 'activity' && message.status === 'failed' && /Ação bloqueada/.test(message.text))).toBe(true)
+    expect(history.find(message => message.tool?.name === 'workspace_run_command')?.tool?.status).toBe('failed')
     codex.complete(codex.threads[0])
     await first
+  })
+
+  it('workspace git: alteração feita só por comando de shell dispara a verificação; turno sem mudança não', async () => {
+    const { service, codex, path, conversation, sends } = setup('node check.js')
+    const git = (...args: string[]) => execFileSync('git', ['-C', path, ...args], { windowsHide: true })
+    git('init', '-q'); git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'base')
+    const quiet = service.send(conversation.id, 'Só responda')
+    sends.push(quiet)
+    await vi.waitFor(() => expect(codex.inputs).toHaveLength(1))
+    codex.complete(codex.threads[0])
+    await quiet
+    expect(service.store.recentCommandEvidence(10)).toHaveLength(0)
+
+    const shell = service.send(conversation.id, 'Crie ok.txt pelo terminal')
+    sends.push(shell)
+    await vi.waitFor(() => expect(codex.inputs).toHaveLength(2))
+    writeFileSync(join(path, 'ok.txt'), 'ok') // simula o comando de shell: nenhum workspace_write nem fileChange
+    codex.complete(codex.threads.at(-1)!)
+    await shell
+    await vi.waitFor(() => expect(service.store.recentCommandEvidence(10)).toHaveLength(1), { timeout: 20000 })
+    expect(service.store.recentCommandEvidence(10)[0]).toMatchObject({ command: 'node check.js', status: 'completed', exitCode: 0 })
+  }, 60000)
+
+  it('gitFingerprint muda com edição de arquivo já modificado e é null fora de git', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'boobot-fp-'))
+    try {
+      expect(await gitFingerprint(directory)).toBeNull()
+      execFileSync('git', ['-C', directory, 'init', '-q'], { windowsHide: true })
+      writeFileSync(join(directory, 'a.txt'), '1')
+      const first = await gitFingerprint(directory)
+      expect(first).toBeTruthy()
+      expect(await gitFingerprint(directory)).toBe(first)
+      writeFileSync(join(directory, 'a.txt'), '22')
+      expect(await gitFingerprint(directory)).not.toBe(first)
+    } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
   it('ferramentas do Boobot recusam comando e escrita bloqueados sem pedir aprovação', async () => {

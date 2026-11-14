@@ -17,7 +17,7 @@ describe('ferramentas nativas no Acesso total', () => {
   it('o mesmo modo liga o full access do Codex e o bypass do Claude', () => {
     const full = { runtimePermissionMode: 'bypass' as const }
     expect(hasFullAccess(full)).toBe(true)
-    expect(codexRuntimePermissions(full)).toEqual({ sandbox: 'danger-full-access', approvalPolicy: 'never' })
+    expect(codexRuntimePermissions(full)).toEqual({ sandbox: 'danger-full-access', approvalPolicy: 'untrusted' })
     expect(claudeRuntimePermissions(full)).toEqual({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true })
     expect(hasFullAccess({ runtimePermissionMode: 'managed' })).toBe(false)
   })
@@ -47,8 +47,8 @@ describe('Acesso total no Codex', () => {
     Object.assign(runtime, { start: async () => undefined, request: async (_method: string, params: { config: Record<string, unknown> }) => { configs.push(params.config); return { thread: { id: 't1' } } } })
     await runtime.thread({ ...ASSISTANT, runtimePermissionMode: 'bypass' }, process.cwd(), [])
     await runtime.thread({ ...ASSISTANT, runtimePermissionMode: 'managed' }, process.cwd(), [])
-    expect(configs[0]['features.shell_tool']).toBeUndefined()
-    expect(configs[0]['features.unified_exec']).toBeUndefined()
+    expect(configs[0]['features.shell_tool']).toBe(true)
+    expect(configs[0]['features.unified_exec']).toBe(true)
     expect(configs[0]['features.browser_use']).toBe(false)
     expect(configs[0]['features.computer_use']).toBe(false)
     expect(configs[1]['features.shell_tool']).toBe(false)

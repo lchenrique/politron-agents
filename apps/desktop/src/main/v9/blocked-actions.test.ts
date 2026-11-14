@@ -26,9 +26,9 @@ describe('lista do que nunca fazer', () => {
   })
 
   it('recusa apagar fora da pasta do workspace, inclusive a própria pasta', () => {
-    for (const command of ['rm -rf /', 'rm -rf ..', 'rm -rf ../outro', 'sudo rm -r ~/docs', `Remove-Item -Recurse -Force ${homedir()}`, 'rm -rf $HOME/x', 'del /s /q %USERPROFILE%\\x', 'rm -rf .', 'cd .. && rm -rf projeto', 'bash -lc rm -rf /tmp/x'])
+    for (const command of ['rm -rf /', 'rm -rf ..', 'rm -rf ../outro', 'sudo rm -r ~/docs', `Remove-Item -Recurse -Force ${homedir()}`, 'rm -rf $HOME/x', 'del /s /q %USERPROFILE%\\x', 'rm -rf .', 'cd .. && rm -rf projeto', 'bash -lc rm -rf /tmp/x', 'bash -lc "rm -rf /tmp/x"', `"C:\\pwsh.exe" -Command 'rm -rf D:/fora/lixo'`])
       expect(blocked(command), command).toMatch(/apagar fora da pasta/)
-    for (const command of ['rm -rf node_modules dist', 'rm file.txt', 'Remove-Item -Recurse -Force build', 'rd /s /q out', 'git rm --cached a.txt', 'npm test'])
+    for (const command of ['rm -rf node_modules dist', 'rm file.txt', 'Remove-Item -Recurse -Force build', 'rd /s /q out', 'git rm --cached a.txt', 'npm test', `"C:\\pwsh.exe" -Command 'node -v'`, `"C:\\pwsh.exe" -Command 'rm -rf dist'`])
       expect(blocked(command), command).toBeNull()
   })
 
