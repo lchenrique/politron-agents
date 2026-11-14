@@ -44,6 +44,8 @@ export interface Workspace {
   id: string; name: string; kind: 'local' | 'worktree' | 'free'; path: string
   branch: string | null; baseBranch: string | null; parentWorkspaceId: string | null
   instructions: string; defaultAgentIds: string[]; changes: number
+  /** "Pronto com prova": roda na pasta quando um Boo termina um turno que alterou arquivos. */
+  verifyCommand?: string
   permissions?: { chiefCreateAgents: boolean; chiefEditAgents: boolean; chiefManageTeam: boolean; chiefCreateSessions: boolean; filesWrite: 'inherit' | 'deny'; computerUse: 'inherit' | 'deny' }
   archived: boolean; createdAt: string
   /** Isolar tarefas em worktree: ausente = ligado quando a pasta é um repositório git. */
@@ -120,7 +122,7 @@ export interface Approval {
 }
 export interface Run {
   id: string; conversationId: string; agentId: string; rootId: string; parentId: string | null
-  ancestry: string[]; /** Notificações automáticas encadeadas desde a última mensagem do usuário (limita o laço Chief↔Boo). */ continuationDepth?: number; status: RunStatus; threadId: string | null; turnId: string | null
+  ancestry: string[]; /** Notificações automáticas encadeadas desde a última mensagem do usuário (limita o laço Chief↔Boo). */ continuationDepth?: number; /** Continuação aberta por verificação que falhou (1 a 3). */ verifyAttempt?: number; status: RunStatus; threadId: string | null; turnId: string | null
   messageId: string; input: string; inputMessageId?: string; planMode?: boolean; agent: Agent; modelOptions?: ModelRuntimeOptions; workspaceId: string; workspacePath: string; createdAt: string
   /** Gravado pelo store quando a execução chega a um estado final. */
   finishedAt?: string
@@ -235,7 +237,7 @@ export type WorkspaceEvent =
   | { type: 'mission'; mission: Mission }
 export interface AppAPI {
   snapshot(): Promise<Snapshot>
-  settingsPreferences(): Promise<{ canWrite: boolean; computerUse: boolean; approvalMode: Agent['approvalMode']; runtimePermissionMode: NonNullable<Agent['runtimePermissionMode']>; terminalEnabled: boolean; externalBrowserAlways?: boolean }>
+  settingsPreferences(): Promise<{ canWrite: boolean; computerUse: boolean; approvalMode: Agent['approvalMode']; runtimePermissionMode: NonNullable<Agent['runtimePermissionMode']>; terminalEnabled: boolean; externalBrowserAlways?: boolean; blockedActions?: import('./blocked-actions').BlockedActionRules }>
   /** Somente Desktop: autoriza o navegador real para todas as conversas. */
   saveExternalBrowserAlways?(enabled: boolean): Promise<void>
   saveAgent(input: Partial<Agent>): Promise<Agent>
@@ -243,6 +245,7 @@ export interface AppAPI {
   approvalGrants(agentId: string): Promise<ApprovalGrant[]>
   removeApprovalGrant(grantId: string, agentId: string): Promise<void>
   saveTerminalAccess(enabled: boolean): Promise<void>
+  saveBlockedActions(rules: import('./blocked-actions').BlockedActionRules): Promise<import('./blocked-actions').BlockedActionRules>
   saveConversation(input: Partial<Conversation> & { workspacePath?: string | null }): Promise<Conversation>
   /** null enquanto nada foi salvo: o renderer migra os grupos antigos do localStorage. */
   sidebarLayout(): Promise<SidebarLayout | null>

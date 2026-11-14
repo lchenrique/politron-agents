@@ -20,6 +20,7 @@ import { ImageGenerationPanel } from './ImageGenerationPanel'
 import { TelegramPanel } from './TelegramPanel'
 import { MemoryPanel } from './MemoryPanel'
 import { ComputerUsePanel } from './ComputerUsePanel'
+import { BlockedActionsPanel } from './BlockedActionsPanel'
 import { Field as FormField, FieldGroup, FieldLabel } from '@/components/ui/field'
 import css from './SettingsPage.module.css'
 
@@ -560,6 +561,9 @@ export function SettingsPage({ open = true, initialSection = 'geral', embedded =
           <Field title="Terminal · todos os agentes" description="Agentes com edição habilitada podem alterar arquivos do workspace. O terminal executa na pasta da conversa, mas não é isolado pelo sistema operacional. O modo Bypass de cada agente permite executar comandos sem confirmação.">
             <label className="flex items-start gap-3 text-sm"><Checkbox checked={terminalEnabled} onCheckedChange={checked => void updateTerminalAccess(checked === true)} className="mt-0.5" /><span><span className="font-medium">Habilitar terminal para todos os agentes</span><span className="mt-0.5 block text-xs text-muted-foreground">A alteração vale para o Assistente padrão e todos os agentes cadastrados.</span></span></label>
             <p role="status" className="text-xs text-muted-foreground">{terminalFeedback || (terminalEnabled ? 'Terminal habilitado para todos os agentes.' : 'Terminal desabilitado.')}</p>
+          </Field>
+          <Field title="Nunca fazer · mesmo em Acesso total" description="O Boobot recusa estas ações com uma mensagem ao agente, sem pedir sua aprovação. Vale para as ferramentas do Boobot, o shell e a edição nativos do Claude e os pedidos de aprovação do Codex. É uma verificação pelo texto do comando: comandos ofuscados ou scripts em arquivo podem escapar.">
+            <BlockedActionsPanel />
           </Field>
           {window.appAPI.saveExternalBrowserAlways && <Field title="Navegador real · todos os agentes" description="Seu Brave/Chrome pela extensão oficial. Com isto marcado, agentes com uso do computador usam o navegador real sem pedir autorização em cada conversa, com acesso aos sites em que você está logado. Cada ação fica registrada na conversa.">
             <label className="flex items-start gap-3 text-sm"><Checkbox checked={externalBrowserAlways} onCheckedChange={checked => void updateExternalBrowserAlways(checked === true)} className="mt-0.5" /><span className="font-medium">Permitir que agentes usem meu navegador real</span></label>

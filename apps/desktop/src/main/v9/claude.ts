@@ -11,6 +11,7 @@ import { EXTERNAL_BROWSER_MCP } from './external-browser-proxy'
 import { COMPUTER_USE_MCP } from './computer-use'
 import { buildAgentSystemPrompt } from './agent-prompt'
 import { claudeRuntimePermissions, hasFullAccess } from './runtime-permissions'
+import { claudeToolAction, type GuardedAction } from './blocked-actions'
 
 type ClaudeTurn = { id: string; controller: AbortController; terminal: boolean; initialized: Deferred; initializedResolved: boolean; eventGate?: Deferred; query?: Query }
 type ClaudeThread = { id: string; sessionId: string | null; agent: Agent; directory: string; tools: DynamicTool[]; projectInstructions: string; externalBrowser?: ExternalBrowserRegistration; computerUse?: ExternalBrowserRegistration; activeTurn?: ClaudeTurn }
@@ -49,6 +50,8 @@ function safeProcessEnvironment(apiKey: string | null): Record<string, string> {
 export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
   private readonly threads = new Map<string, ClaudeThread>()
   private readonly waits = new Map<string, ToolWait>()
+  /** Lista do que nunca fazer: o hook PreToolUse vale mesmo em bypassPermissions e nega sem perguntar. */
+  blockedAction?: (action: GuardedAction, directory: string) => string | null
   private readonly getApiKey: () => Promise<string | null>
   private readonly dataDirectory: string
   private executable: string | undefined
@@ -146,6 +149,10 @@ export class ClaudeRuntime extends EventEmitter implements AgentRuntime {
         allowedTools: [...context.tools.map(item => `mcp__politron__${item.name}`), ...(browser?.tools.map(name => `mcp__${EXTERNAL_BROWSER_MCP}__${name}`) || []), ...(desktop?.tools.map(name => `mcp__${COMPUTER_USE_MCP}__${name}`) || [])],
         mcpServers: { politron: server, ...(browser ? { [EXTERNAL_BROWSER_MCP]: { type: 'http' as const, url: browser.url, headers: { Authorization: `Bearer ${browser.token}` } } } : {}), ...(desktop ? { [COMPUTER_USE_MCP]: { type: 'http' as const, url: desktop.url, headers: { Authorization: `Bearer ${desktop.token}` } } } : {}) },
         systemPrompt: { type: 'preset', preset: 'claude_code', append: buildAgentSystemPrompt(context.agent, context.projectInstructions, context.tools) },
+        hooks: { PreToolUse: [{ hooks: [async input => {
+          const reason = input.hook_event_name === 'PreToolUse' ? this.blockedAction?.(claudeToolAction(input.tool_name, input.tool_input), context.directory) : null
+          return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse' as const, permissionDecision: 'deny' as const, permissionDecisionReason: reason } } : {}
+        }] }] },
       model: typeof params.model === 'string' ? params.model : context.agent.model || undefined,
       effort: typeof params.effort === 'string' ? params.effort as Agent['effort'] : context.agent.effort,
       ...(params.fastMode === true ? { settings: { fastMode: true } } : {}),

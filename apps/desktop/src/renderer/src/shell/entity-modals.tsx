@@ -176,9 +176,11 @@ export function WorkspaceModal({ workspace, color: initialColor, busy, onClose, 
   onPickFolder: () => Promise<string | null>
 }) {
   const nameId = useId()
+  const verifyId = useId()
   const [name, setName] = useState(workspace?.name || '')
   const [branch, setBranch] = useState(workspace?.branch || 'main')
   const [path, setPath] = useState(workspace?.path || '')
+  const [verifyCommand, setVerifyCommand] = useState(workspace?.verifyCommand || '')
   const [color, setColor] = useState(safeHex(initialColor))
   const [problem, setProblem] = useState('')
   const [saving, setSaving] = useState(false)
@@ -187,7 +189,7 @@ export function WorkspaceModal({ workspace, color: initialColor, busy, onClose, 
     if (!name.trim()) { setProblem('Dê um nome à pasta.'); return }
     setSaving(true); setProblem('')
     try {
-      await onSave({ ...(workspace ? { id: workspace.id } : {}), name: name.trim(), branch: branch.trim() || null, path: path.trim() || null } as EditorData)
+      await onSave({ ...(workspace ? { id: workspace.id } : {}), name: name.trim(), branch: branch.trim() || null, path: path.trim() || null, verifyCommand: verifyCommand.trim() } as EditorData)
       onClose()
     } catch (error) { setProblem(errorText(error)) } finally { setSaving(false) }
   }
@@ -218,6 +220,11 @@ export function WorkspaceModal({ workspace, color: initialColor, busy, onClose, 
         <input value={path} onChange={event => setPath(event.target.value)} placeholder="~/projetos/billing-service" className={cn(inputClass, 'min-w-0 flex-1 font-mono text-[11.5px]')} />
         <button type="button" onClick={async () => { try { const picked = await onPickFolder(); if (picked) setPath(picked) } catch (error) { setProblem(errorText(error)) } }} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-card)] px-2.5 text-[11.5px] text-[var(--text-secondary)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"><FolderGit2 className="size-3.5" /> Escolher</button>
       </div>
+    </div>
+    <div>
+      <label className={labelClass} htmlFor={verifyId}>Pronto com prova · comando de verificação</label>
+      <input id={verifyId} value={verifyCommand} onChange={event => setVerifyCommand(event.target.value)} placeholder="npm test && npm run typecheck" className={cn(inputClass, 'font-mono text-[11.5px]')} />
+      <p className="mt-1 text-[11px] text-[var(--text-muted)]">Opcional. Roda nesta pasta quando um Boo termina um turno que alterou arquivos; se falhar, o Boo recebe a saída para corrigir, até 3 vezes.</p>
     </div>
     <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-pane)] p-3">
       <label className={labelClass}>Cor da pasta</label>

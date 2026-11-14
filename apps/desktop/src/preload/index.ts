@@ -55,6 +55,7 @@ const appAPI: AppAPI = {
   approvalGrants: (agentId) => ipcRenderer.invoke('v9:approvalGrants', agentId),
   removeApprovalGrant: (grantId, agentId) => ipcRenderer.invoke('v9:removeApprovalGrant', grantId, agentId),
   saveTerminalAccess: (enabled) => ipcRenderer.invoke('v9:saveTerminalAccess', enabled),
+  saveBlockedActions: (rules) => ipcRenderer.invoke('v9:saveBlockedActions', rules),
   saveExternalBrowserAlways: (enabled) => ipcRenderer.invoke('v9:saveExternalBrowserAlways', enabled),
   saveConversation: (input) => ipcRenderer.invoke('v9:saveConversation', input),
   sidebarLayout: () => ipcRenderer.invoke('v9:sidebarLayout'),

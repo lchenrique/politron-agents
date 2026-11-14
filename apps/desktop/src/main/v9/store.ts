@@ -6,6 +6,8 @@ import { ASSISTANT_ID, randomPitColor, type ModelPreferences, type Agent, type A
 import { validateBooAccessoryColors } from '../../shared/boo-accessory-colors'
 import type { Trigger } from '../../shared/triggers'
 import { ensureMemorySchema, MemoryBank } from './memories'
+import { normalizeBlockedActions } from './blocked-actions'
+import type { BlockedActionRules } from '../../shared/blocked-actions'
 import { ensureWaitSchema, WaitBank } from './waits'
 
 export const SCHEMA_VERSION = 12
@@ -399,6 +401,15 @@ export class WorkspaceStore {
     return next
   }
   /** Autorização global do navegador real: vale para todas as conversas e agentes com uso do computador. */
+  blockedActions(): BlockedActionRules {
+    const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get('blocked_actions') as { value: string } | undefined
+    try { return normalizeBlockedActions(row ? JSON.parse(row.value) : {}) } catch { return normalizeBlockedActions({}) }
+  }
+  saveBlockedActions(input: unknown): BlockedActionRules {
+    const value = normalizeBlockedActions(input)
+    this.db.prepare('INSERT INTO v9_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('blocked_actions', JSON.stringify(value))
+    return value
+  }
   externalBrowserAlways(): boolean {
     const row = this.db.prepare('SELECT value FROM v9_meta WHERE key=?').get('external_browser_always') as { value: string } | undefined
     return row?.value === 'true'
@@ -568,6 +579,8 @@ export class WorkspaceStore {
     this.userAgents(defaultAgentIds)
     const instructions = input.instructions === undefined ? previous?.instructions || '' : String(input.instructions)
     if (instructions.length > 20000) throw new Error('Instruções: use até 20000 caracteres.')
+    const verifyCommand = String(input.verifyCommand ?? previous?.verifyCommand ?? '').trim()
+    if (verifyCommand.length > 2000) throw new Error('Comando de verificação: use até 2000 caracteres.')
     const parentWorkspaceId = input.parentWorkspaceId !== undefined ? input.parentWorkspaceId : previous?.parentWorkspaceId ?? null
     if (parentWorkspaceId) this.workspace(parentWorkspaceId)
     let path = previous?.path
@@ -605,7 +618,7 @@ export class WorkspaceStore {
       computerUse: computerUse as NonNullable<Workspace['permissions']>['computerUse']
     }
     const isolateTasks = input.isolateTasks ?? previous?.isolateTasks
-    const value: Workspace = { id, name, kind, path, branch: input.branch ?? previous?.branch ?? null, baseBranch: input.baseBranch ?? previous?.baseBranch ?? null, parentWorkspaceId, instructions: instructions.trim(), defaultAgentIds, permissions, changes: Math.max(0, input.changes ?? previous?.changes ?? 0), archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString(), ...(typeof isolateTasks === 'boolean' ? { isolateTasks } : {}) }
+    const value: Workspace = { id, name, kind, path, branch: input.branch ?? previous?.branch ?? null, baseBranch: input.baseBranch ?? previous?.baseBranch ?? null, parentWorkspaceId, instructions: instructions.trim(), ...(verifyCommand ? { verifyCommand } : {}), defaultAgentIds, permissions, changes: Math.max(0, input.changes ?? previous?.changes ?? 0), archived: input.archived ?? previous?.archived ?? false, createdAt: previous?.createdAt || new Date().toISOString(), ...(typeof isolateTasks === 'boolean' ? { isolateTasks } : {}) }
     this.put('v9_workspaces', value)
     return value
   }

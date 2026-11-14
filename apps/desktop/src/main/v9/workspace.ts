@@ -12,6 +12,8 @@ import { delegationEligibility } from './delegation-eligibility'
 import { createCommandEvidence, formatCommandEvidence } from './command-evidence'
 import { AgentTerminalService, stripTerminalControls } from './agent-terminal'
 import { isSensitiveCommand, shouldAutoApprove } from './approval-policy'
+import { blockedActionReason, codexApprovalAction, type GuardedAction } from './blocked-actions'
+import { shouldVerify, verifyTurn } from './verify-after-turn'
 import { effectiveRuntimeAgent, hasFullAccess } from './runtime-permissions'
 import { ASSISTANT_ID, type ActivityTool, type Agent, type Approval, type BoardEvidence, type BoardSnapshot, type BoardTask, type BoardTaskInput, type BoardTeam, type Conversation, type ImageApiProvider, type ImageGenerationSettings, type Delegation, type Message, type MessageAttachment, type MissionAction, type Model, type PlanReviewDecision, type Routine, type Run, type SendOptions, type StartMissionInput, type Workspace, type WorkspaceEvent } from '../../shared/v9'
 import type { PlatformBrowser } from '../ipc/platform-browser'
@@ -51,7 +53,7 @@ import type { MemoryActor } from './memories'
 
 const RUNTIME_LABELS: Record<Agent['runtime'], string> = { codex: 'Codex', claude: 'Claude', pi: 'Pi', opencode: 'OpenCode' }
 
-type RunContext = { nativeItems?: Map<string, Message>; run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
+type RunContext = { changedFiles?: boolean; nativeItems?: Map<string, Message>; run: Run; message: Message; conversation: Conversation; agent: Agent; runtime?: AgentRuntime; signal?: AbortSignal; lease?: WorkspaceLease; flushTimer?: ReturnType<typeof setTimeout>; sessionBindingKey?: string; deliveredDigests?: Record<string, string>; activitySince?: boolean; itemId?: string; priorText?: string
   /** Autoaprendizado: chamadas de ferramenta (fora as de skill), erro seguido de sucesso, skill já gravada e revisão final em curso. */
   voiceReply?: boolean; toolCalls?: number; toolFailed?: boolean; recovered?: boolean; savedSkill?: boolean; reflecting?: boolean
   /** Resultado de ferramenta que chegou depois de o turno encerrar: vira uma continuação, uma vez só. */
@@ -308,6 +310,7 @@ export class AppService extends EventEmitter {
     this.decisionRouting = new OpenRouterDecisionService(dataDirectory)
     this.imageGeneration = new ImageGenerationService(dataDirectory)
     this.claudeRuntime = claudeRuntime || new ClaudeRuntime(dataDirectory, () => this.credentials.load())
+    if (this.claudeRuntime instanceof ClaudeRuntime) this.claudeRuntime.blockedAction = (action, directory) => this.blockedReason(action, directory)
     this.piRuntime = new PiRuntime(join(dataDirectory, 'pi-runtime'))
     // OpenCode entra por API key (Console), sem depender do CLI instalado na máquina.
     this.openCodeRuntime = new OpenCodeApiRuntime(() => this.openCodeCredentials.load())
@@ -388,7 +391,7 @@ export class AppService extends EventEmitter {
     return { mimeType: file.mimeType, bytes: new Uint8Array(await fs.readFile(file.path)) }
   }
   // Small read for Settings; avoid materializing conversations, runs and file changes.
-  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, runtimePermissionMode: assistant.runtimePermissionMode || 'managed', terminalEnabled: this.store.terminalEnabled(), externalBrowserAlways: this.store.externalBrowserAlways() } }
+  settingsPreferences() { const assistant = this.store.agent(ASSISTANT_ID); return { canWrite: assistant.canWrite, computerUse: assistant.computerUse, approvalMode: assistant.approvalMode, runtimePermissionMode: assistant.runtimePermissionMode || 'managed', terminalEnabled: this.store.terminalEnabled(), externalBrowserAlways: this.store.externalBrowserAlways(), blockedActions: this.store.blockedActions() } }
   saveExternalBrowserAlways(enabled: boolean) { this.store.saveExternalBrowserAlways(enabled); this.emitEvent({ type: 'changed' }) }
   private runtimeFor(name: Agent['runtime']): AgentRuntime { return name === 'claude' ? this.claudeRuntime : name === 'pi' ? this.piRuntime : name === 'opencode' ? this.openCodeRuntime : this.runtime }
   /** Usa o inventário validado na inicialização ou atualizado manualmente; envio não varre CLI. */
@@ -428,6 +431,11 @@ export class AppService extends EventEmitter {
     this.emitEvent({ type: 'changed' })
   }
   saveTerminalAccess(enabled: boolean) { this.store.saveTerminalAccess(enabled); this.emitEvent({ type: 'changed' }) }
+  saveBlockedActions(rules: unknown) { return this.store.saveBlockedActions(rules) }
+  /** Lista do que nunca fazer: recusa sem perguntar, mesmo em Acesso total. */
+  private blockedReason(action: GuardedAction, root: string): string | null {
+    return blockedActionReason(action, root, this.store.blockedActions(), this.store.workspaces().find(item => item.path === root)?.branch)
+  }
   sidebarLayout() { return this.store.sidebarLayout() }
   // Sem evento 'changed': a ordem não muda o snapshot e cada tela lê o layout ao abrir.
   saveSidebarLayout(input: unknown) { return this.store.saveSidebarLayout(input) }
@@ -1311,6 +1319,7 @@ export class AppService extends EventEmitter {
         context.deliveredDigests = Object.fromEntries(Object.entries(nextDigests).slice(-40))
         this.store.putSessionBinding({ key: context.sessionBindingKey, threadId: run.threadId || threadId, runtime: agent.runtime, contextVersion: 1, deliveredDigests: context.deliveredDigests })
       }
+      await this.verifyAfterTurn(context, signal)
       await this.reflect(context, runtime, signal)
     } catch (error) {
       await this.finish(context, signal.aborted ? 'interrupted' : 'failed', context.message.text || (error instanceof Error ? error.message : 'Erro ao executar o agente.'))
@@ -1558,12 +1567,18 @@ export class AppService extends EventEmitter {
     // Sem resposta o Codex espera para sempre: o app-server v2 usa item/commandExecution e item/fileChange.
     if (['execCommandApproval', 'item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'applyPatchApproval', 'item/permissions/requestApproval'].includes(event.method)) {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId)
-      runtime.respond(event.id, { decision: context && hasFullAccess(effectiveRuntimeAgent(context.agent, { planMode: context.run.planMode, boardReview: this.boardReviewerConversations.has(context.conversation.id) })) ? 'accept' : 'decline' })
+      const blocked = context ? this.blockedReason(codexApprovalAction(params), context.run.workspacePath) : null
+      if (context && blocked) this.addMessage(context.conversation.id, context.agent, 'activity', blocked, 'failed', context.run.id)
+      runtime.respond(event.id, { decision: context && !blocked && hasFullAccess(effectiveRuntimeAgent(context.agent, { planMode: context.run.planMode, boardReview: this.boardReviewerConversations.has(context.conversation.id) })) ? 'accept' : 'decline' })
     }
     // Ferramentas nativas (Acesso total): Codex manda commandExecution/fileChange; Claude manda nativeTool.
     if ((event.method === 'item/started' || event.method === 'item/completed') && ['commandExecution', 'fileChange', 'nativeTool'].includes(params.item?.type)) {
       const context = [...this.contexts.values()].find(entry => entry.runtime === runtime && entry.run.threadId === params.threadId && entry.run.turnId === params.turnId)
       if (context && !context.reflecting) this.recordNativeTool(context, event.method === 'item/completed', params.item)
+      // shortcut: no Acesso total o Codex roda com approvalPolicy never e não pergunta; a ação bloqueada só é vista ao começar e o turno é interrompido. Trocar por regra nativa do Codex (execpolicy) quando der para configurá-la por sessão.
+      const native = context && event.method === 'item/started' && params.item.type !== 'nativeTool' ? nativeToolCall(params.item) : undefined
+      const blocked = native && context ? this.blockedReason(native.name === 'workspace_run_command' ? { command: String(native.args.command) } : { paths: changedPaths(params.item.changes) }, context.run.workspacePath) : null
+      if (blocked && context) { this.addMessage(context.conversation.id, context.agent, 'activity', `Turno interrompido. ${blocked}`, 'failed', context.run.id); void runtime.interrupt(params.threadId, params.turnId).catch(() => undefined) }
     }
   }
   private recordNativeTool(context: RunContext, done: boolean, item: Record<string, unknown>) {
@@ -1579,6 +1594,7 @@ export class AppService extends EventEmitter {
     }
     if (!done || !recorded.tool) return
     const failed = item.isError === true || item.status === 'failed' || (typeof item.exitCode === 'number' && item.exitCode !== 0)
+    if (!failed && recorded.tool.name === 'workspace_write') context.changedFiles = true
     const output = item.aggregatedOutput ?? item.output ?? changedPaths(item.changes).join('\n')
     const next = { ...recorded, tool: { ...finishedTool(recorded.tool, failed ? 'failed' : 'completed', output, redactApprovalUrls), ...(typeof item.exitCode === 'number' ? { exitCode: item.exitCode } : {}) } }
     this.store.putMessage(next); this.emitEvent({ type: 'message', message: next })
@@ -1591,6 +1607,8 @@ export class AppService extends EventEmitter {
       if (!context.agent.canWrite) throw new Error('Este agente não tem permissão para alterar arquivos.')
       if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia alterações em arquivos.')
       let relativePath = typeof pathArg === 'string' ? pathArg.slice(0, 1000).replace(/\\/g, '/') : '(caminho inválido)'
+      const blocked = this.blockedReason({ paths: [relativePath] }, root)
+      if (blocked) return blocked
       const toolCallId = callId || randomUUID()
       const record = (status: 'applied' | 'failed' | 'unknown' | 'unchanged', before: string, after: string, binary: boolean, truncated: boolean) => {
         const oldLines = before ? before.split('\n') : []
@@ -1600,6 +1618,7 @@ export class AppService extends EventEmitter {
         let suffix = 0
         while (suffix < oldLines.length - prefix && suffix < newLines.length - prefix && oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]) suffix++
         const value = { id: randomUUID(), runId: context.run.id, messageId: context.message.id, toolCallId, agentId: context.agent.id, workspaceId: context.run.workspaceId, path: relativePath, status, before, after, additions: Math.max(0, newLines.length - prefix - suffix), deletions: Math.max(0, oldLines.length - prefix - suffix), truncated, binary, createdAt: new Date().toISOString() }
+        if (status === 'applied') context.changedFiles = true
         if (this.store.putFileChange(value)) this.emitEvent({ type: 'fileChange', fileChange: value })
       }
       let before = ''
@@ -1768,6 +1787,8 @@ export class AppService extends EventEmitter {
       if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia comandos que podem alterar arquivos.')
       const command = text(args.command, 8000).trim()
       if (!command) throw new Error('Informe um comando para executar.')
+      const blocked = this.blockedReason({ command }, root)
+      if (blocked) return blocked
       if (!await this.requestApproval(context, 'command', { command, cwd: root }, isSensitiveCommand(command))) return 'O usuário não aprovou a execução do comando.'
       return runWorkspaceCommand(command, root, context, callId || randomUUID(), this.store, this.agentTerminals)
     }
@@ -1777,6 +1798,8 @@ export class AppService extends EventEmitter {
       if (workspace.permissions?.filesWrite === 'deny') throw new Error('A política deste workspace bloqueia comandos que podem alterar arquivos.')
       const command = text(args.command, 8000).trim()
       if (!command) throw new Error('Informe um comando para iniciar.')
+      const blocked = this.blockedReason({ command }, root)
+      if (blocked) return blocked
       if (!await this.requestApproval(context, 'command', { command, cwd: root }, isSensitiveCommand(command))) return 'O usuário não aprovou a execução do comando.'
       const toolCallId = callId || randomUUID(), createdAt = new Date().toISOString()
       const session = this.agentTerminals.start({ command, cwd: root, owner: terminalOwner(context), onFinish: done => {
@@ -2206,6 +2229,38 @@ export class AppService extends EventEmitter {
     this.missions.onDelegationFinished(parent.conversation.id)
     if (completed.status !== 'completed') throw new Error(delegation.error || `${recipient.name} não concluiu o pedido.`)
     return result
+  }
+  /** "Pronto com prova": roda o comando de verificação do workspace e, se falhar, devolve ao mesmo agente. */
+  private async verifyAfterTurn(context: RunContext, signal: AbortSignal): Promise<void> {
+    const { run, agent, conversation } = context
+    const command = this.store.workspace(run.workspaceId).verifyCommand
+    if (signal.aborted || !command || !shouldVerify({ command, status: run.status, planMode: run.planMode, changedFiles: context.changedFiles, verifyAttempt: run.verifyAttempt })) return
+    const outcome = await verifyTurn({
+      putCommandEvidence: evidence => this.store.putCommandEvidence(evidence),
+      activity: (value, tool) => {
+        const message = this.addMessage(conversation.id, agent, 'activity', value, 'completed', run.id, { tool })
+        return (next, done) => { const updated = { ...message, text: next, tool: done }; this.store.putMessage(updated); this.emitEvent({ type: 'message', message: updated }) }
+      },
+    }, { command, cwd: run.workspacePath, attempt: run.verifyAttempt ?? 0, signal, runId: run.id, agentId: agent.id, agentName: agent.name, conversationId: conversation.id, workspaceId: run.workspaceId })
+    if (outcome.retry) void this.continueAfterVerification(context, outcome.retry).catch(() => undefined)
+  }
+  /** Continuação para o mesmo agente na mesma conversa, como a de delegação: respeita MAX_CONTINUATION_DEPTH. */
+  private async continueAfterVerification(parent: RunContext, input: string): Promise<void> {
+    const continuationDepth = (parent.run.continuationDepth ?? 0) + 1
+    if (continuationDepth > MAX_CONTINUATION_DEPTH) return
+    const conversation = this.store.conversation(parent.conversation.id)
+    const workspace = this.store.workspace(conversation.workspaceId)
+    if (conversation.archived || workspace.archived) return
+    const agent = this.store.agent(parent.agent.id)
+    const now = new Date().toISOString()
+    const message: Message = { id: randomUUID(), conversationId: conversation.id, agentId: agent.id, author: agent.name, role: 'assistant', text: '', status: 'queued', runId: null, createdAt: now }
+    const run: Run = { id: randomUUID(), conversationId: conversation.id, agentId: agent.id, rootId: parent.run.rootId, parentId: parent.run.id, ancestry: parent.run.ancestry, continuationDepth, verifyAttempt: (parent.run.verifyAttempt ?? 0) + 1, status: 'queued', threadId: null, turnId: null, messageId: message.id, input, inputMessageId: message.id, agent, workspaceId: workspace.id, workspacePath: workspace.path, createdAt: now }
+    message.runId = run.id
+    this.store.putRun(run); this.store.putMessage(message)
+    this.emitEvent({ type: 'message', message }); this.emitEvent({ type: 'changed' })
+    const controller = new AbortController(); this.active.set(run.id, controller)
+    const chiefLane = agent.role === 'chief'
+    await this.queue.enqueue(chiefLane ? chiefLaneKey(workspace.path, conversation.id) : workspace.path, controller.signal, lease => this.execute({ run, message, conversation, agent, lease }, controller.signal), { session: sessionLockKey(conversation.id, agent.id), ...(chiefLane ? { lane: true } : {}) })
   }
   private async continueAfterDelegation(parent: RunContext, delegation: Delegation, result: string, failed = false): Promise<void> {
     const latest = this.store.delegation(delegation.id)
